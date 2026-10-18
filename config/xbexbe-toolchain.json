@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/TGP482/Xbox-XBERecomp.git",
+  "commit": "40e9c35451305f09ca9d86f677e4b9c2c37ff26b",
+  "sdk_version": "0.1.0",
+  "title_id": "0x43430016",
+  "entry_point": "0x00159E95",
+  "xbe_sha256": "72fc8033e01df4f22c703121cfd160969c642b18e841248224fc97a8f32050d7"
+}

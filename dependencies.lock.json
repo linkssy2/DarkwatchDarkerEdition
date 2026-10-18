@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "release": "0.1",
+  "scope": "Recorded native source revisions. SDK FetchContent uses these tags; compare resolved commits after first configuration.",
+  "native": [
+    {
+      "name": "XboxXBERecomp",
+      "repository": "https://github.com/TGP482/Xbox-XBERecomp.git",
+      "revision": "40e9c35451305f09ca9d86f677e4b9c2c37ff26b",
+      "local_patch": "patches/xbexbe.patch"
+    },
+    {
+      "name": "zydis",
+      "repository": "https://github.com/zyantific/zydis.git",
+      "tag": "v4.1.1",
+      "revision": "a2278f1d254e492f6a6b39f6cb5d1f5d515659dc"
+    },
+    {
+      "name": "tomlplusplus",
+      "repository": "https://github.com/marzer/tomlplusplus.git",
+      "tag": "v3.4.0",
+      "revision": "30172438cee64926dc41fdd9c11fb3ba5b2ba9de"
+    },
+    {
+      "name": "imgui",
+      "repository": "https://github.com/ocornut/imgui.git",
+      "tag": "v1.91.0",
+      "revision": "8199457a7d9e453f8d3d9cadc14683fb54a858b5"
+    },
+    {
+      "name": "sdl3",
+      "repository": "https://github.com/libsdl-org/SDL.git",
+      "tag": "release-3.4.16",
+      "revision": "fa2c02bb6e21974a89ea9824bc53c9932abe5f9c"
+    },
+    {
+      "name": "Zycore",
+      "repository": "https://github.com/zyantific/zycore-c.git",
+      "revision": "0b2432ced0884fd152b471d97ecf0258ff4d859f",
+      "relationship": "Zydis submodule"
+    }
+  ],
+  "packaging": {
+    "python": "3.12.10 embedded x64",
+    "msvc_redist": "14.44.35112 x64",
+    "dotnet_framework": "4.8",
+    "provisioning": "Local generic dependencies; see docs/BUILDING.md"
+  }
+}

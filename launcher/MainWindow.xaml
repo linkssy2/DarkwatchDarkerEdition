@@ -1,0 +1,115 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Darkwatch: Darker Edition" Width="1060" Height="720"
+        WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="CanMinimize"
+        Background="#0C0E11" Foreground="#F1E9DA" FontFamily="Segoe UI"
+        UseLayoutRounding="True" SnapsToDevicePixels="True">
+  <Window.Resources>
+    <Style TargetType="Button">
+      <Setter Property="Foreground" Value="#F1E9DA"/>
+      <Setter Property="Background" Value="#20232A"/>
+      <Setter Property="BorderBrush" Value="#696C70"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="18,12"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Frame" Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+              <Grid>
+                <Border BorderThickness="0,1,0,0" BorderBrush="#35FFFFFF" Margin="1"/>
+                <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Grid>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Frame" Property="Background" Value="#622026"/><Setter TargetName="Frame" Property="BorderBrush" Value="#C6B9A2"/></Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Frame" Property="BorderBrush" Value="#FAEDD1"/><Setter TargetName="Frame" Property="BorderThickness" Value="2"/></Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="Frame" Property="Background" Value="#380D12"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Frame" Property="Opacity" Value="0.38"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="Quiet" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Background" Value="#15181D"/>
+      <Setter Property="BorderBrush" Value="#41454C"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Padding" Value="12,10"/>
+    </Style>
+  </Window.Resources>
+  <Viewbox Stretch="Uniform" StretchDirection="DownOnly">
+  <Border Width="1060" Height="720" Background="#0C0E11" BorderBrush="#74777C" BorderThickness="1">
+    <Grid>
+      <Grid.RowDefinitions><RowDefinition Height="40"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+      <Border x:Name="TitleBar" Background="#111419" BorderBrush="#393C42" BorderThickness="0,0,0,1">
+        <Grid>
+          <StackPanel Orientation="Horizontal" Margin="12,0" VerticalAlignment="Center">
+            <Image x:Name="SmallInsignia" Width="24" Height="24" Margin="0,0,10,0"/>
+            <TextBlock Text="DARKWATCH: DARKER EDITION" Foreground="#C3BDB3" FontSize="11" VerticalAlignment="Center"/>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="MinimizeButton" Content="—" Width="46" Padding="0" BorderThickness="0" Background="Transparent" ToolTip="Minimize"/>
+            <Button x:Name="CloseButton" Content="×" FontSize="22" Width="46" Padding="0" BorderThickness="0" Background="Transparent" ToolTip="Close launcher"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+      <Grid Grid.Row="1">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="440"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+        <Border BorderBrush="#53545A" BorderThickness="0,0,1,0" Background="#080A0D" ClipToBounds="True">
+          <Grid>
+            <Image x:Name="Cover" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality"/>
+            <Border Height="3" Background="#7C2026" VerticalAlignment="Bottom"/>
+          </Grid>
+        </Border>
+        <Grid Grid.Column="1" Margin="42,30,42,26">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/><RowDefinition Height="30"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+          <StackPanel>
+            <Grid>
+              <Image x:Name="Insignia" Width="68" Height="68" HorizontalAlignment="Right" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
+              <StackPanel>
+                <TextBlock Text="DARKWATCH" FontFamily="Georgia" FontSize="37" Foreground="#F1E9DA"/>
+                <TextBlock Text="D A R K E R   E D I T I O N" Margin="2,8,0,0" FontSize="14" Foreground="#B9635C"/>
+              </StackPanel>
+            </Grid>
+            <Rectangle Height="1" Fill="#56565B" Margin="0,24,0,0"/>
+          </StackPanel>
+          <StackPanel Grid.Row="2">
+            <TextBlock x:Name="StateTitle" Text="PREPARE YOUR HUNT" FontFamily="Georgia" FontSize="22"/>
+            <TextBlock x:Name="StateDescription" Text="Bring your own original Xbox Darkwatch ISO. Import it once to prepare Darker Edition on this PC." FontSize="15" LineHeight="24" TextWrapping="Wrap" Foreground="#B8B7B5" Margin="0,12,0,18"/>
+            <Border Background="#15181D" BorderBrush="#373B42" BorderThickness="1" Padding="16,13">
+              <StackPanel>
+                <TextBlock Text="YOUR DISC, ENHANCED" FontSize="11" FontWeight="SemiBold" Foreground="#C8AE89"/>
+                <TextBlock Text="Widescreen · HD interface · Mouse &amp; keyboard" FontSize="13" Foreground="#B8B7B5" Margin="0,7,0,0"/>
+                <TextBlock Text="Original game files are not included." FontSize="12" Foreground="#85898F" Margin="0,7,0,0"/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+          <StackPanel Grid.Row="4">
+            <TextBlock x:Name="StatusText" Text="Checking installation…" FontSize="13" TextWrapping="Wrap" Foreground="#B8B7B5" Margin="0,0,0,10"/>
+            <ProgressBar x:Name="Progress" Height="4" Minimum="0" Maximum="100" Foreground="#AA383C" Background="#292D33" BorderThickness="0" Margin="0,0,0,18"/>
+            <Grid x:Name="LaunchActions">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <Button x:Name="ImportButton" Content="IMPORT ISO" Background="#701C25" Height="54"/>
+              <Button x:Name="PlayButton" Grid.Column="2" Content="PLAY" IsEnabled="False" Height="54" FontSize="17"/>
+            </Grid>
+            <Grid x:Name="RepairActions" Margin="0,12,0,0">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <Button x:Name="VerifyButton" Content="VERIFY FILES" Style="{StaticResource Quiet}" IsEnabled="False"/>
+              <Button x:Name="FolderButton" Grid.Column="2" Content="OPEN GAME FOLDER" Style="{StaticResource Quiet}" IsEnabled="False"/>
+            </Grid>
+            <Button x:Name="CancelButton" Content="CANCEL" Style="{StaticResource Quiet}" Visibility="Collapsed" Margin="0,12,0,0"/>
+          </StackPanel>
+          <TextBlock Grid.Row="5" Text="DARKER EDITION   /   0.1" Foreground="#676B72" FontSize="10" Margin="0,22,0,0"/>
+        </Grid>
+      </Grid>
+    </Grid>
+  </Border>
+  </Viewbox>
+</Window>

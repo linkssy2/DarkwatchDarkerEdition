@@ -1,0 +1,8 @@
+{
+  "tool": "built-in image_gen",
+  "input": "cover-clean.png",
+  "output": "cover-darker-edition.png",
+  "input_sha256": "8918ccc9c26b035719a204e230c7fb079a7c0bf9d3615675224b9cdc9df47259",
+  "output_sha256": "98ab2d6e49235179bfcdc79a784d9ef2b526f53fb040705b7ad0c5811716c2d8",
+  "prompt": "Use case: precise-object-edit / text treatment. Edit target: the clean Darkwatch cover illustration. Add the edition title on this cover, prominently in the empty moon/sky above Jericho's hat. The top title must read exactly 'DARKWATCH' in the game's original distinctive distressed western-gothic serif wordmark style, with the tall cross-shaped T, dark blackened metal fill, subtle bright silver bevel/outline so it is sharply readable over the moon. Directly beneath it add exactly 'DARKER EDITION' in smaller elegant uppercase western serif lettering, warm ivory with a deep dark shadow and subtle blood-red accent/rule. Center both title lines as one compact title block in the top fifth; do not overlap the hat or face. No colon needed between the two lines. Make the lettering crisp and legible at launcher thumbnail size. Preserve all existing character, face, pose, costume, weapons, insignia, cemetery, moon, rocks, lighting, dimensions and composition outside the added title. Do not restore Xbox banners, ESRB, publisher logos, studio labels, or any other cover text. Opaque portrait illustration, faithful game-cover aesthetic."
+}

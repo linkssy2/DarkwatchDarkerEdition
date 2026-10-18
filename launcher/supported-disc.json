@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "title": "Darkwatch",
+  "title_id": "0x43430016",
+  "xbe_sha256": "72fc8033e01df4f22c703121cfd160969c642b18e841248224fc97a8f32050d7",
+  "files": [
+    {
+      "path": "audio.pck",
+      "size": 137741272,
+      "sha256": "ffa551a20dbe3abf0eb6359011fe62a693f7f8b67822920f2bb9d31fe77c2d43"
+    },
+    {
+      "path": "audioAmb.pck",
+      "size": 129249773,
+      "sha256": "4bf1546f9630d3a97592f05dfcd8916bc9c8390522739b993d8abbe2c039ce57"
+    },
+    {
+      "path": "audioDlg.pck",
+      "size": 67086949,
+      "sha256": "19f7e69d11a450b0d6727f9dfe1e5479eeb24a1c81c6ee92e5b5c58a46355c2e"
+    },
+    {
+      "path": "audioEmt.pck",
+      "size": 102549645,
+      "sha256": "a4dcc42de4b12e921549247032461a5f72cda666dd3b4a07a6d37ebe5c18f2ae"
+    },
+    {
+      "path": "audioMu1.pck",
+      "size": 165787873,
+      "sha256": "c991cfbcc96093b80d04680401a1da3fd60d1b499812bf7026c9999d898f426d"
+    },
+    {
+      "path": "audioMu2.pck",
+      "size": 152338820,
+      "sha256": "6e19188f0492f8ab7a62ccf3dd20d71e45a6dfebae19f2ae4ff1301da9f1a1c6"
+    },
+    {
+      "path": "audioWpn.pck",
+      "size": 2661229,
+      "sha256": "2040c3e64dc6bfc89e88e02be84d4efa70a1104eeaff556698562b9dd6aabd9a"
+    },
+    {
+      "path": "audstrmp.pck",
+      "size": 186362861,
+      "sha256": "322343fb1acb03be8d56b0ff8e1f251bef242067488f101600dc18f5391f1aff"
+    },
+    {
+      "path": "audstrsp.pck",
+      "size": 299492052,
+      "sha256": "896e4dbbf818b55f80ca016b5cb1ad1cf20941d65e25fe9ba2f0287319fd2815"
+    },
+    {
+      "path": "darkwatch.uix",
+      "size": 2904184,
+      "sha256": "8d43b75ec636146960720be19d46f82299c65029e8d9cae8011a0b6f8dc82431"
+    },
+    {
+      "path": "dashupdate.xbe",
+      "size": 58421248,
+      "sha256": "e90c5a429a40cfd280ee6727a8dcf17535fb86e4cfc8bfe2481497e59574b867"
+    },
+    {
+      "path": "default.xbe",
+      "size": 5021696,
+      "sha256": "72fc8033e01df4f22c703121cfd160969c642b18e841248224fc97a8f32050d7"
+    },
+    {
+      "path": "LvlMulti.pck",
+      "size": 148744464,
+      "sha256": "39f575e8a7cbe2345e6ee9359dc54938823ec10249082e2992d4599dea361a0c"
+    },
+    {
+      "path": "LvlOther.pck",
+      "size": 90761048,
+      "sha256": "2e2768038add700bcc017e9c829ae4517345d89789d92b2abd3ee767af6d841d"
+    },
+    {
+      "path": "LvlSingl.pck",
+      "size": 207710373,
+      "sha256": "ee1af353ad47b929b019e0b75ec605d980e8ef96466fb304277199665b4feaf5"
+    },
+    {
+      "path": "Movies1.pck",
+      "size": 341433908,
+      "sha256": "6c604028fb3f6d8d57554139a0ee3305b1af8ea584ac5d729a375c0551c9091d"
+    },
+    {
+      "path": "Movies2.pck",
+      "size": 292771016,
+      "sha256": "9f4315e71e425494f66586bdde078492c2b3736e75e45336edd90883d9e215b1"
+    },
+    {
+      "path": "Movies3.pck",
+      "size": 213652752,
+      "sha256": "2296df85db6a8495f415a5334359e3c94cf9fda8e5e70efe0781ed5b8fc97853"
+    },
+    {
+      "path": "Movies4.pck",
+      "size": 207535376,
+      "sha256": "ab38c23e833931b4a59ce710a1db4bec3d9fcc9e4704fc56f24115528d9811a9"
+    },
+    {
+      "path": "multistr.pck",
+      "size": 361855385,
+      "sha256": "8e758eaecc1eade1f92d89e7021f579468db1d10f5e8d90babcd883b019e3a38"
+    },
+    {
+      "path": "packfile.pck",
+      "size": 110109318,
+      "sha256": "1d50aceeded11b9e9a61448d194ab02f04491dc5243f4b107b565c95602f64d1"
+    },
+    {
+      "path": "singlstr.pck",
+      "size": 623495854,
+      "sha256": "9a56761a4018a108f7714067e118561104d3469bea86b8633252abafed5c2f4f"
+    },
+    {
+      "path": "update.xbe",
+      "size": 2342912,
+      "sha256": "b730512a72560b6b92498064d7ec7446e26e671948e94aba676e8b9bba35e7fb"
+    }
+  ]
+}

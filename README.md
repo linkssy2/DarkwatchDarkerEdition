@@ -1,0 +1,78 @@
+# Darkwatch: Darker Edition
+
+**PC port · Version 0.1 · Windows x64**
+
+An unofficial PC port of the original Xbox Darkwatch, powered by
+[XboxXBERecomp by TGP482](https://github.com/TGP482/Xbox-XBERecomp), with native
+Direct3D 12 rendering and statically recompiled original gameplay. Bring your
+own supported Xbox disc image: original game files are not included.
+
+## Install
+
+1. Download **Darkwatch-Darker-Edition-0.1-Windows-x64.zip** from
+   [Releases](https://github.com/linkssy2/DarkwatchDarkerEdition/releases/latest).
+2. Extract the entire folder to a short writable location, such as `C:/Games/Darkwatch`.
+3. Open **Darkwatch Darker Edition.exe**, choose **Import ISO**, and select your
+   supported original Xbox `.iso` or `.xiso`.
+4. Wait for import and shader preparation to finish, then choose **Play**.
+
+After setup, **Play Darkwatch.exe** starts directly. Both launch paths prepare
+missing shaders before gameplay. Normal play has no time limit.
+
+Keep both EXEs, `payload/`, and `GameData/` together. Imported files, saves,
+bindings, graphics settings and shader cache stay inside the portable folder.
+The ISO is needed for import or repair, not normal play. For an update, extract
+into a new folder, copy your existing `GameData/` into it, and use Import / Repair
+if verification asks. Keep the old folder until you have checked your saves.
+
+Requires Windows 10 version 1903 or newer / Windows 11 x64, .NET Framework 4.8,
+an x86-64-v2 CPU (including SSE4.2 and POPCNT), and a Direct3D 12 GPU supporting
+feature level 11_0. Runtime dependencies are included locally; setup does not
+install system components or require administrator access.
+
+## Features
+
+- Mouse-friendly menus, editable bindings and direct mouse aiming on foot and horseback.
+- Xbox, PS4, Switch Pro and paired Joy-Con controls with matching button prompts.
+- Graphics and Controls pages accessible from the main menu and Pause.
+- Widescreen framing, resolution and internal scale, FOV, reticle size, MSAA,
+  anisotropic filtering and optional FPS display.
+- Optional restored HD menus, fonts and HUD, plus enhanced intro slides. Videos remain original.
+- Local shader preparation, portable saves and **Quit to Desktop** in the main menu.
+
+**Esc pauses; right-click goes back in menus.** Switch buttons use physical
+positions: **B selects, A goes back**. PS4 uses Cross to select, Circle to go back.
+Controllers presented as Xbox by a remapper show Xbox prompts. A single Joy-Con
+does not provide the complete dual-stick controls.
+
+## Supported disc and limitations
+
+Setup checks all 23 files of the supported North American Xbox revision. Both
+full Xbox ISO and trimmed XISO layouts work. Other revisions are rejected.
+The required `default.xbe` SHA-256 is
+`72fc8033e01df4f22c703121cfd160969c642b18e841248224fc97a8f32050d7`.
+Allow at least 4.5 GB per import plus saves/cache. The source disc image is read only.
+
+Version 0.1 is an early release. User testing reached gameplay, the opening boss
+and horse riding; the fresh-import shader preparation test had no noticeable
+stutters on the opening route. Full-campaign completion, online play, fresh
+Windows and physical PS4/Switch testing remain unverified. Unseen shaders,
+driver pipelines and loading may still cause pauses.
+
+Routine logging, capture hotkeys, debug output and development probes are disabled
+in the player build. A failure can produce a small capped local error report.
+The FPS display remains an optional graphics setting.
+
+## Source
+
+See [build notes](docs/BUILDING.md), [code map](docs/CODE_MAP.md),
+[credits](CREDITS.md) and [release notes](docs/RELEASE-0.1.md).
+The source snapshot contains maintained integration, SDK patches, launcher/import
+code and selected tests. It excludes generated title code, disassembly, original
+disc files, private research, captures, saves and build output. Standalone setup
+still needs locally provisioned build dependencies; see the build notes.
+
+Approved restored artwork and launcher branding are included as enhancements;
+they are not an original disc asset pack. The HD texture pack is prepared locally
+from the player's verified import. Original content and marks belong to their
+owners; see [artwork provenance](launcher/assets/SOURCES.md) and [notices](COPYRIGHT).

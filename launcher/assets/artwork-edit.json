@@ -1,0 +1,8 @@
+{
+  "tool": "built-in image_gen",
+  "input": "cover.jpg",
+  "output": "cover-clean.png",
+  "input_sha256": "7de33bb3b0b6825d897efdda2661b895f46793f07314847c5a36c1fa3ab1f477",
+  "output_sha256": "8918ccc9c26b035719a204e230c7fb079a7c0bf9d3615675224b9cdc9df47259",
+  "prompt": "Use case: precise-object-edit. Edit target: the attached original Darkwatch Xbox cover art. Asset type: clean portrait artwork for a native Windows game launcher. Remove ALL packaging and printed labels/text: the green/black Xbox banner at top, the Xbox Live enabled strip, the Darkwatch wordmark, the NTSC tag, the ESRB rating box, High Moon Studios and Capcom logos at bottom, tiny legal/footer text. Seamlessly reconstruct the moonlit cemetery/blue mist background where these labels were. Keep Jericho Cross's exact pose, face, hat, clothes, weapons, chest skull badge, silhouette, proportions and original painted game-cover style as faithful as possible. Preserve the original blue moonlight and cold atmosphere, graveyard trees and grave stones. Fill the entire portrait canvas with the clean illustration; no border, no new labels, no text, no logos added. The small metallic badge on his chest is a physical part of his costume and must stay. Output a high-resolution portrait image with the same overall composition, opaque background."
+}

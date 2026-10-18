@@ -1,0 +1,427 @@
+# Approved restored artwork; exact original texture identity and framing.
+version = 1
+
+[[texture]]
+name = "publisher"
+native_offset = 105009332
+file = "publisher.png"
+crop = [0, 90, 2172, 543]
+
+[[texture]]
+name = "highmoon_title"
+native_offset = 105190068
+file = "highmoon_title.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "LicenseSplash"
+native_offset = 105255732
+file = "LicenseSplash.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "ESRB"
+native_offset = 104943668
+file = "ESRB.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "GenericBackground"
+native_offset = 101485428
+file = "GenericBackground.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "ProfileIcon"
+native_offset = 100450676
+file = "ProfileIcon.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "Options_BG"
+native_offset = 101214580
+file = "Options_BG.png"
+crop = [0, 0, 1774, 887]
+alpha = "original"
+
+[[texture]]
+name = "CSBody"
+native_offset = 102130036
+file = "CSBody.png"
+crop = [0, 0, 1774, 887]
+alpha = "original"
+
+[[texture]]
+name = "DSNormal"
+native_offset = 100417780
+file = "DSNormal.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "DSInsane"
+native_offset = 100384884
+file = "DSInsane.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "DSEasy"
+native_offset = 102688500
+file = "DSEasy.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "DSHard"
+native_offset = 102721396
+file = "DSHard.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "ProfileSelected"
+native_offset = 102754292
+file = "ProfileSelected.png"
+crop = [1, 87, 2180, 545]
+alpha = "original"
+
+[[texture]]
+name = "ProfileUnselected"
+native_offset = 100319220
+file = "ProfileUnselected.png"
+crop = [0, 97, 2048, 512]
+alpha = "original"
+
+[[texture]]
+name = "CCBody"
+native_offset = 100516340
+file = "CCBody.png"
+crop = [0, 0, 1774, 887]
+alpha = "original"
+
+[[texture]]
+name = "KBBody"
+native_offset = 102557300
+file = "KBBody.png"
+crop = [0, 0, 1774, 887]
+alpha = "original"
+
+[[texture]]
+name = "hud"
+native_offset = 103041076
+
+[[texture.region]]
+file = "HealthBackground-aligned-v2.png"
+crop = [0, 46, 2172, 632]
+dest = [3, 0, 141, 41]
+fit = "contain"
+
+[[texture.region]]
+file = "WeaponBackground.png"
+crop = [0, 0, 1795, 876]
+dest = [0, 42, 127, 62]
+fit = "contain"
+
+[[texture.region]]
+file = "BloodBackground.png"
+crop = [0, 0, 939, 1674]
+dest = [195, 85, 60, 107]
+fit = "contain"
+
+[[texture.region]]
+file = "HUD-MortalHealthIndicator-v2.png"
+crop = [6, 198, 2109, 285]
+dest = [151, 7, 74, 10]
+
+[[texture.region]]
+file = "HUD-VampireHealthIndicator-v2.png"
+crop = [24, 195, 2072, 280]
+dest = [152, 17, 74, 10]
+
+[[texture.region]]
+file = "HUD-MysticArmourShield-v1.png"
+crop = [82, 61, 558, 2081]
+dest = [13, 177, 8, 33]
+fit = "contain"
+
+[[texture.region]]
+file = "HUD-BlackShroudShield-v1.png"
+crop = [120, 0, 486, 2160]
+dest = [1, 175, 9, 40]
+
+[[texture.region]]
+file = "HUD-BossHealthBackground-v2.png"
+crop = [30, 292, 2101, 143]
+dest = [2, 107, 191, 13]
+
+[[texture]]
+name = "WrongTrain"
+native_offset = 100877812
+file = "WrongTrain.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "GroundZero"
+native_offset = 100647540
+file = "GroundZero.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "M03_Cemetery"
+native_offset = 100844916
+file = "M03_Cemetery.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "M02_CanyonShoot"
+native_offset = 102294132
+file = "M02_CanyonShoot.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "M19_RidetoDeadfall"
+native_offset = 100680436
+file = "M19_RidetoDeadfall.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "M15_SplittingPaths"
+native_offset = 100713332
+file = "M15_SplittingPaths.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "M11_Hangtown"
+native_offset = 100746228
+file = "M11_Hangtown.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "M09_TortureMaze"
+native_offset = 100779124
+file = "M09_TortureMaze.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "M07_DWOutpost"
+native_offset = 100812020
+file = "M07_DWOutpost.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "Citadel_Launch"
+native_offset = 100910708
+file = "Citadel_Launch.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "loadingBad"
+native_offset = 103274548
+file = "loadingBad-restored.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "loadingGood"
+native_offset = 103348660
+file = "loadingGood-restored.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "loadingDefault"
+native_offset = 103414324
+file = "loadingDefault-restored.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "StartScreenBadge"
+native_offset = 105042228
+file = "StartScreenBadge-restored-v2.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "FallOfCitadel"
+native_offset = 102261236
+file = "FallOfCitadel.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "M05_DevilsBelly"
+native_offset = 102327028
+file = "M05_DevilsBelly.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "M08_Regulator"
+native_offset = 102359924
+file = "M08_Regulator.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "M10_TradingPost"
+native_offset = 102392820
+file = "M10_TradingPost.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "M12_CitadelUnderAttack"
+native_offset = 102425716
+file = "M12_CitadelUnderAttack.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "M17_Invasion"
+native_offset = 102458612
+file = "M17_Invasion.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "M20_PenetratingDeadfall"
+native_offset = 102491508
+file = "M20_PenetratingDeadfall.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "WarTrain"
+native_offset = 102524404
+file = "WarTrain.png"
+crop = [0, 0, 1774, 887]
+
+[[texture]]
+name = "StartScreenLogo"
+native_offset = 105124404
+file = "StartScreenLogo-restored-v2.png"
+crop = [0, 65, 2168, 609]
+fit = "contain"
+
+[[texture]]
+name = "EX_Image_4"
+native_offset = 101009268
+file = "EX_Image_4.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "EX_Image_0"
+native_offset = 101140596
+file = "EX_Image_0.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "EX_Image_3"
+native_offset = 101998708
+file = "EX_Image_3.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "EX_Image_6"
+native_offset = 102064372
+file = "EX_Image_6.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "EX_Image_1"
+native_offset = 101933044
+file = "EX_Image_4.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "skullselector"
+native_offset = 102890356
+file = "skullselector.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "EX_Image_2"
+native_offset = 101074932
+file = "EX_Image_2-restored-v2.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "TitleBG"
+native_offset = 93212884
+file = "TitleBG.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "BorderEdgeSpikes"
+native_offset = 93223380
+file = "BorderEdgeSpikes.png"
+crop = [0, 0, 774, 1774]
+fit = "contain"
+
+[[texture]]
+name = "BorderCorner"
+native_offset = 93231700
+file = "BorderCorner.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "MenuOverflowArrowRight"
+native_offset = 101350004
+file = "MenuOverflowArrowRight.png"
+crop = [173, 265, 412, 1648]
+
+[[texture]]
+name = "Icon_BloodFrenzy"
+native_offset = 100248948
+file = "Icon_BloodFrenzy-restored.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "Icon_BlackShroud"
+native_offset = 100250100
+file = "Icon_BlackShroud-restored.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "Icon_SilverBullet"
+native_offset = 100251252
+file = "Icon_SilverBullet-restored.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "Icon_MysticArmor"
+native_offset = 100252404
+file = "Icon_MysticArmor-restored.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "Icon_Fear"
+native_offset = 102885748
+file = "Icon_Fear-restored.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "Icon_Vindicator"
+native_offset = 102886900
+file = "Icon_Vindicator-restored.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "Icon_Turn"
+native_offset = 102888052
+file = "Icon_Turn-restored.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "Icon_SoulStealer"
+native_offset = 102889204
+file = "Icon_SoulStealer-restored.png"
+crop = [0, 0, 1254, 1254]
+
+[[texture]]
+name = "Options_Selection"
+native_offset = 101206260
+file = "Options_Selection-restored-v2.png"
+crop = [0, 215, 2172, 272]
+fit = "contain"
+
+[[texture]]
+name = "Options_Selector"
+native_offset = 101924596
+file = "Options_Selector-restored-v3.png"
+crop = [0, 212, 2172, 273]
+fit = "contain"
+
+[[texture]]
+name = "BorderEdgeSmooth"
+native_offset = 93215060
+file = "BorderEdgeSmooth-restored-v2.png"
+crop = [0, 143, 1774, 744]
+fit = "contain"
