@@ -31,7 +31,7 @@ CHUNK = 8 * 1024 * 1024
 PARTITIONS = (0, 0x18300000)
 EXE = "darkwatch_xbe.exe"
 SETTINGS = "darkwatch_xbe_settings.toml"
-PACKAGE_VERSION = "0.1.1-test.1"
+PACKAGE_VERSION = "0.2"
 RELEASE_PROFILE = {"name": "release-candidate", "diagnostics": False, "strict_assets": True}
 SHADER_PREPARE_TIMEOUT = 15 * 60
 
@@ -245,7 +245,7 @@ class Setup:
         if metadata.get("disc_sha256") != self.files["payload/supported-disc.json"]:
             raise SetupError("Installed disc version differs. Import the supported ISO again.")
         if metadata.get("content_revision") != bonus_content.CONTENT_REVISION:
-            raise SetupError("This installation needs the tester content update. Import your original ISO again; saves and settings will be kept.")
+            raise SetupError("This installation needs the bonus content update. Import your original ISO again; saves and settings will be kept.")
         files = [("assets/" + f["path"], f["size"],
                   bonus_content.INSTALLED_SHA256 if f["path"].casefold() == "packfile.pck" else f["sha256"])
                  for f in self.assets]

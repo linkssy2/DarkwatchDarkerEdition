@@ -1,6 +1,11 @@
 # Darkwatch: Darker Edition
 
-**PC port · 0.1.1-test.1 · Experimental test candidate · Windows x64**
+**PC port · Version 0.2 · Windows x64 · Community testing**
+
+**[Download Darkwatch: Darker Edition 0.2 for Windows](https://github.com/linkssy2/DarkwatchDarkerEdition/releases/download/v0.2/Darkwatch-Darker-Edition-0.2-Windows-x64.zip)**
+
+[Latest release and download files](https://github.com/linkssy2/DarkwatchDarkerEdition/releases/latest)
+· [Version 0.2 release notes](docs/RELEASE-0.2.md)
 
 An unofficial PC port of the original Xbox Darkwatch, powered by
 [XboxXBERecomp by TGP482](https://github.com/TGP482/Xbox-XBERecomp), with native
@@ -9,8 +14,8 @@ own supported Xbox disc image: original game files are not included.
 
 ## Install
 
-1. Obtain the supplied **Darkwatch-Darker-Edition-0.1.1-test.1-Windows-x64.zip**
-   tester package. This source snapshot is not a claim that the candidate is published.
+1. Download **Darkwatch-Darker-Edition-0.2-Windows-x64.zip** using the link above.
+   Choose the Windows package to play; the source archive is for development.
 2. Extract the entire folder to a short writable location, such as `C:/Games/Darkwatch`.
 3. Open **Darkwatch Darker Edition.exe**, choose **Import ISO**, and select your
    supported original Xbox `.iso` or `.xiso`.
@@ -42,7 +47,9 @@ install system components or require administrator access.
 - Optional restored HD menus, fonts and HUD, plus enhanced intro slides. Videos remain original.
 - Local shader preparation, portable saves and **Quit to Desktop** in the main menu.
 
-## Changes to test
+## Version 0.2
+
+This full Windows package carries forward the changes introduced in 0.1.1 Test 1:
 
 - Enables the retained **War Train** chapter and **Splitter Grenade** campaign
   placements from the supported Xbox disc. Paired Xbox dynamite replacements are
@@ -72,7 +79,7 @@ The required `default.xbe` SHA-256 is
 `72fc8033e01df4f22c703121cfd160969c642b18e841248224fc97a8f32050d7`.
 Allow at least 4.5 GB per import plus saves/cache. The source disc image is read only.
 
-This is an experimental update to early release 0.1. Earlier user testing reached gameplay, the opening boss
+Version 0.2 is available for community testing. Earlier user testing reached gameplay, the opening boss
 and horse riding; the fresh-import shader preparation test had no noticeable
 stutters on the opening route. Full-campaign completion, online play, fresh
 Windows and physical PS4/Switch testing remain unverified. Unseen shaders,
@@ -85,7 +92,7 @@ The FPS display remains an optional graphics setting.
 ## Source
 
 See [build notes](docs/BUILDING.md), [code map](docs/CODE_MAP.md),
-[credits](CREDITS.md) and [tester release notes](docs/RELEASE-0.1.1-test.1.md).
+[credits](CREDITS.md) and [version 0.2 release notes](docs/RELEASE-0.2.md).
 The source snapshot contains maintained integration, SDK patches, launcher/import
 code and selected tests. It excludes generated title code, disassembly, original
 disc files, private research, captures, saves and build output. Standalone setup

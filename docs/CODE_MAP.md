@@ -36,7 +36,7 @@ Keep changes small and explain the reason beside a non-obvious guard or
 workaround. A successful build or synthetic test does not demonstrate live
 menu, rendering, sound or gameplay correctness; record those separately.
 
-For this tester, `game_info.cpp` accepts the original vampire-jump state only
+For version 0.2, `game_info.cpp` accepts the original vampire-jump state only
 at the existing jump-look callers. Ownership and mode guards still apply.
 `tests/test_xbexbe_direct_mouse.py` covers this with synthetic state; private
 fixtures containing original function bodies are excluded.

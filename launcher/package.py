@@ -12,7 +12,7 @@ REFERENCE = REPO.parent / 'Urban Chaos Riot Response Recompiled'
 PYTHON = REFERENCE / '.tools/python'
 VS = Path('C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools')
 CRT = VS / 'VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT'
-VERSION = '0.1.1-test.1'
+VERSION = '0.2'
 RELEASE_PROFILE = {'name': 'release-candidate', 'diagnostics': False, 'strict_assets': True}
 LAUNCHER = 'Darkwatch Darker Edition.exe'
 DIRECT_PLAY = 'Play Darkwatch.exe'
@@ -23,9 +23,10 @@ PYTHON_FILES = ('python.exe', 'python312.dll', 'python3.dll', 'python312.zip',
 FORBIDDEN = {'.iso', '.xiso', '.xbe', '.pck', '.xmv', '.wmv', '.wav', '.pdb', '.log', '.dmp', '.pyc'}
 GENERATED = {
     'payload/python/python312._pth': 'python312.zip\n.\n..\n',
-    'README.txt': '''Darkwatch: Darker Edition - 0.1.1-test.1
+    'README.txt': '''Darkwatch: Darker Edition - 0.2
 
-Experimental tester build
+Windows release for community testing
+This release carries forward the gameplay changes from 0.1.1 Test 1.
 Enables War Train and the retained campaign Splitter Grenade placements from
 your own supported Xbox disc. The paired Xbox dynamite substitutes are disabled;
 ordinary dynamite and multiplayer placements remain unchanged. No PS2 disc or
@@ -33,15 +34,16 @@ downloaded game assets are used. Original chapter progression is retained.
 Use the D-pad Up action (Up Arrow by default) to change grenade type after pickup.
 Also corrects actor scripts being skipped above 100 FPS, which affected the
 opening door at 144 FPS, and enables direct mouse look during vampire jumps.
-These changes pass offline checks; testers still need to verify gameplay,
-campaign progression, grenade behavior and high-FPS events. This is not a claim
-that all physics and events are frame-rate independent.
+These changes pass offline checks; live acceptance of bonus progression,
+grenade behavior, the 144 FPS opening door and vampire-jump aiming remains
+outstanding. This is not a claim that all physics and events are frame-rate
+independent or that the full campaign has been verified.
 
 Extract the entire ZIP into a new folder, then open Darkwatch Darker Edition.exe.
 Keep both EXEs and the payload folder together; do not run them inside the ZIP.
 Use a short writable path such as C:/Games/Darkwatch, not Program Files.
 Native Windows path handling still has the 260-character limit.
-Select your supported original Xbox ISO with Import ISO. Setup imports your own
+Select your supported original Xbox ISO or XISO with Import ISO. Setup imports your own
 disc locally, then prepares shaders and the HD menus, font and HUD from that verified data.
 After import, choose Play. No ISO, Xbox executable, movies or original game
 payloads are included. The prebuilt HD pack is not included either.
@@ -77,8 +79,9 @@ Use Open Game Folder to find the imported game, settings and saves. The existing
 development build and its saves are not changed or automatically migrated.
 Import cancellation or a failed verification keeps the previous complete install.
 To update a portable copy, extract the new release into a new folder and copy your
-existing GameData folder into it, then use Import / Repair with your original ISO.
-This tester requires reimport to enable its bonus content in the installed copy.
+existing GameData folder into it, then use Import / Repair with your original ISO
+or XISO. Reimport enables bonus content when updating an older installation and
+preserves saves, settings and cache.
 For an earlier per-user installation, import your ISO once here; setup copies its
 matching saved data and settings into the new portable install, leaving the old
 installation untouched. Later repairs preserve the portable saves and cache.
@@ -95,8 +98,8 @@ PS4/Switch hardware. If a wrapper exposes an Xbox controller, Xbox prompts apply
 This build disables routine logging, capture hotkeys and development probes.
 Fatal errors may still report a short local error to help identify a failure.
 
-This tester has not been verified through the full campaign. On the preceding
-release, fresh ISO import and shader preparation passed on the test PC, and the player
+This release has not been verified through the full campaign. On release 0.1,
+fresh ISO import and shader preparation passed on the test PC, and the player
 reported no noticeable stutters on the opening route and boss fight. Preparation
 covers the known shader catalogue, not every possible campaign shader. Unseen
 shaders, driver work and ordinary loading can still cause pauses. Testing on a
