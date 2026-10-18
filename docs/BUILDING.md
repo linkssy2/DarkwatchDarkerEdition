@@ -33,7 +33,9 @@ For a full Xbox image whose game partition is at `0x18300000`, add
 `--partition-offset 0x18300000`. The end-user launcher detects these two layouts
 automatically. The `.iso` or `.xiso` filename extension does not identify the
 layout. Extraction reads the input and records local file hashes; it does not
-alter the disc image.
+alter the disc image. Raw development extraction retains the original selectors.
+The tester's launcher import prepares War Train and Splitter selectors locally
+after verifying the original files; use that import for the bonus-content test.
 
 ## Build the runtime
 
@@ -47,8 +49,8 @@ The first build fetches the pinned XboxXBERecomp checkout, applies
 XBE, and builds the development runtime. The release build uses a separate
 object/output directory and reuses those dependency source checkouts. Running
 `-Release` before the first build currently fails because those checkouts do not
-exist. `dependencies.lock.json` records the revisions used for version 0.1;
-dependency tags in the SDK should resolve to those commits.
+exist. `dependencies.lock.json` records the revisions retained from version 0.1
+for this tester; dependency tags in the SDK should resolve to those commits.
 
 `-Stage Recompile` regenerates title code without rebuilding the runtime.
 `-Stage Symbols` records a signature-scan comparison without replacing the
@@ -82,7 +84,7 @@ The public source is therefore not yet a one-command clean-machine packager.
 After provisioning and a successful release runtime build:
 
 ```powershell
-./scripts/build-launcher.ps1 -Output 'C:/build-output/Darkwatch-0.1'
+./scripts/build-launcher.ps1 -Output 'C:/build-output/Darkwatch-0.1.1-test.1'
 ```
 
 The output directory must not already exist. The script builds both launcher

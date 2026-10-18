@@ -97,8 +97,8 @@ static void Pitch(double degrees,unsigned top=0,double angle=10,double rate=3){
  CHECK(!std::memcmp(before,memory,sizeof(memory)));++cases;
 }
 int main(){
- // Both observed local routes, all virtual x87 tops, direct angular displacement and companion rates.
- for(uint32_t r:{0x421FE0u,0x420E50u})for(unsigned top=0;top<8;top++){
+ // Walk, jump and derived vampire jump share verified original look callers.
+ for(uint32_t r:{0x421FE0u,0x420E50u,0x4223A8u})for(unsigned top=0;top<8;top++){
   Reset(r);Frame(20,-30);Yaw(-1,top);Pitch(-1.5,top);
   Prepare(0,top);NoChange(0);Prepare(1,top);CHECK(!Center());NoChange(1);
  }
@@ -162,7 +162,7 @@ int main(){
  Reset();Frame(20,40);Yaw(-1);controls.mouse_millidegrees=100;Pitch(2);
  Frame(20,40);Yaw(-2);Pitch(4);
  // Aim options are independent from direct mouse, target contents, and pending raw motion.
- for(uint32_t r:{0x421FE0u,0x420E50u})for(bool direct:{false,true})for(unsigned top=0;top<8;top++){
+ for(uint32_t r:{0x421FE0u,0x420E50u,0x4223A8u})for(bool direct:{false,true})for(unsigned top=0;top<8;top++){
   Reset(r);controls.direct_mouse=direct;controls.aim_assistance=false;controls.aim_centering=false;
   for(unsigned axis=0;axis<2;axis++){
    Prepare(axis,top);auto saved=c;std::memcpy(before,memory,sizeof(memory));
@@ -192,11 +192,20 @@ int main(){
   CHECK(!std::memcmp(&saved,&c,sizeof(c))&&!std::memcmp(before,memory,sizeof(memory)));++cases;
  }
  // The original gate belongs to the referenced object, not nearby wrapper data.
- for(uint32_t r:{0x421FE0u,0x420E50u})for(float unrelated:{0.f,.05f,.1f}){
+ for(uint32_t r:{0x421FE0u,0x420E50u,0x4223A8u})for(float unrelated:{0.f,.05f,.1f}){
   Reset(r);F(0x40A4,unrelated);Frame(20,40);Yaw(-1);Pitch(2);
   controls.aim_assistance=controls.aim_centering=false;
   Prepare(0);CHECK(DarkwatchSkipYawAssistance(c,memory));
   Prepare(1);CHECK(DarkwatchSkipPitchAssistance(c,memory));CHECK(Center());
+ }
+ // The derived vampire jump retains the same owner/mode/caller gates as base jump.
+ for(unsigned bad=0;bad<4;bad++){
+  Reset(0x4223A8);Frame(20,40);Prepare(0);
+  if(bad==0)W(state+0x7C,0x2200);if(bad==1)memory[0x410C]=1;
+  if(bad==2)W(c.ebp+4,0xA84A1);if(bad==3)W(0x42A4,0);NoChange(0);
+  Prepare(1);if(bad==2)W(c.ebp+4,0xA84B0);CHECK(!Center());NoChange(1);
+  controls.aim_assistance=controls.aim_centering=false;
+  CHECK(!DarkwatchSkipPitchAssistance(c,memory));CHECK(!Center());
  }
  // Nonzero wrapper data cannot enable a closed or unreadable original gate.
  for(unsigned bad=0;bad<5;bad++){

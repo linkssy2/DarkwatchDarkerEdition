@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "release": "0.1",
-  "scope": "Recorded native source revisions. SDK FetchContent uses these tags; compare resolved commits after first configuration.",
+  "release": "0.1.1-test.1",
+  "scope": "Native source revisions retained from 0.1. SDK FetchContent uses these tags; compare resolved commits after first configuration.",
   "native": [
     {
       "name": "XboxXBERecomp",

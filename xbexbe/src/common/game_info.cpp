@@ -129,8 +129,10 @@ const char* ReadMouseTarget(const X86Context& ctx, const uint8_t* base, unsigned
     if (AimField(base, t.owner, 0xC, rider) && ActiveHorseCamera(base, rider, mounted_camera))
         return "mounted-camera";
     if (!AimField(base, ctx.ebp, 4, t.caller) || !AimField(base, ctx.ebp, 0, t.parent)) return "stack";
+    // StateVampireJump delegates to StateJump's look update (A9531 -> A1AC5).
+    bool jump = t.vtable == 0x420E50 || t.vtable == 0x4223A8;
     bool route = (t.vtable == 0x421FE0 && t.caller == (axis ? 0xA84B0u : 0xA84A1u)) ||
-                 (t.vtable == 0x420E50 && t.caller == (axis ? 0xA1B37u : 0xA1B28u));
+                 (jump && t.caller == (axis ? 0xA1B37u : 0xA1B28u));
     if (!route) return "unobserved-route";
     uint8_t enabled = 0, inhibited = 0;
     if (!AimField(base, manager, 0x120, enabled) || !AimField(base, manager, 0x121, inhibited) ||
@@ -140,7 +142,7 @@ const char* ReadMouseTarget(const X86Context& ctx, const uint8_t* base, unsigned
     if (!AimField(base, t.owner, 0xF4, gate_reference) || !AimField(base, gate_reference, 0, gate_object) ||
         !AimField(base, gate_object, 0xA4, gate) || !gate)
         return "original-gate";
-    if (t.vtable == 0x420E50) {
+    if (jump) {
         // This caller obtains the input owner from +7C and skips look on 211B78 != 0.
         uint32_t caller_owner = 0, mode_object = 0;
         uint8_t mode = 0;

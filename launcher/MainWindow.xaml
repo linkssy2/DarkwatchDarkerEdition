@@ -106,7 +106,7 @@
             </Grid>
             <Button x:Name="CancelButton" Content="CANCEL" Style="{StaticResource Quiet}" Visibility="Collapsed" Margin="0,12,0,0"/>
           </StackPanel>
-          <TextBlock Grid.Row="5" Text="DARKER EDITION   /   0.1" Foreground="#676B72" FontSize="10" Margin="0,22,0,0"/>
+          <TextBlock Grid.Row="5" Text="DARKER EDITION   /   0.1.1 TEST 1" Foreground="#676B72" FontSize="10" Margin="0,22,0,0"/>
         </Grid>
       </Grid>
     </Grid>

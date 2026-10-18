@@ -25,6 +25,7 @@ def load(name, file):
 
 
 intake = load("intake", ROOT / "tools/intake.py")
+bonus = sys.modules.get("bonus_content") or load("bonus_content", ROOT / "launcher/bonus_content.py")
 setup = load("darkwatch_setup_backend", ROOT / "launcher/setup_backend.py")
 
 
@@ -123,9 +124,16 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         (self.payload / "hd_ui/overrides.toml").write_text("# test fixture\n")
         shutil.copyfile(ROOT / "tools/intake.py", self.payload / "intake.py")
         shutil.copyfile(ROOT / "launcher/setup_backend.py", self.payload / "setup_backend.py")
+        shutil.copyfile(ROOT / "launcher/bonus_content.py", self.payload / "bonus_content.py")
         for name in (setup.EXE, "darkwatch_hd_ui_builder.exe"):
             shutil.copyfile(self.worker, self.payload / "runtime" / name)
         self.data = {"default.xbe": b"XBEH supported fixture", "packfile.pck": b"original texture fixture", "audio.pck": b"sound fixture"}
+        self.installed_data = dict(self.data, **{"packfile.pck": b"ORiginal TExture FIxture"})
+        selectors = patch.multiple(bonus, ORIGINAL_SHA256=sha(self.data["packfile.pck"]),
+                                   INSTALLED_SHA256=sha(self.installed_data["packfile.pck"]),
+                                   PATCHES=((0, b"or", b"OR"), (9, b"te", b"TE"), (17, b"fi", b"FI")))
+        selectors.start()
+        self.addCleanup(selectors.stop)
         self.disc = dict(schema_version=1, xbe_sha256=sha(self.data["default.xbe"]),
                          files=[dict(path=name, size=len(blob), sha256=sha(blob)) for name, blob in self.data.items()])
         (self.payload / "supported-disc.json").write_text(json.dumps(self.disc))
@@ -533,7 +541,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
                     with setup.exclusive(self.install):
                         current = Path(self.backend.import_iso(image)['install_dir'])
                     self.assertEqual(self.backend.verify(), current)
-                    for name, data in self.data.items():
+                    for name, data in self.installed_data.items():
                         self.assertEqual((current / 'assets' / name).read_bytes(), data)
                     self.assertEqual(json.loads((current / 'install.json').read_text())['partition_offset'], offset)
 

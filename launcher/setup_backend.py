@@ -24,13 +24,14 @@ import tomllib
 import uuid
 
 import intake
+import bonus_content
 
 CHUNK = 8 * 1024 * 1024
 # Same original-Xbox game partition locations supported by the pinned runtime.
 PARTITIONS = (0, 0x18300000)
 EXE = "darkwatch_xbe.exe"
 SETTINGS = "darkwatch_xbe_settings.toml"
-PACKAGE_VERSION = "0.1"
+PACKAGE_VERSION = "0.1.1-test.1"
 RELEASE_PROFILE = {"name": "release-candidate", "diagnostics": False, "strict_assets": True}
 SHADER_PREPARE_TIMEOUT = 15 * 60
 
@@ -169,7 +170,7 @@ class Setup:
             safe_path(self.package, path)
             if not isinstance(digest, str) or not re.fullmatch("[0-9a-f]{64}", digest):
                 raise SetupError("Invalid package checksum.")
-        for path in ("payload/supported-disc.json", "payload/intake.py", "payload/hd_ui/overrides.toml",
+        for path in ("payload/supported-disc.json", "payload/intake.py", "payload/bonus_content.py", "payload/hd_ui/overrides.toml",
                      "payload/runtime/" + EXE, "payload/runtime/darkwatch_hd_ui_builder.exe"):
             if path not in self.files:
                 raise SetupError(f"Required package file is missing: {path}")
@@ -190,6 +191,9 @@ class Setup:
         xbe = next((f for f in self.assets if f["path"].casefold() == "default.xbe"), None)
         if not xbe or "packfile.pck" not in names or xbe["sha256"] != self.disc.get("xbe_sha256"):
             raise SetupError("Supported disc does not match this runtime.")
+        pack = next(f for f in self.assets if f["path"].casefold() == "packfile.pck")
+        if pack["sha256"] != bonus_content.ORIGINAL_SHA256:
+            raise SetupError("Supported disc does not match this bonus-content revision.")
 
     def check_cancel(self):
         if self.cancel_file and self.cancel_file.exists():
@@ -240,7 +244,11 @@ class Setup:
         metadata = read_json(safe_path(current, "install.json"))
         if metadata.get("disc_sha256") != self.files["payload/supported-disc.json"]:
             raise SetupError("Installed disc version differs. Import the supported ISO again.")
-        files = [("assets/" + f["path"], f["size"], f["sha256"]) for f in self.assets]
+        if metadata.get("content_revision") != bonus_content.CONTENT_REVISION:
+            raise SetupError("This installation needs the tester content update. Import your original ISO again; saves and settings will be kept.")
+        files = [("assets/" + f["path"], f["size"],
+                  bonus_content.INSTALLED_SHA256 if f["path"].casefold() == "packfile.pck" else f["sha256"])
+                 for f in self.assets]
         for path, digest in self.files.items():
             if path.startswith("payload/runtime/") and not path.endswith("/darkwatch_hd_ui_builder.exe"):
                 relative = path.removeprefix("payload/runtime/")
@@ -499,6 +507,15 @@ class Setup:
                 final_stat = os.fstat(source.fileno())
                 if (original_stat.st_size, original_stat.st_mtime_ns) != (final_stat.st_size, final_stat.st_mtime_ns):
                     raise SetupError("The source ISO changed during import. Please retry with an unchanged file.")
+            self.notify("progress", "Preparing War Train and Splitter grenades from your disc", percent=86)
+            self.check_cancel()
+            pack = safe_path(stage, "assets/packfile.pck")
+            candidate = bonus_content.patch_pack(pack.read_bytes())
+            self.check_cancel()
+            pack.write_bytes(candidate)
+            del candidate
+            if self.digest(pack) != bonus_content.INSTALLED_SHA256:
+                raise SetupError("Prepared bonus content is damaged. The previous installation was kept.")
             for relative, digest in self.files.items():
                 if relative.startswith("payload/runtime/") and not relative.endswith("/darkwatch_hd_ui_builder.exe"):
                     target = safe_path(stage, relative.removeprefix("payload/runtime/"))
@@ -516,7 +533,8 @@ class Setup:
                 self.prepare_shaders(stage)
                 hd = stage / "hd-ui.pack"
                 write_json(stage / "install.json", dict(schema_version=1, disc_sha256=self.files["payload/supported-disc.json"],
-                           partition_offset=offset, hd_ui=dict(size=hd.stat().st_size, sha256=self.digest(hd))))
+                           content_revision=bonus_content.CONTENT_REVISION, partition_offset=offset,
+                           hd_ui=dict(size=hd.stat().st_size, sha256=self.digest(hd))))
                 self.check_cancel()
                 require_closed()
                 write_json(self.root / "active.json", dict(version=version))

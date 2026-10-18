@@ -1,6 +1,6 @@
 # Darkwatch: Darker Edition
 
-**PC port · Version 0.1 · Windows x64**
+**PC port · 0.1.1-test.1 · Experimental test candidate · Windows x64**
 
 An unofficial PC port of the original Xbox Darkwatch, powered by
 [XboxXBERecomp by TGP482](https://github.com/TGP482/Xbox-XBERecomp), with native
@@ -9,8 +9,8 @@ own supported Xbox disc image: original game files are not included.
 
 ## Install
 
-1. Download **Darkwatch-Darker-Edition-0.1-Windows-x64.zip** from
-   [Releases](https://github.com/linkssy2/DarkwatchDarkerEdition/releases/latest).
+1. Obtain the supplied **Darkwatch-Darker-Edition-0.1.1-test.1-Windows-x64.zip**
+   tester package. This source snapshot is not a claim that the candidate is published.
 2. Extract the entire folder to a short writable location, such as `C:/Games/Darkwatch`.
 3. Open **Darkwatch Darker Edition.exe**, choose **Import ISO**, and select your
    supported original Xbox `.iso` or `.xiso`.
@@ -21,9 +21,11 @@ missing shaders before gameplay. Normal play has no time limit.
 
 Keep both EXEs, `payload/`, and `GameData/` together. Imported files, saves,
 bindings, graphics settings and shader cache stay inside the portable folder.
-The ISO is needed for import or repair, not normal play. For an update, extract
-into a new folder, copy your existing `GameData/` into it, and use Import / Repair
-if verification asks. Keep the old folder until you have checked your saves.
+The ISO is needed for import or repair, not normal play. For this update, extract
+into a new folder, copy your existing `GameData/` into it, and use **Import / Repair**
+with your original ISO or XISO. Reimport is required to enable the bonus content;
+setup preserves saves, settings and compatible shader cache. Keep the old folder
+until you have checked your saves.
 
 Requires Windows 10 version 1903 or newer / Windows 11 x64, .NET Framework 4.8,
 an x86-64-v2 CPU (including SSE4.2 and POPCNT), and a Direct3D 12 GPU supporting
@@ -40,6 +42,23 @@ install system components or require administrator access.
 - Optional restored HD menus, fonts and HUD, plus enhanced intro slides. Videos remain original.
 - Local shader preparation, portable saves and **Quit to Desktop** in the main menu.
 
+## Changes to test
+
+- Enables the retained **War Train** chapter and **Splitter Grenade** campaign
+  placements from the supported Xbox disc. Paired Xbox dynamite replacements are
+  disabled to avoid duplicate pickups; ordinary dynamite is unchanged. Original
+  campaign progression is retained. No PS2 disc or downloaded game files are used.
+- Corrects an actor-script timing gate that skipped updates above 100 FPS,
+  linked to the first door staying closed at 144 FPS. Other high-FPS physics or
+  event differences may remain.
+- Enables direct mouse aiming during vampire jumps by accepting the original
+  derived jump state in the existing look path.
+
+After picking up Splitter Grenades, use the D-pad Up action (**Up Arrow** by
+default) to change grenade type. These changes pass focused offline checks;
+the first door at 144 FPS, vampire-jump aiming, War Train progression and grenade
+behavior still need live acceptance testing.
+
 **Esc pauses; right-click goes back in menus.** Switch buttons use physical
 positions: **B selects, A goes back**. PS4 uses Cross to select, Circle to go back.
 Controllers presented as Xbox by a remapper show Xbox prompts. A single Joy-Con
@@ -53,7 +72,7 @@ The required `default.xbe` SHA-256 is
 `72fc8033e01df4f22c703121cfd160969c642b18e841248224fc97a8f32050d7`.
 Allow at least 4.5 GB per import plus saves/cache. The source disc image is read only.
 
-Version 0.1 is an early release. User testing reached gameplay, the opening boss
+This is an experimental update to early release 0.1. Earlier user testing reached gameplay, the opening boss
 and horse riding; the fresh-import shader preparation test had no noticeable
 stutters on the opening route. Full-campaign completion, online play, fresh
 Windows and physical PS4/Switch testing remain unverified. Unseen shaders,
@@ -66,7 +85,7 @@ The FPS display remains an optional graphics setting.
 ## Source
 
 See [build notes](docs/BUILDING.md), [code map](docs/CODE_MAP.md),
-[credits](CREDITS.md) and [release notes](docs/RELEASE-0.1.md).
+[credits](CREDITS.md) and [tester release notes](docs/RELEASE-0.1.1-test.1.md).
 The source snapshot contains maintained integration, SDK patches, launcher/import
 code and selected tests. It excludes generated title code, disassembly, original
 disc files, private research, captures, saves and build output. Standalone setup

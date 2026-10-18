@@ -292,6 +292,12 @@ XPP_MemoryUnitType          = 0x40D300
 # convention: a register (eax ebx ecx edx esi edi ebp) or "stack" for the next stack slot, which the callee pops
 [abi]
 
+# LuaComponent's local comparison must not starve actor scripts above 100 FPS.
+# Original gate, caller and timer evidence: first-door-20261018/.
+[[hook]]
+at = 0x0002A35E
+call = "DarkwatchActorScriptTick"
+
 # Direct mouse plus optional XBE_PERF witnesses; original evidence: direct-mouse-integration-plan.json.
 [[hook]]
 at = 0x000A286C

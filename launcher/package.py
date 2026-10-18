@@ -12,7 +12,7 @@ REFERENCE = REPO.parent / 'Urban Chaos Riot Response Recompiled'
 PYTHON = REFERENCE / '.tools/python'
 VS = Path('C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools')
 CRT = VS / 'VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT'
-VERSION = '0.1'
+VERSION = '0.1.1-test.1'
 RELEASE_PROFILE = {'name': 'release-candidate', 'diagnostics': False, 'strict_assets': True}
 LAUNCHER = 'Darkwatch Darker Edition.exe'
 DIRECT_PLAY = 'Play Darkwatch.exe'
@@ -23,7 +23,19 @@ PYTHON_FILES = ('python.exe', 'python312.dll', 'python3.dll', 'python312.zip',
 FORBIDDEN = {'.iso', '.xiso', '.xbe', '.pck', '.xmv', '.wmv', '.wav', '.pdb', '.log', '.dmp', '.pyc'}
 GENERATED = {
     'payload/python/python312._pth': 'python312.zip\n.\n..\n',
-    'README.txt': '''Darkwatch: Darker Edition - 0.1
+    'README.txt': '''Darkwatch: Darker Edition - 0.1.1-test.1
+
+Experimental tester build
+Enables War Train and the retained campaign Splitter Grenade placements from
+your own supported Xbox disc. The paired Xbox dynamite substitutes are disabled;
+ordinary dynamite and multiplayer placements remain unchanged. No PS2 disc or
+downloaded game assets are used. Original chapter progression is retained.
+Use the D-pad Up action (Up Arrow by default) to change grenade type after pickup.
+Also corrects actor scripts being skipped above 100 FPS, which affected the
+opening door at 144 FPS, and enables direct mouse look during vampire jumps.
+These changes pass offline checks; testers still need to verify gameplay,
+campaign progression, grenade behavior and high-FPS events. This is not a claim
+that all physics and events are frame-rate independent.
 
 Extract the entire ZIP into a new folder, then open Darkwatch Darker Edition.exe.
 Keep both EXEs and the payload folder together; do not run them inside the ZIP.
@@ -65,7 +77,8 @@ Use Open Game Folder to find the imported game, settings and saves. The existing
 development build and its saves are not changed or automatically migrated.
 Import cancellation or a failed verification keeps the previous complete install.
 To update a portable copy, extract the new release into a new folder and copy your
-existing GameData folder into it, then use Import / Repair if verification asks.
+existing GameData folder into it, then use Import / Repair with your original ISO.
+This tester requires reimport to enable its bonus content in the installed copy.
 For an earlier per-user installation, import your ISO once here; setup copies its
 matching saved data and settings into the new portable install, leaving the old
 installation untouched. Later repairs preserve the portable saves and cache.
@@ -82,8 +95,8 @@ PS4/Switch hardware. If a wrapper exposes an Xbox controller, Xbox prompts apply
 This build disables routine logging, capture hotkeys and development probes.
 Fatal errors may still report a short local error to help identify a failure.
 
-This initial release has not been verified through the full campaign.
-Fresh ISO import and shader preparation passed on the test PC, and the player
+This tester has not been verified through the full campaign. On the preceding
+release, fresh ISO import and shader preparation passed on the test PC, and the player
 reported no noticeable stutters on the opening route and boss fight. Preparation
 covers the known shader catalogue, not every possible campaign shader. Unseen
 shaders, driver work and ordinary loading can still cause pauses. Testing on a
@@ -91,7 +104,7 @@ fresh Windows installation remains outstanding.
 Original game content and branding belong to their owners.
 See licenses/ for dependency notices and artwork sources.
 ''',
-    'licenses/DEPENDENCIES.txt': '''XboxXBERecomp by TGP482 (MIT): https://github.com/TGP482/XboxXBERecomp
+    'licenses/DEPENDENCIES.txt': '''XboxXBERecomp by TGP482 (MIT): https://github.com/TGP482/Xbox-XBERecomp
 SDK dependencies, including Dear ImGui, SDL3 and toml++: XboxXBERecomp-third-party.txt.
 SDL's bundled HIDAPI is distributed under its BSD license: HIDAPI-license.txt
 and HIDAPI-BSD.txt.
@@ -145,6 +158,7 @@ def sources():
     runtime = REPO / 'build/xbexbe-release'
     plan = {
         'payload/setup_backend.py': HERE / 'setup_backend.py',
+        'payload/bonus_content.py': HERE / 'bonus_content.py',
         'payload/intake.py': REPO / 'tools/intake.py',
         'payload/supported-disc.json': HERE / 'supported-disc.json',
         'payload/runtime/darkwatch_xbe.exe': runtime / 'darkwatch_xbe.exe',

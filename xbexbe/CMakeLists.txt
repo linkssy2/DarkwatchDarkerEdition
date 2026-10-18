@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../third_party/XboxXBERecomp/cmake/XbeRecomp.cmake")
 set(XBE_HOST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/common/game_info.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/script_timing.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/shader_preparation.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/controls.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/menu_cursor.cpp"
