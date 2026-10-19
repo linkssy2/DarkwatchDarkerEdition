@@ -31,7 +31,7 @@ CHUNK = 8 * 1024 * 1024
 PARTITIONS = (0, 0x18300000)
 EXE = "darkwatch_xbe.exe"
 SETTINGS = "darkwatch_xbe_settings.toml"
-PACKAGE_VERSION = "0.2"
+PACKAGE_VERSION = "0.3"
 RELEASE_PROFILE = {"name": "release-candidate", "diagnostics": False, "strict_assets": True}
 SHADER_PREPARE_TIMEOUT = 15 * 60
 

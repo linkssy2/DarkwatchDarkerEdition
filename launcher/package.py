@@ -12,7 +12,7 @@ REFERENCE = REPO.parent / 'Urban Chaos Riot Response Recompiled'
 PYTHON = REFERENCE / '.tools/python'
 VS = Path('C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools')
 CRT = VS / 'VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT'
-VERSION = '0.2'
+VERSION = '0.3'
 RELEASE_PROFILE = {'name': 'release-candidate', 'diagnostics': False, 'strict_assets': True}
 LAUNCHER = 'Darkwatch Darker Edition.exe'
 DIRECT_PLAY = 'Play Darkwatch.exe'
@@ -23,10 +23,12 @@ PYTHON_FILES = ('python.exe', 'python312.dll', 'python3.dll', 'python312.zip',
 FORBIDDEN = {'.iso', '.xiso', '.xbe', '.pck', '.xmv', '.wmv', '.wav', '.pdb', '.log', '.dmp', '.pyc'}
 GENERATED = {
     'payload/python/python312._pth': 'python312.zip\n.\n..\n',
-    'README.txt': '''Darkwatch: Darker Edition - 0.2
+    'README.txt': '''Darkwatch: Darker Edition - 0.3
 
 Windows release for community testing
-This release carries forward the gameplay changes from 0.1.1 Test 1.
+Adds independent Weapon FOV, an in-level Cutscene Borders toggle, and menu
+text sizing fixes. FMVs remain unchanged. Final visual acceptance is pending.
+Carries forward the gameplay changes from 0.2.
 Enables War Train and the retained campaign Splitter Grenade placements from
 your own supported Xbox disc. The paired Xbox dynamite substitutes are disabled;
 ordinary dynamite and multiplayer placements remain unchanged. No PS2 disc or

@@ -799,22 +799,35 @@ void DarkwatchGraphicsUi(double fps) {
     ImGui::SetCursorPos({430 * scale, 311 * scale});
     Hint("100% = original view. Zoom is preserved.");
     }
-    { MenuRow row("RETICLE SIZE", 354, scale);
+    { MenuRow row("WEAPON FOV", 354, scale);
+    int weapon_fov = int(g_view_draft.viewmodel_fov_percent);
+    if (ImGui::SliderInt("##weapon_fov", &weapon_fov, 50, 150, "%d%%", ImGuiSliderFlags_AlwaysClamp)) g_view_draft.viewmodel_fov_percent = uint32_t(weapon_fov);
+    ImGui::SetCursorPos({430 * scale, 400 * scale});
+    Hint("Changes gun and hand framing.");
+    }
+    { MenuRow row("RETICLE SIZE", 443, scale);
     int reticle = int(g_view_draft.reticle_percent);
     if (ImGui::SliderInt("##reticle", &reticle, 50, 200, "%d%%", ImGuiSliderFlags_AlwaysClamp)) g_view_draft.reticle_percent = uint32_t(reticle);
-    ImGui::SetCursorPos({430 * scale, 410 * scale});
-    if (MenuButton("RESET VIEW DEFAULTS", {482 * scale, 39 * scale}))
-        g_view_draft.fov_percent = g_view_draft.reticle_percent = 100;
     }
-    { MenuRow row("FPS COUNTER", 466, scale);
+    { MenuRow row("CUTSCENE BORDERS", 499, scale);
+    Toggle("##cutscene_borders", g_view_draft.cutscene_borders);
+    ImGui::SetCursorPos({430 * scale, 545 * scale});
+    Hint("Level cutscenes only.");
+    ImGui::SetCursorPos({430 * scale, 588 * scale});
+    if (MenuButton("RESET VIEW DEFAULTS", {482 * scale, 39 * scale})) {
+        g_view_draft.fov_percent = g_view_draft.reticle_percent = g_view_draft.viewmodel_fov_percent = 100;
+        g_view_draft.cutscene_borders = true;
+    }
+    }
+    { MenuRow row("FPS COUNTER", 644, scale);
     int fps_enabled = g_view_draft.show_fps ? 1 : 0;
     if (ImGui::Combo("##fps", &fps_enabled, "Off\0On\0")) g_view_draft.show_fps = fps_enabled != 0;
     }
-    { MenuRow row("VERTICAL SYNC", 522, scale);
+    { MenuRow row("VERTICAL SYNC", 700, scale);
     int vsync = g_draft.vsync ? 1 : 0;
     if (ImGui::Combo("##vsync", &vsync, "Off\0On\0")) g_draft.vsync = vsync != 0;
     }
-    { MenuRow row("FPS LIMIT", 578, scale);
+    { MenuRow row("FPS LIMIT", 756, scale);
     if (g_draft.fps_cap) std::snprintf(text, sizeof(text), "%u FPS", g_draft.fps_cap);
     else std::snprintf(text, sizeof(text), "Unlimited");
     if (ImGui::BeginCombo("##cap", text)) {
@@ -829,26 +842,26 @@ void DarkwatchGraphicsUi(double fps) {
         ImGui::EndCombo();
     }
     }
-    { MenuRow row("MSAA", 634, scale);
+    { MenuRow row("MSAA", 812, scale);
     int msaa = g_draft.msaa_samples == 4 ? 2 : g_draft.msaa_samples == 2 ? 1 : 0;
     if (ImGui::Combo("##msaa", &msaa, "Off\0" "2x\0" "4x\0")) g_draft.msaa_samples = 1u << msaa;
-    ImGui::SetCursorPos({430 * scale, 680 * scale});
+    ImGui::SetCursorPos({430 * scale, 858 * scale});
     const uint32_t active_samples = gpu::MsaaSamples();
     std::snprintf(text, sizeof(text), "Active: %s - GPU support required", active_samples == 4 ? "4x" : active_samples == 2 ? "2x" : "Off"); Hint(text);
     }
-    { MenuRow row("TEXTURE FILTERING", 723, scale);
+    { MenuRow row("TEXTURE FILTERING", 901, scale);
     constexpr uint32_t aniso_values[]{0, 1, 2, 4, 8, 16};
     int aniso = 0;
     for (unsigned i = 0; i < std::size(aniso_values); ++i) if (g_draft.aniso == aniso_values[i]) aniso = int(i);
     if (ImGui::Combo("##aniso", &aniso, "Original\0" "1x\0" "2x\0" "4x\0" "8x\0" "16x\0")) g_draft.aniso = aniso_values[aniso];
     }
-    { MenuRow row("HD ARTWORK", 779, scale);
+    { MenuRow row("HD ARTWORK", 957, scale);
     int hd_ui = g_view_draft.hd_ui ? 1 : 0;
     if (ImGui::Combo("##hd_ui", &hd_ui, "Off\0On\0")) g_view_draft.hd_ui = hd_ui != 0;
-    ImGui::SetCursorPos({430 * scale, 825 * scale});
+    ImGui::SetCursorPos({430 * scale, 1003 * scale});
     Hint("HD menus, fonts and HUD.");
     }
-    { MenuRow row("SUBTITLES", 868, scale);
+    { MenuRow row("SUBTITLES", 1046, scale);
     ImGui::BeginDisabled(!g_subtitles_available);
     Toggle("##subtitles", g_subtitles_draft);
     ImGui::EndDisabled();

@@ -18,6 +18,8 @@ constexpr std::array<uint32_t, 7> kConfiguration = {
 struct PlayerCamera {uint32_t owner = 0, camera = 0, raster = 0; float aspect_scale = 1;};
 std::mutex g_camera_lock;
 PlayerCamera g_player_camera;
+struct WeaponView {uint32_t frame = 0, renderer = 0, camera = 0, raster = 0; float scale = 1;};
+thread_local WeaponView g_weapon_view;
 
 bool Span(const uint8_t* base, uint64_t address, uint32_t size) {
     const uint64_t end = address + size;
@@ -30,6 +32,32 @@ uint32_t Read(const uint8_t* base, uint32_t address) {
     uint32_t value;
     std::memcpy(&value, base + address, sizeof(value));
     return value;
+}
+bool CameraValid(const uint8_t* base, uint32_t camera, uint32_t raster) {
+    return Span(base, camera, 0x68) && Read(base, camera) == 0x43F97C &&
+        Read(base, camera + 0x34) == raster && Span(base, raster, 0x78);
+}
+bool ScaleValid(const uint8_t* base, uint32_t camera, float& previous) {
+    float nominal;
+    std::memcpy(&previous, base + camera + 0x48, 4);
+    std::memcpy(&nominal, base + camera + 0x44, 4);
+    return std::isfinite(previous) && previous > 0 &&
+        std::isfinite(nominal) && nominal > 0 && nominal < 180;
+}
+void SetScale(const X86Context& ctx, uint8_t* base, uint32_t camera, float scale, uint32_t resume) {
+    std::memcpy(base + camera + 0x48, &scale, 4);
+    X86Context call = ctx;
+    call.ecx = camera;
+    call.esp -= 12;
+    std::array<uint8_t, 256> old_stack;
+    std::memcpy(old_stack.data(), base + ctx.esp - old_stack.size(), old_stack.size());
+    struct Restore {
+        uint8_t* target; const std::array<uint8_t, 256>& saved;
+        ~Restore() {std::memcpy(target, saved.data(), saved.size());}
+    } restore{base + ctx.esp - old_stack.size(), old_stack};
+    const uint32_t args[]{resume, Read(base, camera + 0x44), 1};
+    std::memcpy(base + call.esp, args, sizeof(args));
+    sub_00216B7C(call, base);
 }
 }  // namespace
 
@@ -80,17 +108,44 @@ void DarkwatchUpdatePlayerView(X86Context& ctx, uint8_t* base) {
 
     // Preserve the authored nominal angle/zoom. Only the original view-window
     // scale changes, and the original setter updates projection and dirty state.
-    std::memcpy(base + player.camera + 0x48, &scale, 4);
-    X86Context call = ctx;
-    call.ecx = player.camera;
-    call.esp -= 12;
-    std::array<uint8_t, 12> old_args;
-    std::memcpy(old_args.data(), base + call.esp, old_args.size());
-    struct Restore {
-        uint8_t* target; const std::array<uint8_t, 12>& saved;
-        ~Restore() {std::memcpy(target, saved.data(), saved.size());}
-    } restore{base + call.esp, old_args};
-    const uint32_t args[]{0x21606D, Read(base, player.camera + 0x44), 1};
-    std::memcpy(base + call.esp, args, sizeof(args));
-    sub_00216B7C(call, base);
+    SetScale(ctx, base, player.camera, scale, 0x21606D);
+}
+
+void DarkwatchBeginWeaponView(X86Context& ctx, uint8_t* base) {
+    // DEDD0 draws the registered first-person actor through message DB, between
+    // its original camera BeginUpdate/EndUpdate. The world camera is only borrowed.
+    if (g_weapon_view.frame) return;
+    PlayerCamera player;
+    {std::lock_guard lock(g_camera_lock); player = g_player_camera;}
+    if (!player.owner || ctx.edi != player.camera || ctx.ecx != player.camera ||
+        !Span(base, player.owner, 0x14) || Read(base, player.owner + 0xC) != player.camera ||
+        !CameraValid(base, player.camera, player.raster) ||
+        Read(base, player.camera + 0x58) || Read(base, player.camera + 0x5C) ||
+        Read(base, player.camera + 0x60) != 0x3F800000 || Read(base, player.camera + 0x64) != 0x3F800000 ||
+        !Span(base, ctx.esi, 0x20) || Read(base, ctx.esi) != 0x428338 ||
+        !Read(base, ctx.esi + 4) || !Span(base, ctx.ebp, 12) ||
+        Read(base, ctx.ebp + 8) != player.camera ||
+        ctx.esp < 256 || !Span(base, uint64_t(ctx.esp) - 256, 256)) return;
+    const uint32_t percent = darkwatch::view::Snapshot().viewmodel_fov_percent;
+    if (percent < 50 || percent > 150) return;
+    float previous;
+    if (!ScaleValid(base, player.camera, previous)) return;
+    const float scale = player.aspect_scale * (float(percent) / 100.0f);
+    if (previous == scale) return;
+    g_weapon_view = {ctx.ebp, ctx.esi, player.camera, player.raster, previous};
+    SetScale(ctx, base, player.camera, scale, 0xDEDE6);
+}
+
+void DarkwatchEndWeaponView(X86Context& ctx, uint8_t* base) {
+    // Match the invocation as well as the camera: a nested draw must not restore
+    // the outer draw early. Restore the prior world scale even if settings change.
+    const WeaponView saved = g_weapon_view;
+    if (!saved.frame || ctx.ebp != saved.frame || ctx.esi != saved.renderer ||
+        ctx.edi != saved.camera) return;
+    g_weapon_view = {};
+    float previous;
+    if (!CameraValid(base, saved.camera, saved.raster) ||
+        !ScaleValid(base, saved.camera, previous) || ctx.esp < 256 ||
+        !Span(base, uint64_t(ctx.esp) - 256, 256)) return;
+    SetScale(ctx, base, saved.camera, saved.scale, 0xDEE24);
 }

@@ -7,6 +7,8 @@ struct Settings {
     uint32_t reticle_percent = 100;
     bool show_fps = false;
     bool hd_ui = true;
+    uint32_t viewmodel_fov_percent = 100;
+    bool cutscene_borders = true;
 };
 Settings Snapshot();
 Settings Normalize(Settings settings);

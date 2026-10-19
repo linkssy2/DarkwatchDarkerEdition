@@ -352,6 +352,28 @@ call = "DarkwatchConfigurePlayerCamera"
 at = 0x0021606D
 call = "DarkwatchUpdatePlayerView"
 
+# The first-person actor pass borrows the player camera; restore it before returning.
+# Original owner/event/projection evidence: viewmodel-cinematics-20261018/weapon/.
+[[hook]]
+at = 0x000DEDE6
+call = "DarkwatchBeginWeaponView"
+
+[[hook]]
+at = 0x000DEE24
+call = "DarkwatchEndWeaponView"
+
+# Only the cinematic manager's two ScreenMaskEffect quads; movie playback is excluded.
+# Original owner/draw evidence: viewmodel-cinematics-20261018/cinematics/.
+[[hook]]
+at = 0x00326D22
+call = "DarkwatchHideCinematicBorder"
+on_true = 0x00326D27
+
+[[hook]]
+at = 0x00326D3C
+call = "DarkwatchHideCinematicBorder"
+on_true = 0x00326D41
+
 # Scale only the original ReticleDisplay rectangle's final half-extents.
 [[hook]]
 at = 0x000D6F51

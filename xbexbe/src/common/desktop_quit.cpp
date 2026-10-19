@@ -99,12 +99,13 @@ bool EnsureDesktopQuitEntry(uint8_t* base) {
     if (!root || !thread || !thread->ctx || base != kernel::g_base ||
         !MainMenu(base, root, menu, rows, count)) return false;
     if (IsAdded(base, root, menu, rows, count)) return true;
-    uint32_t peer, text, type;
+    uint32_t peer, text, type, scale_mode;
     float rect[4], scale;
     if (count != 5 || !Read(base, uint64_t(menu) + 0x10, rect) ||
         rect[0] != .57f || rect[1] != -.48f || rect[2] != .29f || rect[3] != .21f ||
         !Read(base, rows, peer) || !Field(base, peer, 0x58, text) ||
         !Field(base, text, 0, type) || type != 0x43C36C ||
+        !Field(base, text, 0x64, scale_mode) || scale_mode != 2 ||
         !Read(base, uint64_t(text) + 0x6C, scale) || scale != 1.4f ||
         thread->ctx->esp < 0x2000 || !Span(base, uint64_t(thread->ctx->esp) - 0x2000, 0x2000)) return false;
 
@@ -135,6 +136,8 @@ bool EnsureDesktopQuitEntry(uint8_t* base) {
         call.ecx = row; kernel::CallGuest(call, 0xECB9D, {1});
         return false;
     }
+    // The original Main loader selects scaled-font mode before applying its 1.4 scale.
+    std::memcpy(base + text + 0x64, &scale_mode, sizeof(scale_mode));
     std::memcpy(base + text + 0x6C, &scale, sizeof(scale));
     call.ecx = menu;
     kernel::CallGuest(call, 0x1EFA66, {row});

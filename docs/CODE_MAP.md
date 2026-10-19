@@ -10,7 +10,8 @@
 | `controls.*`, `menu_cursor.*`, `native_menu.*`, `desktop_quit.*` | Bindings, native mouse navigation and menu callbacks. |
 | `prompts.*` | Keyboard/mouse and Xbox, PlayStation, Switch prompt selection and artwork. |
 | `graphics.*`, `graphics_route.*`, `settings_skin.h` | Host settings pages, routing, persistence and original-style presentation. |
-| `graphics_camera.*`, `graphics_view.*`, `graphics_reticle.*`, `graphics_hud.*` | FOV, camera, widescreen, reticle and HUD adjustments. |
+| `graphics_camera.*`, `graphics_view.*`, `graphics_reticle.*`, `graphics_hud.*` | Separate world/weapon FOV, saved preferences, widescreen, reticle and HUD adjustments. |
+| `graphics_cinematic.*` | Guarded in-level cinematic border suppression; movie playback is explicitly excluded. |
 | `cri_lifetime.cpp`, `sound_pool.*` | Host synchronization and sound allocation fixes. |
 | `shader_preparation.*`, `shader_preparation_catalogue.h` | Local preparation of known shaders from verified game data. The catalogue stores descriptors and hashes, not captured shader programs. |
 | `hd_ui.*`, `hd_ui_*.h`, `xbexbe/src/tools/` | Runtime HD replacement and the local pack builder. Atlas headers contain layout/identity metadata, not extracted texture pixels. |
@@ -48,3 +49,5 @@ original hashes for every other disc file. The content-revision marker requires
 older portable installations to reimport while preserving saves, settings and
 compatible cache. `test_bonus_content.py` and `test_launcher_setup.py` exercise
 this path with synthetic archives and never start the game.
+
+Weapon FOV borrows the registered player camera only for the first-person model pass, then restores the world projection. Both preferences retain the original at 100%. Cutscene Borders skips only the active cinematic manager's two border draws; animation, camera, fades and subtitles keep their original paths. The authored view, cinematic-guard and ImGui tests are included; original-function fixtures remain private.

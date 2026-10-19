@@ -6,3 +6,6 @@ struct X86Context;
 void DarkwatchConfigurePlayerCamera(X86Context& ctx, uint8_t* base);
 // Original player camera update: apply the view scale through its existing FOV setter.
 void DarkwatchUpdatePlayerView(X86Context& ctx, uint8_t* base);
+// Temporarily use the weapon preference inside the original first-person draw.
+void DarkwatchBeginWeaponView(X86Context& ctx, uint8_t* base);
+void DarkwatchEndWeaponView(X86Context& ctx, uint8_t* base);
