@@ -13,8 +13,8 @@ To update, copy your **GameData** folder into a fresh extraction, then use
 your saves.
 
 Routine diagnostics are disabled; bounded local error reports remain for failures.
-No original disc assets or generated game source are bundled. Full-campaign and
-final visual verification remain open.
+No original disc assets or generated game source are bundled. Full-campaign
+validation remains open.
 
 Built with **[XboxXBERecomp by TGP482](https://github.com/TGP482/Xbox-XBERecomp)**.
 Additional credits and notices are included.

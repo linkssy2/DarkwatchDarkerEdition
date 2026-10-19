@@ -52,7 +52,7 @@ install system components or require administrator access.
 - Adds independent **Weapon FOV** and an in-level **Cutscene Borders** toggle; FMVs stay unchanged.
 - Shortens Graphics descriptions and matches **Quit to Desktop** to the original menu text size.
 
-These changes pass focused offline checks; final visual verification remains open. Extreme weapon FOV can expose the ends of the original model.
+These changes pass focused offline checks and were confirmed working by the release tester. Extreme weapon FOV can expose the ends of the original model; full-campaign and clean-machine validation remain open.
 
 Version 0.2's bonus content and gameplay fixes are retained:
 
