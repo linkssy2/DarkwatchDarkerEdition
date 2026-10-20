@@ -17,6 +17,7 @@
 #include <cmath>
 #include <vector>
 #include "audio/audio.h"
+#include "tools/coop_keys.h"
 #include "core/input.h"
 #include "core/log.h"
 
@@ -33,6 +34,7 @@ std::optional<Packet> Session::Receive(const Packet& packet, Address from, uint6
         if (Active(now_ms) && *guest_ != from) {reply.status = Status::Busy; return reply;}
         if (!Active(now_ms) || packet.token != token_) {
             token_ = packet.token; sequence_ = packet.sequence; pad_ = {};
+            ++mouse_epoch_;
             key_request_ = true;  // a new viewer starts from a key frame
             LOGR("coop: guest joined");
         }
@@ -42,7 +44,16 @@ std::optional<Packet> Session::Receive(const Packet& packet, Address from, uint6
     if (!Active(now_ms) || from != *guest_ || packet.token != token_) return std::nullopt;
     if (packet.type == Type::Pad) {
         last_ms_ = now_ms;
-        if (Newer(packet.sequence, sequence_)) {sequence_ = packet.sequence; pad_ = packet.pad;}
+        if (Newer(packet.sequence, sequence_)) {
+            if (packet.pad.mouse != pad_.mouse) {
+                ++mouse_epoch_;  // grabbed or released: no motion across it
+            } else if (packet.pad.mouse) {
+                // 32-bit wire totals become 64-bit totals, like the host's own mouse.
+                mouse_x_ += uint64_t(int64_t(int32_t(packet.pad.mouse_x - pad_.mouse_x)));
+                mouse_y_ += uint64_t(int64_t(int32_t(packet.pad.mouse_y - pad_.mouse_y)));
+            }
+            sequence_ = packet.sequence; pad_ = packet.pad; pad_ms_ = now_ms; ++pads_;
+        }
     } else if (packet.type == Type::KeyRequest) {
         last_ms_ = now_ms;
         key_request_ = true;
@@ -256,6 +267,32 @@ void AudioTap(const float* frames, uint32_t count) {
     SendAudio(pcm.data(), count);
 }
 } // namespace
+
+bool GuestMouse(Session::Mouse& mouse) {
+    Host* host = g_host.load();
+    if (!host) return false;
+    std::lock_guard lock(host->lock);
+    return host->session.CurrentMouse(mouse, NowMs());
+}
+
+void GuestMouseStick(input::Pad& pad) {
+    // Input threads poll port 1 several times a frame; the window spreads uneven updates.
+    static std::mutex lock;
+    static keys::MouseVelocity velocity;
+    static Session::Mouse last;
+    Session::Mouse mouse;
+    if (!GuestMouse(mouse)) return;
+    const uint64_t now_us = NowMs() * 1000;
+    std::lock_guard guard(lock);
+    if (mouse.epoch == last.epoch && mouse.generation != last.generation && mouse.active)
+        velocity.Add(int64_t(mouse.x - last.x), int64_t(mouse.y - last.y), now_us);
+    last = mouse;
+    int64_t dx = 0, dy = 0;
+    uint64_t window_us = 0;
+    velocity.Stick(now_us, dx, dy, window_us);
+    const int16_t rx = keys::MouseAxis(dx, window_us), ry = keys::MouseAxis(-dy, window_us);
+    if (rx || ry) {pad.rx = rx; pad.ry = ry;}
+}
 
 bool TakeKeyRequest() {
     Host* host = g_host.load();

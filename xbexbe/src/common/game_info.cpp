@@ -33,7 +33,13 @@ const app::GameInfo app::kGame = {
     .message = darkwatch::ControlsMessage,
     .ui = DrawUi,
     // A network guest becomes port 1 before menu gating sees the pad.
-    .pad = [](int port, input::Pad& pad) {darkwatch::coop::Pad(port, pad); DarkwatchGraphicsPad(port, pad);},
+    .pad = [](int port, input::Pad& pad) {
+        darkwatch::coop::Pad(port, pad);
+        // Direct mouse aims the guest's player like the host's; without it the guest's mouse is a stick.
+        if (port == darkwatch::coop::kGuestPort && !darkwatch::ControlsSnapshot().direct_mouse)
+            darkwatch::coop::GuestMouseStick(pad);
+        DarkwatchGraphicsPad(port, pad);
+    },
     .rumble = darkwatch::coop::Rumble,
     .prepare = darkwatch::PrepareShaders,
 };
@@ -81,7 +87,40 @@ struct MouseTarget {
     float dt = 0, lower = 0, upper = 0;
     uint8_t inversion = 0;
     bool local = false;
+    unsigned port = 0;  // the controller port whose mouse aims this player
 };
+
+// The host's mouse aims port 0's player; a network co-op guest's mouse aims port 1's.
+constexpr unsigned kMousePorts = 2;
+
+// The port whose input-manager controller (manager+D4+port*10) is linked to `map`, the
+// actor's +30; without a network guest only port 0 has a mouse.
+bool MousePort(const uint8_t* base, uint32_t map, unsigned& port, uint32_t& manager) {
+    if (!AimRead(base, 0x4AC174, manager)) return false;
+    darkwatch::coop::Session::Mouse guest;
+    const unsigned ports = darkwatch::coop::GuestMouse(guest) ? kMousePorts : 1;
+    for (port = 0; port < ports; ++port) {
+        uint32_t controller = 0, self = 0, reference = 0;
+        if (AimField(base, manager, 0xD4 + port * 0x10, controller) && AimField(base, controller, 8, self) &&
+            AimField(base, controller, 0x10, reference) && self == controller &&
+            uint64_t(controller) + 0xC == reference && reference == map) return true;
+    }
+    return false;
+}
+
+input::MouseSnapshot PortMouse(unsigned port) {
+    if (!port) return input::GetMouseSnapshot();
+    input::MouseSnapshot s;
+    darkwatch::coop::Session::Mouse guest;
+    if (!darkwatch::coop::GuestMouse(guest)) return s;
+    s.generation = guest.generation;
+    s.active_epoch = guest.epoch;
+    s.published_us = guest.published_ms * 1000;
+    s.accumulated_x = guest.x;
+    s.accumulated_y = guest.y;
+    s.active = guest.active;
+    return s;
+}
 
 bool AimComponent(const uint8_t* base, uint32_t actor, uint32_t vtable, uint32_t& result) {
     uint16_t count = 0;
@@ -121,12 +160,10 @@ bool ActiveHorseCamera(const uint8_t* base, uint32_t rider, uint32_t& camera) {
 
 const char* ReadMouseTarget(const X86Context& ctx, const uint8_t* base, unsigned axis, MouseTarget& t) {
     t.state = axis ? ctx.esi : ctx.ebx;
-    uint32_t map = 0, manager = 0, controller = 0, self = 0, reference = 0;
+    uint32_t map = 0, manager = 0;
     if (!AimField(base, t.state, 0, t.vtable) || !AimField(base, t.state, 0x40, t.owner) ||
-        !AimField(base, t.owner, 0x30, map) || !AimRead(base, 0x4AC174, manager) ||
-        !AimField(base, manager, 0xD4, controller) || !AimField(base, controller, 8, self) ||
-        !AimField(base, controller, 0x10, reference)) return "unreadable-owner";
-    if (self != controller || uint64_t(controller) + 0xC != reference || reference != map) return "nonlocal";
+        !AimField(base, t.owner, 0x30, map) || !AimRead(base, 0x4AC174, manager)) return "unreadable-owner";
+    if (!MousePort(base, map, t.port, manager)) return "nonlocal";
     t.local = true;
     uint32_t rider = 0, mounted_camera = 0;
     if (AimField(base, t.owner, 0xC, rider) && ActiveHorseCamera(base, rider, mounted_camera))
@@ -138,7 +175,7 @@ const char* ReadMouseTarget(const X86Context& ctx, const uint8_t* base, unsigned
                  (jump && t.caller == (axis ? 0xA1B37u : 0xA1B28u));
     if (!route) return "unobserved-route";
     uint8_t enabled = 0, inhibited = 0;
-    if (!AimField(base, manager, 0x120, enabled) || !AimField(base, manager, 0x121, inhibited) ||
+    if (!AimField(base, manager, 0x120, enabled) || !AimField(base, manager, 0x121 + t.port, inhibited) ||
         !enabled || inhibited) return "controller-disabled";
     uint32_t gate_reference = 0, gate_object = 0, gate = 0;
     // Original 83903 dereferences the reference before reading the object's gate.
@@ -172,8 +209,8 @@ struct MousePair {
     bool pitch_active = false;
     uint32_t millidegrees = 50;
 };
-MousePair g_mouse_pair;
-MousePair g_horse_mouse_pair;
+MousePair g_mouse_pairs[kMousePorts];
+MousePair g_horse_mouse_pairs[kMousePorts];
 unsigned g_horse_mouse_logs = 0;
 uint64_t g_horse_mouse_log_us = 0;
 std::mutex g_mouse_aim_lock;
@@ -186,19 +223,20 @@ void TraceMouse(const input::MouseSnapshot& s, const MouseTarget& t, unsigned ax
     g_mouse_log_us = s.published_us; ++g_mouse_logs;
     LOGR("direct mouse: axis=%s generation=%llu pair_generation=%llu epoch=%llu us=%llu counts=%d/%d pair_counts=%lld/%lld mask=%u active=%u owner=%08X state=%08X vtable=%08X caller=%08X dt=%g reason=%s",
          axis ? "pitch" : "yaw", static_cast<unsigned long long>(s.generation),
-         static_cast<unsigned long long>(g_mouse_pair.sample.generation),
+         static_cast<unsigned long long>(g_mouse_pairs[t.port].sample.generation),
          static_cast<unsigned long long>(s.active_epoch), static_cast<unsigned long long>(s.published_us),
-         s.dx, s.dy, static_cast<long long>(g_mouse_pair.dx), static_cast<long long>(g_mouse_pair.dy),
-         g_mouse_pair.used, unsigned(s.active),
+         s.dx, s.dy, static_cast<long long>(g_mouse_pairs[t.port].dx), static_cast<long long>(g_mouse_pairs[t.port].dy),
+         g_mouse_pairs[t.port].used, unsigned(s.active),
          t.owner, t.state, t.vtable, t.caller, double(t.dt), reason);
 }
 
 void DiscardMouse(const input::MouseSnapshot& s, const MouseTarget& t) {
-    g_mouse_pair = {};
-    g_mouse_pair.sample = s;
-    g_mouse_pair.consumed_x = s.accumulated_x; g_mouse_pair.consumed_y = s.accumulated_y;
-    g_mouse_pair.owner = t.owner; g_mouse_pair.state = t.state; g_mouse_pair.parent = t.parent;
-    g_mouse_pair.dt = t.dt;
+    auto& p = g_mouse_pairs[t.port];
+    p = {};
+    p.sample = s;
+    p.consumed_x = s.accumulated_x; p.consumed_y = s.accumulated_y;
+    p.owner = t.owner; p.state = t.state; p.parent = t.parent;
+    p.dt = t.dt;
 }
 
 double MouseDegrees(const MousePair& p, const MouseTarget& t, unsigned axis) {
@@ -206,20 +244,22 @@ double MouseDegrees(const MousePair& p, const MouseTarget& t, unsigned axis) {
     return !axis || t.inversion ? -degrees : degrees;
 }
 
+// The target decides whose mouse applies, so it is read before the snapshot `s`.
 bool MouseEligible(const X86Context& ctx, uint8_t* base, unsigned axis,
-                   const input::MouseSnapshot& s, MouseTarget& t) {
-    if (!s.active) {
-        DiscardMouse(s, t); TraceMouse(s, t, axis, "inactive"); return false;
-    }
-    if (const char* reason = ReadMouseTarget(ctx, base, axis, t)) {
+                   input::MouseSnapshot& s, MouseTarget& t) {
+    const char* reason = ReadMouseTarget(ctx, base, axis, t);
+    s = PortMouse(t.port);
+    if (reason) {
         // Other actors invoke these same routines. They must not consume local motion.
         if (t.local) DiscardMouse(s, t);
         TraceMouse(s, t, axis, reason); return false;
     }
-    bool changed = g_mouse_pair.owner != t.owner || g_mouse_pair.state != t.state ||
-                   g_mouse_pair.sample.active_epoch != s.active_epoch;
-    bool gap = s.published_us < g_mouse_pair.sample.published_us ||
-               s.published_us - g_mouse_pair.sample.published_us > 250000;
+    if (!s.active) {
+        DiscardMouse(s, t); TraceMouse(s, t, axis, "inactive"); return false;
+    }
+    const auto& p = g_mouse_pairs[t.port];
+    bool changed = p.owner != t.owner || p.state != t.state || p.sample.active_epoch != s.active_epoch;
+    bool gap = s.published_us < p.sample.published_us || s.published_us - p.sample.published_us > 250000;
     if (changed || gap) {
         DiscardMouse(s, t); TraceMouse(s, t, axis, changed ? "transition-reset" : "gap-reset"); return false;
     }
@@ -228,7 +268,7 @@ bool MouseEligible(const X86Context& ctx, uint8_t* base, unsigned axis,
 
 bool MousePitchActive(X86Context& ctx, uint8_t* base, bool direct_mouse) {
     if (!direct_mouse) return false;
-    auto s = input::GetMouseSnapshot();
+    input::MouseSnapshot s;
     std::lock_guard lock(g_mouse_aim_lock);
     MouseTarget t;
     if (!MouseEligible(ctx, base, 1, s, t)) return false;
@@ -236,7 +276,7 @@ bool MousePitchActive(X86Context& ctx, uint8_t* base, bool direct_mouse) {
     if (ctx.top >= 8 || !AimField(base, ctx.ebp, 0xC, original_rate) || !std::isfinite(original_rate)) {
         TraceMouse(s, t, 1, "arithmetic-state"); return false;
     }
-    auto& p = g_mouse_pair;
+    auto& p = g_mouse_pairs[t.port];
     double rate = double(original_rate) + MouseDegrees(p, t, 1) / double(t.dt);
     bool active = p.parent == t.parent && p.dt == t.dt && (p.used & 1) && !(p.used & 2) && p.dy != 0 &&
                   std::isfinite(rate) && std::abs(rate) <= double(std::numeric_limits<float>::max());
@@ -248,12 +288,12 @@ bool MousePitchActive(X86Context& ctx, uint8_t* base, bool direct_mouse) {
 void ApplyMouseAim(X86Context& ctx, uint8_t* base, unsigned axis) {
     const auto controls = darkwatch::ControlsSnapshot();
     if (!controls.direct_mouse) return;
-    auto s = input::GetMouseSnapshot();
+    input::MouseSnapshot s;
     std::lock_guard lock(g_mouse_aim_lock);
     MouseTarget t;
     if (!MouseEligible(ctx, base, axis, s, t)) return;
-    g_horse_mouse_pair = {}; // Returning to on-foot look cannot replay mounted motion.
-    auto& p = g_mouse_pair;
+    g_horse_mouse_pairs[t.port] = {}; // Returning to on-foot look cannot replay mounted motion.
+    auto& p = g_mouse_pairs[t.port];
     if (!axis && p.sample.generation != s.generation) {
         p.sample = s;
         // A consumption interval is bounded to 250ms. Modulo subtraction also
@@ -298,17 +338,16 @@ void ApplyMouseAim(X86Context& ctx, uint8_t* base, unsigned axis) {
 
 const char* ReadHorseMouseTarget(const X86Context& ctx, const uint8_t* base, MouseTarget& t) {
     t.state = ctx.ebx;
-    uint32_t map = 0, manager = 0, controller = 0, self = 0, reference = 0, active_camera = 0;
+    uint32_t map = 0, manager = 0, active_camera = 0;
     if (!AimField(base, t.state, 0, t.vtable) || t.vtable != 0x423B30 ||
         !AimField(base, ctx.ebp, 4, t.caller) || t.caller != 0xBE55F ||
         !AimField(base, ctx.ebp, 0, t.parent) ||
         !AimField(base, t.state, 0x74, t.owner) || !AimField(base, t.state, 0xF0, map) ||
-        !AimRead(base, 0x4AC174, manager) || !AimField(base, manager, 0xD4, controller) ||
-        !AimField(base, controller, 8, self) || !AimField(base, controller, 0x10, reference)) return "route";
-    if (self != controller || uint64_t(controller) + 0xC != reference || reference != map) return "nonlocal";
+        !AimRead(base, 0x4AC174, manager)) return "route";
+    if (!MousePort(base, map, t.port, manager)) return "nonlocal";
     t.local = true;
     uint8_t enabled = 0, inhibited = 0;
-    if (!AimField(base, manager, 0x120, enabled) || !AimField(base, manager, 0x121, inhibited) ||
+    if (!AimField(base, manager, 0x120, enabled) || !AimField(base, manager, 0x121 + t.port, inhibited) ||
         !enabled || inhibited) return "controller-disabled";
     if (!ActiveHorseCamera(base, t.owner, active_camera) || active_camera != t.state) return "attachment";
     if (!AimField(base, ctx.ebp, 8, t.dt) || !std::isfinite(t.dt) || t.dt <= 0 || t.dt > .25f ||
@@ -320,10 +359,11 @@ const char* ReadHorseMouseTarget(const X86Context& ctx, const uint8_t* base, Mou
 
 void ApplyHorseMouse(X86Context& ctx, uint8_t* base, unsigned axis) {
     const auto controls = darkwatch::ControlsSnapshot();
-    auto sample = input::GetMouseSnapshot();
     std::lock_guard lock(g_mouse_aim_lock);
-    auto& p = g_horse_mouse_pair;
     MouseTarget t;
+    const char* reason = ReadHorseMouseTarget(ctx, base, t);
+    auto sample = PortMouse(t.port);
+    auto& p = g_horse_mouse_pairs[t.port];
     auto trace = [&](const char* reason, double delta = 0, double result = 0) {
         if (!diag::Perf() || g_horse_mouse_logs >= 128 ||
             (g_horse_mouse_logs >= 4 && sample.published_us >= g_horse_mouse_log_us &&
@@ -338,9 +378,9 @@ void ApplyHorseMouse(X86Context& ctx, uint8_t* base, unsigned axis) {
         p = {}; p.sample = sample; p.consumed_x = sample.accumulated_x; p.consumed_y = sample.accumulated_y;
         p.owner = t.owner; p.state = t.state; p.parent = t.parent; p.dt = t.dt;
     };
+    if (reason) { if (t.local) reset(); trace(reason); return; }
     if (!controls.direct_mouse || !sample.active) { reset(); return; }
-    if (const char* reason = ReadHorseMouseTarget(ctx, base, t)) { if (t.local) reset(); trace(reason); return; }
-    g_mouse_pair = {}; // The mounted camera owns local raw look while it is active.
+    g_mouse_pairs[t.port] = {}; // The mounted camera owns its rider's raw look while it is active.
     bool changed = p.owner != t.owner || p.state != t.state || p.sample.active_epoch != sample.active_epoch;
     bool gap = sample.published_us < p.sample.published_us || sample.published_us - p.sample.published_us > 250000;
     if (changed || gap) { reset(); trace(changed ? "transition-reset" : "gap-reset"); return; }

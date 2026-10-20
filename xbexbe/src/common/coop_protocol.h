@@ -13,7 +13,7 @@
 namespace darkwatch::coop {
 
 constexpr uint32_t kMagic = 0x31435744;  // "DWC1"
-constexpr uint8_t kVersion = 3;  // 2: Video and KeyRequest, 3: Audio
+constexpr uint8_t kVersion = 4;  // 2: Video and KeyRequest, 3: Audio, 4: Pad mouse
 constexpr uint16_t kDefaultPort = 41330;
 constexpr size_t kCodeBytes = 32;
 constexpr size_t kHeaderBytes = 16;
@@ -27,10 +27,14 @@ enum class Type : uint8_t { Hello = 1, Welcome = 2, Pad = 3, Rumble = 4, Bye = 5
 enum class Status : uint8_t { Accepted = 0, BadCode = 1, Busy = 2, BadVersion = 3 };
 
 // Mirrors input::Pad without the connected flag; the host decides presence.
+// The guest's raw mouse travels beside it as running count totals (modulo 2^32), so a
+// lost packet loses no motion; `mouse` is set while the client window holds the mouse.
 struct PadState {
     uint16_t buttons = 0;
     uint8_t analog[8] = {};
     int16_t lx = 0, ly = 0, rx = 0, ry = 0;
+    uint32_t mouse_x = 0, mouse_y = 0;
+    bool mouse = false;
 };
 
 struct Packet {
@@ -80,7 +84,7 @@ inline size_t BodyBytes(Type type, size_t payload = 0) {
     switch (type) {
     case Type::Hello: return kCodeBytes;
     case Type::Welcome: return 1;
-    case Type::Pad: return 18;
+    case Type::Pad: return 27;
     case Type::Rumble: return 4;
     case Type::Bye: return 0;
     case Type::Video: return payload <= kVideoChunk ? kVideoMetaBytes + payload : SIZE_MAX;
@@ -109,6 +113,7 @@ inline size_t Encode(const Packet& packet, uint8_t (&out)[kMaxPacket]) {
         Put16(b, packet.pad.buttons); std::memcpy(b + 2, packet.pad.analog, 8);
         Put16(b + 10, uint16_t(packet.pad.lx)); Put16(b + 12, uint16_t(packet.pad.ly));
         Put16(b + 14, uint16_t(packet.pad.rx)); Put16(b + 16, uint16_t(packet.pad.ry));
+        Put32(b + 18, packet.pad.mouse_x); Put32(b + 22, packet.pad.mouse_y); b[26] = packet.pad.mouse ? 1 : 0;
         break;
     case Type::Rumble: Put16(b, packet.left); Put16(b + 2, packet.right); break;
     case Type::Bye: break;
@@ -148,6 +153,7 @@ inline bool Decode(const uint8_t* data, size_t size, Packet& packet) {
         packet.pad.buttons = Get16(b); std::memcpy(packet.pad.analog, b + 2, 8);
         packet.pad.lx = int16_t(Get16(b + 10)); packet.pad.ly = int16_t(Get16(b + 12));
         packet.pad.rx = int16_t(Get16(b + 14)); packet.pad.ry = int16_t(Get16(b + 16));
+        packet.pad.mouse_x = Get32(b + 18); packet.pad.mouse_y = Get32(b + 22); packet.pad.mouse = b[26] & 1;
         break;
     case Type::Rumble: packet.left = Get16(b); packet.right = Get16(b + 2); break;
     case Type::Bye: break;

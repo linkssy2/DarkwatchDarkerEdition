@@ -47,11 +47,20 @@ public:
     void Leave() {guest_.reset();}
     // The guest joined or lost video: the next frame must be a key frame.
     bool TakeKeyRequest() {return std::exchange(key_request_, false);}
+    // The guest's raw mouse: totals from its newest pad, a count of pad updates, and an
+    // epoch that changes when a session starts or the client grabs or releases the mouse.
+    // Totals wrap modulo 2^64, as input::MouseSnapshot's do.
+    struct Mouse {uint64_t x = 0, y = 0, generation = 0, epoch = 0, published_ms = 0; bool active = false;};
+    bool CurrentMouse(Mouse& mouse, uint64_t now_ms) const {
+        if (!Active(now_ms)) return false;
+        mouse = {mouse_x_, mouse_y_, pads_, mouse_epoch_, pad_ms_, pad_.mouse};
+        return true;
+    }
 private:
     std::string code_;
     std::optional<Address> guest_;
     uint32_t token_ = 0, sequence_ = 0;
-    uint64_t last_ms_ = 0;
+    uint64_t last_ms_ = 0, pad_ms_ = 0, pads_ = 0, mouse_epoch_ = 0, mouse_x_ = 0, mouse_y_ = 0;
     PadState pad_;
     bool key_request_ = false;
 };
@@ -61,5 +70,9 @@ bool SendVideo(const uint8_t* data, size_t size, bool key);
 bool TakeKeyRequest();  // the guest asked for a key frame since the last call
 // Host audio: sends interleaved int16 stereo frames to the guest; false without a guest.
 bool SendAudio(const int16_t* samples, uint32_t frames);
+// The guest's raw mouse for direct aim on port 1's player; false without a guest.
+bool GuestMouse(Session::Mouse& mouse);
+// With direct mouse off, the guest's mouse drives port 1's right stick as a local mouse would.
+void GuestMouseStick(input::Pad& pad);
 
 } // namespace darkwatch::coop

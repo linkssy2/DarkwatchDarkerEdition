@@ -64,6 +64,8 @@ static void Protocol(){
  CHECK(!CodeMatches(r,"")&&!SetCode(h,"")&&!SetCode(h,std::string(33,'x'))&&SetCode(h,std::string(32,'x')));
  Packet p;p.type=Type::Pad;p.pad.buttons=0x80F1;for(int i=0;i<8;++i)p.pad.analog[i]=uint8_t(i*31);p.pad.lx=-32768;p.pad.ly=32767;p.pad.rx=-1;p.pad.ry=12345;
  r=Round(p);CHECK(r.pad.buttons==0x80F1&&r.pad.analog[7]==217&&r.pad.lx==-32768&&r.pad.ly==32767&&r.pad.rx==-1&&r.pad.ry==12345);
+ CHECK(r.pad.mouse_x==0&&r.pad.mouse_y==0&&!r.pad.mouse);
+ p.pad.mouse_x=0xFFFFFFF0;p.pad.mouse_y=77;p.pad.mouse=true;r=Round(p);CHECK(r.pad.mouse_x==0xFFFFFFF0&&r.pad.mouse_y==77&&r.pad.mouse&&r.pad.buttons==0x80F1);
  Packet w;w.type=Type::Welcome;w.status=Status::Busy;CHECK(Round(w).status==Status::Busy);
  Packet m;m.type=Type::Rumble;m.left=65535;m.right=3;r=Round(m);CHECK(r.left==65535&&r.right==3);
  Packet b;b.type=Type::Bye;CHECK(Round(b).type==Type::Bye);
@@ -134,7 +136,30 @@ static void Frames(){FrameAssembler a;std::vector<uint8_t> f;bool key=false;
  Packet bad=c6[0];bad.index=1;CHECK(!a.Add(bad,f,key));bad=c6[0];bad.payload_size=uint16_t(kVideoChunk+1);CHECK(!a.Add(bad,f,key));
 }
 
-static Packet Hello(uint32_t token,const char* code,uint32_t seq=0){Packet h;h.type=Type::Hello;h.token=token;h.sequence=seq;SetCode(h,code);return h;}
+static Packet MousePad(uint32_t token,uint32_t seq,uint32_t x,uint32_t y,bool grabbed){Packet p;p.type=Type::Pad;p.token=token;p.sequence=seq;
+ p.pad.mouse_x=x;p.pad.mouse_y=y;p.pad.mouse=grabbed;return p;}
+static Packet Hello(uint32_t token,const char* code,uint32_t seq=0);
+static void Mice(){
+ Session s("code");Address a{1,1};Session::Mouse m;
+ CHECK(!s.CurrentMouse(m,0));
+ s.Receive(Hello(3,"code",0),a,10);CHECK(s.CurrentMouse(m,10)&&!m.active&&m.x==0&&m.y==0);const uint64_t joined=m.epoch;
+ // The first pad grabs: a new epoch, and the client's earlier totals are not motion.
+ s.Receive(MousePad(3,1,1000,-50,true),a,11);CHECK(s.CurrentMouse(m,11)&&m.active&&m.epoch==joined+1&&m.x==0&&m.y==0&&m.generation==1&&m.published_ms==11);
+ s.Receive(MousePad(3,2,1010,uint32_t(-60),true),a,12);CHECK(s.CurrentMouse(m,12)&&m.x==10&&int64_t(m.y)==-10&&m.generation==2);
+ s.Receive(MousePad(3,4,1030,uint32_t(-60),true),a,13);CHECK(s.CurrentMouse(m,13)&&m.x==30);  // a lost pad loses no motion
+ s.Receive(MousePad(3,3,9999,0,true),a,14);CHECK(s.CurrentMouse(m,14)&&m.x==30&&m.generation==3);  // reordered: ignored
+ s.Receive(MousePad(3,5,0xFFFFFFF0u,0,true),a,15);s.Receive(MousePad(3,6,0x10,0,true),a,16);  // a large jump, then 32-bit wrap
+ CHECK(s.CurrentMouse(m,16)&&m.x==30+uint64_t(int64_t(int32_t(0xFFFFFFF0u-1030)))+0x20);
+ const uint64_t x=m.x,grabbed=m.epoch;
+ s.Receive(MousePad(3,7,0x500,0,false),a,17);CHECK(s.CurrentMouse(m,17)&&!m.active&&m.epoch==grabbed+1&&m.x==x);  // released
+ s.Receive(MousePad(3,8,0x900,0,false),a,18);CHECK(s.CurrentMouse(m,18)&&m.x==x);  // no motion while released
+ s.Receive(MousePad(3,9,0x905,0,true),a,19);CHECK(s.CurrentMouse(m,19)&&m.active&&m.epoch==grabbed+2&&m.x==x);
+ s.Receive(MousePad(3,10,0x907,0,true),a,20);CHECK(s.CurrentMouse(m,20)&&m.x==x+2);
+ s.Receive(Hello(4,"code",0),a,21);CHECK(s.CurrentMouse(m,21)&&m.epoch==grabbed+3&&!m.active);  // restarted client
+ CHECK(!s.CurrentMouse(m,21+kTimeoutMs));
+}
+
+static Packet Hello(uint32_t token,const char* code,uint32_t seq){Packet h;h.type=Type::Hello;h.token=token;h.sequence=seq;SetCode(h,code);return h;}
 static Packet PadPacket(uint32_t token,uint32_t seq,uint16_t buttons){Packet p;p.type=Type::Pad;p.token=token;p.sequence=seq;p.pad.buttons=buttons;return p;}
 static void Sessions(){
  Session s("code");Address a{0x0100007F,1000},b{0x0200007F,2000};PadState pad;
@@ -229,7 +254,7 @@ static void HostPath(uint16_t port){
 
 int main(int argc,char** argv){
  WSADATA wsa;CHECK(!WSAStartup(MAKEWORD(2,2),&wsa));
- Protocol();Keys();Frames();Sessions();HostPath(uint16_t(std::atoi(argv[1])));
+ Protocol();Keys();Frames();Sessions();Mice();HostPath(uint16_t(std::atoi(argv[1])));
  std::puts("coop: wire format, guest keys, frame reassembly, session rules and live UDP host passed");
 }
 '''

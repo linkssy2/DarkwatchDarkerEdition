@@ -247,7 +247,7 @@ int main(int argc, char** argv) {
     SDL_Gamepad* pad = nullptr;
     uint64_t tick_us = 0;
     constexpr uint64_t kInputIntervalUs = 8000;
-    keys::MouseVelocity mouse;
+    uint32_t mouse_x = 0, mouse_y = 0;
     std::printf("Connecting to %s ...\n", argv[1]);
     constexpr uint64_t kHostTimeoutMs = 3000;
     while (!g_stop) {
@@ -316,17 +316,17 @@ int main(int argc, char** argv) {
             Send(s, host, hello); hello_sent = now;
         }
         const uint64_t now_us = NowUs();
-        mouse.Add(g_mouse_dx, g_mouse_dy, now_us);
+        // Raw counts go to the host as running totals for its direct mouse aim.
+        mouse_x += uint32_t(g_mouse_dx); mouse_y += uint32_t(g_mouse_dy);
         g_mouse_dx = g_mouse_dy = 0;
         // Video wakes the loop for every datagram; input still goes out at a steady ~120 Hz.
         if (joined && now_us - tick_us >= kInputIntervalUs) {
             Packet state;
             state.type = Type::Pad; state.token = hello.token; state.sequence = ++sequence;
             state.pad = Read(pad);
-            int64_t dx = 0, dy = 0;
-            uint64_t window_us = 0;
-            mouse.Stick(now_us, dx, dy, window_us);
-            keys::Merge(state.pad, KeyHeld, dx, dy, window_us);
+            keys::Merge(state.pad, KeyHeld, 0, 0, 0);
+            state.pad.mouse_x = mouse_x; state.pad.mouse_y = mouse_y;
+            state.pad.mouse = g_grabbed && GetForegroundWindow() == g_window;
             tick_us = now_us;
             Send(s, host, state);
         }
