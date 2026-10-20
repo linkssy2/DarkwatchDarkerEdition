@@ -730,10 +730,10 @@ index a739de7..e55c4e7 100644
  
  }  // namespace app
 diff --git a/runtime/audio/audio.h b/runtime/audio/audio.h
-index 6daa1dd..c440869 100644
+index 6daa1dd..d3e960c 100644
 --- a/runtime/audio/audio.h
 +++ b/runtime/audio/audio.h
-@@ -6,6 +6,12 @@ namespace audio {
+@@ -6,7 +6,17 @@ namespace audio {
  
  constexpr uint32_t kRate = 48000;
  
@@ -746,12 +746,33 @@ index 6daa1dd..c440869 100644
  // the platform output pulls interleaved stereo float frames from render
  void StartOutput(std::function<void(float* out, uint32_t frames)> render);
  
++// a game's copy of each rendered block, on the output thread right after render; null removes it
++using Tap = void (*)(const float* frames, uint32_t count);
++void SetTap(Tap tap);
++
+ }  // namespace audio
 diff --git a/runtime/audio/xaudio2.cpp b/runtime/audio/xaudio2.cpp
-index bc0df7b..1cbb146 100644
+index bc0df7b..5c88509 100644
 --- a/runtime/audio/xaudio2.cpp
 +++ b/runtime/audio/xaudio2.cpp
-@@ -18,10 +18,16 @@ namespace audio {
+@@ -8,6 +8,7 @@
+ #include <windows.h>
+ #include <xaudio2.h>
  
++#include <atomic>
+ #include <thread>
+ #include <vector>
+ 
+@@ -16,12 +17,24 @@
+ 
+ namespace audio {
+ 
++namespace {
++std::atomic<Tap> g_tap{nullptr};
++}  // namespace
++
++void SetTap(Tap tap) { g_tap = tap; }
++
  void StartOutput(std::function<void(float*, uint32_t)> render) {
      std::thread([render] {
 -        CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -768,7 +789,7 @@ index bc0df7b..1cbb146 100644
          WAVEFORMATEX wf{};
          wf.wFormatTag = WAVE_FORMAT_IEEE_FLOAT;
          wf.nChannels = 2;
-@@ -31,14 +37,21 @@ void StartOutput(std::function<void(float*, uint32_t)> render) {
+@@ -31,14 +44,21 @@ void StartOutput(std::function<void(float*, uint32_t)> render) {
          wf.nAvgBytesPerSec = kRate * 8;
          if (FAILED(XAudio2Create(&xa, 0, XAUDIO2_DEFAULT_PROCESSOR)) || FAILED(xa->CreateMasteringVoice(&master)) ||
              FAILED(xa->CreateSourceVoice(&voice, &wf))) {
@@ -793,7 +814,11 @@ index bc0df7b..1cbb146 100644
              voice->GetState(&st, XAUDIO2_VOICE_NOSAMPLESPLAYED);
              if (st.BuffersQueued >= 3) {
                  Sleep(2);
-@@ -49,7 +62,22 @@ void StartOutput(std::function<void(float*, uint32_t)> render) {
+@@ -46,10 +66,26 @@ void StartOutput(std::function<void(float*, uint32_t)> render) {
+             }
+             float* b = &bufs[(n % kSlots) * kFrames * 2];
+             render(b, kFrames);
++            if (Tap tap = g_tap.load()) tap(b, kFrames);
              XAUDIO2_BUFFER xb{};
              xb.AudioBytes = kFrames * 8;
              xb.pAudioData = reinterpret_cast<const BYTE*>(b);

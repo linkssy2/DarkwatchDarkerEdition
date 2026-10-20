@@ -14,6 +14,9 @@
 #include <mutex>
 #include <thread>
 #include <toml++/toml.hpp>
+#include <cmath>
+#include <vector>
+#include "audio/audio.h"
 #include "core/input.h"
 #include "core/log.h"
 
@@ -73,10 +76,11 @@ struct Host {
     uint16_t left = 0, right = 0;
     bool rumble_changed = false;
     SOCKET socket = INVALID_SOCKET;   // sendto is safe beside the network thread's recvfrom
-    std::atomic<uint32_t> video_frame{0};
+    std::atomic<uint32_t> video_frame{0}, audio_sequence{0};
     explicit Host(std::string code) : session(std::move(code)) {}
 };
 std::atomic<Host*> g_host{nullptr};
+void AudioTap(const float* frames, uint32_t count);
 
 void Send(SOCKET s, const Packet& packet, Address to) {
     uint8_t data[kMaxPacket];
@@ -170,6 +174,8 @@ void Start() {
     auto* host = new Host(settings.code);
     host->socket = s;
     g_host = host;
+    static_assert(audio::kRate == kAudioRate, "the guest plays the mix at the host's rate");
+    audio::SetTap(AudioTap);
     std::thread(Serve, host, s).detach();
     LOGR("coop: hosting on UDP %u", settings.port);
 }
@@ -214,6 +220,42 @@ bool SendVideo(const uint8_t* data, size_t size, bool key) {
     }
     return true;
 }
+
+bool SendAudio(const int16_t* samples, uint32_t frames) {
+    Host* host = g_host.load();
+    if (!host || !frames) return false;
+    std::optional<Address> guest;
+    uint32_t token = 0;
+    {
+        std::lock_guard lock(host->lock);
+        guest = host->session.Guest(NowMs());
+        token = host->session.Token();
+    }
+    if (!guest) return false;
+    constexpr uint32_t kPacketFrames = kVideoChunk / 4 / 48 * 48;  // whole milliseconds per datagram
+    Packet packet;
+    packet.type = Type::Audio;
+    packet.token = token;
+    for (uint32_t done = 0; done < frames; done += kPacketFrames) {
+        packet.sequence = host->audio_sequence++;
+        packet.frames = uint16_t(std::min(kPacketFrames, frames - done));
+        packet.payload = reinterpret_cast<const uint8_t*>(samples + size_t(done) * 2);
+        packet.payload_size = uint16_t(packet.frames * 4);
+        Send(host->socket, packet, *guest);
+    }
+    return true;
+}
+
+namespace {
+// Audio output thread, every 10 ms block: the host's mix for the guest as int16 stereo.
+void AudioTap(const float* frames, uint32_t count) {
+    thread_local std::vector<int16_t> pcm;
+    pcm.resize(size_t(count) * 2);
+    for (size_t i = 0; i < pcm.size(); ++i)
+        pcm[i] = int16_t(std::lround(std::clamp(frames[i], -1.0f, 1.0f) * 32767.0f));
+    SendAudio(pcm.data(), count);
+}
+} // namespace
 
 bool TakeKeyRequest() {
     Host* host = g_host.load();

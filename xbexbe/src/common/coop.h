@@ -59,5 +59,7 @@ private:
 // Host video: sends one encoded frame to the guest in Video chunks; false without a guest.
 bool SendVideo(const uint8_t* data, size_t size, bool key);
 bool TakeKeyRequest();  // the guest asked for a key frame since the last call
+// Host audio: sends interleaved int16 stereo frames to the guest; false without a guest.
+bool SendAudio(const int16_t* samples, uint32_t frames);
 
 } // namespace darkwatch::coop

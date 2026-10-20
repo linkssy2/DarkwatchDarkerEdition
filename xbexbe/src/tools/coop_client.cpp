@@ -1,6 +1,6 @@
 // Network co-op guest: sends one local controller, or keyboard and mouse while its window
 // has focus, to a hosting Darkwatch as player 2, plays the host's rumble and shows player
-// 2's view, which the host streams as H.264.
+// 2's view and the game's sound, which the host streams as H.264 and PCM.
 //   darkwatch_coop_client <host>[:port] <code>
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -24,6 +24,7 @@
 #include <vector>
 #include "common/coop_protocol.h"
 #include "common/coop_video.h"
+#include "tools/coop_audio.h"
 #include "tools/coop_frames.h"
 #include "tools/coop_keys.h"
 
@@ -234,6 +235,8 @@ int main(int argc, char** argv) {
     if (!video_ready) std::fprintf(stderr, "Media Foundation is unavailable; no video.\n");
     std::unique_ptr<darkwatch::coop::video::Decoder> decoder;
     FrameAssembler frames;
+    AudioPlayer sound;
+    if (!sound.Open()) std::fprintf(stderr, "XAudio2 is unavailable; no sound.\n");
     std::vector<uint8_t> encoded;
     uint64_t key_requested = 0;
 
@@ -280,6 +283,8 @@ int main(int argc, char** argv) {
                 }
             } else if (packet.type == Type::Rumble && pad) {
                 SDL_RumbleGamepad(pad, packet.left, packet.right, 200);  // refreshed by the host's keepalive
+            } else if (packet.type == Type::Audio) {
+                sound.Push(packet);
             } else if (packet.type == Type::Video && video_ready && g_window) {
                 bool key = false;
                 if (!frames.Add(packet, encoded, key)) continue;
@@ -302,6 +307,7 @@ int main(int argc, char** argv) {
         if (joined && now - last_heard > kHostTimeoutMs) {
             joined = false;
             frames.Reset();
+            sound.Reset();
             decoder.reset();  // the next session's stream starts over
             std::printf("Lost the host; reconnecting...\n");
         }
@@ -336,6 +342,7 @@ int main(int argc, char** argv) {
     if (g_window) {Grab(false); DestroyWindow(g_window);}
     if (pad) SDL_CloseGamepad(pad);
     SDL_Quit();
+    sound.Close();
     decoder.reset();
     if (video_ready) darkwatch::coop::video::Shutdown();
     timeEndPeriod(1);

@@ -17,6 +17,16 @@ namespace input {
 struct Pad { bool connected = false; uint16_t buttons = 0; uint8_t analog[8] = {}; int16_t lx = 0, ly = 0, rx = 0, ry = 0; };
 }
 '''
+AUDIO_H = r'''
+#pragma once
+#include <cstdint>
+namespace audio {
+constexpr uint32_t kRate = 48000;
+using Tap = void (*)(const float* frames, uint32_t count);
+inline Tap g_tap = nullptr;
+inline void SetTap(Tap tap) { g_tap = tap; }
+}
+'''
 LOG_H = r'''
 #pragma once
 #include <atomic>
@@ -38,6 +48,7 @@ FIXTURE = r'''
 #include <toml++/toml.hpp>
 #include "core/input.h"
 #include "core/log.h"
+#include "audio/audio.h"
 #include "common/coop.h"
 #include "tools/coop_keys.h"
 #include "tools/coop_frames.h"
@@ -71,6 +82,11 @@ static void Protocol(){
  v.payload_size=5;v.key=false;n=Encode(v,d);CHECK(n==kHeaderBytes+kVideoMetaBytes+5&&Decode(d,n,out)&&!out.key&&out.payload_size==5&&out.payload[4]==chunk[4]);
  v.payload_size=uint16_t(kVideoChunk+1);CHECK(!Encode(v,d));v.payload_size=3;v.payload=nullptr;CHECK(!Encode(v,d));
  Packet k;k.type=Type::KeyRequest;k.token=9;CHECK(Round(k).type==Type::KeyRequest&&Round(k).token==9);
+ int16_t pcm[288*2];for(int i=0;i<288*2;++i)pcm[i]=int16_t(i*97-20000);
+ Packet au;au.type=Type::Audio;au.sequence=44;au.frames=288;au.payload=reinterpret_cast<const uint8_t*>(pcm);au.payload_size=288*4;
+ n=Encode(au,d);CHECK(n==kHeaderBytes+kAudioMetaBytes+288*4&&Decode(d,n,out)&&out.type==Type::Audio&&out.sequence==44&&out.frames==288&&out.payload_size==288*4&&!std::memcmp(out.payload,pcm,288*4));
+ CHECK(!Decode(d,n-2,out));d[kHeaderBytes]=200;CHECK(!Decode(d,n,out));  // frames disagree with the size
+ au.frames=287;CHECK(!Encode(au,d));au.frames=296;au.payload_size=296*4;CHECK(!Encode(au,d));  // past one datagram
 }
 
 static void Keys(){using darkwatch::coop::keys::Merge;
@@ -189,6 +205,14 @@ static void HostPath(uint16_t port){
    if(i)CHECK(p.frame==id);id=p.frame;std::memcpy(got.data()+p.index*kVideoChunk,p.payload,p.payload_size);seen|=1u<<p.index;}
   CHECK(seen==7&&got==frame);}
  CHECK(!SendVideo(frame.data(),0,false));
+ CHECK(audio::g_tap);  // hosting installed the mix tap
+ {std::vector<float> block(480*2);for(size_t i=0;i<block.size();++i)block[i]=float(int(i%200)-100)/100.0f;block[3]=2.0f;
+  audio::g_tap(block.data(),480);
+  std::vector<int16_t> got;uint32_t first=0;
+  for(int i=0;i<2;++i){CHECK(g.Receive(p,Type::Audio));CHECK(p.token==77&&p.payload_size==p.frames*4u);if(!i)first=p.sequence;else CHECK(p.sequence==first+1);
+   const int16_t* s=reinterpret_cast<const int16_t*>(p.payload);got.insert(got.end(),s,s+p.frames*2);}
+  CHECK(got.size()==block.size());CHECK(got[3]==32767);  // clamped
+  for(size_t i=0;i<got.size();++i)if(i!=3)CHECK(std::abs(got[i]-int(std::lround(block[i]*32767.0f)))<=1);}
  l=40000;r=123;Rumble(1,l,r);CHECK(l==0&&r==0);
  CHECK(g.Receive(p,Type::Rumble)&&p.token==77);
  while(p.left!=40000)CHECK(g.Receive(p,Type::Rumble));CHECK(p.right==123);
@@ -228,6 +252,8 @@ class CoopTests(unittest.TestCase):
             (folder / "core").mkdir()
             (folder / "core/input.h").write_text(INPUT_H)
             (folder / "core/log.h").write_text(LOG_H)
+            (folder / "audio").mkdir()
+            (folder / "audio/audio.h").write_text(AUDIO_H)
             cpp, exe = folder / "test.cpp", folder / "test.exe"
             cpp.write_text(FIXTURE)
             linker = ["-fuse-ld=lld"] if "clang" in Path(compiler).name else []
