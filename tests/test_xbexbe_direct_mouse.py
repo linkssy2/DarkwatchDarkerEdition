@@ -29,6 +29,13 @@ void darkwatch::ControlsLoad(const void* t){controls_load_table=t;}
 void darkwatch::ControlsSave(void* t){controls_save_table=t;}
 void darkwatch::view::Load(const void* t){view_load_table=t;}
 void darkwatch::view::Save(void* t){view_save_table=t;}
+static const void* coop_load_table=nullptr;
+static void* coop_save_table=nullptr;
+void darkwatch::coop::Load(const void* t){coop_load_table=t;}
+void darkwatch::coop::Save(void* t){coop_save_table=t;}
+void darkwatch::coop::Start(){}
+void darkwatch::coop::Pad(int,input::Pad&){}
+void darkwatch::coop::Rumble(int,uint16_t&,uint16_t&){}
 bool darkwatch::ControlsMessage(void*,uint32_t,uintptr_t,intptr_t,intptr_t*){return false;}
 // The graphics page has its own actual ImGui/input fixture; isolate direct aiming here.
 void DarkwatchGraphicsInit() {}
@@ -156,7 +163,7 @@ int main(){
  Prepare(0);NoChange(0);Prepare(1);CHECK(!Center());NoChange(1);
  CHECK(app::kGame.options.empty()&&app::kGame.load&&app::kGame.save);
  app::kGame.load(memory);app::kGame.save(memory);
- CHECK(controls_load_table==memory&&view_load_table==memory&&controls_save_table==memory&&view_save_table==memory);
+ CHECK(controls_load_table==memory&&view_load_table==memory&&controls_save_table==memory&&view_save_table==memory);CHECK(coop_load_table==memory&&coop_save_table==memory);
  CHECK(app::kGame.message==darkwatch::ControlsMessage);
  // Each latched pair retains one sensitivity even if the UI changes settings between axes.
  Reset();Frame(20,40);Yaw(-1);controls.mouse_millidegrees=100;Pitch(2);

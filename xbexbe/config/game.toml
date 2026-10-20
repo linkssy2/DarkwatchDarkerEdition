@@ -347,6 +347,52 @@ after = true
 at = 0x000F9B78
 call = "DarkwatchConfigurePlayerCamera"
 
+# Network co-op: two-player views are created full screen while a guest plays.
+# Original layout table and selector: FA37C-FA3BD, entries 4915F8/4916D8 (coop_view.cpp).
+[[hook]]
+at = 0x000FA3BC
+call = "DarkwatchCoopViewLayout"
+
+# Player 2 world and HUD cameras draw into their own targets (coop_view.cpp).
+# F9B52 returns the view, D8365 the HUD player camera, D83D3 the HUD camera.
+[[hook]]
+at = 0x000F9B57
+call = "DarkwatchCoopViewCreated"
+
+[[hook]]
+at = 0x000D836A
+call = "DarkwatchCoopHudOwner"
+
+[[hook]]
+at = 0x000D83DC
+call = "DarkwatchCoopHudCreated"
+
+# Each frame: F7 on the host swaps which view draws off screen (coop_view.cpp).
+[[hook]]
+at = 0x0021606D
+call = "DarkwatchCoopViewFrame"
+
+# Experimental co-op campaign: Multiplayer opens the original Versus/Co-op dialog
+# that only the PS2 menu link reached (coop_menu.cpp). Both are the page-name hash calls.
+[[hook]]
+at = 0x000EAA7E
+call = "DarkwatchCoopModeDialog"
+
+[[hook]]
+at = 0x000EA953
+call = "DarkwatchCoopVersusPage"
+
+# Co-op campaign: the required-controller mask byte EFA10 reads into cl (coop_menu.cpp).
+[[hook]]
+at = 0x000EFA81
+call = "DarkwatchCoopRequiredPorts"
+after = true
+
+[[hook]]
+at = 0x000EFAAC
+call = "DarkwatchCoopRequiredPorts"
+after = true
+
 # Apply the saved view scale after the original player-camera update.
 [[hook]]
 at = 0x0021606D

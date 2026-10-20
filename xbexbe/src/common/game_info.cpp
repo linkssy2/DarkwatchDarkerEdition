@@ -3,6 +3,7 @@
 #include "common/graphics.h"
 #include "common/graphics_view.h"
 #include "common/controls.h"
+#include "common/coop.h"
 #include "common/menu_cursor.h"
 #include "common/native_menu.h"
 #include "common/hd_ui.h"
@@ -24,14 +25,16 @@ const app::GameInfo app::kGame = {
     .splash = L"splash",
     .missing = L"Darkwatch's original default.xbe and game files were not found in assets.",
     .images = {{"default.xbe", "darkwatch_xbe"}},
-    .load = [](const void* table) {darkwatch::ControlsLoad(table); darkwatch::view::Load(table);},
-    .save = [](void* table) {darkwatch::ControlsSave(table); darkwatch::view::Save(table);},
-    .init = InitDirectMouse,
+    .load = [](const void* table) {darkwatch::ControlsLoad(table); darkwatch::view::Load(table); darkwatch::coop::Load(table);},
+    .save = [](void* table) {darkwatch::ControlsSave(table); darkwatch::view::Save(table); darkwatch::coop::Save(table);},
+    .init = [] {InitDirectMouse(); darkwatch::coop::Start();},
     .loaded = LoadFrontendAssets,
     .window = DarkwatchGraphicsWindow,
     .message = darkwatch::ControlsMessage,
     .ui = DrawUi,
-    .pad = DarkwatchGraphicsPad,
+    // A network guest becomes port 1 before menu gating sees the pad.
+    .pad = [](int port, input::Pad& pad) {darkwatch::coop::Pad(port, pad); DarkwatchGraphicsPad(port, pad);},
+    .rumble = darkwatch::coop::Rumble,
     .prepare = darkwatch::PrepareShaders,
 };
 

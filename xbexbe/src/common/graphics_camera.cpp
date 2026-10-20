@@ -4,6 +4,7 @@
 #include <cstring>
 #include <mutex>
 #include "graphics_view.h"
+#include "common/coop_view.h"
 #include "app/app.h"
 #include "core/log.h"
 #include "cpu/x86_context.h"
@@ -63,9 +64,13 @@ void SetScale(const X86Context& ctx, uint8_t* base, uint32_t camera, float scale
 
 void DarkwatchConfigurePlayerCamera(X86Context& ctx, uint8_t* base) {
     // F9B1D owns this component; F9B78 passes aspect then scale to the original setter.
-    // Other view layouts and temporary cameras keep their authored settings.
-    if (ctx.esi != kPlayerCamera || !Span(base, kPlayerCamera, sizeof(kConfiguration)) ||
-        std::memcmp(base + kPlayerCamera, kConfiguration.data(), sizeof(kConfiguration)) ||
+    // Network co-op's full-screen views qualify too; other layouts and temporary cameras
+    // keep their authored settings.
+    uint32_t player = 0;
+    const bool coop = darkwatch::coop::FullscreenLayout(base, ctx.esi, player);
+    if ((ctx.esi != kPlayerCamera && !coop) || !Span(base, ctx.esi, sizeof(kConfiguration)) ||
+        std::memcmp(base + ctx.esi, kConfiguration.data(), sizeof(kConfiguration) - 4) ||
+        Read(base, ctx.esi + sizeof(kConfiguration) - 4) != player ||
         !Span(base, ctx.esp, 8) || Read(base, ctx.esp) != kConfiguration[1] ||
         Read(base, ctx.esp + 4) != kConfiguration[0] || !Span(base, ctx.edi, 0x14) ||
         Read(base, ctx.edi + 0xC) != ctx.ecx || !Span(base, ctx.ecx, 0x68) ||
@@ -81,7 +86,8 @@ void DarkwatchConfigurePlayerCamera(X86Context& ctx, uint8_t* base) {
         std::memcpy(base + ctx.esp, &aspect, sizeof(aspect));
         std::memcpy(base + ctx.esp + 4, &scale, sizeof(scale));
     }
-    {
+    if (!darkwatch::coop::CreatingGuestView(coop, player)) {
+        // View-scale updates and the weapon pass follow the host's own player.
         std::lock_guard lock(g_camera_lock);
         g_player_camera = {ctx.edi, ctx.ecx, Read(base, ctx.ecx + 0x34), aspect_scale};
     }
