@@ -1,8 +1,9 @@
 #pragma once
 // Network co-op wire format shared by the host runtime and darkwatch_coop_client.
-// The host runs the original split-screen co-op; a guest's controller drives port 1.
-// Little-endian, fixed-size UDP datagrams. The code check keeps strangers' packets
-// off the pad; it is not encryption.
+// The host runs the original split-screen co-op; a guest's controller drives port 1 and
+// the host streams the guest's view back as H.264 in Video chunks.
+// Little-endian UDP datagrams, fixed-size except Video. The code check keeps strangers'
+// packets off the pad; it is not encryption.
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -12,13 +13,15 @@
 namespace darkwatch::coop {
 
 constexpr uint32_t kMagic = 0x31435744;  // "DWC1"
-constexpr uint8_t kVersion = 1;
+constexpr uint8_t kVersion = 2;  // 2: Video and KeyRequest
 constexpr uint16_t kDefaultPort = 41330;
 constexpr size_t kCodeBytes = 32;
 constexpr size_t kHeaderBytes = 16;
-constexpr size_t kMaxPacket = 64;
+constexpr size_t kVideoMetaBytes = 12;
+constexpr size_t kVideoChunk = 1180;  // keeps a datagram under common 1280+ byte paths
+constexpr size_t kMaxPacket = kHeaderBytes + kVideoMetaBytes + kVideoChunk;
 
-enum class Type : uint8_t { Hello = 1, Welcome = 2, Pad = 3, Rumble = 4, Bye = 5 };
+enum class Type : uint8_t { Hello = 1, Welcome = 2, Pad = 3, Rumble = 4, Bye = 5, Video = 6, KeyRequest = 7 };
 enum class Status : uint8_t { Accepted = 0, BadCode = 1, Busy = 2, BadVersion = 3 };
 
 // Mirrors input::Pad without the connected flag; the host decides presence.
@@ -37,6 +40,13 @@ struct Packet {
     Status status = Status::Accepted;     // Welcome
     PadState pad;                         // Pad
     uint16_t left = 0, right = 0;         // Rumble
+    // Video: chunk `index` of `count` of encoded frame `frame`; payload is borrowed
+    // (Decode points into the datagram, Encode copies from it).
+    uint32_t frame = 0;
+    uint16_t index = 0, count = 0;
+    bool key = false;
+    const uint8_t* payload = nullptr;
+    uint16_t payload_size = 0;
 };
 
 inline bool SetCode(Packet& packet, std::string_view code) {
@@ -61,13 +71,16 @@ inline void Put16(uint8_t* p, uint16_t v) {p[0] = uint8_t(v); p[1] = uint8_t(v >
 inline void Put32(uint8_t* p, uint32_t v) {for (int i = 0; i < 4; ++i) p[i] = uint8_t(v >> (8 * i));}
 inline uint16_t Get16(const uint8_t* p) {return uint16_t(p[0] | (p[1] << 8));}
 inline uint32_t Get32(const uint8_t* p) {return uint32_t(p[0]) | uint32_t(p[1]) << 8 | uint32_t(p[2]) << 16 | uint32_t(p[3]) << 24;}
-inline size_t BodyBytes(Type type) {
+// Video's body is its meta plus `payload` bytes; the other types ignore it.
+inline size_t BodyBytes(Type type, size_t payload = 0) {
     switch (type) {
     case Type::Hello: return kCodeBytes;
     case Type::Welcome: return 1;
     case Type::Pad: return 18;
     case Type::Rumble: return 4;
     case Type::Bye: return 0;
+    case Type::Video: return payload <= kVideoChunk ? kVideoMetaBytes + payload : SIZE_MAX;
+    case Type::KeyRequest: return 0;
     }
     return SIZE_MAX;
 }
@@ -76,9 +89,9 @@ inline size_t BodyBytes(Type type) {
 // Returns the datagram size, or 0 for an unknown type.
 inline size_t Encode(const Packet& packet, uint8_t (&out)[kMaxPacket]) {
     using namespace wire;
-    const size_t body = BodyBytes(packet.type);
-    if (body == SIZE_MAX) return 0;
-    std::memset(out, 0, sizeof(out));
+    const size_t body = BodyBytes(packet.type, packet.payload_size);
+    if (body == SIZE_MAX || (packet.type == Type::Video && packet.payload_size && !packet.payload)) return 0;
+    std::memset(out, 0, kHeaderBytes + body);
     Put32(out, kMagic); out[4] = packet.version; out[5] = uint8_t(packet.type);
     Put32(out + 8, packet.token); Put32(out + 12, packet.sequence);
     uint8_t* b = out + kHeaderBytes;
@@ -92,6 +105,12 @@ inline size_t Encode(const Packet& packet, uint8_t (&out)[kMaxPacket]) {
         break;
     case Type::Rumble: Put16(b, packet.left); Put16(b + 2, packet.right); break;
     case Type::Bye: break;
+    case Type::Video:
+        Put32(b, packet.frame); Put16(b + 4, packet.index); Put16(b + 6, packet.count);
+        b[8] = packet.key ? 1 : 0; Put16(b + 10, packet.payload_size);
+        if (packet.payload_size) std::memcpy(b + kVideoMetaBytes, packet.payload, packet.payload_size);
+        break;
+    case Type::KeyRequest: break;
     }
     return kHeaderBytes + body;
 }
@@ -105,9 +124,10 @@ inline bool Decode(const uint8_t* data, size_t size, Packet& packet) {
     packet.version = data[4]; packet.type = Type(data[5]);
     packet.token = Get32(data + 8); packet.sequence = Get32(data + 12);
     if (packet.version != kVersion) return packet.type == Type::Hello;
-    const size_t body = BodyBytes(packet.type);
-    if (body == SIZE_MAX || size != kHeaderBytes + body) return false;
     const uint8_t* b = data + kHeaderBytes;
+    const size_t payload = packet.type == Type::Video && size >= kHeaderBytes + kVideoMetaBytes ? Get16(b + 10) : 0;
+    const size_t body = BodyBytes(packet.type, payload);
+    if (body == SIZE_MAX || size != kHeaderBytes + body) return false;
     switch (packet.type) {
     case Type::Hello: std::memcpy(packet.code.data(), b, kCodeBytes); break;
     case Type::Welcome: if (b[0] > uint8_t(Status::BadVersion)) return false; packet.status = Status(b[0]); break;
@@ -118,6 +138,13 @@ inline bool Decode(const uint8_t* data, size_t size, Packet& packet) {
         break;
     case Type::Rumble: packet.left = Get16(b); packet.right = Get16(b + 2); break;
     case Type::Bye: break;
+    case Type::Video:
+        packet.frame = Get32(b); packet.index = Get16(b + 4); packet.count = Get16(b + 6);
+        packet.key = b[8] & 1; packet.payload_size = uint16_t(payload);
+        packet.payload = b + kVideoMetaBytes;
+        if (!packet.count || packet.index >= packet.count) return false;
+        break;
+    case Type::KeyRequest: break;
     }
     return true;
 }

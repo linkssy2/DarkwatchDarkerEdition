@@ -23,6 +23,12 @@ namespace darkwatch::coop {
 bool FullscreenLayout(const uint8_t* base, uint32_t entry, uint32_t& player);
 // The guest's frame raster while a level created one, else 0.
 uint32_t GuestFrameRaster();
+// Any thread: guest address of the guest target's pixels (the renderer's target key), else 0.
+uint32_t GuestFramePixels();
+// Any thread: the guest target's D3D texture header, else 0.
+uint32_t GuestFrameTexture();
+// Any thread: the guest raster's size inside that target.
+void GuestFrameSize(uint32_t& width, uint32_t& height);
 // During F9B1D: the view being created belongs to the network guest's controller.
 bool CreatingGuestView(bool coop, uint32_t player);
 } // namespace darkwatch::coop

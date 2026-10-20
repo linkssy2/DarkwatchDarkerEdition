@@ -68,8 +68,9 @@ uint32_t Call(const X86Context& ctx, uint8_t* base, void (*fn)(X86Context&, uint
 
 // The guest's full-size targets. They live for the process, so cameras of any level
 // can take sub-rasters of them and the original destructor frees only those.
-struct Target {uint32_t frame = 0, depth = 0, width = 0, height = 0;};
+struct Target {uint32_t frame = 0, depth = 0, width = 0, height = 0, pixels = 0;};
 Target g_target;
+std::atomic<uint32_t> g_target_texture{0}, g_target_width{0}, g_target_height{0};  // for the render thread
 std::atomic<uint32_t> g_guest_camera{0};
 thread_local uint32_t t_hud_player_camera = 0;
 
@@ -103,18 +104,28 @@ bool Redirect(const X86Context& ctx, uint8_t* base, uint32_t camera, uint32_t re
     if (!width || !height || width > 4096 || height > 4096) return false;
     if (g_target.width != width || g_target.height != height) {
         // A different frame buffer size retires the old pair; it is small and stays allocated.
-        const uint32_t frame = Call(ctx, base, sub_001222C0, {width, height, frame_bits, kRasterCameraTexture}, resume);
-        const uint32_t depth = frame ? Call(ctx, base, sub_001222C0, {width, height, depth_bits, kRasterZBuffer}, resume) : 0;
+        // The driver makes camera textures swizzled, which needs power-of-two sides: asked for
+        // 640x480 it made 128x32. The views use the top-left frame-sized area through sub-rasters.
+        auto pow2 = [](uint32_t v) {uint32_t p = 1; while (p < v) p <<= 1; return p;};
+        const uint32_t alloc_w = pow2(width), alloc_h = pow2(height);
+        const uint32_t frame = Call(ctx, base, sub_001222C0, {alloc_w, alloc_h, frame_bits, kRasterCameraTexture}, resume);
+        const uint32_t depth = frame ? Call(ctx, base, sub_001222C0, {alloc_w, alloc_h, depth_bits, kRasterZBuffer}, resume) : 0;
         if (!frame || !depth) {
             if (frame) Call(ctx, base, sub_00122160, {frame}, resume);
             LOG_FIRST(2, "coop: guest target %ux%u could not be created", width, height);
             return false;
         }
-        g_target = {frame, depth, width, height};
-        // The first driver word is the D3D surface (display) or texture (camera texture).
+        // The first driver word is the D3D surface (display) or texture (camera texture);
+        // a texture header's +4 is the physical address of its pixels, the renderer's key.
         const uint32_t ext = Committed(kRasterExtensionOffset, 4) ? Read(base, kRasterExtensionOffset) : 0;
-        LOGR("coop: guest target %ux%u frame %08X (D3D %08X) depth %08X; display frame %08X (D3D %08X)",
-             width, height, frame, ext ? Read(base, frame + ext) : 0, depth, frame_parent,
+        const uint32_t texture = ext && Committed(frame + ext, 4) ? Read(base, frame + ext) : 0;
+        const uint32_t pixels = texture && Committed(texture, 8) ? mem::VirtualFromPhysical(Read(base, texture + 4)) : 0;
+        g_target = {frame, depth, width, height, pixels};
+        g_target_texture = texture; g_target_width = width; g_target_height = height;
+        LOGR("coop: guest target %ux%u frame %08X (D3D %08X: %08X %08X %08X %08X %08X, pixels %08X) depth %08X; "
+             "display frame %08X (D3D %08X)", width, height, frame, texture,
+             texture ? Read(base, texture) : 0, texture ? Read(base, texture + 4) : 0, texture ? Read(base, texture + 8) : 0,
+             texture ? Read(base, texture + 12) : 0, texture ? Read(base, texture + 16) : 0, pixels, depth, frame_parent,
              ext ? Read(base, frame_parent + ext) : 0);
     }
     const uint32_t rect = ctx.esp - 0x40;  // RwRect {x, y, w, h}, below the call frames
@@ -245,6 +256,16 @@ void DarkwatchCoopHudCreated(X86Context& ctx, uint8_t* base) {
 
 namespace darkwatch::coop {
 uint32_t GuestFrameRaster() {return g_guest_camera.load() ? g_target.frame : 0;}
+// The driver may place the texture's pixels only when it first renders to it, so the
+// header is read when asked, not when the target was made.
+uint32_t GuestFramePixels() {
+    const uint32_t texture = g_guest_camera.load() ? g_target_texture.load() : 0;
+    if (!texture || !Committed(texture, 8)) return 0;
+    const uint32_t physical = Read(mem::Base(), texture + 4);
+    return physical ? mem::VirtualFromPhysical(physical) : 0;
+}
+uint32_t GuestFrameTexture() {return g_guest_camera.load() ? g_target_texture.load() : 0;}
+void GuestFrameSize(uint32_t& width, uint32_t& height) {width = g_target_width.load(); height = g_target_height.load();}
 bool CreatingGuestView(bool coop, uint32_t player) {return coop && GuestView(player);}
 
 bool FullscreenLayout(const uint8_t* base, uint32_t entry, uint32_t& player) {

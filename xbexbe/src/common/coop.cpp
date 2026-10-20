@@ -30,6 +30,7 @@ std::optional<Packet> Session::Receive(const Packet& packet, Address from, uint6
         if (Active(now_ms) && *guest_ != from) {reply.status = Status::Busy; return reply;}
         if (!Active(now_ms) || packet.token != token_) {
             token_ = packet.token; sequence_ = packet.sequence; pad_ = {};
+            key_request_ = true;  // a new viewer starts from a key frame
             LOGR("coop: guest joined");
         }
         guest_ = from; last_ms_ = now_ms;
@@ -39,6 +40,9 @@ std::optional<Packet> Session::Receive(const Packet& packet, Address from, uint6
     if (packet.type == Type::Pad) {
         last_ms_ = now_ms;
         if (Newer(packet.sequence, sequence_)) {sequence_ = packet.sequence; pad_ = packet.pad;}
+    } else if (packet.type == Type::KeyRequest) {
+        last_ms_ = now_ms;
+        key_request_ = true;
     } else if (packet.type == Type::Bye) {
         guest_.reset();
         LOGR("coop: guest left");
@@ -68,6 +72,8 @@ struct Host {
     Session session;
     uint16_t left = 0, right = 0;
     bool rumble_changed = false;
+    SOCKET socket = INVALID_SOCKET;   // sendto is safe beside the network thread's recvfrom
+    std::atomic<uint32_t> video_frame{0};
     explicit Host(std::string code) : session(std::move(code)) {}
 };
 std::atomic<Host*> g_host{nullptr};
@@ -162,6 +168,7 @@ void Start() {
     }
     // Lives for the process: the guest's input threads may read it until exit.
     auto* host = new Host(settings.code);
+    host->socket = s;
     g_host = host;
     std::thread(Serve, host, s).detach();
     LOGR("coop: hosting on UDP %u", settings.port);
@@ -179,6 +186,40 @@ void Pad(int port, input::Pad& pad) {
     pad.buttons = state.buttons;
     std::copy(std::begin(state.analog), std::end(state.analog), std::begin(pad.analog));
     pad.lx = state.lx; pad.ly = state.ly; pad.rx = state.rx; pad.ry = state.ry;
+}
+
+bool SendVideo(const uint8_t* data, size_t size, bool key) {
+    Host* host = g_host.load();
+    if (!host || !size) return false;
+    std::optional<Address> guest;
+    uint32_t token = 0;
+    {
+        std::lock_guard lock(host->lock);
+        guest = host->session.Guest(NowMs());
+        token = host->session.Token();
+    }
+    const size_t count = (size + kVideoChunk - 1) / kVideoChunk;
+    if (!guest || count > 0xFFFF) return false;
+    Packet packet;
+    packet.type = Type::Video;
+    packet.token = token;
+    packet.frame = packet.sequence = host->video_frame++;
+    packet.count = uint16_t(count);
+    packet.key = key;
+    for (size_t i = 0; i < count; ++i) {
+        packet.index = uint16_t(i);
+        packet.payload = data + i * kVideoChunk;
+        packet.payload_size = uint16_t(std::min(kVideoChunk, size - i * kVideoChunk));
+        Send(host->socket, packet, *guest);
+    }
+    return true;
+}
+
+bool TakeKeyRequest() {
+    Host* host = g_host.load();
+    if (!host) return false;
+    std::lock_guard lock(host->lock);
+    return host->session.TakeKeyRequest();
 }
 
 bool GuestActive() {

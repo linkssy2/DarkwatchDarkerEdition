@@ -40,6 +40,9 @@ FIXTURE = r'''
 #include "core/log.h"
 #include "common/coop.h"
 #include "tools/coop_keys.h"
+#include "tools/coop_frames.h"
+#include <algorithm>
+#include <vector>
 #define CHECK(x) do{if(!(x)){std::fprintf(stderr,"line%d: %s\n",__LINE__,#x);std::exit(90);}}while(0)
 using namespace darkwatch::coop;
 
@@ -57,10 +60,17 @@ static void Protocol(){
  CHECK(!Decode(d,n-1,out)&&!Decode(d,n+1,out)&&!Decode(d,15,out));
  d[0]^=1;CHECK(!Decode(d,n,out));d[0]^=1;
  d[5]=9;CHECK(!Decode(d,n,out));d[5]=uint8_t(Type::Pad);
- d[4]=2;CHECK(!Decode(d,n,out));  // only a Hello survives a version mismatch
- n=Encode(h,d);d[4]=2;CHECK(Decode(d,n,out)&&out.version==2&&out.type==Type::Hello);
+ d[4]=9;CHECK(!Decode(d,n,out));  // only a Hello survives a version mismatch
+ n=Encode(h,d);d[4]=9;CHECK(Decode(d,n,out)&&out.version==9&&out.type==Type::Hello);
  n=Encode(w,d);d[kHeaderBytes]=9;CHECK(!Decode(d,n,out));
  CHECK(Newer(1,0)&&!Newer(0,1)&&!Newer(5,5)&&Newer(0,0xFFFFFFFF)&&!Newer(0xFFFFFFFF,0));
+ uint8_t chunk[kVideoChunk];for(size_t i=0;i<kVideoChunk;++i)chunk[i]=uint8_t(i*7);
+ Packet v;v.type=Type::Video;v.frame=0x10203;v.index=2;v.count=3;v.key=true;v.payload=chunk;v.payload_size=uint16_t(kVideoChunk);
+ n=Encode(v,d);CHECK(n==kMaxPacket&&Decode(d,n,out)&&out.frame==0x10203&&out.index==2&&out.count==3&&out.key&&out.payload_size==kVideoChunk&&!std::memcmp(out.payload,chunk,kVideoChunk));
+ CHECK(!Decode(d,n-1,out));d[kHeaderBytes+6]=2;CHECK(!Decode(d,n,out));d[kHeaderBytes+6]=0;d[kHeaderBytes+7]=0;CHECK(!Decode(d,n,out));
+ v.payload_size=5;v.key=false;n=Encode(v,d);CHECK(n==kHeaderBytes+kVideoMetaBytes+5&&Decode(d,n,out)&&!out.key&&out.payload_size==5&&out.payload[4]==chunk[4]);
+ v.payload_size=uint16_t(kVideoChunk+1);CHECK(!Encode(v,d));v.payload_size=3;v.payload=nullptr;CHECK(!Encode(v,d));
+ Packet k;k.type=Type::KeyRequest;k.token=9;CHECK(Round(k).type==Type::KeyRequest&&Round(k).token==9);
 }
 
 static void Keys(){using darkwatch::coop::keys::Merge;
@@ -77,6 +87,35 @@ static void Keys(){using darkwatch::coop::keys::Merge;
  p={};Merge(p,only({}),3,-2,8000);CHECK(p.rx==6400&&p.ry==4266);  // mouse up looks up
  p={};Merge(p,only({}),1000,1000,8000);CHECK(p.rx==32767&&p.ry==-32768);
  p={};p.rx=500;Merge(p,only({}),5,0,0);CHECK(p.rx==500);Merge(p,only({}),5,0,300000);CHECK(p.rx==500);  // no or stale timing
+ darkwatch::coop::keys::MouseVelocity v;int64_t dx=0,dy=0;uint64_t w=0;
+ v.Stick(1000,dx,dy,w);CHECK(dx==0&&dy==0&&w==32000);
+ // Bursts every 16 ms of 6 counts read as a steady 3 counts per 8 ms at every tick in between.
+ int16_t lo=32767,hi=0;
+ for(uint64_t t=100000;t<200000;t+=8000){if((t/8000)%2==0)v.Add(6,-2,t);v.Stick(t,dx,dy,w);p={};Merge(p,only({}),dx,dy,w);
+  if(t>=140000){lo=std::min(lo,p.rx);hi=std::max(hi,p.rx);CHECK(p.ry>0);}}
+ CHECK(lo>0&&hi-lo<=lo/2);
+ v.Add(0,0,200000);v.Stick(200000+32000,dx,dy,w);CHECK(dx==0&&dy==0);  // centred once the window passes
+}
+
+static std::vector<Packet> Chunks(uint32_t frame,const std::vector<uint8_t>& bytes,bool key){std::vector<Packet> out;
+ const size_t count=(bytes.size()+kVideoChunk-1)/kVideoChunk;
+ for(size_t i=0;i<count;++i){Packet p;p.type=Type::Video;p.frame=frame;p.index=uint16_t(i);p.count=uint16_t(count);p.key=key;
+  p.payload=bytes.data()+i*kVideoChunk;p.payload_size=uint16_t(std::min(kVideoChunk,bytes.size()-i*kVideoChunk));out.push_back(p);}
+ return out;}
+static void Frames(){FrameAssembler a;std::vector<uint8_t> f;bool key=false;
+ std::vector<uint8_t> b0(2500),b1(1000),b2(3000),b3(10);for(size_t i=0;i<b0.size();++i)b0[i]=uint8_t(i);for(size_t i=0;i<b1.size();++i)b1[i]=uint8_t(i*3);
+ for(size_t i=0;i<b2.size();++i)b2[i]=uint8_t(i*5);
+ auto c0=Chunks(10,b0,false);for(auto& p:c0)CHECK(!a.Add(p,f,key));CHECK(a.NeedKey());  // first frame must be a key
+ a.Reset();c0=Chunks(10,b0,true);CHECK(!a.Add(c0[2],f,key)&&!a.Add(c0[0],f,key)&&!a.Add(c0[0],f,key));
+ CHECK(a.Add(c0[1],f,key)&&key&&f==b0&&!a.NeedKey());  // out of order, duplicate ignored
+ auto c1=Chunks(11,b1,false);CHECK(a.Add(c1[0],f,key)&&!key&&f==b1);
+ CHECK(!a.Add(c0[1],f,key));  // late chunk of an older frame
+ auto c2=Chunks(12,b2,false);CHECK(!a.Add(c2[0],f,key));  // frame 12 loses chunks 1 and 2
+ auto c3=Chunks(13,b3,false);CHECK(!a.Add(c3[0],f,key)&&a.NeedKey());  // 13 depends on lost 12
+ auto c4=Chunks(14,b1,false);CHECK(!a.Add(c4[0],f,key)&&a.NeedKey());
+ auto c5=Chunks(16,b2,true);CHECK(!a.Add(c5[0],f,key)&&!a.Add(c5[1],f,key)&&a.Add(c5[2],f,key)&&key&&f==b2&&!a.NeedKey());
+ auto c6=Chunks(18,b3,false);CHECK(!a.Add(c6[0],f,key)&&a.NeedKey());  // 17 skipped entirely
+ Packet bad=c6[0];bad.index=1;CHECK(!a.Add(bad,f,key));bad=c6[0];bad.payload_size=uint16_t(kVideoChunk+1);CHECK(!a.Add(bad,f,key));
 }
 
 static Packet Hello(uint32_t token,const char* code,uint32_t seq=0){Packet h;h.type=Type::Hello;h.token=token;h.sequence=seq;SetCode(h,code);return h;}
@@ -88,6 +127,9 @@ static void Sessions(){
  Packet old=Hello(5,"code");old.version=0;r=s.Receive(old,a,10);CHECK(r&&r->status==Status::BadVersion&&!s.Active(10));
  CHECK(!s.Receive(PadPacket(5,1,1),a,10)&&!s.Active(10));  // pads need a session
  r=s.Receive(Hello(5,"code",100),a,20);CHECK(r&&r->status==Status::Accepted&&s.Active(20)&&s.Current(pad,20)&&pad.buttons==0);
+ CHECK(s.TakeKeyRequest()&&!s.TakeKeyRequest());  // joining asks for a key frame
+ Packet kr;kr.type=Type::KeyRequest;kr.token=6;s.Receive(kr,a,20);CHECK(!s.TakeKeyRequest());  // stale token
+ kr.token=5;s.Receive(kr,b,20);CHECK(!s.TakeKeyRequest());kr.token=5;s.Receive(kr,a,20);CHECK(s.TakeKeyRequest()&&!s.TakeKeyRequest());
  CHECK(s.Guest(20)==a);
  r=s.Receive(Hello(9,"code"),b,30);CHECK(r&&r->status==Status::Busy&&s.Guest(30)==a);
  s.Receive(PadPacket(5,101,0x11),a,40);CHECK(s.Current(pad,40)&&pad.buttons==0x11);
@@ -108,7 +150,8 @@ struct Guest{SOCKET s;sockaddr_in host{};
  explicit Guest(uint16_t port){s=socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP);CHECK(s!=INVALID_SOCKET);DWORD t=500;setsockopt(s,SOL_SOCKET,SO_RCVTIMEO,(const char*)&t,sizeof(t));
   host.sin_family=AF_INET;host.sin_port=htons(port);host.sin_addr.s_addr=htonl(INADDR_LOOPBACK);}
  void Send(const Packet& p){uint8_t d[kMaxPacket];size_t n=Encode(p,d);CHECK(sendto(s,(const char*)d,int(n),0,(sockaddr*)&host,sizeof(host))==int(n));}
- bool Receive(Packet& p,Type type){for(int i=0;i<40;++i){uint8_t d[kMaxPacket+1];int n=recv(s,(char*)d,sizeof(d),0);if(n<=0)return false;if(Decode(d,size_t(n),p)&&p.type==type)return true;}return false;}
+ uint8_t d[kMaxPacket+1];  // Video payloads point here until the next Receive
+ bool Receive(Packet& p,Type type){for(int i=0;i<40;++i){int n=recv(s,(char*)d,sizeof(d),0);if(n<=0)return false;if(Decode(d,size_t(n),p)&&p.type==type)return true;}return false;}
 };
 static input::Pad Local(){input::Pad p;p.connected=true;p.buttons=0x0F;p.lx=100;return p;}
 static bool Wait(auto done){for(int i=0;i<200;++i){if(done())return true;std::this_thread::sleep_for(std::chrono::milliseconds(5));}return false;}
@@ -137,6 +180,15 @@ static void HostPath(uint16_t port){
  pad={};Pad(1,pad);CHECK(pad.connected&&pad.analog[0]==255&&pad.analog[7]==128&&pad.lx==-5&&pad.ry==-32768);
  pad=Local();Pad(0,pad);CHECK(pad.buttons==0x0F);pad=Local();Pad(2,pad);CHECK(pad.buttons==0x0F);
  pad=Local();Pad(1,pad);CHECK(pad.buttons==0x1234&&pad.lx==-5);  // the guest replaces a local port-1 pad
+ CHECK(TakeKeyRequest()&&!TakeKeyRequest());
+ Packet kreq;kreq.type=Type::KeyRequest;kreq.token=77;g.Send(kreq);CHECK(Wait([]{return TakeKeyRequest();}));
+ std::vector<uint8_t> frame(3000);for(size_t i=0;i<frame.size();++i)frame[i]=uint8_t(i*13+1);
+ CHECK(SendVideo(frame.data(),frame.size(),true));
+ {std::vector<uint8_t> got(frame.size());uint32_t seen=0,id=0;
+  for(int i=0;i<3;++i){CHECK(g.Receive(p,Type::Video));CHECK(p.count==3&&p.key&&p.token==77&&p.index<3);
+   if(i)CHECK(p.frame==id);id=p.frame;std::memcpy(got.data()+p.index*kVideoChunk,p.payload,p.payload_size);seen|=1u<<p.index;}
+  CHECK(seen==7&&got==frame);}
+ CHECK(!SendVideo(frame.data(),0,false));
  l=40000;r=123;Rumble(1,l,r);CHECK(l==0&&r==0);
  CHECK(g.Receive(p,Type::Rumble)&&p.token==77);
  while(p.left!=40000)CHECK(g.Receive(p,Type::Rumble));CHECK(p.right==123);
@@ -153,8 +205,8 @@ static void HostPath(uint16_t port){
 
 int main(int argc,char** argv){
  WSADATA wsa;CHECK(!WSAStartup(MAKEWORD(2,2),&wsa));
- Protocol();Keys();Sessions();HostPath(uint16_t(std::atoi(argv[1])));
- std::puts("coop: wire format, guest keys, session rules and live UDP host passed");
+ Protocol();Keys();Frames();Sessions();HostPath(uint16_t(std::atoi(argv[1])));
+ std::puts("coop: wire format, guest keys, frame reassembly, session rules and live UDP host passed");
 }
 '''
 

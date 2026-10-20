@@ -1,6 +1,6 @@
 // Network co-op guest: sends one local controller, or keyboard and mouse while its window
-// has focus, to a hosting Darkwatch as player 2 and plays the host's rumble. Video is not
-// carried yet; use a screen-sharing tool that does not forward input to the host.
+// has focus, to a hosting Darkwatch as player 2, plays the host's rumble and shows player
+// 2's view, which the host streams as H.264.
 //   darkwatch_coop_client <host>[:port] <code>
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -21,7 +21,10 @@
 #include <random>
 #include <string>
 #include <thread>
+#include <vector>
 #include "common/coop_protocol.h"
+#include "common/coop_video.h"
+#include "tools/coop_frames.h"
 #include "tools/coop_keys.h"
 
 using namespace darkwatch::coop;
@@ -42,6 +45,12 @@ uint64_t NowMs() {return NowUs() / 1000;}
 HWND g_window = nullptr;
 bool g_grabbed = false, g_swallow_click = false;
 int64_t g_mouse_dx = 0, g_mouse_dy = 0;
+
+// The latest decoded picture of player 2's view; same thread as the window.
+std::vector<uint8_t> g_picture;
+uint32_t g_picture_w = 0, g_picture_h = 0;
+uint64_t g_picture_ms = 0;
+constexpr uint64_t kPictureStaleMs = 1500;  // then the instructions show again
 
 void Grab(bool on) {
     g_grabbed = on;
@@ -76,12 +85,40 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
     case WM_KEYDOWN: if (wparam == VK_F8 && g_grabbed) Grab(false); return 0;
     case WM_ACTIVATE: if (LOWORD(wparam) == WA_INACTIVE && g_grabbed) Grab(false); break;
     case WM_CLOSE: g_stop = true; return 0;
+    case WM_ERASEBKGND: return 1;  // WM_PAINT covers the whole client area
     case WM_PAINT: {
         PAINTSTRUCT ps;
         HDC dc = BeginPaint(hwnd, &ps);
         RECT r;
-        GetClientRect(hwnd, &r); InflateRect(&r, -12, -10);
-        DrawTextW(dc, L"Click here to play player 2 with keyboard and mouse. A controller always works.\n"
+        GetClientRect(hwnd, &r);
+        if (!g_picture.empty() && NowMs() - g_picture_ms < kPictureStaleMs) {
+            // Letterboxed to the picture's aspect.
+            const int cw = r.right, ch = r.bottom;
+            int w = cw, h = int(int64_t(cw) * g_picture_h / g_picture_w);
+            if (h > ch) {h = ch; w = int(int64_t(ch) * g_picture_w / g_picture_h);}
+            const int x = (cw - w) / 2, y = (ch - h) / 2;
+            HBRUSH black = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+            RECT bars[4]{{0, 0, cw, y}, {0, y + h, cw, ch}, {0, y, x, y + h}, {x + w, y, cw, y + h}};
+            for (const RECT& bar : bars) FillRect(dc, &bar, black);
+            BITMAPINFO bi{};
+            bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
+            bi.bmiHeader.biWidth = LONG(g_picture_w);
+            bi.bmiHeader.biHeight = -LONG(g_picture_h);  // top-down
+            bi.bmiHeader.biPlanes = 1;
+            bi.bmiHeader.biBitCount = 32;
+            bi.bmiHeader.biCompression = BI_RGB;
+            SetStretchBltMode(dc, COLORONCOLOR);
+            StretchDIBits(dc, x, y, w, h, 0, 0, int(g_picture_w), int(g_picture_h), g_picture.data(), &bi,
+                          DIB_RGB_COLORS, SRCCOPY);
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+        FillRect(dc, &r, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+        SetTextColor(dc, RGB(220, 220, 220));
+        SetBkMode(dc, TRANSPARENT);
+        InflateRect(&r, -12, -10);
+        DrawTextW(dc, L"Waiting for player 2's view from the host...\n\n"
+                      L"Click here to play player 2 with keyboard and mouse. A controller always works.\n"
                       L"WASD move, mouse aims, left click fires, right click = left trigger, Space/E = A, B = B,\n"
                       L"R = X, Q = Y, G = Black, Shift = White, Esc/Enter = Start, Tab = Back, arrows = D-pad.\n"
                       L"F8 or Alt+Tab releases the mouse. Keys are not sent while this window is unfocused.",
@@ -98,11 +135,13 @@ bool OpenWindow() {
     wc.lpfnWndProc = WindowProc;
     wc.hInstance = GetModuleHandleW(nullptr);
     wc.hCursor = LoadCursorA(nullptr, IDC_ARROW);
-    wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+    wc.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     wc.lpszClassName = L"DarkwatchCoopClient";
     if (!RegisterClassW(&wc)) return false;
-    g_window = CreateWindowExW(0, wc.lpszClassName, L"", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-                               CW_USEDEFAULT, CW_USEDEFAULT, 680, 170, nullptr, nullptr, wc.hInstance, nullptr);
+    RECT size{0, 0, 1280, 720};  // client area of the streamed view
+    AdjustWindowRect(&size, WS_OVERLAPPEDWINDOW, FALSE);
+    g_window = CreateWindowExW(0, wc.lpszClassName, L"", WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
+                               size.right - size.left, size.bottom - size.top, nullptr, nullptr, wc.hInstance, nullptr);
     if (!g_window) return false;
     Grab(false);  // sets the title
     RAWINPUTDEVICE mouse{1, 2, 0, g_window};  // generic desktop mouse, delivered while focused
@@ -180,21 +219,32 @@ int main(int argc, char** argv) {
     if (s == INVALID_SOCKET) {std::fprintf(stderr, "Could not open a UDP socket.\n"); return 1;}
     BOOL report = FALSE; DWORD bytes = 0;
     WSAIoctl(s, SIO_UDP_CONNRESET, &report, sizeof(report), nullptr, 0, &bytes, nullptr, nullptr);
-    u_long nonblocking = 1;
-    ioctlsocket(s, FIONBIO, &nonblocking);
+    int receive_buffer = 2 << 20;  // a burst of video chunks while the window paints
+    setsockopt(s, SOL_SOCKET, SO_RCVBUF, reinterpret_cast<const char*>(&receive_buffer), sizeof(receive_buffer));
+    // Readable data or window input wakes the loop; the socket becomes non-blocking.
+    WSAEVENT readable = WSACreateEvent();
+    WSAEventSelect(s, readable, FD_READ);
 
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");  // the game window usually has focus
     if (!SDL_Init(SDL_INIT_GAMEPAD)) {std::fprintf(stderr, "SDL: %s\n", SDL_GetError()); return 1;}
     SetConsoleCtrlHandler(OnConsole, TRUE);
-    if (!OpenWindow()) std::fprintf(stderr, "The keyboard and mouse window could not open; controllers still work.\n");
-    timeBeginPeriod(1);  // an 8 ms sleep, not the default 15.6 ms tick
+    if (!OpenWindow()) std::fprintf(stderr, "The window could not open; controllers still work, without video.\n");
+    timeBeginPeriod(1);  // an 8 ms wait, not the default 15.6 ms tick
+    const bool video_ready = darkwatch::coop::video::Startup();
+    if (!video_ready) std::fprintf(stderr, "Media Foundation is unavailable; no video.\n");
+    std::unique_ptr<darkwatch::coop::video::Decoder> decoder;
+    FrameAssembler frames;
+    std::vector<uint8_t> encoded;
+    uint64_t key_requested = 0;
 
     hello.token = std::random_device{}() | 1u;
     uint32_t sequence = 0;
     bool joined = false;
     uint64_t hello_sent = 0, last_heard = 0;
     SDL_Gamepad* pad = nullptr;
-    uint64_t tick_us = NowUs();
+    uint64_t tick_us = 0;
+    constexpr uint64_t kInputIntervalUs = 8000;
+    keys::MouseVelocity mouse;
     std::printf("Connecting to %s ...\n", argv[1]);
     constexpr uint64_t kHostTimeoutMs = 3000;
     while (!g_stop) {
@@ -230,26 +280,53 @@ int main(int argc, char** argv) {
                 }
             } else if (packet.type == Type::Rumble && pad) {
                 SDL_RumbleGamepad(pad, packet.left, packet.right, 200);  // refreshed by the host's keepalive
+            } else if (packet.type == Type::Video && video_ready && g_window) {
+                bool key = false;
+                if (!frames.Add(packet, encoded, key)) continue;
+                if (!decoder) decoder = darkwatch::coop::video::Decoder::Create();
+                if (!decoder) {std::fprintf(stderr, "The H.264 decoder is unavailable; no video.\n"); continue;}
+                const bool decoded = decoder->Decode(encoded.data(), encoded.size(), [&](const uint8_t* bgra, uint32_t w, uint32_t h) {
+                    g_picture.assign(bgra, bgra + size_t(w) * h * 4);
+                    g_picture_w = w; g_picture_h = h; g_picture_ms = now;
+                    InvalidateRect(g_window, nullptr, FALSE);
+                });
+                if (!decoded) frames.Reset();  // resynchronise from the next key frame
             }
+        }
+        if (joined && (frames.NeedKey() || g_picture.empty()) && now - key_requested >= 250) {
+            Packet request;
+            request.type = Type::KeyRequest; request.token = hello.token; request.sequence = sequence;
+            Send(s, host, request);
+            key_requested = now;
         }
         if (joined && now - last_heard > kHostTimeoutMs) {
             joined = false;
+            frames.Reset();
+            decoder.reset();  // the next session's stream starts over
             std::printf("Lost the host; reconnecting...\n");
         }
         if (!joined && now - hello_sent >= 500) {
             hello.sequence = sequence;
             Send(s, host, hello); hello_sent = now;
         }
-        if (joined) {
+        const uint64_t now_us = NowUs();
+        mouse.Add(g_mouse_dx, g_mouse_dy, now_us);
+        g_mouse_dx = g_mouse_dy = 0;
+        // Video wakes the loop for every datagram; input still goes out at a steady ~120 Hz.
+        if (joined && now_us - tick_us >= kInputIntervalUs) {
             Packet state;
             state.type = Type::Pad; state.token = hello.token; state.sequence = ++sequence;
             state.pad = Read(pad);
-            const uint64_t now_us = NowUs();
-            keys::Merge(state.pad, KeyHeld, g_mouse_dx, g_mouse_dy, now_us - tick_us);
-            g_mouse_dx = g_mouse_dy = 0; tick_us = now_us;
+            int64_t dx = 0, dy = 0;
+            uint64_t window_us = 0;
+            mouse.Stick(now_us, dx, dy, window_us);
+            keys::Merge(state.pad, KeyHeld, dx, dy, window_us);
+            tick_us = now_us;
             Send(s, host, state);
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(8));  // ~120 Hz
+        // Wakes on a datagram or window input, else at the next input tick.
+        MsgWaitForMultipleObjects(1, &readable, FALSE, 8, QS_ALLINPUT);
+        WSAResetEvent(readable);
     }
     if (joined) {
         Packet bye;
@@ -259,7 +336,10 @@ int main(int argc, char** argv) {
     if (g_window) {Grab(false); DestroyWindow(g_window);}
     if (pad) SDL_CloseGamepad(pad);
     SDL_Quit();
+    decoder.reset();
+    if (video_ready) darkwatch::coop::video::Shutdown();
     timeEndPeriod(1);
+    WSACloseEvent(readable);
     closesocket(s);
     WSACleanup();
     return 0;

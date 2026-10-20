@@ -23,6 +23,30 @@ inline int16_t MouseAxis(int64_t counts, uint64_t elapsed_us) {
     return int16_t(std::clamp(double(counts) * 17066667.0 / double(elapsed_us), -32768.0, 32767.0));
 }
 
+// Raw input arrives in uneven bursts, so one tick's velocity flickers between large and
+// zero. The stick follows the counts of the last kWindowUs instead: steady while the mouse
+// moves, centred once the window passes after it stops.
+class MouseVelocity {
+public:
+    static constexpr uint64_t kWindowUs = 32000;
+    void Add(int64_t dx, int64_t dy, uint64_t now_us) {
+        if (!dx && !dy) return;
+        samples_[next_] = {now_us, dx, dy};
+        next_ = (next_ + 1) % kSamples;
+    }
+    void Stick(uint64_t now_us, int64_t& dx, int64_t& dy, uint64_t& window_us) const {
+        dx = dy = 0;
+        for (const Sample& s : samples_)
+            if (s.time && now_us - s.time < kWindowUs) {dx += s.dx; dy += s.dy;}
+        window_us = kWindowUs;
+    }
+private:
+    static constexpr size_t kSamples = 64;  // above the input rate within one window
+    struct Sample {uint64_t time = 0; int64_t dx = 0, dy = 0;};
+    Sample samples_[kSamples];
+    size_t next_ = 0;
+};
+
 // Adds held keys to a controller state; keys win only where they are active.
 template <class Held>
 void Merge(PadState& p, Held held, int64_t mouse_dx, int64_t mouse_dy, uint64_t elapsed_us) {

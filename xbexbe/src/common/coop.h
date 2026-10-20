@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include "common/coop_protocol.h"
 
 namespace input { struct Pad; }
@@ -44,12 +45,19 @@ public:
     std::optional<Address> Guest(uint64_t now_ms) const {return Active(now_ms) ? guest_ : std::nullopt;}
     uint32_t Token() const {return token_;}
     void Leave() {guest_.reset();}
+    // The guest joined or lost video: the next frame must be a key frame.
+    bool TakeKeyRequest() {return std::exchange(key_request_, false);}
 private:
     std::string code_;
     std::optional<Address> guest_;
     uint32_t token_ = 0, sequence_ = 0;
     uint64_t last_ms_ = 0;
     PadState pad_;
+    bool key_request_ = false;
 };
+
+// Host video: sends one encoded frame to the guest in Video chunks; false without a guest.
+bool SendVideo(const uint8_t* data, size_t size, bool key);
+bool TakeKeyRequest();  // the guest asked for a key frame since the last call
 
 } // namespace darkwatch::coop
