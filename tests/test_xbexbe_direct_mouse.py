@@ -29,6 +29,16 @@ void darkwatch::ControlsLoad(const void* t){controls_load_table=t;}
 void darkwatch::ControlsSave(void* t){controls_save_table=t;}
 void darkwatch::view::Load(const void* t){view_load_table=t;}
 void darkwatch::view::Save(void* t){view_save_table=t;}
+static const void* coop_load_table=nullptr;
+static void* coop_save_table=nullptr;
+void darkwatch::coop::Load(const void* t){coop_load_table=t;}
+void darkwatch::coop::Save(void* t){coop_save_table=t;}
+void darkwatch::coop::Start(){}
+void darkwatch::coop::Pad(int,input::Pad&){}
+void darkwatch::coop::Rumble(int,uint16_t&,uint16_t&){}
+bool darkwatch::coop::GuestMouse(darkwatch::coop::Session::Mouse&){return false;}
+void darkwatch::coop::GuestMouseStick(input::Pad&){}
+void darkwatch::coop::NoteCameraStack(unsigned,uint32_t){}
 bool darkwatch::ControlsMessage(void*,uint32_t,uintptr_t,intptr_t,intptr_t*){return false;}
 // The graphics page has its own actual ImGui/input fixture; isolate direct aiming here.
 void DarkwatchGraphicsInit() {}
@@ -71,7 +81,7 @@ static void Target(){
  memory[0x3120]=1;memory[0x3121]=0;W(0x7008,0x7000);W(0x7010,0x700C);
 }
 static void Reset(uint32_t r=0x421FE0){
- std::memset(memory,0,sizeof(memory));blocked.clear();messages.clear();g_mouse_pair={};g_mouse_logs=0;g_mouse_log_us=0;
+ std::memset(memory,0,sizeof(memory));blocked.clear();messages.clear();g_mouse_pairs[0]={};g_mouse_logs=0;g_mouse_log_us=0;
  state=0x1000;owner=0x2000;route=r;dt_seconds=.02f;Target();controls={};
  input::SetActive(false);input::SetMouseToStick(true);app::kGame.init();input::SetActive(true);Frame();
  Prepare(0);ApplyMouseAim(c,memory,0);CHECK(c.st[c.top]==10); // First local identity discards the old snapshot.
@@ -107,7 +117,7 @@ int main(){
  Reset();memory[owner+0x139]=1;Frame(4,20);Yaw(-.2);Pitch(-1);
  // Y must come from the yaw-latched generation even if Swap publishes between the pair.
  Reset();Frame(20,40);Yaw(-1);auto generation=input::GetMouseSnapshot().generation;Frame(60,80);
- Pitch(2);CHECK(g_mouse_pair.sample.generation==generation);Yaw(-3);Pitch(4);
+ Pitch(2);CHECK(g_mouse_pairs[0].sample.generation==generation);Yaw(-3);Pitch(4);
  // Nonlocal calls do not consume or invalidate pending local input.
  Reset();Frame(20,40);uint32_t local=owner;owner=0x2200;Target();W(owner+0x30,0x800C);
  Prepare(0);NoChange(0);owner=local;Target();Yaw(-1);Pitch(2);
@@ -156,7 +166,7 @@ int main(){
  Prepare(0);NoChange(0);Prepare(1);CHECK(!Center());NoChange(1);
  CHECK(app::kGame.options.empty()&&app::kGame.load&&app::kGame.save);
  app::kGame.load(memory);app::kGame.save(memory);
- CHECK(controls_load_table==memory&&view_load_table==memory&&controls_save_table==memory&&view_save_table==memory);
+ CHECK(controls_load_table==memory&&view_load_table==memory&&controls_save_table==memory&&view_save_table==memory);CHECK(coop_load_table==memory&&coop_save_table==memory);
  CHECK(app::kGame.message==darkwatch::ControlsMessage);
  // Each latched pair retains one sensitivity even if the UI changes settings between axes.
  Reset();Frame(20,40);Yaw(-1);controls.mouse_millidegrees=100;Pitch(2);

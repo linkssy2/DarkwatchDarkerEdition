@@ -168,6 +168,8 @@ def sources():
         'payload/supported-disc.json': HERE / 'supported-disc.json',
         'payload/runtime/darkwatch_xbe.exe': runtime / 'darkwatch_xbe.exe',
         'payload/runtime/darkwatch_hd_ui_builder.exe': runtime / 'darkwatch_hd_ui_builder.exe',
+        # Network co-op guest; it runs from the package with the runtime's CRT, no disc needed.
+        'payload/runtime/darkwatch_coop_client.exe': runtime / 'darkwatch_coop_client.exe',
         'licenses/XboxXBERecomp.txt': REPO / 'third_party/XboxXBERecomp/LICENSE',
         'licenses/XboxXBERecomp-third-party.txt': REPO / 'third_party/XboxXBERecomp/THIRD_PARTY.txt',
         'licenses/HIDAPI-license.txt': REPO / 'build/xbexbe/_deps/sdl3-src/src/hidapi/LICENSE.txt',

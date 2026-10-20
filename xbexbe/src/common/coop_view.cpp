@@ -1,0 +1,358 @@
+#include "common/coop_view.h"
+#include <array>
+#include <atomic>
+#include <cstring>
+#include <initializer_list>
+#include <utility>
+#include "common/coop.h"
+#include "common/graphics_camera.h"
+#include "app/app.h"
+#include "core/log.h"
+#include "cpu/x86_context.h"
+#include "kernel/memory.h"
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+
+namespace {
+// Original XBE layout table: scale, aspect, x, y, w, h, view index. Two-player entries
+// exist in the main table (index 4, 5) and the alternate table FA11C selects (0, 1).
+using Entry = std::array<uint32_t, 7>;
+struct Split {uint32_t address; Entry original;};
+constexpr uint32_t kTop = 0x3EFEB852, kBottom = 0x3F00A3D7;  // 0.498f height, 0.502f top
+constexpr std::array<Split, 4> kSplits{{
+    {0x004916D8, {0x40000000, 0x402AAAAB, 0, 0, 0x3F800000, kTop, 0}},
+    {0x004916F4, {0x40000000, 0x402AAAAB, 0, kBottom, 0x3F800000, kTop, 1}},
+    {0x004915F8, {0x3FB33333, 0x402AAAAB, 0, 0, 0x3F800000, kTop, 0}},
+    {0x00491614, {0x3FB33333, 0x402AAAAB, 0, kBottom, 0x3F800000, kTop, 1}},
+}};
+constexpr uint32_t kSinglePlayer = 0x00491668;
+// The single-player entry's scale, 4:3 aspect and full rectangle.
+constexpr Entry Fullscreen(uint32_t player) {return {0x3F800000, 0x3FAAAAAB, 0, 0, 0x3F800000, 0x3F800000, player};}
+
+bool Committed(uint32_t address, uint32_t size) {
+    for (uint64_t page = address & ~(uint64_t(mem::kPage) - 1); page < uint64_t(address) + size; page += mem::kPage)
+        if (!mem::IsCommitted(uint32_t(page))) return false;
+    return true;
+}
+bool Matches(const uint8_t* base, uint32_t address, const Entry& entry) {
+    return Committed(address, sizeof(Entry)) && !std::memcmp(base + address, entry.data(), sizeof(Entry));
+}
+std::atomic<bool> g_fullscreen{false};
+
+// RenderWare raster calls the cameras already use (216A09): cdecl, result in eax.
+extern "C" void sub_001222C0(X86Context& ctx, uint8_t* base);  // RwRasterCreate(width, height, depth, type)
+extern "C" void sub_00122260(X86Context& ctx, uint8_t* base);  // RwRasterSubRaster(sub, parent, rect)
+extern "C" void sub_00122160(X86Context& ctx, uint8_t* base);  // RwRasterDestroy(raster)
+constexpr uint32_t kCameraVtable = 0x0043F97C;
+// Camera begin-update (1289C0) renders a type 2 (camera) raster into the surface its parent's
+// driver extension holds, which for the display is the back buffer; a type 5 (camera
+// texture) raster renders into its own texture. The guest's view needs the latter.
+constexpr uint32_t kRasterCameraTexture = 5, kRasterZBuffer = 1;
+constexpr uint32_t kRasterExtensionOffset = 0x004DF098;  // RW Xbox driver's per-raster data
+
+uint32_t Read(const uint8_t* base, uint32_t address) {uint32_t v; std::memcpy(&v, base + address, 4); return v;}
+void Write(uint8_t* base, uint32_t address, uint32_t value) {std::memcpy(base + address, &value, 4);}
+
+// Calls a guest function on scratch stack below the hook's esp, which the guest
+// treats as free; the hook's own registers and stack are untouched.
+uint32_t Call(const X86Context& ctx, uint8_t* base, void (*fn)(X86Context&, uint8_t*),
+              std::initializer_list<uint32_t> args, uint32_t resume) {
+    X86Context call = ctx;
+    call.esp = ctx.esp - 0x100 - 4 * uint32_t(args.size() + 1);
+    Write(base, call.esp, resume);
+    uint32_t slot = call.esp + 4;
+    for (uint32_t arg : args) {Write(base, slot, arg); slot += 4;}
+    fn(call, base);
+    return call.eax;
+}
+
+// The guest's full-size targets. They live for the process, so cameras of any level
+// can take sub-rasters of them and the original destructor frees only those.
+struct Target {uint32_t frame = 0, depth = 0, width = 0, height = 0, pixels = 0;};
+Target g_target;
+std::atomic<uint32_t> g_target_texture{0}, g_target_width{0}, g_target_height{0};  // for the render thread
+std::atomic<uint32_t> g_guest_camera{0};
+std::atomic<uint64_t> g_guest_draws{0};  // the guest's camera began drawing, any thread reads
+std::atomic<bool> g_paused{false};
+thread_local uint32_t t_hud_player_camera = 0;
+
+// The co-op profile page numbers players (and so views) in the order they confirm. View 1
+// is redirected at creation; once the players' actors are bound to controllers (after the
+// views exist), the guest's view takes the off-screen rasters. F7 on the host swaps them.
+// Game thread only. A view recreated for a respawn or a new level replaces its entries.
+struct Level {
+    uint32_t view[2]{}, owner[2]{}, actor[2]{}, hud_player[4]{}, hud[4]{};
+    uint32_t stack[2]{};  // each port's camera stack, seen by direct mouse
+    bool stacks_logged = false;
+    bool world_tried = false, hud_tried[4]{};
+    int32_t guest_view = -1;
+    bool settled = false;  // ports read, or given up
+    uint32_t checks = 0;
+};
+Level g_level;
+
+// Like the direct-mouse check: an actor belongs to the port whose input-manager controller
+// (manager+D4+port*10) has +0C equal to the actor's +30; -1 while it is unbound.
+int32_t ActorPort(const uint8_t* base, uint32_t actor) {
+    if (!actor || !Committed(actor, 0x34) || !Committed(0x004AC174, 4)) return -1;
+    const uint32_t map = Read(base, actor + 0x30), manager = Read(base, 0x004AC174);
+    if (!map || !manager || !Committed(manager + 0xD4, 0x40)) return -1;
+    for (int32_t port = 0; port < 4; ++port) {
+        const uint32_t controller = Read(base, manager + 0xD4 + uint32_t(port) * 0x10);
+        if (controller && Committed(controller, 0x14) && Read(base, controller + 8) == controller &&
+            Read(base, controller + 0x10) == controller + 0xC && controller + 0xC == map) return port;
+    }
+    return -1;
+}
+bool GuestView(uint32_t player) {return g_level.guest_view >= 0 ? int32_t(player) == g_level.guest_view : player == 1;}
+
+bool Raster(uint32_t raster) {return raster && Committed(raster, 0x24);}
+bool Camera(const uint8_t* base, uint32_t camera) {
+    return camera && Committed(camera, 0x68) && Read(base, camera) == kCameraVtable &&
+           Raster(Read(base, camera + 0x2C)) && Raster(Read(base, camera + 0x30)) &&
+           Read(base, camera + 0x34) && Committed(Read(base, camera + 0x34), 0x68);
+}
+
+// Replaces a camera's frame/Z sub-rasters of the shared buffers with sub-rasters of
+// the guest's targets. On any failure the camera keeps its original rasters.
+bool Redirect(const X86Context& ctx, uint8_t* base, uint32_t camera, uint32_t resume) {
+    if (!Camera(base, camera)) return false;
+    const uint32_t old_frame = Read(base, camera + 0x2C), old_depth = Read(base, camera + 0x30);
+    const uint32_t frame_parent = Read(base, old_frame), depth_parent = Read(base, old_depth);
+    if (!Raster(frame_parent) || !Raster(depth_parent)) return false;
+    const uint32_t width = Read(base, frame_parent + 0x0C), height = Read(base, frame_parent + 0x10);
+    const uint32_t frame_bits = Read(base, frame_parent + 0x14), depth_bits = Read(base, depth_parent + 0x14);
+    if (!width || !height || width > 4096 || height > 4096) return false;
+    if (g_target.width != width || g_target.height != height) {
+        // A different frame buffer size retires the old pair; it is small and stays allocated.
+        // The driver makes camera textures swizzled, which needs power-of-two sides: asked for
+        // 640x480 it made 128x32. The views use the top-left frame-sized area through sub-rasters.
+        auto pow2 = [](uint32_t v) {uint32_t p = 1; while (p < v) p <<= 1; return p;};
+        const uint32_t alloc_w = pow2(width), alloc_h = pow2(height);
+        const uint32_t frame = Call(ctx, base, sub_001222C0, {alloc_w, alloc_h, frame_bits, kRasterCameraTexture}, resume);
+        const uint32_t depth = frame ? Call(ctx, base, sub_001222C0, {alloc_w, alloc_h, depth_bits, kRasterZBuffer}, resume) : 0;
+        if (!frame || !depth) {
+            if (frame) Call(ctx, base, sub_00122160, {frame}, resume);
+            LOG_FIRST(2, "coop: guest target %ux%u could not be created", width, height);
+            return false;
+        }
+        // The first driver word is the D3D surface (display) or texture (camera texture);
+        // a texture header's +4 is the physical address of its pixels, the renderer's key.
+        const uint32_t ext = Committed(kRasterExtensionOffset, 4) ? Read(base, kRasterExtensionOffset) : 0;
+        const uint32_t texture = ext && Committed(frame + ext, 4) ? Read(base, frame + ext) : 0;
+        const uint32_t pixels = texture && Committed(texture, 8) ? mem::VirtualFromPhysical(Read(base, texture + 4)) : 0;
+        g_target = {frame, depth, width, height, pixels};
+        g_target_texture = texture; g_target_width = width; g_target_height = height;
+        LOGR("coop: guest target %ux%u frame %08X (D3D %08X: %08X %08X %08X %08X %08X, pixels %08X) depth %08X; "
+             "display frame %08X (D3D %08X)", width, height, frame, texture,
+             texture ? Read(base, texture) : 0, texture ? Read(base, texture + 4) : 0, texture ? Read(base, texture + 8) : 0,
+             texture ? Read(base, texture + 12) : 0, texture ? Read(base, texture + 16) : 0, pixels, depth, frame_parent,
+             ext ? Read(base, frame_parent + ext) : 0);
+    }
+    const uint32_t rect = ctx.esp - 0x40;  // RwRect {x, y, w, h}, below the call frames
+    for (uint32_t i = 0; i < 4; ++i) Write(base, rect + 4 * i, i < 2 ? 0 : i == 2 ? width : height);
+    uint32_t frame = Call(ctx, base, sub_001222C0, {0, 0, frame_bits, kRasterCameraTexture}, resume);
+    if (frame) frame = Call(ctx, base, sub_00122260, {frame, g_target.frame, rect}, resume);
+    uint32_t depth = frame ? Call(ctx, base, sub_001222C0, {0, 0, depth_bits, kRasterZBuffer}, resume) : 0;
+    if (depth) depth = Call(ctx, base, sub_00122260, {depth, g_target.depth, rect}, resume);
+    if (!frame || !depth) {
+        if (frame) Call(ctx, base, sub_00122160, {frame}, resume);
+        LOG_FIRST(2, "coop: guest sub-rasters could not be created");
+        return false;
+    }
+    const uint32_t rw_camera = Read(base, camera + 0x34);
+    Write(base, camera + 0x2C, frame); Write(base, rw_camera + 0x60, frame);
+    Write(base, camera + 0x30, depth); Write(base, rw_camera + 0x64, depth);
+    Call(ctx, base, sub_00122160, {old_frame}, resume);
+    Call(ctx, base, sub_00122160, {old_depth}, resume);
+    return true;
+}
+
+// Exchanges two cameras' frame/Z rasters, including their RwCamera copies.
+bool SwapRasters(uint8_t* base, uint32_t a, uint32_t b) {
+    if (!Camera(base, a) || !Camera(base, b)) return false;
+    for (uint32_t field : {0x2Cu, 0x30u}) {
+        const uint32_t ra = Read(base, a + field), rb = Read(base, b + field);
+        Write(base, a + field, rb); Write(base, b + field, ra);
+    }
+    for (uint32_t camera : {a, b}) {
+        const uint32_t rw = Read(base, camera + 0x34);
+        Write(base, rw + 0x60, Read(base, camera + 0x2C)); Write(base, rw + 0x64, Read(base, camera + 0x30));
+    }
+    return true;
+}
+
+// Redirects the guest's world camera, then every HUD camera drawn for it, once each.
+void Apply(const X86Context& ctx, uint8_t* base, uint32_t resume) {
+    if (g_level.guest_view < 0 || !g_level.view[g_level.guest_view]) return;
+    const uint32_t camera = g_level.view[g_level.guest_view];
+    if (!g_level.world_tried) {
+        g_level.world_tried = true;
+        if (Redirect(ctx, base, camera, resume)) {
+            g_guest_camera = camera;
+            LOGR("coop: guest camera %08X (view %d) draws off screen", camera, g_level.guest_view);
+        }
+    }
+    if (g_guest_camera.load() != camera) return;
+    for (uint32_t i = 0; i < 4; ++i) {
+        if (!g_level.hud[i] || g_level.hud_player[i] != camera || g_level.hud_tried[i]) continue;
+        g_level.hud_tried[i] = true;
+        if (Redirect(ctx, base, g_level.hud[i], resume)) LOGR("coop: guest HUD camera %08X draws off screen", g_level.hud[i]);
+    }
+}
+} // namespace
+
+void DarkwatchCoopViewLayout(X86Context& ctx, uint8_t* base) {
+    bool split = false;
+    for (const auto& s : kSplits) split |= ctx.edi == s.address;
+    if (!split) return;
+    // Every entry must hold either its original or its full-screen bytes; anything else
+    // means a different executable or another writer, so the layout stays untouched.
+    for (const auto& s : kSplits)
+        if (!Matches(base, s.address, s.original) && !Matches(base, s.address, Fullscreen(s.original[6]))) {
+            LOG_FIRST(1, "coop: unexpected view layout at %08X; split screen kept", s.address);
+            return;
+        }
+    const bool fullscreen = darkwatch::coop::GuestActive();
+    // FA277 holds the player's actor in esi; its controller binding comes later.
+    for (const auto& s : kSplits)
+        if (fullscreen && ctx.edi == s.address && s.original[6] < 2) g_level.actor[s.original[6]] = ctx.esi;
+    for (const auto& s : kSplits) {
+        const Entry entry = fullscreen ? Fullscreen(s.original[6]) : s.original;
+        std::memcpy(base + s.address, entry.data(), sizeof(entry));
+    }
+    if (g_fullscreen.exchange(fullscreen) != fullscreen)
+        LOGR("coop: two-player views %s", fullscreen ? "full screen for the network guest" : "split screen");
+}
+
+void DarkwatchCoopViewCreated(X86Context& ctx, uint8_t* base) {
+    // F9B52 returned the view in eax; esi is still the layout entry, view+0C its camera.
+    uint32_t player = 0;
+    if (!ctx.eax || !darkwatch::coop::FullscreenLayout(base, ctx.esi, player) || player > 1 ||
+        !Committed(ctx.eax, 0x14)) return;
+    const uint32_t camera = Read(base, ctx.eax + 0x0C), old = g_level.view[player];
+    if (old && old != camera) {
+        // A respawn recreates only that player's view (a new level recreates both): the other
+        // view, the found controller ports and the guest's view index stay; HUDs of the old
+        // camera go, and a new guest camera is redirected again.
+        for (uint32_t i = 0; i < 4; ++i)
+            if (g_level.hud_player[i] == old) {g_level.hud[i] = g_level.hud_player[i] = 0; g_level.hud_tried[i] = false;}
+        if (g_guest_camera.load() == old) g_guest_camera = 0;
+        if (int32_t(player) == g_level.guest_view) g_level.world_tried = false;
+        LOGR("coop: view %u recreated (camera %08X -> %08X)", player, old, camera);
+    }
+    g_level.view[player] = camera;
+    g_level.owner[player] = ctx.eax;
+    if (player == 1 && g_level.guest_view < 0) g_level.guest_view = 1;  // until the controller ports say otherwise
+    Apply(ctx, base, 0x000F9B57);
+}
+
+// Gives the other view the off-screen rasters, world and HUD cameras alike.
+bool SwapViews(uint8_t* base) {
+    const uint32_t redirected = g_guest_camera.load();
+    const uint32_t other = redirected == g_level.view[0] ? g_level.view[1] : g_level.view[0];
+    if (!redirected || !other || !SwapRasters(base, other, redirected)) return false;
+    uint32_t old_hud = 0, new_hud = 0;
+    for (uint32_t i = 0; i < 4; ++i) {
+        if (g_level.hud_player[i] == redirected) old_hud = g_level.hud[i];
+        if (g_level.hud_player[i] == other) new_hud = g_level.hud[i];
+    }
+    if (old_hud && new_hud) SwapRasters(base, new_hud, old_hud);
+    g_guest_camera = other;
+    g_level.guest_view = other == g_level.view[0] ? 0 : 1;
+    const int32_t host = 1 - g_level.guest_view;
+    DarkwatchSetHostPlayerCamera(g_level.owner[host], g_level.view[host], base);
+    return true;
+}
+
+// Until both views exist and the actors are bound: the guest's controller port picks the
+// off-screen view. Gives up quietly after about ten seconds of frames.
+void SettleViews(uint8_t* base) {
+    if (g_level.settled || !g_level.view[0] || !g_level.view[1]) return;
+    int32_t ports[2]{ActorPort(base, g_level.actor[0]), ActorPort(base, g_level.actor[1])};
+    // A player's CameraComponent +80 points at its view object, which owns the camera stack.
+    for (int32_t v = 0; v < 2; ++v)
+        for (int32_t port = 0; port < 2 && ports[v] < 0; ++port)
+            if (g_level.stack[port] && g_level.owner[v] && g_level.stack[port] == g_level.owner[v]) ports[v] = port;
+    if (!g_level.stacks_logged && (g_level.stack[0] || g_level.stack[1])) {
+        g_level.stacks_logged = true;
+        LOGR("coop: camera views: port 0 %08X, port 1 %08X; views %08X and %08X",
+             g_level.stack[0], g_level.stack[1], g_level.owner[0], g_level.owner[1]);
+    }
+    int32_t guest = -1;
+    for (int32_t v = 0; v < 2; ++v) if (ports[v] == darkwatch::coop::kGuestPort) guest = v;
+    if (guest < 0) for (int32_t v = 0; v < 2; ++v) if (ports[v] == 0) guest = 1 - v;
+    if (guest < 0) {
+        if (++g_level.checks == 1200) {
+            g_level.settled = true;
+            LOGR("coop: player controller ports not found (actors %08X %08X); press F7 to swap views",
+                 g_level.actor[0], g_level.actor[1]);
+        }
+        return;
+    }
+    g_level.settled = true;
+    LOGR("coop: view 0 is port %d, view 1 is port %d; the guest has view %d", ports[0], ports[1], guest);
+    if (guest != g_level.guest_view && SwapViews(base)) LOGR("coop: swapped views for the guest's controller");
+}
+
+void DarkwatchCoopViewFrame(X86Context&, uint8_t* base) {
+    // 21606D runs on the game thread for each player camera every frame.
+    if (g_fullscreen.load() && g_guest_camera.load()) SettleViews(base);
+    static bool held = false;
+    const bool focused = GetForegroundWindow() == static_cast<HWND>(app::Window());
+    const bool down = focused && (GetAsyncKeyState(VK_F7) & 0x8000);
+    const bool pressed = down && !held;
+    held = down;
+    if (!pressed || !g_fullscreen.load() || !g_guest_camera.load()) return;
+    if (SwapViews(base)) LOGR("coop: F7 swapped views; view %d draws off screen", g_level.guest_view);
+}
+
+void DarkwatchCoopHudOwner(X86Context& ctx, uint8_t*) {
+    t_hud_player_camera = ctx.eax;  // D8365 returned the HUD player's camera
+}
+
+void DarkwatchCoopHudCreated(X86Context& ctx, uint8_t* base) {
+    // D83DC: eax is the new HUD camera (or 0) for the player D836A recorded.
+    const uint32_t player = std::exchange(t_hud_player_camera, 0);
+    if (!g_fullscreen.load() || !ctx.eax || !player) return;
+    for (uint32_t i = 0; i < 4; ++i)
+        if (!g_level.hud[i]) {g_level.hud[i] = ctx.eax; g_level.hud_player[i] = player; break;}
+    Apply(ctx, base, 0x000D83DC);
+}
+
+void DarkwatchCoopCameraBegin(X86Context& ctx, uint8_t* base) {
+    // 1289C7, RenderWare's camera begin-update with the RwCamera in esi.
+    const uint32_t camera = g_guest_camera.load();
+    if (camera && Committed(camera + 0x34, 4) && Read(base, camera + 0x34) == ctx.esi) ++g_guest_draws;
+}
+
+namespace darkwatch::coop {
+uint64_t GuestCameraDraws() {return g_guest_draws.load();}
+void NotePaused(bool paused) {g_paused = paused;}
+bool Paused() {return g_paused.load();}
+
+void NoteCameraStack(unsigned port, uint32_t stack) {
+    if (port < 2 && stack && g_fullscreen.load()) g_level.stack[port] = stack;
+}
+
+uint32_t GuestFrameRaster() {return g_guest_camera.load() ? g_target.frame : 0;}
+// The driver may place the texture's pixels only when it first renders to it, so the
+// header is read when asked, not when the target was made.
+uint32_t GuestFramePixels() {
+    const uint32_t texture = g_guest_camera.load() ? g_target_texture.load() : 0;
+    if (!texture || !Committed(texture, 8)) return 0;
+    const uint32_t physical = Read(mem::Base(), texture + 4);
+    return physical ? mem::VirtualFromPhysical(physical) : 0;
+}
+uint32_t GuestFrameTexture() {return g_guest_camera.load() ? g_target_texture.load() : 0;}
+void GuestFrameSize(uint32_t& width, uint32_t& height) {width = g_target_width.load(); height = g_target_height.load();}
+bool CreatingGuestView(bool coop, uint32_t player) {return coop && GuestView(player);}
+
+bool FullscreenLayout(const uint8_t* base, uint32_t entry, uint32_t& player) {
+    if (entry == kSinglePlayer) {player = 0; return false;}
+    for (const auto& s : kSplits)
+        if (entry == s.address && Matches(base, entry, Fullscreen(s.original[6]))) {player = s.original[6]; return true;}
+    return false;
+}
+} // namespace darkwatch::coop

@@ -17,6 +17,7 @@
 #include "kernel/memory.h"
 #include "common/graphics.h"
 #include "common/graphics_route.h"
+#include "common/coop_view.h"
 #include "common/desktop_quit.h"
 #include "common/graphics_view.h"
 #include "common/controls.h"
@@ -578,6 +579,8 @@ void DarkwatchGraphicsPad(int port, input::Pad& pad) {
     if (port == 0) {
         darkwatch::EnsureDesktopQuitEntry(mem::Base());
         auto state = darkwatch::QueryGraphicsMenuRoute(mem::Base());
+        // A network guest sees the host's frame while either player's Pause menu is open.
+        darkwatch::coop::NotePaused(state.paused || darkwatch::PauseMenuVisible(mem::Base()));
         darkwatch::EnsureNativePauseEntries(mem::Base());
         const auto entry = darkwatch::TakeNativePauseEntry(mem::Base(), state.options);
         bool controls = state.route == darkwatch::GraphicsMenuRoute::Controls;

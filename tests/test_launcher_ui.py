@@ -126,12 +126,32 @@ class LauncherUiHarness {
         Check(Element<Button>(l,"ImportButton").IsEnabled,"Fresh import disabled");
         foreach(string name in new[]{"PlayButton","VerifyButton","FolderButton"})
             Check(!Element<Button>(l,name).IsEnabled,"Fresh "+name+" enabled");
+        // Network co-op: player 2 joins without an installation; only hosting needs one.
+        Check(Element<Button>(l,"CoopJoinButton").IsEnabled&&!Element<Button>(l,"CoopSaveButton").IsEnabled,"Fresh co-op actions");
+        Check(Element<Border>(l,"CoopPanel").Visibility==Visibility.Collapsed,"Co-op panel open at start");
+        Click(l,"CoopButton");
+        Check(Element<Border>(l,"CoopPanel").Visibility==Visibility.Visible&&Element<StackPanel>(l,"Overview").Visibility==Visibility.Collapsed&&
+              (string)Element<Button>(l,"CoopButton").Content=="BACK","Co-op panel did not open");
+        Click(l,"CoopJoinButton");
+        Check(Element<TextBlock>(l,"StatusText").Text.StartsWith("Enter the host's address"),"Join without address accepted");
+        Element<TextBox>(l,"CoopAddress").Text="192.168.1.24";Element<TextBox>(l,"CoopCode").Text="bad code";
+        Click(l,"CoopJoinButton");
+        Check(Element<TextBlock>(l,"StatusText").Text.StartsWith("The co-op code must be"),"Join with invalid code accepted");
+        Element<TextBox>(l,"CoopCode").Text="night-hunt";
+        Click(l,"CoopJoinButton");
+        Check(Element<TextBlock>(l,"StatusText").Text.StartsWith("The co-op client is missing"),"Join without client must explain");
+        State(l,new Dictionary<string,object>{{"coop",new Dictionary<string,object>{{"host",true},{"code","Saved_1"},{"port",41400},{"campaign",true}}}});
+        Check(Element<CheckBox>(l,"CoopHost").IsChecked==true&&Element<CheckBox>(l,"CoopCampaign").IsChecked==true&&
+              Element<TextBox>(l,"CoopCode").Text=="Saved_1"&&Element<TextBox>(l,"CoopPort").Text=="41400","Saved co-op settings not shown");
+        Click(l,"CoopButton");
+        Check(Element<Border>(l,"CoopPanel").Visibility==Visibility.Collapsed&&Element<StackPanel>(l,"Overview").Visibility==Visibility.Visible,"Co-op panel did not close");
+        Evidence["coop_panel"]=true;
         State(l,new Dictionary<string,object>{{"installed",true},{"ready",true},{"install_dir",@"C:\Fixture\Version"},{"message","Ready – fixture"},{"percent",120}});
         Check((string)Field(l,"gameDirectory")==@"C:\Fixture\Version","Backend install_dir was ignored");
         Check(Element<TextBlock>(l,"StatusText").Text=="Ready – fixture","Unicode status changed");
         Check(Element<TextBlock>(l,"StateTitle").Text=="THE NIGHT AWAITS","Ready title mismatch");
         Check(Element<ProgressBar>(l,"Progress").Value==100,"Progress exceeds maximum");
-        foreach(string name in new[]{"PlayButton","VerifyButton","FolderButton"})
+        foreach(string name in new[]{"PlayButton","VerifyButton","FolderButton","CoopSaveButton","CoopJoinButton"})
             Check(Element<Button>(l,name).IsEnabled,"Ready "+name+" disabled");
         Check((string)Element<Button>(l,"ImportButton").Content=="IMPORT / REPAIR","Repair action missing");
         State(l,new Dictionary<string,object>{{"ready",false},{"percent",-3}});
@@ -197,7 +217,7 @@ class LauncherUiHarness {
 
     static void Preview(string destination) {
         Directory.CreateDirectory(destination);
-        foreach(string state in new[]{"fresh","ready","importing","shaders"}) {
+        foreach(string state in new[]{"fresh","ready","importing","shaders","coop"}) {
             var l=state=="shaders"?Launcher.Preparing(()=>{}):new Launcher(true);string path=Path.Combine(destination,"launcher-"+state+".png");
             Call(l,"FitToWorkArea",new Rect(0,0,1920,1080));
             l.RenderPreview(path,state);

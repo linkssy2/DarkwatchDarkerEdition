@@ -40,6 +40,26 @@
       <Setter Property="FontSize" Value="12"/>
       <Setter Property="Padding" Value="12,10"/>
     </Style>
+    <Style TargetType="TextBox">
+      <Setter Property="Background" Value="#0C0E11"/>
+      <Setter Property="Foreground" Value="#F1E9DA"/>
+      <Setter Property="BorderBrush" Value="#41454C"/>
+      <Setter Property="CaretBrush" Value="#F1E9DA"/>
+      <Setter Property="SelectionBrush" Value="#7C2026"/>
+      <Setter Property="Padding" Value="6,5"/>
+      <Setter Property="FontSize" Value="13"/>
+    </Style>
+    <Style TargetType="CheckBox">
+      <Setter Property="Foreground" Value="#F1E9DA"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style x:Key="Label" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="#C8AE89"/>
+      <Setter Property="Margin" Value="0,0,0,4"/>
+    </Style>
   </Window.Resources>
   <Viewbox Stretch="Uniform" StretchDirection="DownOnly">
   <Border Width="1060" Height="720" Background="#0C0E11" BorderBrush="#74777C" BorderThickness="1">
@@ -80,7 +100,7 @@
             </Grid>
             <Rectangle Height="1" Fill="#56565B" Margin="0,24,0,0"/>
           </StackPanel>
-          <StackPanel Grid.Row="2">
+          <StackPanel x:Name="Overview" Grid.Row="2">
             <TextBlock x:Name="StateTitle" Text="PREPARE YOUR HUNT" FontFamily="Georgia" FontSize="22"/>
             <TextBlock x:Name="StateDescription" Text="Bring your own original Xbox Darkwatch ISO. Import it once to prepare Darker Edition on this PC." FontSize="15" LineHeight="24" TextWrapping="Wrap" Foreground="#B8B7B5" Margin="0,12,0,18"/>
             <Border Background="#15181D" BorderBrush="#373B42" BorderThickness="1" Padding="16,13">
@@ -91,6 +111,32 @@
               </StackPanel>
             </Border>
           </StackPanel>
+          <Border x:Name="CoopPanel" Grid.Row="2" Grid.RowSpan="2" Visibility="Collapsed" Background="#15181D"
+                  BorderBrush="#373B42" BorderThickness="1" Padding="18,14" VerticalAlignment="Top">
+            <StackPanel>
+              <TextBlock Text="NETWORK CO-OP" FontFamily="Georgia" FontSize="20"/>
+              <TextBlock Text="Same network or a LAN VPN (Radmin, ZeroTier, Tailscale): join the host's IP there. Player 2 needs no disc. Host: allow the UDP port in Windows Firewall."
+                         FontSize="12" Foreground="#B8B7B5" TextWrapping="Wrap" Margin="0,6,0,12"/>
+              <TextBlock Text="CODE (BOTH PLAYERS)" Style="{StaticResource Label}"/>
+              <TextBox x:Name="CoopCode" MaxLength="32" Margin="0,0,0,12"/>
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <StackPanel>
+                  <CheckBox x:Name="CoopHost" Content="Host on this PC" Margin="0,0,0,8"/>
+                  <TextBlock Text="UDP PORT" Style="{StaticResource Label}"/>
+                  <TextBox x:Name="CoopPort" Text="41330" MaxLength="5" Margin="0,0,0,8"/>
+                  <CheckBox x:Name="CoopCampaign" Content="Co-op campaign (experimental)" Margin="0,0,0,10"/>
+                  <Button x:Name="CoopSaveButton" Content="SAVE HOST SETTINGS" Style="{StaticResource Quiet}" IsEnabled="False"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                  <TextBlock Text="JOIN A HOST" Style="{StaticResource Label}" Margin="0,2,0,8"/>
+                  <TextBlock Text="HOST ADDRESS" Style="{StaticResource Label}"/>
+                  <TextBox x:Name="CoopAddress" Margin="0,0,0,10"/>
+                  <Button x:Name="CoopJoinButton" Content="JOIN AS PLAYER 2" Background="#701C25"/>
+                </StackPanel>
+              </Grid>
+            </StackPanel>
+          </Border>
           <StackPanel Grid.Row="4">
             <TextBlock x:Name="StatusText" Text="Checking installation…" FontSize="13" TextWrapping="Wrap" Foreground="#B8B7B5" Margin="0,0,0,10"/>
             <ProgressBar x:Name="Progress" Height="4" Minimum="0" Maximum="100" Foreground="#AA383C" Background="#292D33" BorderThickness="0" Margin="0,0,0,18"/>
@@ -100,9 +146,12 @@
               <Button x:Name="PlayButton" Grid.Column="2" Content="PLAY" IsEnabled="False" Height="54" FontSize="17"/>
             </Grid>
             <Grid x:Name="RepairActions" Margin="0,12,0,0">
-              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
               <Button x:Name="VerifyButton" Content="VERIFY FILES" Style="{StaticResource Quiet}" IsEnabled="False"/>
               <Button x:Name="FolderButton" Grid.Column="2" Content="OPEN GAME FOLDER" Style="{StaticResource Quiet}" IsEnabled="False"/>
+              <Button x:Name="CoopButton" Grid.Column="4" Content="CO-OP" Style="{StaticResource Quiet}"/>
             </Grid>
             <Button x:Name="CancelButton" Content="CANCEL" Style="{StaticResource Quiet}" Visibility="Collapsed" Margin="0,12,0,0"/>
           </StackPanel>

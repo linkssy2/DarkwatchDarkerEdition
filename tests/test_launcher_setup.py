@@ -209,6 +209,48 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
             time.sleep(.02)
         self.assertEqual((current / "worker-ran.txt").read_text(), "harmless launcher fixture")
 
+    def test_coop_client_stays_in_package_and_settings_keep_other_lines(self):
+        shutil.copyfile(self.worker, self.payload / "runtime/darkwatch_coop_client.exe")
+        self.repin()
+        self.backend = setup.Setup(self.package, self.install, notify=lambda *args, **kw: None)
+        with self.assertRaisesRegex(setup.SetupError, "player 2 can join without one"):
+            self.backend.set_coop('{"host": true, "code": "abc", "port": 41330, "campaign": false}')
+        current = self.install_disc()
+        self.assertFalse((current / "darkwatch_coop_client.exe").exists())
+        self.assertEqual(self.backend.verify(), current)
+        status = self.backend.status()
+        self.assertTrue(status["ready"])
+        self.assertEqual(status["coop"], dict(host=False, code="", port=41330, campaign=False))
+        settings = current / setup.SETTINGS
+        settings.write_text("aspect_ratio = 'auto'\ncoop_host = false\ncoop_code = 'old'\nvsync = true\n\n"
+                            "[key_bindings]\na = [ 32, 69 ]\ncoop_code = [ 1, 2 ]\n", encoding="utf-8")
+        result = self.backend.set_coop('{"host": true, "code": "Night_Hunt-2", "port": 41400, "campaign": true}')
+        self.assertEqual(result["coop"], dict(host=True, code="Night_Hunt-2", port=41400, campaign=True))
+        self.assertIn("41400", result["message"])
+        text = settings.read_text(encoding="utf-8")
+        data = setup.tomllib.loads(text)
+        self.assertEqual((data["aspect_ratio"], data["vsync"], data["key_bindings"]["a"], data["key_bindings"]["coop_code"]),
+                         ("auto", True, [32, 69], [1, 2]))
+        self.assertEqual((data["coop_host"], data["coop_code"], data["coop_port"], data["coop_campaign"]),
+                         (True, "Night_Hunt-2", 41400, True))
+        self.assertEqual(text.count("coop_code = '"), 1)
+        self.assertEqual(self.backend.status()["coop"]["port"], 41400)
+        self.backend.set_coop('{"host": false, "code": "", "port": 41400, "campaign": false}')
+        self.assertEqual(self.backend.coop()["host"], False)
+        for bad in ('{"host": true, "code": "", "port": 41330, "campaign": false}',
+                    '{"host": true, "code": "has space", "port": 41330, "campaign": false}',
+                    '{"host": true, "code": "x\\u0027y", "port": 41330, "campaign": false}',
+                    '{"host": true, "code": "abc", "port": 80, "campaign": false}',
+                    '{"host": true, "code": "abc", "port": "41330", "campaign": false}',
+                    '{"host": 1, "code": "abc", "port": 41330, "campaign": false}', '[]', 'not json'):
+            with self.assertRaises(setup.SetupError, msg=bad):
+                self.backend.set_coop(bad)
+        self.assertEqual(self.backend.coop()["host"], False)
+        with patch.object(setup, "game_running", return_value=True), self.assertRaises(setup.SetupError):
+            self.backend.set_coop('{"host": true, "code": "abc", "port": 41330, "campaign": false}')
+        settings.write_text("coop_port = 'nope'\ncoop_code = 'bad code'\n[broken", encoding="utf-8")
+        self.assertEqual(self.backend.coop(), dict(host=False, code="", port=41330, campaign=False))
+
     def test_portable_package_moves_with_saves_and_launches_only_from_new_folder(self):
         current = self.install_disc()
         settings = current / setup.SETTINGS

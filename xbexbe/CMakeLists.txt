@@ -8,6 +8,11 @@ set(XBE_HOST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/common/game_info.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/script_timing.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/shader_preparation.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/controls.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/coop.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/coop_view.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/coop_menu.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/coop_stream.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/coop_video.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/menu_cursor.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/native_menu.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/desktop_quit.cpp"
@@ -55,8 +60,15 @@ file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/shader_preparation_build.h"
     CONTENT "#pragma once\ninline constexpr char kShaderPreparationBuild[] = \"${SHADER_PREPARATION_DIGEST}\";\n")
 target_include_directories(darkwatch_xbe PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 add_executable(darkwatch_hd_ui_builder src/tools/prepare_hd_ui.cpp)
+# Network co-op guest: sends a controller to a hosting game as player 2.
+add_executable(darkwatch_coop_client src/tools/coop_client.cpp src/common/coop_video.cpp)
+target_include_directories(darkwatch_coop_client PRIVATE src)
+# Media Foundation's H.264 encoder (host) and decoder (client) for the guest view.
+set(COOP_VIDEO_LIBRARIES mfplat mfuuid wmcodecdspuuid strmiids ole32 oleaut32)
+target_link_libraries(darkwatch_coop_client PRIVATE SDL3::SDL3-static ws2_32 winmm xaudio2 d3d11 dxgi ${COOP_VIDEO_LIBRARIES})
+target_link_libraries(darkwatch_xbe PRIVATE ${COOP_VIDEO_LIBRARIES})
 # Native narrow-path APIs must accept Unicode Windows profile names (Windows 10 1903+).
-foreach(native_target darkwatch_xbe darkwatch_hd_ui_builder)
+foreach(native_target darkwatch_xbe darkwatch_hd_ui_builder darkwatch_coop_client)
     target_link_options(${native_target} PRIVATE "LINKER:/manifest:embed"
         "LINKER:/manifestinput:${CMAKE_CURRENT_SOURCE_DIR}/src/common/windows.manifest")
     set_property(TARGET ${native_target} APPEND PROPERTY LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/common/windows.manifest")

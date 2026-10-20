@@ -34,6 +34,16 @@ SETTINGS = "darkwatch_xbe_settings.toml"
 PACKAGE_VERSION = "0.3"
 RELEASE_PROFILE = {"name": "release-candidate", "diagnostics": False, "strict_assets": True}
 SHADER_PREPARE_TIMEOUT = 15 * 60
+# Runtime files that run from the package and are not copied into an installation: the
+# HD pack builder during import, and the co-op client, which a guest runs without a disc.
+PACKAGE_ONLY_RUNTIME = ("darkwatch_hd_ui_builder.exe", "darkwatch_coop_client.exe")
+COOP_KEYS = ("coop_campaign", "coop_code", "coop_host", "coop_port")
+COOP_CODE = re.compile(r"[A-Za-z0-9_-]{1,32}")
+COOP_DEFAULT_PORT = 41330
+
+
+def installed_runtime(path):
+    return path.startswith("payload/runtime/") and path.removeprefix("payload/runtime/") not in PACKAGE_ONLY_RUNTIME
 
 
 def game_environment():
@@ -250,7 +260,7 @@ class Setup:
                   bonus_content.INSTALLED_SHA256 if f["path"].casefold() == "packfile.pck" else f["sha256"])
                  for f in self.assets]
         for path, digest in self.files.items():
-            if path.startswith("payload/runtime/") and not path.endswith("/darkwatch_hd_ui_builder.exe"):
+            if installed_runtime(path):
                 relative = path.removeprefix("payload/runtime/")
                 size = safe_path(self.package, path).stat().st_size
                 files.append((relative, size, digest))
@@ -259,6 +269,64 @@ class Setup:
             raise SetupError("Installed HD artwork record is damaged. Import your ISO again to repair it.")
         files.append(("hd-ui.pack", hd["size"], hd["sha256"]))
         return files
+
+    def coop(self, current=None):
+        """The installed game's network co-op settings, with defaults for missing or invalid values."""
+        settings = dict(host=False, code="", port=COOP_DEFAULT_PORT, campaign=False)
+        current = current or self.active()
+        path = safe_path(current, SETTINGS) if current else None
+        if not path or not path.is_file():
+            return settings
+        try:
+            data = tomllib.loads(path.read_text(encoding="utf-8"))
+        except (tomllib.TOMLDecodeError, UnicodeDecodeError, OSError):
+            return settings
+        if isinstance(data.get("coop_host"), bool):
+            settings["host"] = data["coop_host"]
+        if isinstance(data.get("coop_code"), str) and COOP_CODE.fullmatch(data["coop_code"]):
+            settings["code"] = data["coop_code"]
+        if type(data.get("coop_port")) is int and 1024 <= data["coop_port"] <= 65535:
+            settings["port"] = data["coop_port"]
+        if isinstance(data.get("coop_campaign"), bool):
+            settings["campaign"] = data["coop_campaign"]
+        return settings
+
+    def set_coop(self, text):
+        """Writes the co-op keys into the installed settings file, keeping every other line."""
+        require_closed()
+        current = self.active()
+        if not current:
+            raise SetupError("Import your own Darkwatch ISO first. Only the host needs it; player 2 can join without one.")
+        try:
+            wanted = json.loads(text)
+        except json.JSONDecodeError:
+            raise SetupError("Invalid co-op settings.") from None
+        host, code, port, campaign = (wanted.get(k) if isinstance(wanted, dict) else None
+                                      for k in ("host", "code", "port", "campaign"))
+        if not isinstance(host, bool) or not isinstance(campaign, bool) or not isinstance(code, str):
+            raise SetupError("Invalid co-op settings.")
+        if type(port) is not int or not 1024 <= port <= 65535:
+            raise SetupError("The co-op port must be a number from 1024 to 65535.")
+        if (host or code) and not COOP_CODE.fullmatch(code):
+            raise SetupError("The co-op code must be 1 to 32 letters, digits, - or _.")
+        path = safe_path(current, SETTINGS)
+        lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+        # Top-level keys end at the first table header; the game rewrites the file on its next save.
+        def table(rows):
+            return next((i for i, line in enumerate(rows) if line.lstrip().startswith("[")), len(rows))
+        head = table(lines)
+        kept = [line for i, line in enumerate(lines)
+                if i >= head or line.split("=", 1)[0].strip() not in COOP_KEYS]
+        values = [f"coop_campaign = {str(campaign).lower()}", f"coop_code = '{code}'",
+                  f"coop_host = {str(host).lower()}", f"coop_port = {port}"]
+        head = table(kept)
+        temporary = safe_path(current, SETTINGS + ".tmp")
+        temporary.write_text("\n".join(kept[:head] + values + kept[head:]) + "\n", encoding="utf-8")
+        os.replace(temporary, path)
+        saved = self.coop(current)
+        message = (f"Hosting network co-op on UDP {port} from the next launch. Allow it in Windows Firewall."
+                   if saved["host"] else "Network co-op hosting is off.")
+        return dict(coop=saved, message=message)
 
     def status(self):
         current = self.active()
@@ -271,7 +339,8 @@ class Setup:
                     raise SetupError(f"Missing or damaged installed file: {relative}. Import your ISO again to repair it.")
         except (OSError, ValueError, KeyError, TypeError) as error:
             return dict(installed=True, ready=False, message=str(error))
-        return dict(installed=True, ready=True, message="Installed. Files are verified before every launch.", install_dir=str(current))
+        return dict(installed=True, ready=True, message="Installed. Files are verified before every launch.", install_dir=str(current),
+                    coop=self.coop(current))
 
     def verify_package(self):
         for index, (relative, digest) in enumerate(self.files.items()):
@@ -517,7 +586,7 @@ class Setup:
             if self.digest(pack) != bonus_content.INSTALLED_SHA256:
                 raise SetupError("Prepared bonus content is damaged. The previous installation was kept.")
             for relative, digest in self.files.items():
-                if relative.startswith("payload/runtime/") and not relative.endswith("/darkwatch_hd_ui_builder.exe"):
+                if installed_runtime(relative):
                     target = safe_path(stage, relative.removeprefix("payload/runtime/"))
                     target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(safe_path(self.package, relative), target)
@@ -576,6 +645,7 @@ def main(argv=None):
     action.add_argument("--import-iso", type=Path)
     action.add_argument("--verify", action="store_true")
     action.add_argument("--play", action="store_true")
+    action.add_argument("--coop", help="JSON {host, code, port, campaign} for the installed game")
     args = parser.parse_args(argv)
     try:
         setup = Setup(args.package, args.install_root, args.cancel_file)
@@ -587,6 +657,8 @@ def main(argv=None):
                 result = setup.import_iso(args.import_iso)
             elif args.play:
                 result = setup.play()
+            elif args.coop is not None:
+                result = setup.set_coop(args.coop)
             else:
                 current = setup.verify()
                 result = dict(installed=True, ready=True, install_dir=str(current), message="All installed files verified.")

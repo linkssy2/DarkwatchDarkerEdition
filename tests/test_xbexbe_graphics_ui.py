@@ -121,6 +121,8 @@ bool ObservedButton(const char* label,const ImVec2& size=ImVec2(0,0)) {
 #undef TextDisabled
 #undef TextUnformatted
 #include "common/graphics_view.cpp"
+// Network co-op only observes the Pause state here.
+void darkwatch::coop::NotePaused(bool){}
 #include <cstdlib>
 #define CHECK(x) do { if (!(x)) {std::fprintf(stderr,"line %d: %s\n",__LINE__,#x);std::exit(90);} } while(0)
 static app::Settings actual;
@@ -161,6 +163,7 @@ bool ControlsCapturing(){return capture_active;}
 uint32_t ControlsTakeCapture(){auto result=capture_result;capture_result=0;return result;}
 std::string ControlsKeyName(uint32_t key){return key==input::kMouseWheel?"Mouse Wheel":key?std::string(1,char(key)):"Unbound";}
 GraphicsRouteState QueryGraphicsMenuRoute(const uint8_t*){return route;}
+bool PauseMenuVisible(const uint8_t*){return route.paused;}
 bool SetGraphicsSubtitles(uint8_t*,uint32_t expected,bool enabled){
  CHECK(expected==route.options);++subtitle_calls;route.subtitles=enabled;return true;
 }

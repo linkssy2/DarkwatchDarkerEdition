@@ -143,7 +143,7 @@ try {
             Copy-Item -LiteralPath (Join-Path $Build 'hd-ui.pack') -Destination $Previous -ErrorAction Stop
         }
     }
-    Invoke-Logged 'build' $Cmake @('--build', $Build, '--target', 'darkwatch_xbe', '--parallel', '4')
+    Invoke-Logged 'build' $Cmake @('--build', $Build, '--target', 'darkwatch_xbe', 'darkwatch_coop_client', '--parallel', '4')
     $ManifestArguments = @("$PSScriptRoot/xbexbe_manifest.py")
     if ($Release) { $ManifestArguments += '--release' }
     Invoke-Logged 'manifest' (Join-Path $ProjectRoot '.venv/Scripts/python.exe') $ManifestArguments
