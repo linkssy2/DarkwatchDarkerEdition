@@ -16,6 +16,8 @@ void DarkwatchCoopHudCreated(X86Context& ctx, uint8_t* base);
 // 21606D, per player camera each frame: F7 on the host gives the other view the
 // off-screen rasters (the guest may have confirmed first and own view 0).
 void DarkwatchCoopViewFrame(X86Context& ctx, uint8_t* base);
+// 1289C7: counts the guest camera's begin-updates; cinematics and movies leave it idle.
+void DarkwatchCoopCameraBegin(X86Context& ctx, uint8_t* base);
 
 namespace darkwatch::coop {
 // True for a layout entry this module made full screen; `player` is its view index.
@@ -31,4 +33,11 @@ uint32_t GuestFrameTexture();
 void GuestFrameSize(uint32_t& width, uint32_t& height);
 // During F9B1D: the view being created belongs to the network guest's controller.
 bool CreatingGuestView(bool coop, uint32_t player);
+// Game thread, direct mouse: the camera stack of the player on controller `port`.
+void NoteCameraStack(unsigned port, uint32_t stack);
+// Any thread: how many times the guest's camera began drawing.
+uint64_t GuestCameraDraws();
+// Port 0's pad poll publishes whether the in-game Pause menu is open; any thread reads it.
+void NotePaused(bool paused);
+bool Paused();
 } // namespace darkwatch::coop

@@ -38,6 +38,7 @@ void darkwatch::coop::Pad(int,input::Pad&){}
 void darkwatch::coop::Rumble(int,uint16_t&,uint16_t&){}
 bool darkwatch::coop::GuestMouse(darkwatch::coop::Session::Mouse&){return false;}
 void darkwatch::coop::GuestMouseStick(input::Pad&){}
+void darkwatch::coop::NoteCameraStack(unsigned,uint32_t){}
 bool darkwatch::ControlsMessage(void*,uint32_t,uintptr_t,intptr_t,intptr_t*){return false;}
 // The graphics page has its own actual ImGui/input fixture; isolate direct aiming here.
 void DarkwatchGraphicsInit() {}

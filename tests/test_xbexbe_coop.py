@@ -205,11 +205,17 @@ static void HostPath(uint16_t port){
  CHECK(Snapshot().port==1024&&Snapshot().code.empty());
  Load(&static_cast<const toml::table&>(toml::parse("coop_host='yes'\ncoop_port='41330'\ncoop_code=5\n")));
  CHECK(!Snapshot().host&&Snapshot().port==kDefaultPort&&Snapshot().code.empty()&&!Snapshot().campaign);
+ CHECK(Snapshot().video_kbps==16000&&Snapshot().video_height==720);
+ Load(&static_cast<const toml::table&>(toml::parse("coop_video_kbps=999999\ncoop_video_height=1080\n")));
+ CHECK(Snapshot().video_kbps==50000&&Snapshot().video_height==1080);
+ Load(&static_cast<const toml::table&>(toml::parse("coop_video_kbps=1\ncoop_video_height=900\n")));
+ CHECK(Snapshot().video_kbps==2000&&Snapshot().video_height==720);  // only 720 or 1080 lines
  auto text="coop_host=true\ncoop_port="+std::to_string(port)+"\ncoop_code='lantern'\ncoop_campaign=true\n";
  auto table=toml::parse(text);Load(&static_cast<const toml::table&>(table));
- toml::table saved;Save(&saved);CHECK(saved["coop_host"].value_or(false)&&saved["coop_port"].value_or(0)==port&&saved["coop_code"].value_or(std::string())=="lantern"&&saved["coop_campaign"].value_or(false));
+ toml::table saved;Save(&saved);CHECK(saved["coop_host"].value_or(false)&&saved["coop_port"].value_or(0)==port&&saved["coop_code"].value_or(std::string())=="lantern"&&saved["coop_campaign"].value_or(false)&&saved["coop_video_kbps"].value_or(0)==16000&&saved["coop_video_height"].value_or(0)==720);
  Start();CHECK(g_errors==1&&g_reports==1);Start();CHECK(g_reports==1);  // one host per process
  auto pad=Local();Pad(1,pad);CHECK(pad.buttons==0x0F&&pad.lx==100);  // no guest: local split screen
+ {input::Pad q;Pad(1,q);CHECK(!q.connected);}  // before any guest, an empty port 1 stays unplugged
  uint16_t l=10,r=20;Rumble(1,l,r);CHECK(l==10&&r==20);
  Guest g(port);Packet p;
  g.Send(Hello(77,"wrong"));CHECK(g.Receive(p,Type::Welcome)&&p.status==Status::BadCode&&p.token==77);
@@ -246,10 +252,14 @@ static void HostPath(uint16_t port){
  CHECK(Wait([]{input::Pad q=Local();Pad(1,q);return q.buttons==0x0F;}));
  l=7;r=8;Rumble(1,l,r);CHECK(l==7&&r==8);
  other.Send(Hello(88,"lantern"));CHECK(other.Receive(p,Type::Welcome)&&p.status==Status::Accepted);
- auto silent=std::chrono::steady_clock::now();  // a silent guest unplugs port 1
- CHECK(Wait([]{input::Pad q;Pad(1,q);return q.connected;}));
- while(true){input::Pad q;Pad(1,q);if(!q.connected)break;CHECK(std::chrono::steady_clock::now()-silent<std::chrono::milliseconds(kTimeoutMs+500));std::this_thread::sleep_for(std::chrono::milliseconds(20));}
+ Packet held=PadPacket(88,1,0x55);other.Send(held);CHECK(Wait([]{input::Pad q;Pad(1,q);return q.buttons==0x55;}));
+ // A silent guest leaves port 1 plugged in but idle, so the game keeps its player.
+ auto silent=std::chrono::steady_clock::now();
+ while(GuestActive()){CHECK(std::chrono::steady_clock::now()-silent<std::chrono::milliseconds(kTimeoutMs+500));std::this_thread::sleep_for(std::chrono::milliseconds(20));}
  CHECK(std::chrono::steady_clock::now()-silent>=std::chrono::milliseconds(kTimeoutMs-50));
+ {input::Pad q;Pad(1,q);CHECK(q.connected&&q.buttons==0&&q.analog[0]==0&&q.lx==0);}
+ {input::Pad q=Local();Pad(1,q);CHECK(q.connected&&q.buttons==0x0F&&q.lx==100);}  // a local port-1 controller still wins
+ {input::Pad q;Pad(0,q);CHECK(!q.connected);Pad(2,q);CHECK(!q.connected);}  // only port 1 is held
 }
 
 int main(int argc,char** argv){

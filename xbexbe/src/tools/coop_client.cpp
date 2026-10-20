@@ -25,6 +25,7 @@
 #include "common/coop_protocol.h"
 #include "common/coop_video.h"
 #include "tools/coop_audio.h"
+#include "tools/coop_present.h"
 #include "tools/coop_frames.h"
 #include "tools/coop_keys.h"
 
@@ -47,11 +48,13 @@ HWND g_window = nullptr;
 bool g_grabbed = false, g_swallow_click = false;
 int64_t g_mouse_dx = 0, g_mouse_dy = 0;
 
-// The latest decoded picture of player 2's view; same thread as the window.
-std::vector<uint8_t> g_picture;
-uint32_t g_picture_w = 0, g_picture_h = 0;
-uint64_t g_picture_ms = 0;
-constexpr uint64_t kPictureStaleMs = 1500;  // then the instructions show again
+// Player 2's view; same thread as the window. Until the first picture the window shows
+// the instructions with GDI, then the swap chain owns it.
+Presenter g_presenter;
+bool g_use_gdi = false;           // --gdi: StretchDIBits instead of the swap chain
+std::vector<uint8_t> g_picture;   // the --gdi path's latest frame
+uint32_t g_picture_w = 16, g_picture_h = 9;  // the aspect the window keeps
+bool g_have_picture = false;
 
 void Grab(bool on) {
     g_grabbed = on;
@@ -87,20 +90,25 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
     case WM_ACTIVATE: if (LOWORD(wparam) == WA_INACTIVE && g_grabbed) Grab(false); break;
     case WM_CLOSE: g_stop = true; return 0;
     case WM_ERASEBKGND: return 1;  // WM_PAINT covers the whole client area
+    case WM_SIZING: {
+        // The swap chain stretches to the client area, so the window keeps the picture's aspect.
+        RECT& r = *reinterpret_cast<RECT*>(lparam);
+        RECT frame{0, 0, 0, 0};
+        AdjustWindowRect(&frame, WS_OVERLAPPEDWINDOW, FALSE);
+        const int fw = frame.right - frame.left, fh = frame.bottom - frame.top;
+        const int cw = std::max(160, int(r.right - r.left) - fw);
+        const int ch = int(int64_t(cw) * g_picture_h / g_picture_w);
+        if (wparam == WMSZ_TOP || wparam == WMSZ_TOPLEFT || wparam == WMSZ_TOPRIGHT) r.top = r.bottom - ch - fh;
+        else r.bottom = r.top + ch + fh;
+        return TRUE;
+    }
     case WM_PAINT: {
         PAINTSTRUCT ps;
         HDC dc = BeginPaint(hwnd, &ps);
+        if (g_presenter.Active()) {EndPaint(hwnd, &ps); return 0;}  // presents on its own
         RECT r;
         GetClientRect(hwnd, &r);
-        if (!g_picture.empty() && NowMs() - g_picture_ms < kPictureStaleMs) {
-            // Letterboxed to the picture's aspect.
-            const int cw = r.right, ch = r.bottom;
-            int w = cw, h = int(int64_t(cw) * g_picture_h / g_picture_w);
-            if (h > ch) {h = ch; w = int(int64_t(ch) * g_picture_w / g_picture_h);}
-            const int x = (cw - w) / 2, y = (ch - h) / 2;
-            HBRUSH black = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
-            RECT bars[4]{{0, 0, cw, y}, {0, y + h, cw, ch}, {0, y, x, y + h}, {x + w, y, cw, y + h}};
-            for (const RECT& bar : bars) FillRect(dc, &bar, black);
+        if (g_use_gdi && !g_picture.empty()) {
             BITMAPINFO bi{};
             bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
             bi.bmiHeader.biWidth = LONG(g_picture_w);
@@ -109,7 +117,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
             bi.bmiHeader.biBitCount = 32;
             bi.bmiHeader.biCompression = BI_RGB;
             SetStretchBltMode(dc, COLORONCOLOR);
-            StretchDIBits(dc, x, y, w, h, 0, 0, int(g_picture_w), int(g_picture_h), g_picture.data(), &bi,
+            StretchDIBits(dc, 0, 0, r.right, r.bottom, 0, 0, int(g_picture_w), int(g_picture_h), g_picture.data(), &bi,
                           DIB_RGB_COLORS, SRCCOPY);
             EndPaint(hwnd, &ps);
             return 0;
@@ -204,9 +212,11 @@ void Send(SOCKET s, const sockaddr_in& host, const Packet& packet) {
 } // namespace
 
 int main(int argc, char** argv) {
+    if (argc == 4 && std::string(argv[3]) == "--gdi") {g_use_gdi = true; --argc;}
     if (argc != 3) {
-        std::fprintf(stderr, "Usage: darkwatch_coop_client <host>[:port] <code>\n"
-                             "The host sets coop_host = true and the same coop_code in darkwatch_xbe_settings.toml.\n");
+        std::fprintf(stderr, "Usage: darkwatch_coop_client <host>[:port] <code> [--gdi]\n"
+                             "The host sets coop_host = true and the same coop_code in darkwatch_xbe_settings.toml.\n"
+                             "--gdi shows the video without Direct3D, for graphics drivers that show it wrongly.\n");
         return 2;
     }
     Packet hello;
@@ -239,6 +249,11 @@ int main(int argc, char** argv) {
     if (!sound.Open()) std::fprintf(stderr, "XAudio2 is unavailable; no sound.\n");
     std::vector<uint8_t> encoded;
     uint64_t key_requested = 0;
+    struct {
+        uint64_t since_ms = 0, decode_us = 0, present_us = 0, decoded = 0, shown = 0;
+        bool present_failed = false;
+    } stats;
+    stats.since_ms = NowMs();
 
     hello.token = std::random_device{}() | 1u;
     uint32_t sequence = 0;
@@ -290,15 +305,39 @@ int main(int argc, char** argv) {
                 if (!frames.Add(packet, encoded, key)) continue;
                 if (!decoder) decoder = darkwatch::coop::video::Decoder::Create();
                 if (!decoder) {std::fprintf(stderr, "The H.264 decoder is unavailable; no video.\n"); continue;}
+                const uint64_t decode_us = NowUs();
+                uint64_t present_us = 0;
                 const bool decoded = decoder->Decode(encoded.data(), encoded.size(), [&](const uint8_t* bgra, uint32_t w, uint32_t h) {
-                    g_picture.assign(bgra, bgra + size_t(w) * h * 4);
-                    g_picture_w = w; g_picture_h = h; g_picture_ms = now;
-                    InvalidateRect(g_window, nullptr, FALSE);
+                    const uint64_t start = NowUs();
+                    g_picture_w = w; g_picture_h = h;
+                    if (g_use_gdi) {
+                        g_picture.assign(bgra, bgra + size_t(w) * h * 4);
+                        RedrawWindow(g_window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+                    } else if (!g_presenter.Show(g_window, bgra, w, h)) {
+                        if (!stats.present_failed) std::fprintf(stderr, "Direct3D 11 could not show the video; try --gdi.\n");
+                        stats.present_failed = true;
+                        return;
+                    }
+                    present_us += NowUs() - start;
+                    g_have_picture = true;
+                    ++stats.shown;
                 });
+                stats.decode_us += NowUs() - decode_us - present_us;
+                stats.present_us += present_us;
+                ++stats.decoded;
                 if (!decoded) frames.Reset();  // resynchronise from the next key frame
             }
         }
-        if (joined && (frames.NeedKey() || g_picture.empty()) && now - key_requested >= 250) {
+        if (now - stats.since_ms >= 5000) {
+            // Where the guest's frames go: received, shown, and the time each step costs.
+            if (stats.decoded)
+                std::printf("Video: %.0f fps shown, decode %.1f ms, present %.1f ms per frame\n",
+                            stats.shown * 1000.0 / double(now - stats.since_ms), stats.decode_us / 1000.0 / stats.decoded,
+                            stats.present_us / 1000.0 / std::max<uint64_t>(stats.shown, 1));
+            stats = {};
+            stats.since_ms = now;
+        }
+        if (joined && (frames.NeedKey() || !g_have_picture) && now - key_requested >= 250) {
             Packet request;
             request.type = Type::KeyRequest; request.token = hello.token; request.sequence = sequence;
             Send(s, host, request);

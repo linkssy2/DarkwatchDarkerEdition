@@ -4,6 +4,7 @@
 #include "common/graphics_view.h"
 #include "common/controls.h"
 #include "common/coop.h"
+#include "common/coop_view.h"
 #include "common/menu_cursor.h"
 #include "common/native_menu.h"
 #include "common/hd_ui.h"
@@ -165,8 +166,12 @@ const char* ReadMouseTarget(const X86Context& ctx, const uint8_t* base, unsigned
         !AimField(base, t.owner, 0x30, map) || !AimRead(base, 0x4AC174, manager)) return "unreadable-owner";
     if (!MousePort(base, map, t.port, manager)) return "nonlocal";
     t.local = true;
-    uint32_t rider = 0, mounted_camera = 0;
-    if (AimField(base, t.owner, 0xC, rider) && ActiveHorseCamera(base, rider, mounted_camera))
+    uint32_t rider = 0, mounted_camera = 0, camera_component = 0, camera_stack = 0;
+    // Network co-op matches each port's player to its view: the rider's CameraComponent +80
+    // points at that player's view object (F9B1D's).
+    if (AimField(base, t.owner, 0xC, rider) && AimComponent(base, rider, 0x416444, camera_component) &&
+        AimField(base, camera_component, 0x80, camera_stack)) darkwatch::coop::NoteCameraStack(t.port, camera_stack);
+    if (rider && ActiveHorseCamera(base, rider, mounted_camera))
         return "mounted-camera";
     if (!AimField(base, ctx.ebp, 4, t.caller) || !AimField(base, ctx.ebp, 0, t.parent)) return "stack";
     // StateVampireJump delegates to StateJump's look update (A9531 -> A1AC5).

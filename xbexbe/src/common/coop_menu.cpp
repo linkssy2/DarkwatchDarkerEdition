@@ -31,11 +31,12 @@ void DarkwatchCoopVersusPage(X86Context& ctx, uint8_t* base) {UseXboxLink(ctx, b
 
 // EFA10 warns for each port in the session's required-controller mask (byte read into cl
 // at EFA81 and EFAAC) that is not connected. The PS2 co-op path leaves ports 3 and 4 in it
-// on Xbox; while the network co-op campaign runs, only the two players' ports are checked.
+// on Xbox, and building their warning faults; with the co-op campaign on, only the two
+// players' ports are checked, also after a network guest leaves (port 2 then idles).
 void DarkwatchCoopRequiredPorts(X86Context& ctx, uint8_t*) {
     static std::atomic<uint32_t> last{0x100};
     const uint32_t mask = ctx.ecx & 0xFF;
     if (last.exchange(mask) != mask) LOGR("coop: required controller ports %02X", mask);
-    if (!darkwatch::coop::Snapshot().campaign || !darkwatch::coop::GuestActive()) return;
+    if (!darkwatch::coop::Snapshot().campaign) return;
     if ((mask & 0x03) == 0x03 && (mask & ~0x03u)) ctx.ecx = (ctx.ecx & ~0xFFu) | 0x03;
 }

@@ -59,7 +59,7 @@ public:
         return verified_[i] == 1;
     }
     // Network co-op streams the guest's view from the same per-present point.
-    void Presenting(gpu::Context& c) override {coop::stream::Presenting(c);}
+    void Presenting(gpu::Context& c, gpu::Target* front) override {coop::stream::Presenting(c, front);}
     uint64_t TextureRevision() const override { return 1 + uint64_t(view::Snapshot().hd_ui) * 2 + uint64_t(g_startup.load()) + PromptTextureRevision()*4; }
     bool ReplaceTexture(const gpu::TextureDesc& d, const gpu::FormatInfo& fi, const uint8_t* original,
                         uint32_t bytes, const uint32_t* palette, gpu::TextureReplacement& out) override {

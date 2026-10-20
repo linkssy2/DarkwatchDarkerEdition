@@ -16,6 +16,8 @@ struct Settings {
     uint32_t port = kDefaultPort;
     std::string code;  // required to host; 1-32 bytes
     bool campaign = false;  // experimental: Split Screen offers the retained co-op campaign
+    uint32_t video_kbps = 16000;  // guest view bitrate; a LAN or LAN VPN carries it easily
+    uint32_t video_height = 720;  // 720 or 1080 lines; 1080 needs a fast host CPU at 60 fps
 };
 Settings Snapshot();
 void Load(const void* table);

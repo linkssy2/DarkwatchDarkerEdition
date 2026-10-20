@@ -372,6 +372,12 @@ call = "DarkwatchCoopHudCreated"
 at = 0x0021606D
 call = "DarkwatchCoopViewFrame"
 
+# The guest camera stops drawing in cinematics; its view then streams the host's frame.
+# RenderWare camera begin-update (1289C0) has the RwCamera in esi here.
+[[hook]]
+at = 0x001289C7
+call = "DarkwatchCoopCameraBegin"
+
 # Experimental co-op campaign: Multiplayer opens the original Versus/Co-op dialog
 # that only the PS2 menu link reached (coop_menu.cpp). Both are the page-name hash calls.
 [[hook]]

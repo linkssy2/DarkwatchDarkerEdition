@@ -91,7 +91,9 @@ public:
         SetCodecBool(codec_.Get(), CODECAPI_AVLowLatencyMode, true);
         SetCodec(codec_.Get(), CODECAPI_AVEncCommonRateControlMode, eAVEncCommonRateControlMode_CBR);
         SetCodec(codec_.Get(), CODECAPI_AVEncCommonMeanBitRate, bitrate);
-        SetCodec(codec_.Get(), CODECAPI_AVEncCommonQualityVsSpeed, 0);
+        // The top of the encoder's fast tier: 34 and up switch to a tier that costs 40% more
+        // per frame and leaves a busy host too little of a 60 Hz frame.
+        SetCodec(codec_.Get(), CODECAPI_AVEncCommonQualityVsSpeed, 33);
         SetCodec(codec_.Get(), CODECAPI_AVEncMPVDefaultBPictureCount, 0);
         SetCodec(codec_.Get(), CODECAPI_AVEncMPVGOPSize, fps * 4);
         ComPtr<IMFMediaType> out, in;
@@ -100,7 +102,7 @@ public:
         out->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
         out->SetUINT32(MF_MT_AVG_BITRATE, bitrate);
         out->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-        out->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base);
+        out->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_High);  // 8x8 transforms; still no B-frames
         MFSetAttributeSize(out.Get(), MF_MT_FRAME_SIZE, width, height);
         MFSetAttributeRatio(out.Get(), MF_MT_FRAME_RATE, fps, 1);
         MFSetAttributeRatio(out.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);

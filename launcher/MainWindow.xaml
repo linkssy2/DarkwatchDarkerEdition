@@ -115,7 +115,7 @@
                   BorderBrush="#373B42" BorderThickness="1" Padding="18,14" VerticalAlignment="Top">
             <StackPanel>
               <TextBlock Text="NETWORK CO-OP" FontFamily="Georgia" FontSize="20"/>
-              <TextBlock Text="Player 2 needs only this package, no disc. Host: allow the UDP port in Windows Firewall, then choose Multiplayer → Co-op and confirm first (F7 swaps views)."
+              <TextBlock Text="Same network or a LAN VPN (Radmin, ZeroTier, Tailscale): join the host's IP there. Player 2 needs no disc. Host: allow the UDP port in Windows Firewall."
                          FontSize="12" Foreground="#B8B7B5" TextWrapping="Wrap" Margin="0,6,0,12"/>
               <TextBlock Text="CODE (BOTH PLAYERS)" Style="{StaticResource Label}"/>
               <TextBox x:Name="CoopCode" MaxLength="32" Margin="0,0,0,12"/>

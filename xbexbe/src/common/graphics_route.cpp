@@ -76,6 +76,22 @@ uint32_t ActivePause(const uint8_t* base) {
     }
     return 0;
 }
+// Any player's visible Pause root, whichever controller opened it (+24 holds its input mask).
+bool AnyPauseVisible(const uint8_t* base) {
+    uint32_t manager, list;
+    uint16_t count;
+    if (!Read(base, kUiManager, manager) || !manager ||
+        !Read(base, uint64_t(manager) + 8, count) || count > 512 ||
+        !Field(base, manager, 12, list) || (count && !Span(base, list, count * 4))) return false;
+    for (unsigned i = 0; i < count; ++i) {
+        uint32_t root, type;
+        uint8_t visible;
+        if (!Read(base, uint64_t(list) + i * 4, root) || !Field(base, root, 0, type) ||
+            !Read(base, uint64_t(root) + 0x2F, visible)) return false;
+        if (visible && type == kPauseVtable) return true;
+    }
+    return false;
+}
 uint32_t PauseControlsKey(const uint8_t* base, uint32_t options) {
     uint16_t count;
     uint32_t pages, key = 0;
@@ -202,6 +218,8 @@ void PauseFrameHeight(uint8_t* base, bool expand) {
     DarkwatchInvalidateMenuSnapshot();
 }
 }  // namespace
+
+bool PauseMenuVisible(const uint8_t* base) {return AnyPauseVisible(base);}
 
 GraphicsRouteState QueryGraphicsMenuRoute(const uint8_t* base) {
     GraphicsRouteState result;

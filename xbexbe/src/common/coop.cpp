@@ -88,6 +88,7 @@ struct Host {
     bool rumble_changed = false;
     SOCKET socket = INVALID_SOCKET;   // sendto is safe beside the network thread's recvfrom
     std::atomic<uint32_t> video_frame{0}, audio_sequence{0};
+    bool guest_seen = false;  // a guest has driven port 1 since the game started
     explicit Host(std::string code) : session(std::move(code)) {}
 };
 std::atomic<Host*> g_host{nullptr};
@@ -149,6 +150,9 @@ void Load(const void* table) {
         settings.port = uint32_t(std::clamp(*value, int64_t(1024), int64_t(65535)));
     if (auto value = t["coop_code"].value<std::string>(); value && value->size() <= kCodeBytes) settings.code = *value;
     settings.campaign = t["coop_campaign"].is_boolean() && t["coop_campaign"].value_or(false);
+    if (auto value = t["coop_video_kbps"].is_integer() ? t["coop_video_kbps"].value<int64_t>() : std::nullopt)
+        settings.video_kbps = uint32_t(std::clamp(*value, int64_t(2000), int64_t(50000)));
+    if (t["coop_video_height"].is_integer() && t["coop_video_height"].value_or(int64_t(0)) == 1080) settings.video_height = 1080;
     std::lock_guard lock(g_settings_lock);
     g_settings = settings;
 }
@@ -160,6 +164,8 @@ void Save(void* table) {
     t.insert_or_assign("coop_port", int64_t(settings.port));
     t.insert_or_assign("coop_code", settings.code);
     t.insert_or_assign("coop_campaign", settings.campaign);
+    t.insert_or_assign("coop_video_kbps", int64_t(settings.video_kbps));
+    t.insert_or_assign("coop_video_height", int64_t(settings.video_height));
 }
 
 void Start() {
@@ -197,7 +203,14 @@ void Pad(int port, input::Pad& pad) {
     PadState state;
     {
         std::lock_guard lock(host->lock);
-        if (!host->session.Current(state, NowMs())) return;  // no guest: local split screen
+        if (!host->session.Current(state, NowMs())) {
+            // Once a guest has played, port 1 stays plugged in while it is away: the PS2 co-op
+            // path faults building its controller-removed warning on Xbox, and a returning
+            // guest resumes its idle player. A local controller on port 1 still wins.
+            if (host->guest_seen && !pad.connected) {pad = {}; pad.connected = true;}
+            return;  // no guest: local split screen
+        }
+        host->guest_seen = true;
     }
     pad.connected = true;
     pad.buttons = state.buttons;

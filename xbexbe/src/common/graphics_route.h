@@ -19,6 +19,8 @@ struct GraphicsRouteState {
 
 // Call on the guest thread. UI callers must use a published snapshot instead.
 GraphicsRouteState QueryGraphicsMenuRoute(const uint8_t* base);
+// Guest thread: any controller's Pause menu is visible (route state covers port 0's only).
+bool PauseMenuVisible(const uint8_t* base);
 // Rejects an old UI request if its original Options object is no longer active.
 bool SetGraphicsSubtitles(uint8_t* base, uint32_t expected_options, bool enabled);
 bool SetOriginalControls(uint8_t* base, uint32_t expected_options, bool invert, bool vibration, int32_t sensitivity);

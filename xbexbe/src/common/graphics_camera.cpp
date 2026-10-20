@@ -95,6 +95,17 @@ void DarkwatchConfigurePlayerCamera(X86Context& ctx, uint8_t* base) {
               ctx.ecx, wide ? "16:9" : "4:3");
 }
 
+void DarkwatchSetHostPlayerCamera(uint32_t owner, uint32_t camera, const uint8_t* base) {
+    if (!owner || !camera || !Span(base, owner, 0x14) || Read(base, owner + 0xC) != camera ||
+        !Span(base, camera, 0x68) || Read(base, camera) != 0x0043F97C) return;
+    std::lock_guard lock(g_camera_lock);
+    // Both co-op views were configured alike, so the aspect scale carries over.
+    if (!g_player_camera.owner) return;
+    g_player_camera.owner = owner;
+    g_player_camera.camera = camera;
+    g_player_camera.raster = Read(base, camera + 0x34);
+}
+
 void DarkwatchUpdatePlayerView(X86Context& ctx, uint8_t* base) {
     PlayerCamera player;
     {std::lock_guard lock(g_camera_lock); player = g_player_camera;}
