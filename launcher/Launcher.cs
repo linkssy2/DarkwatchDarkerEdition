@@ -72,6 +72,9 @@ namespace DarkwatchDarkerEdition
                 try { Process.Start(new ProcessStartInfo { FileName = Directory.Exists(gameDirectory) ? gameDirectory : installRoot, UseShellExecute = true }); }
                 catch (Exception ex) { Error(ex.Message); }
             };
+            Get<Button>("CoopButton").Click += delegate { ShowCoop(Get<Border>("CoopPanel").Visibility != Visibility.Visible); };
+            Get<Button>("CoopSaveButton").Click += async delegate { await SaveCoop(); };
+            Get<Button>("CoopJoinButton").Click += delegate { JoinCoop(); };
             window.Closing += delegate(object sender, System.ComponentModel.CancelEventArgs e) {
                 if (!busy) return;
                 e.Cancel = true;
@@ -124,6 +127,72 @@ namespace DarkwatchDarkerEdition
             Get<Button>("ImportButton").Content = installed ? "IMPORT / REPAIR" : "IMPORT ISO";
             Get<Button>("ImportButton").Background = (Brush)new BrushConverter().ConvertFromString(ready ? "#20232A" : "#701C25");
             Get<Button>("PlayButton").Background = (Brush)new BrushConverter().ConvertFromString(ready ? "#701C25" : "#20232A");
+            // Only the host needs an installed game; player 2 joins from the package alone.
+            Get<Button>("CoopSaveButton").IsEnabled = !busy && installed;
+            Get<Button>("CoopJoinButton").IsEnabled = !busy;
+        }
+
+        void ShowCoop(bool show)
+        {
+            Get<Border>("CoopPanel").Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            Get<StackPanel>("Overview").Visibility = show ? Visibility.Collapsed : Visibility.Visible;
+            Get<Button>("CoopButton").Content = show ? "BACK" : "CO-OP";
+        }
+
+        // Matches the game's coop_code: letters, digits, - and _, 1 to 32 of them.
+        static bool ValidCoopCode(string code)
+        {
+            if (code.Length < 1 || code.Length > 32) return false;
+            foreach (char c in code)
+                if (!(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_')) return false;
+            return true;
+        }
+
+        bool CoopPort(out int port)
+        {
+            return int.TryParse(Get<TextBox>("CoopPort").Text.Trim(), out port) && port >= 1024 && port <= 65535;
+        }
+
+        void ApplyCoop(Dictionary<string, object> coop)
+        {
+            object value;
+            if (coop.TryGetValue("host", out value)) Get<CheckBox>("CoopHost").IsChecked = Convert.ToBoolean(value);
+            if (coop.TryGetValue("campaign", out value)) Get<CheckBox>("CoopCampaign").IsChecked = Convert.ToBoolean(value);
+            if (coop.TryGetValue("port", out value)) Get<TextBox>("CoopPort").Text = Convert.ToString(value);
+            if (coop.TryGetValue("code", out value) && !String.IsNullOrEmpty(Convert.ToString(value)))
+                Get<TextBox>("CoopCode").Text = Convert.ToString(value);
+        }
+
+        async Task SaveCoop()
+        {
+            bool host = Get<CheckBox>("CoopHost").IsChecked == true, campaign = Get<CheckBox>("CoopCampaign").IsChecked == true;
+            string code = Get<TextBox>("CoopCode").Text.Trim();
+            int port;
+            if (!CoopPort(out port)) { Error("The co-op port must be a number from 1024 to 65535."); return; }
+            if ((host || code.Length > 0) && !ValidCoopCode(code)) { Error("The co-op code must be 1 to 32 letters, digits, - or _."); return; }
+            // The code's characters need no JSON escaping.
+            string settings = "{\"host\":" + (host ? "true" : "false") + ",\"code\":\"" + code + "\",\"port\":" + port +
+                              ",\"campaign\":" + (campaign ? "true" : "false") + "}";
+            await Run("--coop", settings);
+        }
+
+        void JoinCoop()
+        {
+            string address = Get<TextBox>("CoopAddress").Text.Trim(), code = Get<TextBox>("CoopCode").Text.Trim();
+            if (address.Length == 0) { Error("Enter the host's address, such as 192.168.1.24."); return; }
+            if (!ValidCoopCode(code)) { Error("The co-op code must be 1 to 32 letters, digits, - or _."); return; }
+            int port;
+            // A port typed with the address wins; otherwise a non-default port field applies.
+            if (address.IndexOf(':') < 0 && CoopPort(out port) && port != 41330) address += ":" + port;
+            string client = Path.Combine(package, "payload", "runtime", "darkwatch_coop_client.exe");
+            if (!File.Exists(client)) { Error("The co-op client is missing. Extract the complete Darker Edition package."); return; }
+            try {
+                Process.Start(new ProcessStartInfo(client, SetupProcess.Quote(address) + " " + SetupProcess.Quote(code)) {
+                    UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(client)
+                });
+                Get<TextBlock>("StatusText").Foreground = new SolidColorBrush(Color.FromRgb(184, 183, 181));
+                Get<TextBlock>("StatusText").Text = "Player 2 started. Click its window to play with keyboard and mouse; F8 releases the mouse.";
+            } catch (Exception ex) { Error("The co-op client could not start: " + ex.Message); }
         }
 
         void ApplyState(Dictionary<string, object> item)
@@ -133,6 +202,7 @@ namespace DarkwatchDarkerEdition
             if (item.TryGetValue("ready", out value)) ready = Convert.ToBoolean(value);
             if (item.TryGetValue("install_dir", out value)) gameDirectory = Convert.ToString(value);
             if (item.TryGetValue("message", out value)) Get<TextBlock>("StatusText").Text = Convert.ToString(value);
+            if (item.TryGetValue("coop", out value) && value is Dictionary<string, object>) ApplyCoop((Dictionary<string, object>)value);
             if (item.TryGetValue("percent", out value) && value != null) {
                 Get<ProgressBar>("Progress").IsIndeterminate = false;
                 Get<ProgressBar>("Progress").Value = Math.Max(0, Math.Min(100, Convert.ToDouble(value)));
@@ -184,7 +254,8 @@ namespace DarkwatchDarkerEdition
             busy = true; cancelRequested = false;
             bool failed = false;
             Get<TextBlock>("StatusText").Foreground = new SolidColorBrush(Color.FromRgb(184, 183, 181));
-            Get<TextBlock>("StatusText").Text = action == "--play" ? "Verifying your copy before launch…" : action == "--import-iso" ? "Checking your disc image…" : "Checking installation…";
+            Get<TextBlock>("StatusText").Text = action == "--play" ? "Verifying your copy before launch…" : action == "--import-iso" ? "Checking your disc image…" :
+                action == "--coop" ? "Saving co-op settings…" : "Checking installation…";
             Get<ProgressBar>("Progress").Value = 0;
             Get<ProgressBar>("Progress").IsIndeterminate = true;
             try {
@@ -233,6 +304,12 @@ namespace DarkwatchDarkerEdition
         {
             if (state == "ready") ApplyState(new Dictionary<string, object> { { "installed", true }, { "ready", true }, { "message", "Installation verified. Ready to play." }, { "percent", 100 } });
             else if (state == "shaders") ApplyState(new Dictionary<string, object> { { "event", "shader_prepare" }, { "message", "Preparing shaders — 2,220 of 4,440" }, { "percent", 50 } });
+            else if (state == "coop") {
+                ApplyState(new Dictionary<string, object> { { "installed", true }, { "ready", true }, { "message", "Hosting network co-op on UDP 41330 from the next launch. Allow it in Windows Firewall." },
+                    { "percent", 100 }, { "coop", new Dictionary<string, object> { { "host", true }, { "code", "night-hunt" }, { "port", 41330 }, { "campaign", true } } } });
+                Get<TextBox>("CoopAddress").Text = "192.168.1.24";
+                ShowCoop(true);
+            }
             else if (state == "importing") {
                 busy = true; cancelFile = "preview";
                 ApplyState(new Dictionary<string, object> { { "message", "Preparing HD menus and HUD…" }, { "percent", 78 } });
