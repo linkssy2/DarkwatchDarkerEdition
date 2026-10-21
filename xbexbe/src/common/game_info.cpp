@@ -3,6 +3,7 @@
 #include "common/graphics.h"
 #include "common/graphics_view.h"
 #include "common/controls.h"
+#include "common/character_selection.h"
 #include "common/menu_cursor.h"
 #include "common/native_menu.h"
 #include "common/hd_ui.h"
@@ -24,8 +25,8 @@ const app::GameInfo app::kGame = {
     .splash = L"splash",
     .missing = L"Darkwatch's original default.xbe and game files were not found in assets.",
     .images = {{"default.xbe", "darkwatch_xbe"}},
-    .load = [](const void* table) {darkwatch::ControlsLoad(table); darkwatch::view::Load(table);},
-    .save = [](void* table) {darkwatch::ControlsSave(table); darkwatch::view::Save(table);},
+    .load = [](const void* table) {darkwatch::ControlsLoad(table); darkwatch::view::Load(table); darkwatch::settings::LoadCharacters(table);},
+    .save = [](void* table) {darkwatch::ControlsSave(table); darkwatch::view::Save(table); darkwatch::settings::SaveCharacters(table);},
     .init = InitDirectMouse,
     .loaded = LoadFrontendAssets,
     .window = DarkwatchGraphicsWindow,
@@ -57,7 +58,7 @@ const app::GameInfo app::kGame = {
 namespace {
 void InitDirectMouse() {
     DarkwatchGraphicsInit();
-    input::SetMouseToStick(!darkwatch::ControlsSnapshot().direct_mouse);
+    input::SetMouseToStick(false);
 }
 
 // Every derived address is checked before accessing guest memory.
@@ -75,7 +76,7 @@ template<class T> bool AimField(const uint8_t* base, uint32_t object, uint32_t o
 
 struct MouseTarget {
     uint32_t state = 0, owner = 0, vtable = 0, caller = 0, parent = 0;
-    float dt = 0, lower = 0, upper = 0;
+    float dt = 0, lower = 0, upper = 0, yaw_lower = 0, yaw_upper = 0;
     uint8_t inversion = 0;
     bool local = false;
 };
@@ -114,6 +115,15 @@ bool ActiveHorseCamera(const uint8_t* base, uint32_t rider, uint32_t& camera) {
     // HorseComponent creates this camera at 76BCC and releases it at 76C47.
     return AimField(base, component, 0xE8, linked_camera) && linked_camera == camera &&
            AimField(base, component, 0x3C, linked_rider) && linked_rider == rider;
+}
+
+uint32_t ZoomSensitivity(const uint8_t* base, uint32_t actor, uint32_t percent) {
+    if (percent == 100) return 100;
+    uint32_t component = 0;
+    uint8_t zoom = 0;
+    // Original 211D6 handles SelectNo/Low/Medium/HighZoom at 214A8/214B4.
+    return AimComponent(base, actor, 0x418390, component) &&
+           AimField(base, component, 0x23C, zoom) && zoom == 1 ? percent : 100;
 }
 
 const char* ReadMouseTarget(const X86Context& ctx, const uint8_t* base, unsigned axis, MouseTarget& t) {
@@ -168,9 +178,11 @@ struct MousePair {
     unsigned used = 3;
     bool pitch_active = false;
     uint32_t millidegrees = 50;
+    uint32_t zoom_percent = 100;
 };
 MousePair g_mouse_pair;
 MousePair g_horse_mouse_pair;
+MousePair g_turret_mouse_pair;
 unsigned g_horse_mouse_logs = 0;
 uint64_t g_horse_mouse_log_us = 0;
 std::mutex g_mouse_aim_lock;
@@ -199,7 +211,7 @@ void DiscardMouse(const input::MouseSnapshot& s, const MouseTarget& t) {
 }
 
 double MouseDegrees(const MousePair& p, const MouseTarget& t, unsigned axis) {
-    double degrees = double(axis ? p.dy : p.dx) * double(p.millidegrees) / 1000.0;
+    double degrees = double(axis ? p.dy : p.dx) * double(p.millidegrees) / 1000.0 * p.zoom_percent / 100.0;
     return !axis || t.inversion ? -degrees : degrees;
 }
 
@@ -213,6 +225,7 @@ bool MouseEligible(const X86Context& ctx, uint8_t* base, unsigned axis,
         if (t.local) DiscardMouse(s, t);
         TraceMouse(s, t, axis, reason); return false;
     }
+    g_turret_mouse_pair = {}; // Reset even the first on-foot baseline after dismounting.
     bool changed = g_mouse_pair.owner != t.owner || g_mouse_pair.state != t.state ||
                    g_mouse_pair.sample.active_epoch != s.active_epoch;
     bool gap = s.published_us < g_mouse_pair.sample.published_us ||
@@ -223,8 +236,7 @@ bool MouseEligible(const X86Context& ctx, uint8_t* base, unsigned axis,
     return true;
 }
 
-bool MousePitchActive(X86Context& ctx, uint8_t* base, bool direct_mouse) {
-    if (!direct_mouse) return false;
+bool MousePitchActive(X86Context& ctx, uint8_t* base) {
     auto s = input::GetMouseSnapshot();
     std::lock_guard lock(g_mouse_aim_lock);
     MouseTarget t;
@@ -244,7 +256,6 @@ bool MousePitchActive(X86Context& ctx, uint8_t* base, bool direct_mouse) {
 
 void ApplyMouseAim(X86Context& ctx, uint8_t* base, unsigned axis) {
     const auto controls = darkwatch::ControlsSnapshot();
-    if (!controls.direct_mouse) return;
     auto s = input::GetMouseSnapshot();
     std::lock_guard lock(g_mouse_aim_lock);
     MouseTarget t;
@@ -259,6 +270,9 @@ void ApplyMouseAim(X86Context& ctx, uint8_t* base, unsigned axis) {
         p.dy = std::bit_cast<int64_t>(s.accumulated_y - p.consumed_y);
         p.parent = t.parent; p.dt = t.dt; p.used = 0; p.pitch_active = false;
         p.millidegrees = controls.mouse_millidegrees;
+        uint32_t actor = 0;
+        AimField(base, t.owner, 0xC, actor);
+        p.zoom_percent = ZoomSensitivity(base, actor, controls.zoom_sensitivity_percent);
     }
     unsigned bit = 1u << axis;
     if ((p.used & bit) || p.parent != t.parent || p.dt != t.dt || (axis && !(p.used & 1))) {
@@ -335,9 +349,10 @@ void ApplyHorseMouse(X86Context& ctx, uint8_t* base, unsigned axis) {
         p = {}; p.sample = sample; p.consumed_x = sample.accumulated_x; p.consumed_y = sample.accumulated_y;
         p.owner = t.owner; p.state = t.state; p.parent = t.parent; p.dt = t.dt;
     };
-    if (!controls.direct_mouse || !sample.active) { reset(); return; }
+    if (!sample.active) { reset(); return; }
     if (const char* reason = ReadHorseMouseTarget(ctx, base, t)) { if (t.local) reset(); trace(reason); return; }
     g_mouse_pair = {}; // The mounted camera owns local raw look while it is active.
+    g_turret_mouse_pair = {};
     bool changed = p.owner != t.owner || p.state != t.state || p.sample.active_epoch != sample.active_epoch;
     bool gap = sample.published_us < p.sample.published_us || sample.published_us - p.sample.published_us > 250000;
     if (changed || gap) { reset(); trace(changed ? "transition-reset" : "gap-reset"); return; }
@@ -346,6 +361,7 @@ void ApplyHorseMouse(X86Context& ctx, uint8_t* base, unsigned axis) {
         p.dx = std::bit_cast<int64_t>(sample.accumulated_x - p.consumed_x);
         p.dy = std::bit_cast<int64_t>(sample.accumulated_y - p.consumed_y);
         p.parent = t.parent; p.dt = t.dt; p.used = 0; p.millidegrees = controls.mouse_millidegrees;
+        p.zoom_percent = ZoomSensitivity(base, t.owner, controls.zoom_sensitivity_percent);
     }
     unsigned bit = 1u << axis;
     if ((p.used & bit) || p.parent != t.parent || p.dt != t.dt || (axis && !(p.used & 1))) return;
@@ -364,6 +380,88 @@ void ApplyHorseMouse(X86Context& ctx, uint8_t* base, unsigned axis) {
     float result = float(combined);
     std::memcpy(base + slot, &result, sizeof(result));
     trace("applied", delta, result);
+}
+
+bool ReadTurretMouseTarget(const X86Context& ctx, const uint8_t* base, MouseTarget& t) {
+    t.state = ctx.esi;
+    uint32_t map = 0, manager = 0, controller = 0, self = 0, reference = 0;
+    if (!AimField(base, t.state, 0, t.vtable) ||
+        (t.vtable != 0x41E868 && t.vtable != 0x41E7A8) ||
+        !AimField(base, t.state, 0x130, map) || !AimRead(base, 0x4AC174, manager) ||
+        !AimField(base, manager, 0xD4, controller) || !AimField(base, controller, 8, self) ||
+        !AimField(base, controller, 0x10, reference) || self != controller ||
+        uint64_t(controller) + 0xC != reference || map != reference) return false;
+    t.local = true;
+    uint32_t actor = 0, component = 0, character = 0, owner_map = 0, weak = 0, attached = 0;
+    uint8_t enabled = 0, inhibited = 0, automatic = 0;
+    // StateVehicleLook sends event 1CA to its attached turret. Turret/Gatling
+    // share this manual integration; AI look-at takes a separate branch.
+    return AimField(base, manager, 0x120, enabled) && enabled &&
+        AimField(base, manager, 0x121, inhibited) && !inhibited &&
+        AimField(base, t.state, 0x100, automatic) && !automatic &&
+        AimField(base, t.state, 0x120, t.owner) &&
+        AimField(base, t.state, 0xC, actor) && AimComponent(base, actor, t.vtable, component) && component == t.state &&
+        AimComponent(base, t.owner, 0x41F878, character) &&
+        AimField(base, character, 0x30, owner_map) && owner_map == reference &&
+        AimField(base, character, 0x184, weak) && AimField(base, weak, 4, attached) && attached == actor &&
+        AimField(base, character, 0x139, t.inversion) && t.inversion <= 1 &&
+        uint64_t(t.state) + 0x108 == ctx.edi && uint64_t(t.state) + 0x10C == ctx.ebx &&
+        AimField(base, ctx.ebp, 8, t.dt) && std::isfinite(t.dt) && t.dt > 0 && t.dt <= .25f &&
+        AimField(base, t.state, 0x24, t.lower) && AimField(base, t.state, 0x28, t.upper) &&
+        std::isfinite(t.lower) && std::isfinite(t.upper) && t.lower <= t.upper &&
+        AimField(base, t.state, 0x1C, t.yaw_lower) && AimField(base, t.state, 0x20, t.yaw_upper) &&
+        std::isfinite(t.yaw_lower) && std::isfinite(t.yaw_upper) && t.yaw_lower <= t.yaw_upper;
+}
+
+void ApplyTurretMouse(X86Context& ctx, uint8_t* base) {
+    const auto controls = darkwatch::ControlsSnapshot();
+    const auto sample = input::GetMouseSnapshot();
+    std::lock_guard lock(g_mouse_aim_lock);
+    MouseTarget t;
+    auto& p = g_turret_mouse_pair;
+    auto reset = [&] {
+        p = {}; p.sample = sample; p.consumed_x = sample.accumulated_x; p.consumed_y = sample.accumulated_y;
+        p.owner = t.owner; p.state = t.state;
+    };
+    if (!sample.active) { reset(); return; }
+    if (!ReadTurretMouseTarget(ctx, base, t)) { if (t.local) reset(); return; }
+    g_mouse_pair = {}; g_horse_mouse_pair = {};
+    bool changed = p.owner != t.owner || p.state != t.state || p.sample.active_epoch != sample.active_epoch;
+    bool gap = sample.published_us < p.sample.published_us || sample.published_us - p.sample.published_us > 250000;
+    if (changed || gap) { reset(); return; }
+    if (p.sample.generation == sample.generation) return;
+    p.dx = std::bit_cast<int64_t>(sample.accumulated_x - p.consumed_x);
+    p.dy = std::bit_cast<int64_t>(sample.accumulated_y - p.consumed_y);
+    p.sample = sample; p.consumed_x = sample.accumulated_x; p.consumed_y = sample.accumulated_y;
+    if (!p.dx && !p.dy) return;
+    p.millidegrees = controls.mouse_millidegrees;
+    p.zoom_percent = ZoomSensitivity(base, t.owner, controls.zoom_sensitivity_percent);
+    float pitch = 0, yaw = 0;
+    if (!AimField(base, t.state, 0x108, pitch) || !AimField(base, t.state, 0x10C, yaw) ||
+        !std::isfinite(pitch) || !std::isfinite(yaw)) return;
+    constexpr double radians = 0.017453292519943295;
+    // Native turret angles are radians; positive host Y maps to negative pad Y.
+    // Add to the original controller result, ahead of its authored wrap/clamps.
+    double next_pitch = double(pitch) - MouseDegrees(p, t, 1) * radians;
+    double next_yaw = double(yaw) + MouseDegrees(p, t, 0) * radians;
+    if (!std::isfinite(next_pitch) || !std::isfinite(next_yaw) ||
+        std::abs(next_pitch) > double(std::numeric_limits<float>::max()) ||
+        std::abs(next_yaw) > double(std::numeric_limits<float>::max())) return;
+    if (p.dy) {
+        // Large raw counts can exceed the original stick's per-tick range.
+        // Stop at partial travel limits before the one-turn native wrap can
+        // flip the requested direction. Unchanged axes retain native behavior.
+        pitch = float(std::clamp(next_pitch, double(t.lower), double(t.upper)));
+        std::memcpy(base + uint64_t(t.state) + 0x108, &pitch, sizeof(pitch));
+    }
+    if (p.dx) {
+        constexpr double pi = 180 * radians;
+        if (t.yaw_lower <= -pi + .000001 && t.yaw_upper >= pi - .000001)
+            next_yaw = std::remainder(next_yaw, 2 * pi);
+        else next_yaw = std::clamp(next_yaw, double(t.yaw_lower), double(t.yaw_upper));
+        yaw = float(next_yaw);
+        std::memcpy(base + uint64_t(t.state) + 0x10C, &yaw, sizeof(yaw));
+    }
 }
 
 bool LocalAimControl(const X86Context& ctx, const uint8_t* base, unsigned axis) {
@@ -498,10 +596,11 @@ void DarkwatchObserveYaw(X86Context& ctx, uint8_t* base) { ObserveAim(ctx, base,
 void DarkwatchObservePitch(X86Context& ctx, uint8_t* base) { ObserveAim(ctx, base, 1); ApplyMouseAim(ctx, base, 1); }
 void DarkwatchHorseMouseYaw(X86Context& ctx, uint8_t* base) { ApplyHorseMouse(ctx, base, 0); }
 void DarkwatchHorseMousePitch(X86Context& ctx, uint8_t* base) { ApplyHorseMouse(ctx, base, 1); }
+void DarkwatchTurretMouse(X86Context& ctx, uint8_t* base) { ApplyTurretMouse(ctx, base); }
 bool DarkwatchMousePitchActive(X86Context& ctx, uint8_t* base) {
     // Pending mouse Y must still mark its pair before the original manual branch.
     const auto controls = darkwatch::ControlsSnapshot();
-    const bool mouse = MousePitchActive(ctx, base, controls.direct_mouse);
+    const bool mouse = MousePitchActive(ctx, base);
     return mouse || (!controls.aim_centering && LocalAimControl(ctx, base, 1));
 }
 bool DarkwatchSkipYawAssistance(X86Context& ctx, uint8_t* base) {

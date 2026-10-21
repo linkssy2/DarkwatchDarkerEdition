@@ -29,3 +29,20 @@ from the launcher payload. The HD pack is prepared locally from the user's ISO.
 
 An additional clear-logo download was inspected but rejected for visible edge
 artifacts; it is not used or included in the launcher package.
+
+## Selectable Cassidy first-person repaint
+
+`cassidy-hands-1024.dds` and `cassidy-hands-256.dds` contain only the approved
+reconstructed hand/arm repaint pixels, including their mip chains. They are
+encoded from the user-approved `cassidy-pov-atlas-repaint-v2.png` (SHA256
+`65a49b71b2aeb107d82cac377740fd320b639bb6df5e2394bb5cb0c3e97d0c0c`).
+The 1024-square image is resized with Lanczos and its lower levels with box
+filtering; the 256-square companion is resized from that image with Lanczos.
+The output uses DXT1 compression. The packaged DDS hashes are
+`73ca5d8c1ab1451c8863ee91139678f28af63b992934090acf233433ebabb3a3`
+and `fee9d7abf2f7b0100937f576c0bd1564c71f06b0d07b9ece14300d51c8f5113f`.
+
+The launcher combines these pixels with the importing player's original model;
+the original geometry, animation, audio, and modified game archives are not
+shipped. Character animation and archive conversion are performed locally from
+the verified disc, using the hash-only `character-catalog.json` manifest.

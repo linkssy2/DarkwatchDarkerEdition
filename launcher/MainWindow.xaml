@@ -104,9 +104,13 @@
               <Button x:Name="VerifyButton" Content="VERIFY FILES" Style="{StaticResource Quiet}" IsEnabled="False"/>
               <Button x:Name="FolderButton" Grid.Column="2" Content="OPEN GAME FOLDER" Style="{StaticResource Quiet}" IsEnabled="False"/>
             </Grid>
+            <StackPanel x:Name="TextureActions" Margin="0,12,0,0">
+              <Button x:Name="TextureButton" Content="INSTALL HD TEXTURES" Style="{StaticResource Quiet}" IsEnabled="False" ToolTip="Import your ISO first. Download all HD pack parts into one folder, then select the .001 file. A complete ZIP also works."/>
+              <TextBlock x:Name="TextureStatus" Text="Optional download · Gameplay textures not installed" Foreground="#85898F" FontSize="11" Margin="0,7,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
             <Button x:Name="CancelButton" Content="CANCEL" Style="{StaticResource Quiet}" Visibility="Collapsed" Margin="0,12,0,0"/>
           </StackPanel>
-          <TextBlock Grid.Row="5" Text="DARKER EDITION   /   0.3" Foreground="#676B72" FontSize="10" Margin="0,22,0,0"/>
+          <TextBlock Grid.Row="5" Text="DARKER EDITION   /   0.4" Foreground="#676B72" FontSize="10" Margin="0,22,0,0"/>
         </Grid>
       </Grid>
     </Grid>

@@ -34,15 +34,18 @@ int main(){
  using namespace darkwatch;using input::PcAction;
  constexpr auto fire=size_t(PcAction::RightTrigger),forward=size_t(PcAction::MoveForward);
  input::Init();input::SetActive(true);app::Load();auto defaults=ControlsSnapshot();
- CHECK(defaults.direct_mouse&&defaults.aim_assistance&&defaults.aim_centering&&defaults.mouse_millidegrees==50);
+ CHECK(defaults.zoom_sensitivity_percent==100);
+ CHECK(defaults.aim_assistance&&defaults.aim_centering&&defaults.mouse_millidegrees==50);
  CHECK(defaults.bindings[size_t(PcAction::Start)].keys[0]==VK_ESCAPE&&defaults.bindings[size_t(PcAction::Start)].keys[1]==VK_RETURN);
  CHECK(defaults.bindings[size_t(PcAction::B)].keys[0]=='B');
  input::Key(VK_ESCAPE,true);input::AdvanceFrame(80000);CHECK((input::Poll(0).buttons&0x10)&&!input::Poll(0).analog[1]);
  input::Key(VK_ESCAPE,false);input::AdvanceFrame(90000);
  // Legacy scalar settings load without a new bindings table.
  Write("direct_mouse=false\nmouse_millidegrees_per_count=75\n");app::Load();
- auto s=ControlsSnapshot();CHECK(!s.direct_mouse&&s.mouse_millidegrees==75&&s.bindings[fire].keys[0]==VK_LBUTTON);
- s.direct_mouse=true;s.aim_assistance=false;s.aim_centering=false;s.mouse_millidegrees=87;
+ input::Mouse(8,-4);input::AdvanceFrame(16667);CHECK(!input::Poll(0).rx&&!input::Poll(0).ry);
+ auto s=ControlsSnapshot();CHECK(s.mouse_millidegrees==75&&s.bindings[fire].keys[0]==VK_LBUTTON);
+ CHECK(s.zoom_sensitivity_percent==100);s.zoom_sensitivity_percent=35;
+ s.aim_assistance=false;s.aim_centering=false;s.mouse_millidegrees=87;
  s.bindings[fire].keys[0]='P';s.bindings[fire].keys[1]=VK_XBUTTON1;
  s.bindings[forward].keys[0]='I';CHECK(ControlsApply(s));
  auto epoch=input::GetMouseSnapshot().active_epoch;
@@ -52,9 +55,10 @@ int main(){
  input::Key('P',true);input::Key('P',false);input::AdvanceFrame(140000);CHECK(input::Poll(0).analog[7]==255);
  input::AdvanceFrame(160000);CHECK(!input::Poll(0).analog[7]);
  auto graphics=app::Snapshot();graphics.width=2560;graphics.height=1440;graphics.aspect_ratio=app::AspectRatio::Wide16x9;app::Apply(graphics);
- CHECK(app::Save());auto saved=Read();CHECK(saved.find("key_bindings")!=std::string::npos);
+ CHECK(app::Save());auto saved=Read();CHECK(saved.find("direct_mouse")==std::string::npos);CHECK(saved.find("key_bindings")!=std::string::npos);
  CHECK(ControlsApply(defaults));app::Load();auto restored=ControlsSnapshot();
- CHECK(restored.direct_mouse&&!restored.aim_assistance&&!restored.aim_centering&&restored.mouse_millidegrees==87);
+ CHECK(restored.zoom_sensitivity_percent==35);
+ CHECK(!restored.aim_assistance&&!restored.aim_centering&&restored.mouse_millidegrees==87);
  CHECK(restored.bindings[fire].keys[0]=='P'&&restored.bindings[fire].keys[1]==VK_XBUTTON1&&restored.bindings[forward].keys[0]=='I');
  CHECK(app::Snapshot().width==2560&&app::Snapshot().height==1440);
  // Switch Weapons retains the existing primary/alternate slots without migrating saved bindings.
@@ -114,6 +118,11 @@ int main(){
  }
  Write("mouse_millidegrees_per_count=-7\naim_assistance=false\naim_centering=true\n");app::Load();CHECK(ControlsSnapshot().mouse_millidegrees==1&&!ControlsSnapshot().aim_assistance&&ControlsSnapshot().aim_centering);
  Write("mouse_millidegrees_per_count=9000\n");app::Load();CHECK(ControlsSnapshot().mouse_millidegrees==1000);
+ Write("zoom_sensitivity_percent=-1\n");app::Load();CHECK(ControlsSnapshot().zoom_sensitivity_percent==10);
+ Write("zoom_sensitivity_percent=9999\n");app::Load();CHECK(ControlsSnapshot().zoom_sensitivity_percent==200);
+ Write("zoom_sensitivity_percent='bad'\n");app::Load();CHECK(ControlsSnapshot().zoom_sensitivity_percent==100);
+ auto zoom_limits=restored;zoom_limits.zoom_sensitivity_percent=0;CHECK(ControlsApply(zoom_limits)&&ControlsSnapshot().zoom_sensitivity_percent==10);
+ zoom_limits.zoom_sensitivity_percent=9999;CHECK(ControlsApply(zoom_limits)&&ControlsSnapshot().zoom_sensitivity_percent==200);
  CHECK(ControlsApply(restored));CHECK(app::Save());saved=Read();
  HANDLE held=CreateFileW(L"settings.toml",GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);CHECK(held!=INVALID_HANDLE_VALUE);
  CHECK(ControlsApply(defaults));CHECK(!app::Save()&&Read()==saved);CloseHandle(held);

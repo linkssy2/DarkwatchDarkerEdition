@@ -6,8 +6,8 @@
 namespace darkwatch {
 struct ControlsSettings {
     input::PcBindings bindings;
-    bool direct_mouse = true;
     uint32_t mouse_millidegrees = 50;
+    uint32_t zoom_sensitivity_percent = 100;
     bool aim_assistance = true;
     bool aim_centering = true;
 };

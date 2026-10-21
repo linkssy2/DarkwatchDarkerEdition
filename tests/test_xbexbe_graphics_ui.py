@@ -20,6 +20,7 @@ FIXTURE = r'''
 static std::map<std::string,ImVec2> button_centers;
 static std::map<std::string,ImVec4> field_bounds;
 static std::map<std::string,std::string> combo_text;
+static std::map<std::string,bool> combo_disabled;
 static std::map<std::string,std::string> slider_formats;
 static std::map<std::string,std::pair<int,int>> slider_ranges;
 static std::vector<std::string> rendered_text;
@@ -69,9 +70,10 @@ void ObservedTextDisabled(const char* format,...){
  TextDisabledV(format,args);va_end(args);
 }
 bool ObservedCombo(const char* label,int* current,const char* items,int maximum=-1){
+ combo_disabled[label]=(GImGui->CurrentItemFlags&ImGuiItemFlags_Disabled)!=0;
  WidgetHighlightProbe highlight(label);
  auto p=GetCursorScreenPos();float width=CalcItemWidth(),height=GetFrameHeight();
- bool observe=std::string(label)=="##fps"||std::string(label)=="##vsync"||std::string(label)=="##msaa"||std::string(label)=="##aniso"||std::string(label)=="##hd_ui"||std::string(label)=="##subtitles"||std::string(label)=="##cutscene_borders";
+ bool observe=std::string(label)=="##fps"||std::string(label)=="##vsync"||std::string(label)=="##msaa"||std::string(label)=="##aniso"||std::string(label)=="##hd_ui"||std::string(label)=="##subtitles"||std::string(label)=="##cutscene_borders"||std::string(label)=="##hd_textures"||std::string(label)=="##player one character"||std::string(label)=="##player two character";
  // A combo popup ends ImGui logging when it closes its window. Use the real
  // rendered-text file sink so that EndCombo cannot clear the observed options.
  if(observe){std::ofstream("fps-widget.log",std::ios::trunc).close();LogToFile(-1,"fps-widget.log");}
@@ -121,11 +123,16 @@ bool ObservedButton(const char* label,const ImVec2& size=ImVec2(0,0)) {
 #undef TextDisabled
 #undef TextUnformatted
 #include "common/graphics_view.cpp"
+#include "common/character_selection.cpp"
 #include <cstdlib>
 #define CHECK(x) do { if (!(x)) {std::fprintf(stderr,"line %d: %s\n",__LINE__,#x);std::exit(90);} } while(0)
 static app::Settings actual;
+static unsigned unavailable_characters=0;
+unsigned DarkwatchCharacterUnavailablePlayers(){return unavailable_characters;}
 static bool save_ok=true, active=true;
 static unsigned saves=0, applies=0, displays=0, subtitle_calls=0;
+static unsigned quit_confirmations=0;
+static bool quit_post_ok=true;
 static darkwatch::GraphicsRouteState route;
 static uint8_t memory[1];
 namespace app {
@@ -148,6 +155,8 @@ ControllerFamily GetControllerFamily(int port){return port==0?connected_family:C
 void SetActive(bool value){active=value;}
 }
 namespace darkwatch {
+static bool gameplay_available=true;
+bool GameplayTexturesAvailable(){return gameplay_available;}
 static ControlsSettings controls;
 static uint32_t capture_result=0;
 static bool capture_active=false;
@@ -174,6 +183,9 @@ bool OpenControllerConfiguration(uint8_t*,uint32_t expected){CHECK(expected==rou
 static uint32_t native_pause_entry=0,native_pause_owner=0;
 bool EnsureNativePauseEntries(uint8_t*){return route.paused&&route.route==GraphicsMenuRoute::OptionsMain;}
 bool EnsureDesktopQuitEntry(uint8_t*){return false;}
+static uint32_t character_owner=0;
+uint32_t CharacterMenuOwner(const uint8_t*){return character_owner;}
+bool ConfirmDesktopQuit(uint8_t*,uint32_t owner){CHECK(owner==character_owner);++quit_confirmations;return quit_post_ok;}
 uint32_t TakeNativePauseEntry(uint8_t*,uint32_t expected){
  auto entry=native_pause_entry;native_pause_entry=0;
  return route.paused&&route.route==GraphicsMenuRoute::Controls&&expected==native_pause_owner?entry:0;
@@ -186,7 +198,7 @@ static void Frame(float elapsed=1.f/60){
  ImGui::NewFrame();DarkwatchGraphicsUi(fixture_fps);ImGui::Render();
 }
 static void CheckNavigationOutline(const char* context){
- auto* parent=ImGui::FindWindowByName(g_controls?"Controls":"Graphics");CHECK(parent&&parent->DC.ChildWindows.Size);
+ auto* parent=ImGui::FindWindowByName(g_characters?"Characters":g_controls?"Controls":"Graphics");CHECK(parent&&parent->DC.ChildWindows.Size);
  auto* child=parent->DC.ChildWindows[0];ImGui::SetScrollY(child,0);Frame();Frame();
  child_outline_vertices.clear();child_outline_indices.clear();widget_outline_vertices.clear();child_navigation_kept=true;
  const auto colors=GImGui->ColorStack.Size;const auto styles=GImGui->StyleVarStack.Size;
@@ -204,14 +216,14 @@ static void Click(float x,float y){auto& io=ImGui::GetIO();io.AddMousePosEvent(x
  io.AddMouseButtonEvent(0,true);Frame();io.AddMouseButtonEvent(0,false);Frame();}
 static void ClickNamed(const char* name,bool scroll=false){
  CHECK(button_centers.count(name));auto p=button_centers[name];
- if(scroll){Frame();p=button_centers[name];auto* parent=ImGui::FindWindowByName(g_controls?"Controls":"Graphics");CHECK(parent&&parent->DC.ChildWindows.Size);
+ if(scroll){Frame();p=button_centers[name];auto* parent=ImGui::FindWindowByName(g_characters?"Characters":g_controls?"Controls":"Graphics");CHECK(parent&&parent->DC.ChildWindows.Size);
   auto* child=parent->DC.ChildWindows[0];
   ImGui::SetScrollY(child,child->Scroll.y+p.y-(child->InnerRect.Min.y+child->InnerRect.Max.y)/2);Frame();Frame();p=button_centers[name];}
  Click(p.x,p.y);
 }
 static void ClickField(const char* name,float fraction=.5f){
  CHECK(field_bounds.count(name));Frame();auto r=field_bounds[name];
- auto* parent=ImGui::FindWindowByName(g_controls?"Controls":"Graphics");CHECK(parent&&parent->DC.ChildWindows.Size);
+ auto* parent=ImGui::FindWindowByName(g_characters?"Characters":g_controls?"Controls":"Graphics");CHECK(parent&&parent->DC.ChildWindows.Size);
  auto* child=parent->DC.ChildWindows[0];
  ImGui::SetScrollY(child,child->Scroll.y+(r.y+r.w)/2-(child->InnerRect.Min.y+child->InnerRect.Max.y)/2);
  Frame();Frame();r=field_bounds[name];CHECK(r.y>=child->InnerRect.Min.y&&r.w<=child->InnerRect.Max.y);
@@ -301,6 +313,19 @@ int main(){
  CHECK(button_centers["APPLY"].y>graphics->DC.ChildWindows[0]->InnerRect.Max.y&&button_centers["APPLY"].y<720);
  // Original subtitles remain on this page and use a guest-thread request on Apply.
  SelectQuality("##subtitles",1,"On");CHECK(g_subtitles_draft&&!route.subtitles);
+ ClickField("##brightness",.25f);CHECK(g_draft.brightness_percent<100&&actual.brightness_percent==100);
+ CHECK(slider_ranges["##brightness"].first==50&&slider_ranges["##brightness"].second==150);
+ SelectQuality("##hd_textures",0,"Off");CHECK(!g_view_draft.hd_textures&&darkwatch::view::Snapshot().hd_textures);
+ SelectQuality("##hd_textures",1,"On");CHECK(g_view_draft.hd_textures);
+ darkwatch::gameplay_available=false;Frame();
+ CHECK(combo_disabled["##hd_textures"]&&combo_text["##hd_textures"].find("Off")!=std::string::npos);
+ CHECK(std::find(rendered_text.begin(),rendered_text.end(),"Install the HD texture pack in the launcher.")!=rendered_text.end());
+ ClickField("##hd_textures");Frame();
+ CHECK(!ImGui::IsPopupOpen(nullptr,ImGuiPopupFlags_AnyPopupId|ImGuiPopupFlags_AnyPopupLevel));
+ CHECK(g_view_draft.hd_textures&&darkwatch::view::Snapshot().hd_textures);
+ darkwatch::gameplay_available=true;Frame();
+ CHECK(!combo_disabled["##hd_textures"]&&combo_text["##hd_textures"].find("On")!=std::string::npos);
+ CHECK(slider_ranges["##fov"].second==200);
  ClickNamed("APPLY");CHECK(saves==1&&actual.render_percent>100&&!g_confirm);
  CHECK(!actual.vsync&&actual.fps_cap==144&&actual.msaa_samples==4&&actual.aniso==16);
  Poll();CHECK(subtitle_calls==1&&route.subtitles);
@@ -349,6 +374,13 @@ int main(){
  route.controls_available=true;route.vibration=true;route.sensitivity=5;route.sensitivity_min=1;route.sensitivity_max=10;route.controller_preset=0;
  Poll();Frame();CHECK(g_open&&g_controls&&!g_confirm&&g_controls_draft.bindings[16].keys[0]=='W');
  CheckNavigationOutline("main Controls");
+ const auto regular_sensitivity=g_controls_draft.mouse_millidegrees;
+ ClickField("##zoom sensitivity",.25f);
+ CHECK(g_controls_draft.zoom_sensitivity_percent<100&&darkwatch::controls.zoom_sensitivity_percent==100);
+ CHECK(g_controls_draft.mouse_millidegrees==regular_sensitivity);
+ CHECK(slider_ranges["##zoom sensitivity"].first==10&&slider_ranges["##zoom sensitivity"].second==200);
+ ClickNamed("RESET DEFAULTS");CHECK(g_controls_draft.zoom_sensitivity_percent==100);
+
  // Labels follow the actual original preset; Lefty maps the left stick to looking.
  CHECK(!std::strcmp(ActionName(8),"INTERACT")&&!std::strcmp(ActionName(7),"SIGHT MODE"));
  CHECK(!std::strcmp(ActionName(0),"D-PAD UP")&&!std::strcmp(ActionName(1),"SWITCH WEAPONS"));
@@ -627,6 +659,16 @@ class GraphicsUiTests(unittest.TestCase):
                                               CONTROLLER_COVERAGE + 'ImGui::DestroyContext();std::puts('))
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
 
+    def test_previous_child_outline_is_detected(self):
+        # Reintroduce only the old outline behavior, without a stale settings API.
+        source = (ROOT / "xbexbe/src/common/graphics.cpp").read_text(encoding="utf-8")
+        self.assertIn("const float alpha = color.w; color.w = 0;", source)
+        source = source.replace("const float alpha = color.w; color.w = 0;", "const float alpha = color.w;")
+        fixture = FIXTURE.replace('#include "common/graphics.cpp"', source)
+        ran = self.run_fixture(fixture)
+        self.assertEqual(ran.returncode, 90, ran.stdout + ran.stderr)
+        self.assertIn("child_outline_vertices[child->Name]==0", ran.stderr)
+        self.assertRegex(ran.stdout, r"child vertices=[1-9]\d* indices=[1-9]\d* widget ivory vertices=[1-9]\d*")
 
 
 if __name__ == "__main__":

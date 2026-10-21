@@ -9,6 +9,7 @@ struct Settings {
     bool hd_ui = true;
     uint32_t viewmodel_fov_percent = 100;
     bool cutscene_borders = true;
+    bool hd_textures = true;
 };
 Settings Snapshot();
 Settings Normalize(Settings settings);

@@ -31,3 +31,14 @@ bool DarkwatchHideCinematicBorder(X86Context& ctx, uint8_t* base) {
     return Read(base, 0x4B7A68) == effect && Span(base, effect, 0x3C) &&
            Read(base, effect) == 0x478244;
 }
+
+bool DarkwatchHideSubtitleBackground(X86Context& ctx, uint8_t* base) {
+    if (ctx.ebp < 0x78 || ctx.esp != ctx.ebp - 0x78 ||
+        !Span(base, ctx.esp, 0x78) ||
+        !Span(base, ctx.ebx, 0x10)) return false;
+    // ClearSubtitle clears the current owner before its queued final draw is removed.
+    // The subtitle type and exact panel call remain valid throughout that lifetime.
+    return Read(base, ctx.ebx) == 0x43FB40 &&
+           Read(base, ctx.esp) == ctx.ebp - 0x68 &&
+           Read(base, ctx.ebp - 4) == 0xB4000000;
+}

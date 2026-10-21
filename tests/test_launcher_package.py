@@ -2,11 +2,14 @@
 from pathlib import Path
 import importlib.util
 import json
+import shutil
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'launcher'))
 SPEC = importlib.util.spec_from_file_location('launcher_package', ROOT / 'launcher/package.py')
 package = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(package)
@@ -42,7 +45,8 @@ class LauncherPackageTests(unittest.TestCase):
             good.write_bytes(b'host runtime fixture')
             expected = {'payload/runtime.exe': package.sha(good)}
             self.assertEqual(package.audit(root, expected, set()), expected)
-            for name in ('default.xbe', 'disc.iso', 'disc.xiso', 'packfile.pck', 'hd-ui.pack', 'settings.toml', 'hdd/save.bin'):
+            for name in ('default.xbe', 'disc.iso', 'disc.xiso', 'packfile.pck', 'hd-ui.pack', 'settings.toml',
+                         'gameplay-hd/texture.dwt', 'optional-textures.zip', 'hdd/save.bin'):
                 extra = root / name
                 extra.parent.mkdir(parents=True, exist_ok=True)
                 extra.write_bytes(b'not allowed')
@@ -54,6 +58,77 @@ class LauncherPackageTests(unittest.TestCase):
             good.write_bytes(b'changed runtime')
             with self.assertRaises(ValueError):
                 package.audit(root, expected, set())
+
+    def test_optional_texture_download_stays_out_of_base_package(self):
+        with patch.object(package, 'hd_sources', return_value={}):
+            plan = package.sources()
+        self.assertIn('payload/gameplay_hd.py', plan)
+        self.assertIn('payload/gameplay-hd-catalog.json', plan)
+        self.assertTrue(all(Path(name).suffix.lower() not in ('.dwt', '.pack') for name in plan))
+        self.assertEqual([name for name in plan if name.endswith('.zip')], ['payload/python/python312.zip'])
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            file = root / 'replacement.dwt'
+            file.write_bytes(b'DWGAME02fixture')
+            with self.assertRaisesRegex(ValueError, 'Forbidden'):
+                package.audit(root, {'replacement.dwt': package.sha(file)}, set())
+
+    def test_optional_texture_catalog_matches_runtime_build(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(package, 'REPO', Path(folder)):
+            root = Path(folder)
+            metadata_name = 'xbexbe/config/gameplay_hd_assets.json'
+            header_name = 'xbexbe/src/common/gameplay_texture_assets.h'
+            metadata, header = root / metadata_name, root / header_name
+            metadata.parent.mkdir(parents=True)
+            header.parent.mkdir(parents=True)
+            metadata.write_text(json.dumps({'textures': [{'name': 'fixture', 'width': 2, 'height': 2, 'dds_mips': 2}]}))
+            header.write_text('compiled metadata fixture')
+            build = {'host_sources': {'files': [{'path': name, 'sha256': package.sha(root / name)}
+                                               for name in (metadata_name, header_name)]}}
+            catalog = root / 'catalog.json'
+            good = {'schema_version': 1, 'kind': 'darkwatch-gameplay-hd', 'version': '1',
+                    'texture_catalog_sha256': package.sha(metadata),
+                    'files': [{'path': 'gameplay-hd/fixture.dwt', 'size': 60, 'sha256': 'a' * 64}]}
+            catalog.write_text(json.dumps(good))
+            package.check_texture_catalog(catalog, build)
+            for changed in (dict(good, texture_catalog_sha256='0' * 64), dict(good, files=[]),
+                            dict(good, files=good['files'] * 2),
+                            dict(good, files=[dict(good['files'][0], size=61)])):
+                catalog.write_text(json.dumps(changed))
+                with self.assertRaisesRegex(ValueError, 'catalog is stale'):
+                    package.check_texture_catalog(catalog, build)
+            catalog.write_text(json.dumps(good))
+            for file in (metadata, header):
+                original = file.read_bytes()
+                file.write_bytes(original + b' ')
+                with self.assertRaisesRegex(ValueError, 'differs from the runtime build'):
+                    package.check_texture_catalog(catalog, build)
+                file.write_bytes(original)
+
+    def test_character_archive_pins_and_authored_art_match_runtime(self):
+        import character_content
+        with tempfile.TemporaryDirectory() as folder, patch.object(package,'REPO',Path(folder)):
+            root = Path(folder)
+            source_name = 'xbexbe/src/common/character_content.cpp'
+            source = root/source_name
+            source.parent.mkdir(parents=True)
+            source.write_text('\n'.join(f'{name} {size} {digest}' for name,(size,digest) in character_content.INSTALLED.items()))
+            build = {'host_sources': {'files': [{'path':source_name,'sha256':package.sha(source)}]}}
+            shutil.copyfile(ROOT/'launcher/character-catalog.json',root/'character-catalog.json')
+            plan = {'payload/character-catalog.json':root/'character-catalog.json'}
+            for size in (1024,256):
+                name = f'cassidy-hands-{size}.dds'
+                shutil.copyfile(ROOT/'launcher/assets'/name,root/name)
+                plan['payload/character-art/'+name] = root/name
+            package.check_character_catalog(plan,build)
+            old = source.read_bytes()
+            source.write_bytes(old+b'changed')
+            with self.assertRaisesRegex(ValueError,'differs from the runtime'):
+                package.check_character_catalog(plan,build)
+            source.write_bytes(old)
+            (root/'cassidy-hands-256.dds').write_bytes(b'wrong authored art')
+            with self.assertRaisesRegex(ValueError,'approved conversion'):
+                package.check_character_catalog(plan,build)
 
     def test_hd_artwork_only_referenced_and_no_traversal(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(package, 'REPO', Path(folder)):

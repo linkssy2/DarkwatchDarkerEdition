@@ -29,6 +29,8 @@ void darkwatch::ControlsLoad(const void* t){controls_load_table=t;}
 void darkwatch::ControlsSave(void* t){controls_save_table=t;}
 void darkwatch::view::Load(const void* t){view_load_table=t;}
 void darkwatch::view::Save(void* t){view_save_table=t;}
+void darkwatch::settings::LoadCharacters(const void*){}
+void darkwatch::settings::SaveCharacters(void*){}
 bool darkwatch::ControlsMessage(void*,uint32_t,uintptr_t,intptr_t,intptr_t*){return false;}
 // The graphics page has its own actual ImGui/input fixture; isolate direct aiming here.
 void DarkwatchGraphicsInit() {}
@@ -151,9 +153,23 @@ int main(){
  // Missing or reversed pair cannot consume Y; unsupported hooks do not change context.
  Reset();Frame(20,40);Prepare(1);CHECK(!Center());NoChange(1);Yaw(-1);Pitch(2);
  Reset();Frame(20,40);Yaw(-1);Prepare(1);W(c.ebp,0x6100);F(0x6108,.02f);CHECK(!Center());NoChange(1);
+ // Zoom follows the owned component's original event flag, never a held key.
+ for(uint32_t r:{0x421FE0u,0x420E50u,0x4223A8u}){
+  Reset(r);controls.zoom_sensitivity_percent=25;
+  W(owner+0xC,0x9000);W(0x9060,1);W(0x9064,0xA000);W(0xA004,0xB000);
+  W(0xB000,0x418390);W(0xB00C,0x9000);
+  Frame(20,40);Yaw(-1);Pitch(2);
+  memory[0xB23C]=1;Frame(20,40);Yaw(-.25);
+  memory[0xB23C]=0;controls.zoom_sensitivity_percent=200;Pitch(.5); // Pair latches zoom and sensitivity.
+  Frame(20,40);Yaw(-1);Pitch(2);
+  memory[0xB23C]=1;Frame(20,40);Yaw(-2);Pitch(4);
+  W(0xB00C,0x9100);Frame(20,40);Yaw(-1);Pitch(2); // Foreign component fails closed.
+  W(0xB00C,0x9000);blocked.insert(0xB000);Frame(20,40);Yaw(-1);Pitch(2);
+  blocked.clear();memory[0xB23C]=2;Frame(20,40);Yaw(-1);Pitch(2);
+ }
  // Settings use synchronized snapshots and callbacks, not mutable GameInfo pointers.
- Reset();controls.direct_mouse=false;app::kGame.init();Frame();Frame(8,-4);CHECK(input::Poll(0).rx>6800&&input::Poll(0).ry>3400);
- Prepare(0);NoChange(0);Prepare(1);CHECK(!Center());NoChange(1);
+ Reset();app::kGame.init();Frame();Frame(8,-4);CHECK(!input::Poll(0).rx&&!input::Poll(0).ry);
+ Yaw(-.4);Pitch(-.2);
  CHECK(app::kGame.options.empty()&&app::kGame.load&&app::kGame.save);
  app::kGame.load(memory);app::kGame.save(memory);
  CHECK(controls_load_table==memory&&view_load_table==memory&&controls_save_table==memory&&view_save_table==memory);
@@ -162,8 +178,8 @@ int main(){
  Reset();Frame(20,40);Yaw(-1);controls.mouse_millidegrees=100;Pitch(2);
  Frame(20,40);Yaw(-2);Pitch(4);
  // Aim options are independent from direct mouse, target contents, and pending raw motion.
- for(uint32_t r:{0x421FE0u,0x420E50u,0x4223A8u})for(bool direct:{false,true})for(unsigned top=0;top<8;top++){
-  Reset(r);controls.direct_mouse=direct;controls.aim_assistance=false;controls.aim_centering=false;
+ for(uint32_t r:{0x421FE0u,0x420E50u,0x4223A8u})for(unsigned top=0;top<8;top++){
+  Reset(r);controls.aim_assistance=false;controls.aim_centering=false;
   for(unsigned axis=0;axis<2;axis++){
    Prepare(axis,top);auto saved=c;std::memcpy(before,memory,sizeof(memory));
    CHECK(axis?DarkwatchSkipPitchAssistance(c,memory):DarkwatchSkipYawAssistance(c,memory));
@@ -180,7 +196,7 @@ int main(){
  Prepare(1);CHECK(DarkwatchSkipPitchAssistance(c,memory));CHECK(Center());NoChange(1);
  // No assistance or centering override for unknown/nonlocal/unreadable original updates.
  for(unsigned bad=0;bad<11;bad++){
-  Reset(bad==8||bad==9?0x420E50:0x421FE0);controls.direct_mouse=false;
+  Reset(bad==8||bad==9?0x420E50:0x421FE0);
   controls.aim_assistance=controls.aim_centering=false;
   Prepare(1);
   if(bad==0)memory[0x3120]=0;if(bad==1)memory[0x3121]=1;if(bad==2)W(state,0x420BE8);

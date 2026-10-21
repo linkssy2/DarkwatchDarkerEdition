@@ -16,9 +16,9 @@ using Microsoft.Win32;
 #if !DIRECT_PLAY
 [assembly: AssemblyTitle("Darkwatch: Darker Edition")]
 [assembly: AssemblyProduct("Darkwatch: Darker Edition")]
-[assembly: AssemblyVersion("0.3.0.0")]
-[assembly: AssemblyFileVersion("0.3.0.0")]
-[assembly: AssemblyInformationalVersion("0.3")]
+[assembly: AssemblyVersion("0.4.0.0")]
+[assembly: AssemblyFileVersion("0.4.0.0")]
+[assembly: AssemblyInformationalVersion("0.4")]
 #endif
 
 namespace DarkwatchDarkerEdition
@@ -26,11 +26,12 @@ namespace DarkwatchDarkerEdition
     public sealed class Launcher
     {
         public const string DiscImageFilter = "Xbox disc images (*.iso;*.xiso)|*.iso;*.xiso";
+        public const string TexturePackFilter = "Darker Edition HD texture pack (*.zip;*.zip.001)|*.zip;*.zip.001";
         readonly Window window;
         readonly string package = AppDomain.CurrentDomain.BaseDirectory;
         readonly string installRoot = SetupProcess.InstallRoot(AppDomain.CurrentDomain.BaseDirectory);
         readonly JavaScriptSerializer json = new JavaScriptSerializer();
-        bool busy, installed, ready, closing, cancelRequested;
+        bool busy, installed, ready, closing, cancelRequested, hdTexturesInstalled;
         string cancelFile, gameDirectory;
         readonly Action cancelPreparation;
 
@@ -65,6 +66,10 @@ namespace DarkwatchDarkerEdition
                 var dialog = new OpenFileDialog { Title = "Select your original Xbox Darkwatch disc image", Filter = DiscImageFilter, CheckFileExists = true, Multiselect = false };
                 if (dialog.ShowDialog(window) == true) await Run("--import-iso", dialog.FileName);
             };
+            Get<Button>("TextureButton").Click += async delegate {
+                var dialog = new OpenFileDialog { Title = "Select the HD texture ZIP or its first part (.001)", Filter = TexturePackFilter, CheckFileExists = true, Multiselect = false };
+                if (dialog.ShowDialog(window) == true) await Run("--install-hd-textures", dialog.FileName);
+            };
             Get<Button>("VerifyButton").Click += async delegate { await Run("--verify", null); };
             Get<Button>("PlayButton").Click += async delegate { await Run("--play", null); };
             Get<Button>("CancelButton").Click += delegate { Cancel(); };
@@ -87,6 +92,7 @@ namespace DarkwatchDarkerEdition
                 busy = true;
                 Get<Grid>("LaunchActions").Visibility = Visibility.Collapsed;
                 Get<Grid>("RepairActions").Visibility = Visibility.Collapsed;
+                Get<StackPanel>("TextureActions").Visibility = Visibility.Collapsed;
             }
             SetButtons();
         }
@@ -119,6 +125,11 @@ namespace DarkwatchDarkerEdition
             Get<Button>("PlayButton").IsEnabled = !busy && ready;
             Get<Button>("VerifyButton").IsEnabled = !busy && installed;
             Get<Button>("FolderButton").IsEnabled = !busy && installed;
+            Get<Button>("TextureButton").IsEnabled = !busy && ready;
+            Get<Button>("TextureButton").Content = hdTexturesInstalled ? "REINSTALL HD TEXTURES" : "INSTALL HD TEXTURES";
+            Get<TextBlock>("TextureStatus").Text = hdTexturesInstalled
+                ? "Gameplay textures installed · Toggle in Graphics"
+                : "Optional download · Gameplay textures not installed";
             Get<Button>("CancelButton").Visibility = busy && (cancelFile != null || cancelPreparation != null) ? Visibility.Visible : Visibility.Collapsed;
             Get<Button>("CancelButton").IsEnabled = busy && !cancelRequested;
             Get<Button>("ImportButton").Content = installed ? "IMPORT / REPAIR" : "IMPORT ISO";
@@ -131,6 +142,8 @@ namespace DarkwatchDarkerEdition
             object value;
             if (item.TryGetValue("installed", out value)) installed = Convert.ToBoolean(value);
             if (item.TryGetValue("ready", out value)) ready = Convert.ToBoolean(value);
+            if (item.TryGetValue("hd_textures_installed", out value)) hdTexturesInstalled = Convert.ToBoolean(value);
+            if (!installed) hdTexturesInstalled = false;
             if (item.TryGetValue("install_dir", out value)) gameDirectory = Convert.ToString(value);
             if (item.TryGetValue("message", out value)) Get<TextBlock>("StatusText").Text = Convert.ToString(value);
             if (item.TryGetValue("percent", out value) && value != null) {
@@ -184,7 +197,7 @@ namespace DarkwatchDarkerEdition
             busy = true; cancelRequested = false;
             bool failed = false;
             Get<TextBlock>("StatusText").Foreground = new SolidColorBrush(Color.FromRgb(184, 183, 181));
-            Get<TextBlock>("StatusText").Text = action == "--play" ? "Verifying your copy before launch…" : action == "--import-iso" ? "Checking your disc image…" : "Checking installation…";
+            Get<TextBlock>("StatusText").Text = action == "--play" ? "Verifying your copy before launch…" : action == "--import-iso" ? "Checking your disc image…" : action == "--install-hd-textures" ? "Checking your HD texture pack…" : "Checking installation…";
             Get<ProgressBar>("Progress").Value = 0;
             Get<ProgressBar>("Progress").IsIndeterminate = true;
             try {
@@ -231,7 +244,7 @@ namespace DarkwatchDarkerEdition
 #if LAUNCHER_TESTING
         public void RenderPreview(string path, string state)
         {
-            if (state == "ready") ApplyState(new Dictionary<string, object> { { "installed", true }, { "ready", true }, { "message", "Installation verified. Ready to play." }, { "percent", 100 } });
+            if (state == "ready" || state == "hd-installed") ApplyState(new Dictionary<string, object> { { "installed", true }, { "ready", true }, { "hd_textures_installed", state == "hd-installed" }, { "message", "Installation verified. Ready to play." }, { "percent", 100 } });
             else if (state == "shaders") ApplyState(new Dictionary<string, object> { { "event", "shader_prepare" }, { "message", "Preparing shaders — 2,220 of 4,440" }, { "percent", 50 } });
             else if (state == "importing") {
                 busy = true; cancelFile = "preview";

@@ -19,7 +19,10 @@
 #include "common/graphics_route.h"
 #include "common/desktop_quit.h"
 #include "common/graphics_view.h"
+#include "common/hd_ui.h"
 #include "common/controls.h"
+#include "common/character_selection.h"
+#include "common/character_runtime.h"
 #include "common/prompts.h"
 #include "common/settings_skin.h"
 
@@ -34,6 +37,13 @@ uint32_t g_options = 0;
 std::atomic<bool> g_released{false}, g_block_release{false};
 bool g_open = false, g_confirm = false;
 bool g_open_controls = false;
+std::atomic<uint32_t> g_characters_owner{0};
+std::atomic<uint32_t> g_quit_owner{0};
+// 0: awaiting choice, 1: confirm requested, 2: close queued, 3: close failed.
+std::atomic<unsigned> g_quit_choice{0};
+bool g_quit = false, g_open_quit = false, g_quit_ready = false;
+bool g_characters = false, g_open_characters = false;
+std::array<settings::Character, 2> g_character_draft;
 bool g_page_graphics = false;
 bool g_from_pause = false;
 bool g_controller_layout = false, g_layout_opened = false, g_layout_returned = false;
@@ -144,7 +154,10 @@ void SaveChanges() {
 void Close() {
     if (g_confirm) Revert();
     g_open = false;
-    g_leave = true;
+    const auto quit_owner = g_quit_owner.exchange(0);
+    g_quit_choice = 0;
+    if (g_characters_owner.exchange(0) || quit_owner) {g_leave = false; g_visual = false;}
+    else g_leave = true;
     g_released = false;
     g_block_release = true;
     ControlsCancelCapture(); g_capture_action = -1; g_conflict_action = -1;
@@ -234,6 +247,29 @@ void FpsCounter(double fps) {
     auto* draw = ImGui::GetForegroundDrawList();
     draw->AddRectFilled(a, b, IM_COL32(12, 15, 19, 210), 2 * scale);
     draw->AddLine({a.x, b.y}, b, IM_COL32(132, 21, 26, 230), scale);
+    draw->AddText(font, height, {a.x + pad, a.y + pad}, IM_COL32(235, 235, 222, 255), text);
+}
+
+void CharacterNotice() {
+    static unsigned previous = 0;
+    static double until = 0;
+    const unsigned unavailable = DarkwatchCharacterUnavailablePlayers();
+    if (unavailable != previous) {previous = unavailable; until = ImGui::GetTime() + 12;}
+    if (!unavailable || ImGui::GetTime() >= until) return;
+    const char* text = unavailable == 1 ? "PLAYER ONE: CHARACTER UNAVAILABLE. USING ORIGINAL CHARACTER."
+        : unavailable == 2 ? "PLAYER TWO: CHARACTER UNAVAILABLE. USING ORIGINAL CHARACTER."
+                           : "CHARACTERS UNAVAILABLE. USING ORIGINAL CHARACTERS.";
+    const auto& io = ImGui::GetIO();
+    if (io.DisplaySize.x <= 0 || io.DisplaySize.y <= 0) return;
+    const float scale = std::max(.5f, std::min(io.DisplaySize.x / 1280.f, io.DisplaySize.y / 720.f));
+    ImFont* font = g_body ? g_body : ImGui::GetFont();
+    const float height = 17 * scale, pad = 8 * scale;
+    const auto size = font->CalcTextSizeA(height, FLT_MAX, 0, text);
+    const ImVec2 a((io.DisplaySize.x - size.x) / 2 - pad, 24 * scale);
+    const ImVec2 b(a.x + size.x + 2 * pad, a.y + size.y + 2 * pad);
+    auto* draw = ImGui::GetForegroundDrawList();
+    draw->AddRectFilled(a, b, IM_COL32(12, 15, 19, 230));
+    draw->AddLine({a.x, b.y}, b, IM_COL32(132, 21, 26, 255), scale);
     draw->AddText(font, height, {a.x + pad, a.y + pad}, IM_COL32(235, 235, 222, 255), text);
 }
 
@@ -437,7 +473,12 @@ void ControlsContent(float scale, bool just_opened) {
       if (ImGui::SliderFloat("##mouse sensitivity", &sensitivity, .02f, 20.f, "%.2fx", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_Logarithmic))
           g_controls_draft.mouse_millidegrees = uint32_t(std::lround(sensitivity * 50.f));
       if (just_opened) ImGui::SetItemDefaultFocus(); }
-    { MenuRow row("DIRECT MOUSE AIM", 64, scale); Toggle("##direct mouse", g_controls_draft.direct_mouse); }
+    { MenuRow row("ZOOM SENSITIVITY", 64, scale);
+      int zoom = int(g_controls_draft.zoom_sensitivity_percent);
+      if (ImGui::SliderInt("##zoom sensitivity", &zoom, 10, 200, "%d%%", ImGuiSliderFlags_AlwaysClamp))
+          g_controls_draft.zoom_sensitivity_percent = uint32_t(zoom);
+      if (ImGui::IsItemHovered()) ImGui::SetTooltip("Mouse speed while zoomed. 100%% keeps your normal speed.");
+    }
     { MenuRow row("AIMING ASSISTANCE", 120, scale); Toggle("##aim assistance", g_controls_draft.aim_assistance); }
     { MenuRow row("LOOK CENTERING", 176, scale); Toggle("##look centering", g_controls_draft.aim_centering); }
     ImGui::SetCursorPos({88 * scale, 232 * scale});
@@ -540,7 +581,47 @@ void ControlsContent(float scale, bool just_opened) {
         (ImGui::IsKeyPressed(ImGuiKey_Escape, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false) ||
          ImGui::IsMouseClicked(ImGuiMouseButton_Right))) Close();
 }
+
+void CharactersContent(float scale, bool just_opened) {
+    ImGui::SetCursorPos({0, 132 * scale});
+    ImGui::BeginChild("Characters scroll", {938 * scale, 308 * scale}, false);
+    constexpr const char* labels[]{"PLAYER ONE", "PLAYER TWO"};
+    constexpr const char* ids[]{"##player one character", "##player two character"};
+    for (unsigned i = 0; i < g_character_draft.size(); ++i) {
+        MenuRow row(labels[i], 8 + 72 * i, scale);
+        int choice = int(g_character_draft[i]);
+        if (ImGui::Combo(ids[i], &choice, "Jericho\0Cassidy\0"))
+            g_character_draft[i] = settings::Character(choice);
+        if (just_opened && !i) ImGui::SetItemDefaultFocus();
+    }
+    ImGui::SetCursorPos({88 * scale, 172 * scale});
+    Hint("Player one's choice is shared by single-player and co-op. Player two's choice is used in co-op.");
+    ImGui::SetCursorPos({88 * scale, 228 * scale});
+    Hint("Changes take effect when you start your next mission.");
+    EndSettingsChild();
+    ImGui::SetCursorPos({220 * scale, 490 * scale}); Hint(g_notice);
+    ImGui::SetCursorPos({220 * scale, 541 * scale});
+    if (MenuButton("APPLY", {200 * scale, 39 * scale}) && settings::set_characters(g_character_draft))
+        g_notice = app::Save() ? "Characters saved for your next mission."
+                              : "Could not save characters. Choices will last for this session only.";
+    ImGui::SameLine(720 * scale);
+    if (MenuButton("BACK", {192 * scale, 39 * scale}) || ImGui::IsKeyPressed(ImGuiKey_Escape, false) ||
+        ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false) || ImGui::IsMouseClicked(ImGuiMouseButton_Right)) Close();
+}
 } // namespace
+
+void DarkwatchCharactersOpen(uint32_t owner) {
+    if (!owner) return;
+    g_characters_owner = owner;
+    g_leave = false; g_visual = true; g_released = false; g_pad = 0;
+}
+
+void DarkwatchDesktopQuitOpen(uint32_t owner) {
+    if (!owner || g_quit_owner.load() == owner) return;
+    g_quit_choice = 0;
+    g_quit_owner = owner;
+    g_leave = false; g_visual = true; g_released = false; g_pad = 0;
+}
 
 void DarkwatchGraphicsInit() {
     std::error_code error;
@@ -578,10 +659,23 @@ void DarkwatchGraphicsPad(int port, input::Pad& pad) {
     if (port == 0) {
         darkwatch::EnsureDesktopQuitEntry(mem::Base());
         auto state = darkwatch::QueryGraphicsMenuRoute(mem::Base());
+        const auto character_owner = g_characters_owner.load();
+        if (character_owner && darkwatch::CharacterMenuOwner(mem::Base()) != character_owner) {
+            g_characters_owner = 0;
+            g_block_release = true;
+        }
+        const auto quit_owner = g_quit_owner.load();
+        if (quit_owner && darkwatch::CharacterMenuOwner(mem::Base()) != quit_owner) {
+            g_quit_owner = 0;
+            g_quit_choice = 0;
+            g_block_release = true;
+        } else if (quit_owner && g_quit_choice.load() == 1) {
+            g_quit_choice = darkwatch::ConfirmDesktopQuit(mem::Base(), quit_owner) ? 2 : 3;
+        }
         darkwatch::EnsureNativePauseEntries(mem::Base());
         const auto entry = darkwatch::TakeNativePauseEntry(mem::Base(), state.options);
         bool controls = state.route == darkwatch::GraphicsMenuRoute::Controls;
-        bool visual = state.route == darkwatch::GraphicsMenuRoute::Visual || controls;
+        bool visual = state.route == darkwatch::GraphicsMenuRoute::Visual || controls || g_characters_owner.load() || g_quit_owner.load();
         ControlRequest request;
         {
             std::lock_guard lock(g_original_lock);
@@ -635,6 +729,7 @@ void DarkwatchGraphicsPad(int port, input::Pad& pad) {
 bool DarkwatchGraphicsVisible() {return g_visual && !g_leave && !g_configuring;}
 void DarkwatchGraphicsUi(double fps) {
     FpsCounter(fps);
+    CharacterNotice();
     PadNavigation();
     GraphicsRouteState state;
     uint32_t pause_entry = 0;
@@ -645,9 +740,11 @@ void DarkwatchGraphicsUi(double fps) {
             pause_entry = g_pause_entry;
     }
     g_controls = state.route == GraphicsMenuRoute::Controls;
-    g_options = state.options;
+    g_characters = g_characters_owner.load() != 0;
+    g_quit = g_quit_owner.load() != 0;
+    g_options = g_characters ? g_characters_owner.load() : state.options;
     g_subtitles_available = state.subtitles_available;
-    bool visible = (state.route == GraphicsMenuRoute::Visual || g_controls) && !g_leave && !g_configuring;
+    bool visible = (state.route == GraphicsMenuRoute::Visual || g_controls || g_characters || g_quit) && !g_leave && !g_configuring;
     if (!visible) {
         if (g_confirm) Revert();
         g_open = false;
@@ -658,7 +755,7 @@ void DarkwatchGraphicsUi(double fps) {
         ImGui::GetIO().FontGlobalScale = 1 / g_font_scale;
         return;
     }
-    bool just_opened = !g_open || g_open_controls != g_controls || g_open_options != g_options ||
+    bool just_opened = !g_open || g_open_quit != g_quit || g_open_controls != g_controls || g_open_characters != g_characters || g_open_options != g_options ||
                        g_open_page != state.page || g_open_pause_entry != pause_entry;
     if (just_opened) {
         g_controller_layout = false;
@@ -666,6 +763,9 @@ void DarkwatchGraphicsUi(double fps) {
         ControlsCancelCapture(); g_capture_action = -1; g_conflict_action = -1;
         if (g_confirm) Revert();
         g_open = true; g_draft = app::Snapshot();
+        g_open_characters = g_characters;
+        g_open_quit = g_quit; g_quit_ready = false;
+        if (g_characters) g_character_draft = settings::characters();
         g_view_draft = view::Snapshot();
         const bool returning = g_return_controls_options && g_return_controls_options == g_options &&
                                g_return_controls_page == state.page;
@@ -696,7 +796,7 @@ void DarkwatchGraphicsUi(double fps) {
     float scale = std::min(io.DisplaySize.x / 1280.f, io.DisplaySize.y / 720.f);
     scale = std::max(scale, .5f);
     io.FontGlobalScale = scale / g_font_scale;
-    ImVec2 size(960 * scale, 600 * scale);
+    ImVec2 size = g_quit ? ImVec2(720 * scale, 360 * scale) : ImVec2(960 * scale, 600 * scale);
     ImVec2 pos((io.DisplaySize.x - size.x) / 2, (io.DisplaySize.y - size.y) / 2);
     ImGui::GetBackgroundDrawList()->AddRectFilled({0, 0}, io.DisplaySize, IM_COL32(4, 6, 10, 210));
     ImGui::SetNextWindowPos(pos); ImGui::SetNextWindowSize(size);
@@ -731,15 +831,40 @@ void DarkwatchGraphicsUi(double fps) {
     ImGui::PushStyleColor(ImGuiCol_TextSelectedBg, {.55f,.04f,.05f,.8f});
     ImGui::PushFont(g_body);
     const bool controls_page = g_controls && !g_page_graphics;
-    ImGui::Begin(g_controls ? "Controls" : "Graphics", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::Begin(g_quit ? "Quit to Desktop" : g_characters ? "Characters" : g_controls ? "Controls" : "Graphics", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
     ImGui::SetWindowFontScale(1);
     skin::Frame(ImGui::GetWindowDrawList(), {pos.x, pos.y + 60 * scale}, {size.x, size.y - 60 * scale});
     ImGui::SetCursorPos({96 * scale, 0});
     ImGui::PushFont(g_title);
     if (g_controller_layout) ImGui::SetWindowFontScale(.75f);
-    ImGui::TextUnformatted(g_controller_layout ? "CONTROLLER LAYOUT" : controls_page ? "CONTROLS" : "GRAPHICS");
+    ImGui::TextUnformatted(g_quit ? "QUIT TO DESKTOP" : g_characters ? "CHARACTERS" : g_controller_layout ? "CONTROLLER LAYOUT" : controls_page ? "CONTROLS" : "GRAPHICS");
     ImGui::SetWindowFontScale(1); ImGui::PopFont();
-    if (g_controls && !g_from_pause && !g_controller_layout) {
+    if (g_quit) {
+        // Require the opening click/key/pad press to be released before accepting a choice.
+        const bool ready_before = g_quit_ready;
+        if (!just_opened && g_released && !io.MouseDown[0] &&
+            !ImGui::IsKeyDown(ImGuiKey_Enter) && !ImGui::IsKeyDown(ImGuiKey_KeypadEnter) && !ImGui::IsKeyDown(ImGuiKey_Space) &&
+            !ImGui::IsKeyDown(ImGuiKey_GamepadFaceDown)) g_quit_ready = true;
+        const auto choice = g_quit_choice.load();
+        ImGui::SetCursorPos({96 * scale, 140 * scale});
+        ImGui::TextUnformatted(choice == 3 ? "Could not quit. Try again." : "Quit to desktop?");
+        ImGui::BeginDisabled(!g_quit_ready || choice == 1 || choice == 2);
+        ImGui::SetCursorPos({180 * scale, 285 * scale});
+        if (g_quit_ready && !ready_before) {
+            ImGui::SetKeyboardFocusHere();
+            GImGui->NavDisableHighlight = false;
+        }
+        const bool cancel = MenuButton("CANCEL", {210 * scale, 39 * scale});
+        ImGui::SameLine(430 * scale);
+        const bool accept = MenuButton("QUIT", {210 * scale, 39 * scale});
+        ImGui::EndDisabled();
+        if (choice != 2 && (cancel || ImGui::IsKeyPressed(ImGuiKey_Escape, false) ||
+            ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))) Close();
+        else if (accept) g_quit_choice = 1;
+        ImGui::End(); ImGui::PopFont(); ImGui::PopStyleColor(23); ImGui::PopStyleVar(5);
+        return;
+    }
+    if (g_controls && !g_characters && !g_from_pause && !g_controller_layout) {
         ImGui::SetCursorPos({500 * scale, 5 * scale});
         ImGui::BeginDisabled(g_capture_action >= 0 || g_conflict_action >= 0 || g_confirm);
         ImGui::BeginDisabled(!controls_page);
@@ -751,8 +876,9 @@ void DarkwatchGraphicsUi(double fps) {
         ImGui::EndDisabled();
         ImGui::EndDisabled();
     }
-    if (controls_page) {
-        if (g_controller_layout) ControllerLayoutContent(scale);
+    if (g_characters || controls_page) {
+        if (g_characters) CharactersContent(scale, just_opened);
+        else if (g_controller_layout) ControllerLayoutContent(scale);
         else ControlsContent(scale, just_opened);
         ImGui::End(); ImGui::PopFont(); ImGui::PopStyleColor(23); ImGui::PopStyleVar(5);
         return;
@@ -795,7 +921,7 @@ void DarkwatchGraphicsUi(double fps) {
     }
     { MenuRow row("FIELD OF VIEW", 265, scale);
     int fov = int(g_view_draft.fov_percent);
-    if (ImGui::SliderInt("##fov", &fov, 50, 150, "%d%%", ImGuiSliderFlags_AlwaysClamp)) g_view_draft.fov_percent = uint32_t(fov);
+    if (ImGui::SliderInt("##fov", &fov, 50, 200, "%d%%", ImGuiSliderFlags_AlwaysClamp)) g_view_draft.fov_percent = uint32_t(fov);
     ImGui::SetCursorPos({430 * scale, 311 * scale});
     Hint("100% = original view. Zoom is preserved.");
     }
@@ -865,6 +991,24 @@ void DarkwatchGraphicsUi(double fps) {
     ImGui::BeginDisabled(!g_subtitles_available);
     Toggle("##subtitles", g_subtitles_draft);
     ImGui::EndDisabled();
+    }
+    { MenuRow row("BRIGHTNESS", 1102, scale);
+    int brightness = int(g_draft.brightness_percent);
+    if (ImGui::SliderInt("##brightness", &brightness, 50, 150, "%d%%", ImGuiSliderFlags_AlwaysClamp))
+        g_draft.brightness_percent = uint32_t(brightness);
+    ImGui::SetCursorPos({430 * scale, 1148 * scale});
+    Hint("100% = original. Lower is darker.");
+    }
+    { const bool available = GameplayTexturesAvailable();
+    ImGui::BeginDisabled(!available);
+    { MenuRow row("HD TEXTURES", 1191, scale);
+    bool enabled = available && g_view_draft.hd_textures;
+    Toggle("##hd_textures", enabled);
+    if (available) g_view_draft.hd_textures = enabled;
+    }
+    ImGui::EndDisabled();
+    ImGui::SetCursorPos({430 * scale, 1237 * scale});
+    Hint(available ? "Installed gameplay textures. UI unchanged." : "Install the HD texture pack in the launcher.");
     }
     ImGui::Dummy({1, 12 * scale});
     EndSettingsChild();

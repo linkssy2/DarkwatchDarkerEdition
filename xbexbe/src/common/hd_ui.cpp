@@ -1,5 +1,6 @@
 #include "hd_ui.h"
 #include "hd_ui_assets.h"
+#include "gameplay_textures.h"
 #include "graphics_view.h"
 #include "prompts.h"
 #include "app/app.h"
@@ -13,8 +14,10 @@
 namespace darkwatch {
 namespace {
 std::atomic<bool> g_startup{false};
+std::atomic<bool> g_gameplay_available{false};
 bool Font(const hd::Asset& a) { return a.offset >= 93423668 && a.offset <= 94154164; }
 class HdUi final : public gpu::Extension {
+    GameplayTextures gameplay_;
     HANDLE file_ = INVALID_HANDLE_VALUE, mapping_ = nullptr;
     const uint8_t* data_ = nullptr;
     uint64_t bytes_ = 0;
@@ -24,12 +27,14 @@ class HdUi final : public gpu::Extension {
     std::array<bool, std::size(hd::kAssets)> used_{};
 #endif
 public:
+    bool GameplayAvailable() const { return gameplay_.Available(); }
     ~HdUi() override {
         if (data_) UnmapViewOfFile(data_);
         if (mapping_) CloseHandle(mapping_);
         if (file_ != INVALID_HANDLE_VALUE) CloseHandle(file_);
     }
     bool Open(const std::filesystem::path& path) {
+        gameplay_.Open(path.parent_path() / "gameplay-hd");
         file_ = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
         LARGE_INTEGER size{};
         if (file_ == INVALID_HANDLE_VALUE || !GetFileSizeEx(file_, &size) || size.QuadPart <= 0 ||
@@ -57,10 +62,12 @@ public:
         }
         return verified_[i] == 1;
     }
-    uint64_t TextureRevision() const override { return 1 + uint64_t(view::Snapshot().hd_ui) * 2 + uint64_t(g_startup.load()) + PromptTextureRevision()*4; }
+    uint64_t TextureRevision() const override { const auto s = view::Snapshot(); return 1 + uint64_t(s.hd_ui) * 2 + uint64_t(g_startup.load()) + uint64_t(s.hd_textures)*4 + PromptTextureRevision()*8; }
     bool ReplaceTexture(const gpu::TextureDesc& d, const gpu::FormatInfo& fi, const uint8_t* original,
                         uint32_t bytes, const uint32_t* palette, gpu::TextureReplacement& out) override {
-        if (!original || fi.depth || d.cube || d.linear || d.depth != 1 || d.levels != 1) return false;
+        if (!original || fi.depth || d.cube || d.linear || d.depth != 1) return false;
+        if (view::Snapshot().hd_textures && gameplay_.Replace(d, original, bytes, palette, out)) return true;
+        if (d.levels != 1) return false;
         const bool enabled = view::Snapshot().hd_ui;
         if (enabled && ReplacePromptTexture(d, fi, original, bytes, out)) return true;
         uint64_t source_hash = 0, palette_hash = 0;
@@ -97,14 +104,17 @@ public:
 } // namespace
 void InitializeHdUi() {
     if (gpu::g_extension) return; // A quick reboot must not invalidate the renderer's existing extension pointer.
+    g_gameplay_available = false;
     auto extension = std::make_unique<HdUi>();
     if (!extension->Open(app::ExeDir() / "hd-ui.pack")) {
         LOGE("HD UI: prepared asset pack missing or invalid; retaining original textures");
         return;
     }
     LOGR("HD UI: %zu pinned identities loaded; available intro replacements enabled independently; missing art retains originals; videos unchanged", std::size(hd::kAssets));
+    g_gameplay_available = extension->GameplayAvailable();
     gpu::SetExtension(std::move(extension));
 }
+bool GameplayTexturesAvailable() { return g_gameplay_available.load(); }
 } // namespace darkwatch
 
 // The original splash sequence and following movie entry delimit its legal text.

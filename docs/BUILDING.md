@@ -34,8 +34,9 @@ For a full Xbox image whose game partition is at `0x18300000`, add
 automatically. The `.iso` or `.xiso` filename extension does not identify the
 layout. Extraction reads the input and records local file hashes; it does not
 alter the disc image. Raw development extraction retains the original selectors.
-The launcher's import prepares War Train and Splitter selectors locally
-after verifying the original files; use that import for the bonus-content test.
+The launcher's import prepares War Train, Splitter selectors and character/co-op
+resources locally after verifying the original files. Use that import when
+testing character selection; raw extraction retains the original resources.
 
 ## Build the runtime
 
@@ -50,7 +51,7 @@ XBE, and builds the development runtime. The release build uses a separate
 object/output directory and reuses those dependency source checkouts. Running
 `-Release` before the first build currently fails because those checkouts do not
 exist. `dependencies.lock.json` records the revisions retained from version 0.1
-for version 0.3; dependency tags in the SDK should resolve to those commits.
+for version 0.4; dependency tags in the SDK should resolve to those commits.
 
 `-Stage Recompile` regenerates title code without rebuilding the runtime.
 `-Stage Symbols` records a signature-scan comparison without replacing the
@@ -84,13 +85,13 @@ The public source is therefore not yet a one-command clean-machine packager.
 After provisioning and a successful release runtime build:
 
 ```powershell
-./scripts/build-launcher.ps1 -Output 'C:/build-output/Darkwatch-0.3'
+./scripts/build-launcher.ps1 -Output 'C:/build-output/Darkwatch-0.4'
 ```
 
 The output directory must not already exist. The script builds both launcher
 EXEs and validates an explicit package allowlist. It includes approved
-enhancement PNGs and edited branding, while original disc files and the
-assembled HD pack are excluded. Import and shader preparation happen locally
+enhancement PNGs, authored Cassidy hand repaints and edited branding, while
+original disc files, character archives and assembled packs are excluded. Import and shader preparation happen locally
 when the player supplies their disc. Keep all package files together.
 
 ## Tests
@@ -113,3 +114,22 @@ Private tests that contain original instruction windows, generated guest
 function bodies or captured shader data are deliberately omitted. The public
 suite does not establish full campaign fidelity, physical controller behavior,
 or complete shader coverage.
+
+## Character and optional texture content
+
+`launcher/character_*.py` reconstructs the three character archives from the
+verified own-disc import. `character-catalog.json` pins source resources and
+prepared output identities; it contains no model, animation or voice payloads.
+The hand repaints are separate authored enhancement images. Do not substitute
+prebuilt development archives into the Windows package.
+
+`gameplay-hd-catalog.json` identifies the optional texture download. Its pixels
+are not in this source snapshot. `tools/package_gameplay_hd.py` validates and
+packages separately provisioned replacements, stripping original native bytes
+from the distribution format. It cannot recreate an external texture pack from
+metadata alone. `xbexbe/config/gameplay_hd_assets.json` and the compiled header
+contain matching/fingerprint metadata, not textures.
+
+The maintained native address-key headers are included as metadata. Original
+native body/byte regression fixtures and private acceptance recordings remain
+excluded. Synthetic source tests do not establish live gameplay acceptance.

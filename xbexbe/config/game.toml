@@ -13,6 +13,8 @@ code_sections = [".text", "D3D", "XNET", "XONLINE", "D3DX", "DSOUND", "PSFD_I", 
 
 # extra entry points
 [functions]
+# Issue #3: observed nonlocal return after the original context-save call.
+0x222DE4 = ""
 
 # functions the host replaces or calls by name, 0 where the image has none
 [symbols]
@@ -265,7 +267,7 @@ XOnlineCleanup                                       = 0x36A568
 XOnlineGetUsers                                      = 0x369E76
 XOnlineStartup                                       = 0x36A46B
 
-# Original-byte/caller evidence: analysis/xbexbe/sound-voice-flag.md
+# Sound voice flags were checked against the original callers.
 IDirectSoundBuffer_Set3DVoiceData                   = 0x3A97B1
 IDirectSoundBuffer_Use3DVoiceData                   = 0x3A97CD
 IDirectSoundStream_Set3DVoiceData                   = 0x3A982E
@@ -325,6 +327,12 @@ after = true
 at = 0x000BE1DE
 call = "DarkwatchHorseMousePitch"
 
+# Stationary and vehicle-mounted guns share this manual angle integration.
+# Preserve the controller contribution, then apply raw look before native clamps.
+[[hook]]
+at = 0x0008E9CA
+call = "DarkwatchTurretMouse"
+
 # Local player options skip only authored target slowdown/attraction; manual rates and clamps remain original.
 [[hook]]
 at = 0x000A27AD
@@ -373,6 +381,12 @@ on_true = 0x00326D27
 at = 0x00326D3C
 call = "DarkwatchHideCinematicBorder"
 on_true = 0x00326D41
+
+# Only the subtitle owner's black panel; retain its native text draw and cleanup.
+[[hook]]
+at = 0x0021B136
+call = "DarkwatchHideSubtitleBackground"
+on_true = 0x0021B13B
 
 # Scale only the original ReticleDisplay rectangle's final half-extents.
 [[hook]]
@@ -655,6 +669,11 @@ at = 0x001E9885
 call = "DarkwatchMenuInput"
 after = true
 
+# Main's authored children/footer exist; prepare rows before the first layout.
+[[hook]]
+at = 0x000EA811
+call = "DarkwatchMainMenuInitialize"
+
 # Main's enabled-row callback, before it constructs an owned page link.
 [[hook]]
 at = 0x000EA9E0
@@ -666,4 +685,100 @@ on_true = 0x000EABCC
 at = 0x0025E577
 call = "DarkwatchPrepareShaders"
 after = true
+
+# Original v2.0 co-op frontend route; original XBE remains unmodified.
+[[hook]]
+at = 0x000EAB6A
+call = "DarkwatchCoopCallback"
+after = true
+
+[[hook]]
+at = 0x000EABA0
+call = "DarkwatchCoopLabel"
+after = true
+
+[[hook]]
+at = 0x000EA94B
+call = "DarkwatchCoopProfile"
+after = true
+
+# Lua protected-call longjmp, after native register/stack restoration.
+[[hook]]
+at = 0x0025023D
+call = "DarkwatchScriptResume"
+
+# Fatal-only CRT assertion text and real caller; the original INT3 remains fatal.
+[[hook]]
+at = 0x00250056
+call = "DarkwatchFatalAssert"
+
+# Private character adapters: verify mounted copies before the original archive opens.
+[[hook]]
+at = 0x00159E95
+call = "DarkwatchCharacterInitialize"
+
+# Snapshot choices before the original single-player/co-op resource selection.
+[[hook]]
+at = 0x000C41BE
+call = "DarkwatchCharacterMissionBegin"
+
+# Release retained typed resources before the native mission owner tears down.
+[[hook]]
+at = 0x000C42BB
+call = "DarkwatchCharacterMissionEnd"
+
+# The normalized local path is complete; archive lookup has not run yet.
+[[hook]]
+at = 0x001D2255
+call = "DarkwatchCharacterFile"
+after = true
+
+# Only the pending player-template name changes; original construction continues.
+[[hook]]
+at = 0x000FA2A5
+call = "DarkwatchCharacterSpawn"
+after = true
+
+# Omit only Jericho's separate costume grant on an actual Cassidy player clone.
+[[hook]]
+at = 0x00098D8B
+call = "DarkwatchCharacterCostume"
+on_true = 0x00098D90
+
+# Replace only Cassidy's mixed melee-start sound after local voice creation succeeds.
+[[hook]]
+at = 0x0001F49E
+call = "DarkwatchCharacterMelee"
+on_true = 0x0001F4A3
+
+# Reserve keyboard/mouse port zero only when entering co-op from PC input.
+[[hook]]
+at = 0x000EA97F
+call = "DarkwatchCoopEnter"
+after = true
+
+# Explicit private-session capture only; absent output path means no file or logging.
+[[hook]]
+at = 0x001D910A
+call = "DarkwatchCharacterVoiceQuery"
+
+[[hook]]
+at = 0x001D9127
+call = "DarkwatchCharacterVoiceQueryResult"
+
+[[hook]]
+at = 0x001D93B7
+call = "DarkwatchCharacterVoiceSpeaker"
+
+[[hook]]
+at = 0x001D8DA3
+call = "DarkwatchCharacterVoiceLocal"
+
+[[hook]]
+at = 0x00207F60
+call = "DarkwatchCharacterVoiceDispatch"
+
+[[hook]]
+at = 0x00208127
+call = "DarkwatchCharacterVoiceCreated"
 

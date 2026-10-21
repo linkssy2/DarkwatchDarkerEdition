@@ -41,12 +41,13 @@ ControlsSettings ControlsSnapshot() {
 bool ControlsApply(const ControlsSettings& settings) {
     auto next = settings;
     next.mouse_millidegrees = std::clamp(next.mouse_millidegrees, 1u, 1000u);
+    next.zoom_sensitivity_percent = std::clamp(next.zoom_sensitivity_percent, 10u, 200u);
     std::lock_guard lock(g_controls_lock);
     // Rebinding also invalidates motion/held input before the new settings are visible.
     if (!input::SetPcBindings(next.bindings)) return false;
     // Original SwitchPrimaryWeapon states require a 0.1-second held input.
     input::SetWheelPulseDuration(150000);
-    input::SetMouseToStick(!next.direct_mouse);
+    input::SetMouseToStick(false);
     Settings() = next;
     return true;
 }
@@ -54,9 +55,10 @@ bool ControlsApply(const ControlsSettings& settings) {
 void ControlsLoad(const void* table) {
     const auto& t = *static_cast<const toml::table*>(table);
     auto next = ControlsDefaults();
-    next.direct_mouse = t["direct_mouse"].value_or(next.direct_mouse);
     auto sensitivity = t["mouse_millidegrees_per_count"].value<int64_t>();
     if (sensitivity) next.mouse_millidegrees = uint32_t(std::clamp(*sensitivity, int64_t(1), int64_t(1000)));
+    auto zoom = t["zoom_sensitivity_percent"].value<int64_t>();
+    if (zoom) next.zoom_sensitivity_percent = uint32_t(std::clamp(*zoom, int64_t(10), int64_t(200)));
     next.aim_assistance = t["aim_assistance"].value_or(next.aim_assistance);
     next.aim_centering = t["aim_centering"].value_or(next.aim_centering);
     bool malformed = false;
@@ -83,8 +85,9 @@ void ControlsLoad(const void* table) {
 void ControlsSave(void* table) {
     auto& t = *static_cast<toml::table*>(table);
     auto settings = ControlsSnapshot();
-    t.insert_or_assign("direct_mouse", settings.direct_mouse);
+    t.erase("direct_mouse"); // Retire the legacy mouse-to-stick preference.
     t.insert_or_assign("mouse_millidegrees_per_count", int64_t(settings.mouse_millidegrees));
+    t.insert_or_assign("zoom_sensitivity_percent", int64_t(settings.zoom_sensitivity_percent));
     t.insert_or_assign("aim_assistance", settings.aim_assistance);
     t.insert_or_assign("aim_centering", settings.aim_centering);
     toml::table bindings;

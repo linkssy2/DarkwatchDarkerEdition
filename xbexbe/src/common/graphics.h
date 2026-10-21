@@ -6,3 +6,6 @@ void DarkwatchGraphicsWindow(void* window);
 void DarkwatchGraphicsUi(double fps);
 void DarkwatchGraphicsPad(int port, input::Pad& pad);
 bool DarkwatchGraphicsVisible();
+// Called only after validating the original frontend owner on the guest thread.
+void DarkwatchCharactersOpen(uint32_t owner);
+void DarkwatchDesktopQuitOpen(uint32_t owner);

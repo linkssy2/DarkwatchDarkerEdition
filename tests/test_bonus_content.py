@@ -61,7 +61,15 @@ class BonusImportTests(unittest.TestCase):
         payload = self.package / "payload"
         (payload / "runtime").mkdir(parents=True)
         (payload / "hd_ui").mkdir()
-        for name, data in {"intake.py": b"fixture", "bonus_content.py": b"fixture",
+        (payload / "character-art").mkdir()
+        for name in ('character_content.py', 'character_animation.py', 'character_assets.py',
+                     'character_archive.py', 'character_repaint.py', 'character-catalog.json',
+                     'character-art/cassidy-hands-1024.dds', 'character-art/cassidy-hands-256.dds'):
+            (payload/name).write_bytes(b'synthetic character fixture')
+        catalog = dict(schema_version=1, kind="darkwatch-gameplay-hd", version="1", texture_catalog_sha256="1" * 64,
+                       files=[dict(path="gameplay-hd/example.dwt", size=44, sha256="2" * 64)])
+        for name, data in {"intake.py": b"fixture", "bonus_content.py": b"fixture", "gameplay_hd.py": b"fixture",
+                           "gameplay-hd-catalog.json": json.dumps(catalog).encode(),
                            "hd_ui/overrides.toml": b"# fixture\n",
                            "runtime/" + setup.EXE: b"fixture executable, never run",
                            "runtime/darkwatch_hd_ui_builder.exe": b"fixture builder, never run"}.items():
@@ -77,6 +85,19 @@ class BonusImportTests(unittest.TestCase):
         self.iso = self.root / "original.iso"
         make_iso(self.iso, self.data)
         self.backend = setup.Setup(self.package, self.package / "GameData", notify=lambda *a, **kw: None)
+        def fixture_characters(assets, payload, cancel, progress):
+            # The archive/retarget adapter is covered separately. Keep these
+            # original bonus-selector boundary tests on their tiny fixture.
+            target = assets / 'packfile.pck'
+            result = bonus.patch_pack(target.read_bytes())
+            cancel()
+            if sha(result) != bonus.INSTALLED_SHA256:
+                raise ValueError('Character conversion verification failed')
+            target.write_bytes(result)
+        characters = patch.multiple(setup.character_content, prepare=fixture_characters,
+                                    INSTALLED={'packfile.pck':(len(EXPECTED),sha(EXPECTED))})
+        characters.start()
+        self.addCleanup(characters.stop)
         for obj, name, replacement in (
             (setup, "require_closed", dict(return_value=None)),
             (setup.subprocess, "Popen", dict(side_effect=AssertionError("No native launch in bonus import tests"))),
@@ -145,7 +166,7 @@ class BonusImportTests(unittest.TestCase):
         with patch.object(bonus, "INSTALLED_SHA256", "0" * 64), self.assertRaisesRegex(ValueError, "expected packfile"):
             self.install()
         self.assertEqual(self.snapshot(), before)
-        with patch.object(bonus, "patch_pack", return_value=bytearray(ORIGINAL)), self.assertRaisesRegex(setup.SetupError, "Prepared bonus content"):
+        with patch.object(bonus, "patch_pack", return_value=bytearray(ORIGINAL)), self.assertRaisesRegex(ValueError, "Character conversion verification"):
             self.install()
         self.assertEqual(self.snapshot(), before)
         cancel = self.root / "cancel"

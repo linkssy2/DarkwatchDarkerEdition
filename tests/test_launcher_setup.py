@@ -26,6 +26,11 @@ def load(name, file):
 
 intake = load("intake", ROOT / "tools/intake.py")
 bonus = sys.modules.get("bonus_content") or load("bonus_content", ROOT / "launcher/bonus_content.py")
+gameplay_hd = sys.modules.get("gameplay_hd") or load("gameplay_hd", ROOT / "launcher/gameplay_hd.py")
+for name in ('character_animation', 'character_archive', 'character_assets', 'character_repaint', 'character_content'):
+    if name not in sys.modules:
+        load(name, ROOT / 'launcher' / (name + '.py'))
+characters = sys.modules['character_content']
 setup = load("darkwatch_setup_backend", ROOT / "launcher/setup_backend.py")
 
 
@@ -91,6 +96,7 @@ if(n==2&&!std::strcmp(a[1],"--prepare-shaders")){
  if(mode!="warm"){
   std::filesystem::create_directory("cache");std::ofstream("cache/prepared.fixture")<<"one completed job";
   std::cout<<R"({"state":"shader_prepare","completed":1,"total":2,"progress":50})"<<std::endl;
+  if(mode=="repeat")std::cout<<R"({"state":"shader_prepare","completed":1,"total":2,"progress":50})"<<std::endl;
   if(mode=="wait")std::this_thread::sleep_for(std::chrono::seconds(20));
   if(mode!="incomplete")std::cout<<R"({"state":"shader_prepare","completed":2,"total":2,"progress":100})"<<std::endl;
  }
@@ -125,6 +131,18 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         shutil.copyfile(ROOT / "tools/intake.py", self.payload / "intake.py")
         shutil.copyfile(ROOT / "launcher/setup_backend.py", self.payload / "setup_backend.py")
         shutil.copyfile(ROOT / "launcher/bonus_content.py", self.payload / "bonus_content.py")
+        shutil.copyfile(ROOT / "launcher/gameplay_hd.py", self.payload / "gameplay_hd.py")
+        for name in ('character_animation.py', 'character_archive.py', 'character_assets.py',
+                     'character_repaint.py', 'character_content.py', 'character-catalog.json'):
+            shutil.copyfile(ROOT / 'launcher' / name, self.payload / name)
+        (self.payload / 'character-art').mkdir()
+        for size in (1024, 256):
+            name = f'cassidy-hands-{size}.dds'
+            shutil.copyfile(ROOT / 'launcher/assets' / name, self.payload / 'character-art' / name)
+        self.texture = b"DWGAME02" + struct.pack("<4IQ", 1, 1, 1, 4, 1) + b"RGBA" + b"12345678"
+        self.catalog = dict(schema_version=1, kind="darkwatch-gameplay-hd", version="1", texture_catalog_sha256="1" * 64,
+                            files=[dict(path="gameplay-hd/example.dwt", size=len(self.texture), sha256=sha(self.texture))])
+        (self.payload / "gameplay-hd-catalog.json").write_text(json.dumps(self.catalog))
         for name in (setup.EXE, "darkwatch_hd_ui_builder.exe"):
             shutil.copyfile(self.worker, self.payload / "runtime" / name)
         self.data = {"default.xbe": b"XBEH supported fixture", "packfile.pck": b"original texture fixture", "audio.pck": b"sound fixture"}
@@ -134,6 +152,17 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
                                    PATCHES=((0, b"or", b"OR"), (9, b"te", b"TE"), (17, b"fi", b"FI")))
         selectors.start()
         self.addCleanup(selectors.stop)
+        def fixture_characters(assets, payload, cancel, progress):
+            # Archive/character conversion has its own tests. Here the tiny
+            # synthetic disc exercises the real outer installation transaction.
+            cancel()
+            target = assets / 'packfile.pck'
+            target.write_bytes(bonus.patch_pack(target.read_bytes()))
+        fixture = patch.multiple(characters, prepare=fixture_characters,
+                                 INSTALLED={'packfile.pck': (len(self.installed_data['packfile.pck']),
+                                                            sha(self.installed_data['packfile.pck']))})
+        fixture.start()
+        self.addCleanup(fixture.stop)
         self.disc = dict(schema_version=1, xbe_sha256=sha(self.data["default.xbe"]),
                          files=[dict(path=name, size=len(blob), sha256=sha(blob)) for name, blob in self.data.items()])
         (self.payload / "supported-disc.json").write_text(json.dumps(self.disc))
@@ -337,6 +366,10 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         (first / "logs/old.log").write_text("old diagnostics")
         (first / "CrashDumps").mkdir()
         (first / "CrashDumps/old.dmp").write_bytes(b"old dump")
+        receipt = json.loads((first / 'install.json').read_text())
+        receipt['content_revision'] = bonus.CONTENT_REVISION
+        (first / 'install.json').write_text(json.dumps(receipt))
+        self.assertFalse(self.backend.status()['ready'])
         second = self.install_disc()
         self.assertNotEqual(first, second)
         for name, data in user.items():
@@ -345,6 +378,25 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         for relative in ('logs/old.log', 'CrashDumps/old.dmp'):
             self.assertTrue((first / relative).is_file())
             self.assertFalse((second / relative).exists())
+
+    def test_character_conversion_failure_and_cancel_preserve_old_install(self):
+        current = self.install_disc()
+        before = self.snapshot(self.install)
+        for error in (ValueError('unsupported character resource'), setup.Cancelled('cancelled conversion')):
+            with self.subTest(error=str(error)), patch.object(characters, 'prepare', side_effect=error):
+                with self.assertRaises(type(error)):
+                    self.backend.import_iso(self.iso)
+                self.assertEqual(self.snapshot(self.install), before)
+                self.assertEqual(self.backend.active(), current)
+
+    def test_disk_budget_includes_all_character_copies(self):
+        original_bytes = sum(len(data) for data in self.data.values())
+        spare = original_bytes + 512 * 1024 * 1024
+        usage = shutil._ntuple_diskusage(total=spare, used=0, free=spare)
+        with patch.object(shutil, 'disk_usage', return_value=usage):
+            with self.assertRaisesRegex(setup.SetupError, 'Not enough free space'):
+                self.install_disc()
+        self.assertIsNone(self.backend.active())
 
     def test_immediate_startup_failure_is_visible_without_touching_install(self):
         current = self.install_disc()
@@ -394,6 +446,24 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
                     self.backend.import_iso(self.iso)
                 self.assertEqual((self.install / "active.json").read_bytes(), pointer)
                 self.assertEqual(set((self.install / "versions").iterdir()), {current})
+
+    def test_shader_progress_can_exceed_total_timeout(self):
+        current = self.install_disc()
+        clock = [0.0]
+        notify = self.backend.notify
+        def advance(event, message, **fields):
+            notify(event, message, **fields)
+            if event == "shader_prepare":
+                clock[0] += 800
+        self.backend.notify = advance
+        with patch.dict(os.environ, {"WORKER_SHADER_MODE": "cold"}), patch.object(setup.time, "monotonic", side_effect=lambda: clock[0]):
+            self.backend.prepare_shaders(current)
+        self.assertEqual(clock[0], 1600)
+        self.assertTrue(any(event["event"] == "shader_ready" for event in self.events))
+        clock[0] = 0
+        with patch.dict(os.environ, {"WORKER_SHADER_MODE": "repeat"}), patch.object(setup.time, "monotonic", side_effect=lambda: clock[0]):
+            with self.assertRaisesRegex(setup.SetupError, "no progress"):
+                self.backend.prepare_shaders(current)
 
     def test_shader_cancel_and_deadline_reap_worker_and_keep_completed_cache(self):
         current = self.install_disc()

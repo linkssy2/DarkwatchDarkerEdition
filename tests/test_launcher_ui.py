@@ -41,6 +41,12 @@ class ProtocolFixture {
         }
         if(mode=="locked") Thread.Sleep(150);
         if(mode=="error") { Console.Error.Write(new string('E',700)); return 2; }
+        if(mode=="hd") {
+            int at=Array.IndexOf(args,"--install-hd-textures");
+            if(at<0||at+1>=args.Length||args[at+1]!=@"C:\Downloads\Darkwatch HD 🦇.zip") return 11;
+            Console.WriteLine("{\"event\":\"result\",\"message\":\"HD fixture installed\",\"percent\":100,\"installed\":true,\"ready\":true,\"hd_textures_installed\":true}");
+            return 0;
+        }
         Console.WriteLine("{\"event\":\"result\",\"message\":\"Verified fixture only\",\"percent\":100,\"installed\":true,\"ready\":true,\"install_dir\":\"C:\\\\Fixture\\\\Active\"}");
         return 0;
     }
@@ -115,6 +121,7 @@ class LauncherUiHarness {
 
     static void ResourcesAndState() {
         Check(Launcher.DiscImageFilter=="Xbox disc images (*.iso;*.xiso)|*.iso;*.xiso","ISO/XISO picker filter changed");
+        Check(Launcher.TexturePackFilter=="Darker Edition HD texture pack (*.zip;*.zip.001)|*.zip;*.zip.001","HD pack picker filter mismatch");
         Evidence["iso_xiso_picker"]=true;
         var l=new Launcher(true);
         Check((string)Field(l,"installRoot")==Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"GameData"),"Launcher installation is not portable beside its executable");
@@ -124,18 +131,23 @@ class LauncherUiHarness {
             Check(image!=null&&image.PixelWidth>0&&image.PixelHeight>0,"Missing embedded image "+name);
         }
         Check(Element<Button>(l,"ImportButton").IsEnabled,"Fresh import disabled");
-        foreach(string name in new[]{"PlayButton","VerifyButton","FolderButton"})
+        foreach(string name in new[]{"PlayButton","VerifyButton","FolderButton","TextureButton"})
             Check(!Element<Button>(l,name).IsEnabled,"Fresh "+name+" enabled");
         State(l,new Dictionary<string,object>{{"installed",true},{"ready",true},{"install_dir",@"C:\Fixture\Version"},{"message","Ready – fixture"},{"percent",120}});
         Check((string)Field(l,"gameDirectory")==@"C:\Fixture\Version","Backend install_dir was ignored");
         Check(Element<TextBlock>(l,"StatusText").Text=="Ready – fixture","Unicode status changed");
         Check(Element<TextBlock>(l,"StateTitle").Text=="THE NIGHT AWAITS","Ready title mismatch");
         Check(Element<ProgressBar>(l,"Progress").Value==100,"Progress exceeds maximum");
-        foreach(string name in new[]{"PlayButton","VerifyButton","FolderButton"})
+        foreach(string name in new[]{"PlayButton","VerifyButton","FolderButton","TextureButton"})
             Check(Element<Button>(l,name).IsEnabled,"Ready "+name+" disabled");
+        Check(Element<TextBlock>(l,"TextureStatus").Text.Contains("not installed"),"Absent optional pack label missing");
+        State(l,new Dictionary<string,object>{{"hd_textures_installed",true}});
+        Check((string)Element<Button>(l,"TextureButton").Content=="REINSTALL HD TEXTURES","Installed pack state missing");
+        Check(Element<TextBlock>(l,"TextureStatus").Text.Contains("Toggle in Graphics"),"Installed pack hint missing");
         Check((string)Element<Button>(l,"ImportButton").Content=="IMPORT / REPAIR","Repair action missing");
         State(l,new Dictionary<string,object>{{"ready",false},{"percent",-3}});
         Check(!Element<Button>(l,"PlayButton").IsEnabled&&Element<Button>(l,"VerifyButton").IsEnabled,"Damaged state loses installed/ready separation");
+        Check(!Element<Button>(l,"TextureButton").IsEnabled,"HD install should require a ready base game");
         Check(Element<ProgressBar>(l,"Progress").Value==0,"Progress below minimum");
         Check(!l.Window.IsVisible,"State checks showed a window");
         State(l,new Dictionary<string,object>{{"event","shader_prepare"},{"message","Preparing shaders — 1 of 4"},{"percent",25}});
@@ -159,7 +171,7 @@ class LauncherUiHarness {
         Check(((string)Field(l,"gameDirectory")).EndsWith("Active"),"Helper install directory ignored");
         Click(l,"VerifyButton");
         Check((bool)Field(l,"busy"),"Verify button did not start operation");
-        foreach(string name in new[]{"ImportButton","PlayButton","VerifyButton","FolderButton"})
+        foreach(string name in new[]{"ImportButton","PlayButton","VerifyButton","FolderButton","TextureButton"})
             Check(!Element<Button>(l,name).IsEnabled,"Busy "+name+" enabled");
         string token=(string)Field(l,"cancelFile");
         Check(token!=null&&!File.Exists(token),"Cancellation was requested without a click");
@@ -167,6 +179,11 @@ class LauncherUiHarness {
         Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","error");
         Finish(Run(l,"--verify")); Idle(l);
         Check(Element<TextBlock>(l,"StatusText").Text==new string('E',500),"Helper stderr not capped/displayed");
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","hd");
+        Finish((Task)Call(l,"Run","--install-hd-textures",@"C:\Downloads\Darkwatch HD 🦇.zip")); Idle(l);
+        Check((bool)Field(l,"hdTexturesInstalled")&&Element<Button>(l,"PlayButton").IsEnabled,"Optional install result lost base readiness");
+        Check((string)Element<Button>(l,"TextureButton").Content=="REINSTALL HD TEXTURES","Optional installer result did not refresh action");
+        Evidence["optional_pack_protocol_and_state"]=true;
         Evidence["real_helper_and_verify_event"]=true;
     }
 
@@ -197,7 +214,7 @@ class LauncherUiHarness {
 
     static void Preview(string destination) {
         Directory.CreateDirectory(destination);
-        foreach(string state in new[]{"fresh","ready","importing","shaders"}) {
+        foreach(string state in new[]{"fresh","ready","hd-installed","importing","shaders"}) {
             var l=state=="shaders"?Launcher.Preparing(()=>{}):new Launcher(true);string path=Path.Combine(destination,"launcher-"+state+".png");
             Call(l,"FitToWorkArea",new Rect(0,0,1920,1080));
             l.RenderPreview(path,state);
@@ -228,7 +245,7 @@ class LauncherUiHarness {
             var content=(FrameworkElement)l.Window.Content;
             content.Measure(new Size(l.Window.Width,l.Window.Height));
             content.Arrange(new Rect(0,0,l.Window.Width,l.Window.Height));content.UpdateLayout();
-            foreach(string name in new[]{"ImportButton","PlayButton","VerifyButton","FolderButton","CloseButton"}) {
+            foreach(string name in new[]{"ImportButton","PlayButton","VerifyButton","FolderButton","TextureButton","CloseButton"}) {
                 var button=Element<Button>(l,name);
                 var bounds=button.TransformToAncestor(content).TransformBounds(new Rect(new Point(0,0),button.RenderSize));
                 Check(bounds.Left>=0&&bounds.Top>=0&&bounds.Right<=l.Window.Width+1&&bounds.Bottom<=l.Window.Height+1,

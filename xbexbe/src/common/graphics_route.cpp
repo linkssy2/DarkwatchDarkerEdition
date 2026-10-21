@@ -104,10 +104,8 @@ bool RefIs(const uint8_t* base, uint32_t ref, const char* text) {
 }
 struct PauseRows {
     const uint8_t* base = nullptr;
-    uint32_t owner = 0, main = 0, menu = 0, rows[2]{}, removed = 0;
+    uint32_t owner = 0, main = 0, menu = 0, rows[2]{}, removed[2]{};
     bool consumed = false;
-    uint32_t frame = 0;
-    bool expanded = false;
 };
 PauseRows g_pause_rows;
 
@@ -117,7 +115,7 @@ bool PauseMenu(const uint8_t* base, uint32_t owner, uint32_t& main, uint32_t& me
     if (!Field(base, owner, 0xE8, main) || !Field(base, main, 0, type) || type != kPauseMainVtable ||
         !Field(base, main, 8, parent) || parent != owner || !Field(base, main, 4, menu) ||
         !Field(base, menu, 0, type) || type != 0x43C8B8 || !Span(base, menu, 0xA4) ||
-        !Read(base, uint64_t(menu) + 0x58, count) || (count != 6 && count != 7) ||
+        !Read(base, uint64_t(menu) + 0x58, count) || count != 6 ||
         !Field(base, menu, 0x5C, items) || !Span(base, items, count * 4) ||
         !Field(base, menu, 0x68, selected) || selected >= count) return false;
     // These are the six authored Pause rows, in their original dispatch order.
@@ -128,17 +126,16 @@ bool PauseMenu(const uint8_t* base, uint32_t owner, uint32_t& main, uint32_t& me
         if (!Read(base, uint64_t(items) + i * 4, item) || !Span(base, item, 0x68) ||
             !Field(base, item, 0, type) || type != 0x43C8F8 ||
             !Field(base, item, 4, parent) || parent != menu) return false;
-        if (count == 6 || i < 2 || i > 3) {
-            const auto original = count == 7 && i > 3 ? i - 1 : i;
-            if (!RefIs(base, item + 0x30, names[original])) return false;
-        }
+        if (!RefIs(base, item + 0x30, names[i]) &&
+            !(i == 2 && RefIs(base, item + 0x30, "~GRAPHICS")) &&
+            !(i == 3 && RefIs(base, item + 0x30, "~CONTROLS"))) return false;
     }
     return true;
 }
 bool AddedRows(const uint8_t* base, uint32_t owner, uint32_t main, uint32_t menu,
                uint32_t items, uint16_t count) {
     if (g_pause_rows.base != base || g_pause_rows.owner != owner || g_pause_rows.main != main ||
-        g_pause_rows.menu != menu || count != 7) return false;
+        g_pause_rows.menu != menu || count != 6) return false;
     const auto key = PauseControlsKey(base, owner);
     uint32_t page_key;
     if (!key || !Read(base, key, page_key)) return false;
@@ -150,11 +147,15 @@ bool AddedRows(const uint8_t* base, uint32_t owner, uint32_t main, uint32_t menu
     }
     uint32_t type, parent;
     uint8_t visible, focused;
-    return Field(base, g_pause_rows.removed, 0, type) && type == 0x43C8F8 &&
-        Field(base, g_pause_rows.removed, 4, parent) && parent == menu &&
-        RefIs(base, g_pause_rows.removed + 0x30, "GEN_Options") &&
-        Read(base, uint64_t(g_pause_rows.removed) + 0x2F, visible) && !visible &&
-        Read(base, uint64_t(g_pause_rows.removed) + 0x2E, focused) && !focused;
+    for (unsigned i = 0; i < 2; ++i) {
+        const auto removed = g_pause_rows.removed[i];
+        if (!Field(base, removed, 0, type) || type != 0x43C8F8 ||
+            !Field(base, removed, 4, parent) || parent != menu ||
+            !RefIs(base, removed + 0x30, i ? "XBL_XboxLiveOptions" : "GEN_Options") ||
+            !Read(base, uint64_t(removed) + 0x2F, visible) || visible ||
+            !Read(base, uint64_t(removed) + 0x2E, focused) || focused) return false;
+    }
+    return true;
 }
 bool PauseFrame(const uint8_t* base, uint32_t owner, uint32_t menu, uint32_t& frame) {
     uint32_t parent, type;
@@ -162,44 +163,6 @@ bool PauseFrame(const uint8_t* base, uint32_t owner, uint32_t menu, uint32_t& fr
         Field(base, frame, 4, parent) && parent == owner && Field(base, frame, 0, type) && type == 0x43C934 &&
         Span(base, frame, 0x44) && RefIs(base, frame + 0x30, "frame") &&
         Span(base, uint64_t(owner) + 0xFC, 16) && Span(base, uint64_t(frame) + 0x10, 16);
-}
-bool RegisteredPause(const uint8_t* base, uint32_t owner) {
-    uint32_t manager, list, root, type, hud, owned;
-    uint16_t count;
-    if (!owner || !Read(base, kUiManager, manager) || !manager ||
-        !Read(base, uint64_t(manager) + 8, count) || !count || count > 512 ||
-        !Field(base, manager, 12, list) || !Span(base, list, count * 4)) return false;
-    bool found = false;
-    for (unsigned i = 0; i < count; ++i) {
-        if (!Read(base, uint64_t(list) + i * 4, root)) return false;
-        found |= root == owner;
-    }
-    // A hidden or modal-covered Pause remains registered. Committed stale
-    // object bytes alone do not establish that a removed Pause is still alive.
-    return found && Field(base, owner, 0, type) && type == kPauseVtable &&
-        Field(base, owner, 0xF4, hud) && Field(base, hud, 0x120, owned) && owned == owner;
-}
-void PauseFrameHeight(uint8_t* base, bool expand) {
-    if (g_pause_rows.base != base || g_pause_rows.expanded == expand ||
-        !RegisteredPause(base, g_pause_rows.owner)) return;
-    uint32_t main, menu, items, frame, type;
-    uint16_t count;
-    float stored, current;
-    constexpr float expanded = .29f * (7.f / 6.f);
-    if (!Field(base, g_pause_rows.owner, 0, type) || type != kPauseVtable ||
-        !PauseMenu(base, g_pause_rows.owner, main, menu, items, count) ||
-        !AddedRows(base, g_pause_rows.owner, main, menu, items, count) ||
-        !PauseFrame(base, g_pause_rows.owner, menu, frame) || frame != g_pause_rows.frame ||
-        !Read(base, uint64_t(g_pause_rows.owner) + 0x108, stored) ||
-        !Read(base, uint64_t(frame) + 0x1C, current) ||
-        stored != (expand ? .29f : expanded) || current != stored) return;
-    const float height = expand ? expanded : .29f;
-    // EFB89 restores frame geometry from Pause+FC. Update both original
-    // rectangles so its later layout callback preserves this Main-only height.
-    std::memcpy(base + g_pause_rows.owner + 0x108, &height, 4);
-    std::memcpy(base + frame + 0x1C, &height, 4);
-    g_pause_rows.expanded = expand;
-    DarkwatchInvalidateMenuSnapshot();
 }
 }  // namespace
 
@@ -378,17 +341,16 @@ bool EnsureNativePauseEntries(uint8_t* base) {
     const auto route = QueryGraphicsMenuRoute(base);
     uint32_t main, menu, items;
     uint16_t count;
-    if (!route.paused || route.route != GraphicsMenuRoute::OptionsMain || route.options != g_pause_rows.owner)
-        PauseFrameHeight(base, false);
     if (!route.paused || route.route != GraphicsMenuRoute::OptionsMain || !route.pause_settings_available ||
         !thread || !thread->ctx || base != kernel::g_base ||
         !PauseMenu(base, route.options, main, menu, items, count)) return false;
     if (AddedRows(base, route.options, main, menu, items, count)) {
         g_pause_rows.consumed = false; // Observed return to the original main page.
-        PauseFrameHeight(base, true);
         return true;
     }
-    if (count != 6) return false;
+    uint32_t options_row, live_row;
+    if (!Read(base, uint64_t(items) + 8, options_row) || !RefIs(base, options_row + 0x30, "GEN_Options") ||
+        !Read(base, uint64_t(items) + 12, live_row) || !RefIs(base, live_row + 0x30, "XBL_XboxLiveOptions")) return false;
     uint32_t shown, frame;
     float rect[4], baseline[4], live[4];
     if (!Field(base, menu, 0x64, shown) || shown || !Read(base, uint64_t(menu) + 0x10, rect) ||
@@ -431,32 +393,30 @@ bool EnsureNativePauseEntries(uint8_t* base) {
         call.ecx = menu;
         kernel::CallGuest(call, 0x1EFA66, {row});
     }
-    // Replace Options in the ordered navigation vector while retaining its
-    // owned child for the original destructor. Base render/input traversal also
-    // walks children, so hide and unfocus it through the original setters.
+    // Replace Options and unused Xbox Live in the navigation vector. Retain
+    // both owned children for the original destructor, but hide and unfocus
+    // them because base render/input traversal also walks the child list.
     uint32_t ordered[8], selected;
     if (!Field(base, menu, 0x5C, items) || !Read(base, items, ordered) ||
         !Field(base, menu, 0x68, selected) || selected >= 6) return false;
-    const auto removed = ordered[2];
-    call.ecx = removed;
-    kernel::CallGuest(call, 0x1E8E4F, {0});
-    call.ecx = removed;
-    kernel::CallGuest(call, 0x1E8E77, {0});
+    const uint32_t removed[]{ordered[2], ordered[3]};
+    for (const auto row : removed) {
+        call.ecx = row;
+        kernel::CallGuest(call, 0x1E8E4F, {0});
+        call.ecx = row;
+        kernel::CallGuest(call, 0x1E8E77, {0});
+    }
     const uint32_t final_rows[]{ordered[0], ordered[1], rows[0], rows[1],
-        ordered[3], ordered[4], ordered[5], 0};
+        ordered[4], ordered[5], 0, 0};
     std::memcpy(base + items, final_rows, sizeof(final_rows));
-    const uint16_t final_count = 7;
+    const uint16_t final_count = 6;
     std::memcpy(base + menu + 0x58, &final_count, sizeof(final_count));
-    if (selected == 2) {
-        call.ecx = rows[0];
+    if (selected == 2 || selected == 3) {
+        call.ecx = rows[selected - 2];
         kernel::CallGuest(call, 0x1E8E4F, {base[menu + 0x2E]});
     }
-    if (selected >= 3) ++selected;
-    std::memcpy(base + menu + 0x68, &selected, sizeof(selected));
-    // Seven rows in a 7/6-taller frame retain original spacing and font size.
-    // The authored footer stays below the list; other pages restore the frame.
-    g_pause_rows = {base, route.options, main, menu, {rows[0], rows[1]}, removed, false, frame, false};
-    PauseFrameHeight(base, true);
+    // Six rows retain the original frame, spacing, selection indices and footer.
+    g_pause_rows = {base, route.options, main, menu, {rows[0], rows[1]}, {removed[0], removed[1]}, false};
     DarkwatchInvalidateMenuSnapshot();
     return true;
 }

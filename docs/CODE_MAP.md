@@ -12,12 +12,22 @@
 | `graphics.*`, `graphics_route.*`, `settings_skin.h` | Host settings pages, routing, persistence and original-style presentation. |
 | `graphics_camera.*`, `graphics_view.*`, `graphics_reticle.*`, `graphics_hud.*` | Separate world/weapon FOV, saved preferences, widescreen, reticle and HUD adjustments. |
 | `graphics_cinematic.*` | Guarded in-level cinematic border suppression; movie playback is explicitly excluded. |
+| `script_resume.cpp`, `fatal_assert.cpp` | Mission script resume bridge and bounded fatal assertion handling. |
+| `coop.*`, `character_selection.*` | Beta local split-screen co-op routing, character selection and saved preferences. Co-op gameplay testing is incomplete; this is not online co-op. |
+| `character_runtime.*`, `character_runtime_data.h` | Guarded original actor/animation integration; the data header contains identity keys only. |
+| `character_content.cpp`, `character_audio.cpp`, `character_melee.*` | Verified own-disc character admission, bank setup and scoped melee cue selection. Hurt voice work remains unresolved. |
+| `gameplay_textures.h`, `gameplay_texture_assets.h` | Optional replacement loader and fingerprint metadata; no original pixels. |
 | `cri_lifetime.cpp`, `sound_pool.*` | Host synchronization and sound allocation fixes. |
 | `shader_preparation.*`, `shader_preparation_catalogue.h` | Local preparation of known shaders from verified game data. The catalogue stores descriptors and hashes, not captured shader programs. |
 | `hd_ui.*`, `hd_ui_*.h`, `xbexbe/src/tools/` | Runtime HD replacement and the local pack builder. Atlas headers contain layout/identity metadata, not extracted texture pixels. |
 | `xbexbe/hd_ui/` | Approved restored enhancement images and their exact override map. Original archives and assembled texture packs are excluded. |
 | `launcher/` | WPF launcher/direct start, verified import, portable saves, local shader preparation and package allowlist. |
 | `launcher/bonus_content.py` | Three fixed-width XML selector edits in the user's verified original packfile, guarded by original and prepared hashes. No game asset payload is included. |
+| `launcher/character_content.py`, `character-catalog.json` | Coordinates own-disc character preparation and verifies original, intermediate and installed archive identities. |
+| `launcher/character_archive.py`, `character_assets.py` | Archive parsing/composition and model, locator and binary XML adaptation. |
+| `launcher/character_animation.py`, `character_repaint.py` | Adapts own-disc poses while retaining timing/events, and applies the authored hand textures. |
+| `launcher/gameplay_hd.py`, `gameplay-hd-catalog.json` | Optional HD texture installation, integrity checks and rollback. |
+| `tools/package_gameplay_hd.py` | Separately provisioned texture packaging; strips native reference bytes. |
 | `tools/intake.py` | Project-owned XDVDFS parser and extractor. |
 | `scripts/` | Native/launcher build entry points and source fingerprinting. |
 | `tests/` | Selected synthetic tests suitable for public distribution. |
@@ -42,12 +52,23 @@ at the existing jump-look callers. Ownership and mode guards still apply.
 `tests/test_xbexbe_direct_mouse.py` covers this with synthetic state; private
 fixtures containing original function bodies are excluded.
 
-`setup_backend.py` first verifies every extracted file against the original
-disc manifest, then applies `bonus_content.py` only to the uncommitted import
-stage. Installed verification expects the prepared hash for that packfile and
-original hashes for every other disc file. The content-revision marker requires
-older portable installations to reimport while preserving saves, settings and
-compatible cache. `test_bonus_content.py` and `test_launcher_setup.py` exercise
-this path with synthetic archives and never start the game.
+`setup_backend.py` verifies the extracted files against the original disc
+manifest, then calls `character_content.prepare` inside the uncommitted import
+stage. That function builds the character resources and calls
+`bonus_content.patch_pack` before composing the character additions into
+`packfile.pck`. All three prepared archives must match their output pins before
+they replace the originals in that stage; the setup backend then commits the
+installation. Installed verification expects prepared identities for those
+archives and original hashes for untouched files.
+
+The content-revision marker requires older portable installations to reimport
+while preserving saves, settings and compatible cache. The launcher tests use
+synthetic archives to cover preparation and transactional installation without
+starting the game.
 
 Weapon FOV borrows the registered player camera only for the first-person model pass, then restores the world projection. Both preferences retain the original at 100%. Cutscene Borders skips only the active cinematic manager's two border draws; animation, camera, fades and subtitles keep their original paths. The authored view, cinematic-guard and ImGui tests are included; original-function fixtures remain private.
+
+Main-menu additions are prepared during the original menu initializer before its
+first layout, including return from gameplay. Input callbacks still require the
+active page owner. Diagnostic modules remain in source for development, but the
+release profile compiles out their recording paths; bounded fatal reports remain.

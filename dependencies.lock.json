@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "release": "0.2",
+  "release": "0.4",
   "scope": "Native source revisions retained from 0.1. SDK FetchContent uses these tags; compare resolved commits after first configuration.",
   "native": [
     {

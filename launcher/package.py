@@ -12,7 +12,7 @@ REFERENCE = REPO.parent / 'Urban Chaos Riot Response Recompiled'
 PYTHON = REFERENCE / '.tools/python'
 VS = Path('C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools')
 CRT = VS / 'VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT'
-VERSION = '0.3'
+VERSION = '0.4'
 RELEASE_PROFILE = {'name': 'release-candidate', 'diagnostics': False, 'strict_assets': True}
 LAUNCHER = 'Darkwatch Darker Edition.exe'
 DIRECT_PLAY = 'Play Darkwatch.exe'
@@ -20,26 +20,17 @@ CRT_FILES = ('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
 PYTHON_FILES = ('python.exe', 'python312.dll', 'python3.dll', 'python312.zip',
                 'vcruntime140.dll', 'vcruntime140_1.dll', '_hashlib.pyd',
                 'libcrypto-3.dll', '_ctypes.pyd', 'libffi-8.dll', 'LICENSE.txt')
-FORBIDDEN = {'.iso', '.xiso', '.xbe', '.pck', '.xmv', '.wmv', '.wav', '.pdb', '.log', '.dmp', '.pyc'}
+FORBIDDEN = {'.iso', '.xiso', '.xbe', '.pck', '.xmv', '.wmv', '.wav', '.pdb', '.log', '.dmp', '.pyc', '.dwt', '.pack'}
 GENERATED = {
     'payload/python/python312._pth': 'python312.zip\n.\n..\n',
-    'README.txt': '''Darkwatch: Darker Edition - 0.3
+    'README.txt': '''Darkwatch: Darker Edition - 0.4
 
-Windows release for community testing
-Adds independent Weapon FOV, an in-level Cutscene Borders toggle, and menu
-text sizing fixes. FMVs remain unchanged. Final visual acceptance is pending.
-Carries forward the gameplay changes from 0.2.
-Enables War Train and the retained campaign Splitter Grenade placements from
-your own supported Xbox disc. The paired Xbox dynamite substitutes are disabled;
-ordinary dynamite and multiplayer placements remain unchanged. No PS2 disc or
-downloaded game assets are used. Original chapter progression is retained.
-Use the D-pad Up action (Up Arrow by default) to change grenade type after pickup.
-Also corrects actor scripts being skipped above 100 FPS, which affected the
-opening door at 144 FPS, and enables direct mouse look during vampire jumps.
-These changes pass offline checks; live acceptance of bonus progression,
-grenade behavior, the 144 FPS opening door and vampire-jump aiming remains
-outstanding. This is not a claim that all physics and events are frame-rate
-independent or that the full campaign has been verified.
+Version 0.4
+- Select Jericho or Cassidy; local split-screen co-op is BETA and still in testing.
+- Optional gameplay HD textures, installed separately through the launcher.
+- Zoom sensitivity, brightness, subtitle-panel control and automatic mouse input.
+- Setup recovery, quit confirmation and main-menu initialization fixes.
+Carries forward the 0.3 gameplay, graphics and interface features.
 
 Extract the entire ZIP into a new folder, then open Darkwatch Darker Edition.exe.
 Keep both EXEs and the payload folder together; do not run them inside the ZIP.
@@ -49,6 +40,10 @@ Select your supported original Xbox ISO or XISO with Import ISO. Setup imports y
 disc locally, then prepares shaders and the HD menus, font and HUD from that verified data.
 After import, choose Play. No ISO, Xbox executable, movies or original game
 payloads are included. The prebuilt HD pack is not included either.
+Gameplay HD textures are a separate optional download. Download all numbered
+texture parts into one folder. Use Install HD Textures in the launcher and select
+the .zip.001 file (or the complete texture ZIP). The Graphics toggle stays
+unavailable until the pack is installed; HD menus, fonts and HUD remain included.
 Play from this launcher has no ten-minute test timer.
 
 After importing once, open Play Darkwatch.exe to start the game directly without
@@ -71,7 +66,7 @@ The supported disc is the original Xbox revision with executable SHA-256:
 72fc8033e01df4f22c703121cfd160969c642b18e841248224fc97a8f32050d7
 Setup accepts a full Xbox disc image or XISO and checks all 23 original files.
 The file picker accepts both .iso and .xiso filenames; no renaming is needed.
-Other revisions are rejected. Keep at least 4.5 GB free per import, plus space
+Other revisions are rejected. Keep at least 5 GB free per import, plus space
 for saves and shader cache. Your source ISO is never modified.
 
 The launcher stores everything it installs in GameData/ beside both EXEs.
@@ -82,7 +77,7 @@ development build and its saves are not changed or automatically migrated.
 Import cancellation or a failed verification keeps the previous complete install.
 To update a portable copy, extract the new release into a new folder and copy your
 existing GameData folder into it, then use Import / Repair with your original ISO
-or XISO. Reimport enables bonus content when updating an older installation and
+or XISO. Reimport enables character and bonus content when updating an older installation and
 preserves saves, settings and cache.
 For an earlier per-user installation, import your ISO once here; setup copies its
 matching saved data and settings into the new portable install, leaving the old
@@ -93,6 +88,11 @@ new version and backed up your saves. Verify Files checks without running the ga
 Graphics and Controls are available from the main menu and Pause. Esc pauses;
 right-click goes back in menus. Configure bindings in Controls. Choose Quit to
 Desktop in the main menu to close the game.
+Choose Characters for player appearance. Local co-op is under Multiplayer >
+CO-OP. Co-op is a beta feature; full campaign progression and two-player gameplay
+have not been fully verified. Character conversion uses your own disc; no original models, animations
+or voices are included in this package. The approved hand repaint is included.
+The gameplay HD pack is separate from the HD interface and character selection.
 PS4 and Switch Pro controllers use matching prompts and controller-layout pages.
 Button actions follow physical positions: Switch B confirms and A goes back.
 Native USB and Bluetooth paths are enabled but have not been tested on physical
@@ -106,6 +106,11 @@ reported no noticeable stutters on the opening route and boss fight. Preparation
 covers the known shader catalogue, not every possible campaign shader. Unseen
 shaders, driver work and ordinary loading can still cause pauses. Testing on a
 fresh Windows installation remains outstanding.
+Cassidy melee audio was accepted in the tested scene; her hurt voice remains
+inaudible and that investigation is paused. Co-op gameplay, subtitle afterimages,
+distant eye-glow alignment and reported room-specific slowdowns need more testing.
+The reported Controls freeze has not been reproduced locally. The menu transition
+fix passes offline checks but has not received live visual acceptance in this version.
 Original game content and branding belong to their owners.
 See licenses/ for dependency notices and artwork sources.
 ''',
@@ -119,7 +124,7 @@ Microsoft Visual C++ 2015-2022 runtime: unmodified app-local DLLs from VS2022 Re
 Microsoft notices and English terms included. Windows supplies UCRT, Direct3D,
 WPF and other system components; those DLLs are not copied into this package.
 Launcher cover and insignia provenance: ARTWORK-SOURCES.md.
-HD restoration PNGs are the project's approved authored enhancements. Original
+HD interface restoration PNGs are the project's approved authored enhancements. Original
 texture bytes and the resulting HD pack are prepared only from the user's import.
 ''',
 }
@@ -164,6 +169,8 @@ def sources():
     plan = {
         'payload/setup_backend.py': HERE / 'setup_backend.py',
         'payload/bonus_content.py': HERE / 'bonus_content.py',
+        'payload/gameplay_hd.py': HERE / 'gameplay_hd.py',
+        'payload/gameplay-hd-catalog.json': HERE / 'gameplay-hd-catalog.json',
         'payload/intake.py': REPO / 'tools/intake.py',
         'payload/supported-disc.json': HERE / 'supported-disc.json',
         'payload/runtime/darkwatch_xbe.exe': runtime / 'darkwatch_xbe.exe',
@@ -175,6 +182,12 @@ def sources():
         'licenses/Microsoft-Visual-Studio-Redist.txt': VS / 'Licenses/1033/Redist.txt',
         'licenses/ARTWORK-SOURCES.md': HERE / 'assets/SOURCES.md',
     }
+    for name in ('character_content.py', 'character_animation.py', 'character_assets.py',
+                 'character_archive.py', 'character_repaint.py', 'character-catalog.json'):
+        plan['payload/' + name] = HERE / name
+    for size in (1024, 256):
+        name = f'cassidy-hands-{size}.dds'
+        plan['payload/character-art/' + name] = HERE / 'assets' / name
     for name in ('Microsoft-Visual-Cpp-Runtime-license.rtf', 'Microsoft-Visual-Cpp-Redistribution.txt'):
         plan['licenses/' + name] = REFERENCE / 'launcher/burner-xbe' / name
     plan.update({'payload/runtime/' + name: CRT / name for name in CRT_FILES})
@@ -183,17 +196,59 @@ def sources():
     return plan
 
 
+def check_texture_catalog(path, build):
+    metadata_name = 'xbexbe/config/gameplay_hd_assets.json'
+    compiled_name = 'xbexbe/src/common/gameplay_texture_assets.h'
+    recorded = {row['path']: row['sha256'] for row in build.get('host_sources', {}).get('files', [])}
+    for name in (metadata_name, compiled_name):
+        if recorded.get(name) != sha(REPO / name):
+            raise ValueError('HD texture metadata differs from the runtime build; rebuild it first.')
+    metadata = json.loads((REPO / metadata_name).read_text(encoding='utf-8'))
+    catalog = json.loads(path.read_text(encoding='utf-8'))
+    expected = {'gameplay-hd/' + row['name'] + '.dwt': 40 + sum(
+        max(row['width'] >> level, 1) * max(row['height'] >> level, 1) * 4
+        for level in range(row['dds_mips'])) for row in metadata['textures']}
+    files = catalog.get('files', [])
+    if (catalog.get('schema_version') != 1 or catalog.get('kind') != 'darkwatch-gameplay-hd' or
+            catalog.get('version') != '1' or catalog.get('texture_catalog_sha256') != recorded[metadata_name] or
+            len(files) != len(expected) or {row['path']: row['size'] for row in files} != expected or
+            any(not isinstance(row.get('sha256'), str) or len(row['sha256']) != 64 or
+                any(char not in '0123456789abcdef' for char in row['sha256']) for row in files)):
+        raise ValueError('HD download catalog is stale or invalid; rebuild the optional texture pack.')
+
+
 def check_sources(plan):
     build = json.loads((REPO / 'build/xbexbe-release/build-manifest.json').read_text(encoding='utf-8'))
     if build.get('release_profile') != RELEASE_PROFILE:
         raise ValueError('Package requires the quiet release-candidate runtime with strict installed assets.')
     if sha(plan['payload/runtime/darkwatch_xbe.exe']) != build['executable']['sha256']:
         raise ValueError('Runtime differs from the recorded build; rebuild it first.')
+    if 'payload/gameplay-hd-catalog.json' in plan:
+        check_texture_catalog(plan['payload/gameplay-hd-catalog.json'], build)
+    if 'payload/character-catalog.json' in plan:
+        check_character_catalog(plan, build)
     for name, source in plan.items():
         safe_relative(name)
         if not source.is_file() or source.is_symlink() or source.is_junction():
             raise ValueError('Missing or linked package input: ' + str(source))
     return build['executable']['sha256']
+
+
+def check_character_catalog(plan, build):
+    """The importer must produce the exact archives accepted by this runtime."""
+    import character_content
+    catalog = character_content.catalog(plan['payload/character-catalog.json'].parent)
+    source_name = 'xbexbe/src/common/character_content.cpp'
+    recorded = {row['path']: row['sha256'] for row in build.get('host_sources', {}).get('files', [])}
+    if recorded.get(source_name) != sha(REPO / source_name):
+        raise ValueError('Character content admission differs from the runtime build; rebuild it first.')
+    source = (REPO / source_name).read_text(encoding='utf-8')
+    for name, pin in catalog['installed'].items():
+        if name not in source or pin['sha256'] not in source or str(pin['size']) not in source:
+            raise ValueError('Runtime and launcher character archive identities differ.')
+    for size, digest in character_content.REPAINT.items():
+        if sha(plan[f'payload/character-art/cassidy-hands-{size}.dds']) != digest:
+            raise ValueError('Packaged character repaint differs from the approved conversion.')
 
 
 def disc_hashes(package):

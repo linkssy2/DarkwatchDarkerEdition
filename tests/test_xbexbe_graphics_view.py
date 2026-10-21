@@ -38,10 +38,10 @@ int main(){using namespace darkwatch::view;
  for(const char* invalid:{"hd_ui=0\n","hd_ui='false'\n","hd_ui=[]\n"}){Write(invalid);app::Load();Values(100,100);}
  Write("field_of_view_scale=120\nreticle_size=50\nhd_ui=true\n");app::Load();Values(120,50);CHECK(app::Save());Apply({});app::Load();Values(120,50);
  Write("field_of_view_scale=-1\nreticle_size=99999999999\n");app::Load();Values(50,200);
- Write("field_of_view_scale=99999999999\nreticle_size=-99\n");app::Load();Values(150,50);
+ Write("field_of_view_scale=99999999999\nreticle_size=-99\n");app::Load();Values(200,50);
  Write("field_of_view_scale='wrong'\nreticle_size=false\nshow_fps=1\n");app::Load();Values(100,100);
  Write("field_of_view_scale=[\n");app::Load();Values(100,100);
- Apply({0,~0u});Values(50,200);Apply({~0u,0});Values(150,50);
+ Apply({0,~0u});Values(50,200);Apply({~0u,0});Values(200,50);
  Apply({110,90,true});CHECK(app::Save());original=Read();
  HANDLE held=CreateFileW(L"view.toml",GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);CHECK(held!=INVALID_HANDLE_VALUE);
  Apply({130,75,false,false});CHECK(!app::Save());CHECK(Read()==original);Values(130,75,false,false);CloseHandle(held);
@@ -60,6 +60,9 @@ int main(){using namespace darkwatch::view;
  std::thread writer([&]{for(unsigned i=0;i<10000;++i)Apply(i&1?Settings{50,200,true,true,150,false}:Settings{150,50,false,false,50,true});done=true;});
  unsigned checked=0;do{auto s=Snapshot();CHECK((s.fov_percent==50&&s.reticle_percent==200&&s.show_fps&&s.hd_ui&&s.viewmodel_fov_percent==150&&!s.cutscene_borders)||(s.fov_percent==150&&s.reticle_percent==50&&!s.show_fps&&!s.hd_ui&&s.viewmodel_fov_percent==50&&s.cutscene_borders));++checked;}while(!done||checked<1000);writer.join();
  for(bool fps:{false,true})for(bool hd:{false,true})for(bool borders:{false,true})for(unsigned weapon:{50u,100u,150u}){Apply({120,50,fps,hd,weapon,borders});Values(120,50,fps,hd,weapon,borders);}
+ Apply({});CHECK(Snapshot().hd_textures);
+ Write("hd_textures=false\n");app::Load();CHECK(!Snapshot().hd_textures);CHECK(app::Save());Apply({});app::Load();CHECK(!Snapshot().hd_textures&&Snapshot().hd_ui);
+ Write("hd_textures='false'\n");app::Load();CHECK(Snapshot().hd_textures);
  std::puts("view settings: defaults, bounds, malformed input, actual atomic save failure and coherent snapshots passed");
 }
 '''

@@ -26,7 +26,7 @@ void DarkwatchRefreshMenuBars(uint8_t*, uint64_t);
 
 namespace {
 // Original localization/preset, font-list and RenderWare witnesses are pinned in
-// analysis/xbexbe/mouse-menus-20261016/prompt-contract/. No authored files are modified.
+// Prompt identities were checked against the original resources; files remain unchanged.
 constexpr std::array<uint8_t, 26> kCodes = {
     'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p',1,2,3,4,5,6,7,8,9,11};
 constexpr std::array<uint8_t, 20> kActions = {10,11,8,9,15,13,7,14,12,6,5,4,2,3,0,1,16,17,18,19};
@@ -453,7 +453,7 @@ bool TextureName(const uint8_t* base,uint32_t texture) {
 void Refresh(uint8_t* base) {
     const auto device=input::GetLastDevice();const auto settings=darkwatch::ControlsSnapshot();
     if(!g_have_settings||device.controller!=g_device.controller||(device.controller&&device.family!=g_device.family)||
-       std::memcmp(settings.bindings.data(),g_settings.bindings.data(),sizeof(settings.bindings))||settings.direct_mouse!=g_settings.direct_mouse) {
+       std::memcmp(settings.bindings.data(),g_settings.bindings.data(),sizeof(settings.bindings))) {
         g_device=device;g_settings=settings;g_have_settings=true;++g_revision;
     }
     DarkwatchRefreshMenuBars(base,g_revision);
@@ -546,12 +546,10 @@ void DarkwatchPromptFont(X86Context& ctx,uint8_t* base) {
         } else if(i>=21&&i<=24) {
             // Lefty uses the left stick to look. Keep the expanded token stable,
             // and resolve its four records against the current input mode.
-            if(!g_settings.direct_mouse)badgeKey=Key(16+i-21);
-            else if(i>21){custom=false;map=-1;}
+            if(i>21){custom=false;map=-1;}
         } else if(i==25) {
-            // With direct aim disabled, the existing mouse-to-right-stick route
-            // drives Lefty's movement. Direct aim reserves the mouse for looking.
-            badgeKey=g_settings.direct_mouse?260:256;
+            // Mouse movement always controls looking, including the Lefty preset.
+            badgeKey=260;
         }
         if(custom) {
             const auto& badge=g_atlas.badges[badgeKey];

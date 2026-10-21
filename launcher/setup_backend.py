@@ -25,14 +25,17 @@ import uuid
 
 import intake
 import bonus_content
+import gameplay_hd
+import character_content
 
 CHUNK = 8 * 1024 * 1024
 # Same original-Xbox game partition locations supported by the pinned runtime.
 PARTITIONS = (0, 0x18300000)
 EXE = "darkwatch_xbe.exe"
 SETTINGS = "darkwatch_xbe_settings.toml"
-PACKAGE_VERSION = "0.3"
+PACKAGE_VERSION = "0.4"
 RELEASE_PROFILE = {"name": "release-candidate", "diagnostics": False, "strict_assets": True}
+# Maximum time without a completed shader, not a limit on the whole preparation.
 SHADER_PREPARE_TIMEOUT = 15 * 60
 
 
@@ -170,7 +173,11 @@ class Setup:
             safe_path(self.package, path)
             if not isinstance(digest, str) or not re.fullmatch("[0-9a-f]{64}", digest):
                 raise SetupError("Invalid package checksum.")
-        for path in ("payload/supported-disc.json", "payload/intake.py", "payload/bonus_content.py", "payload/hd_ui/overrides.toml",
+        for path in ("payload/supported-disc.json", "payload/intake.py", "payload/bonus_content.py",
+                     "payload/gameplay_hd.py", "payload/gameplay-hd-catalog.json", "payload/hd_ui/overrides.toml",
+                     "payload/character_content.py", "payload/character_animation.py", "payload/character_assets.py",
+                     "payload/character_archive.py", "payload/character_repaint.py", "payload/character-catalog.json",
+                     "payload/character-art/cassidy-hands-1024.dds", "payload/character-art/cassidy-hands-256.dds",
                      "payload/runtime/" + EXE, "payload/runtime/darkwatch_hd_ui_builder.exe"):
             if path not in self.files:
                 raise SetupError(f"Required package file is missing: {path}")
@@ -194,6 +201,12 @@ class Setup:
         pack = next(f for f in self.assets if f["path"].casefold() == "packfile.pck")
         if pack["sha256"] != bonus_content.ORIGINAL_SHA256:
             raise SetupError("Supported disc does not match this bonus-content revision.")
+        catalog = safe_path(self.package, "payload/gameplay-hd-catalog.json")
+        if self.digest(catalog) != self.files["payload/gameplay-hd-catalog.json"]:
+            raise SetupError("HD texture catalog is damaged. Extract a fresh launcher package.")
+        self.hd_catalog = gameplay_hd.Catalog(catalog.read_bytes())
+        self.hd_warning = ""
+        self.hd_verified = False
 
     def check_cancel(self):
         if self.cancel_file and self.cancel_file.exists():
@@ -244,10 +257,9 @@ class Setup:
         metadata = read_json(safe_path(current, "install.json"))
         if metadata.get("disc_sha256") != self.files["payload/supported-disc.json"]:
             raise SetupError("Installed disc version differs. Import the supported ISO again.")
-        if metadata.get("content_revision") != bonus_content.CONTENT_REVISION:
-            raise SetupError("This installation needs the bonus content update. Import your original ISO again; saves and settings will be kept.")
-        files = [("assets/" + f["path"], f["size"],
-                  bonus_content.INSTALLED_SHA256 if f["path"].casefold() == "packfile.pck" else f["sha256"])
+        if metadata.get("content_revision") != character_content.CONTENT_REVISION:
+            raise SetupError("This installation needs the character content update. Import your original ISO again; saves and settings will be kept.")
+        files = [("assets/" + f["path"], *character_content.INSTALLED.get(f["path"], (f["size"], f["sha256"])))
                  for f in self.assets]
         for path, digest in self.files.items():
             if path.startswith("payload/runtime/") and not path.endswith("/darkwatch_hd_ui_builder.exe"):
@@ -263,15 +275,38 @@ class Setup:
     def status(self):
         current = self.active()
         if not current:
-            return dict(installed=False, ready=False, message="Import your own supported Darkwatch ISO to begin.")
+            return dict(installed=False, ready=False, hd_textures_installed=False,
+                        message="Import your own supported Darkwatch ISO to begin.")
         try:
             for relative, size, _ in self.installed_files(current):
                 path = safe_path(current, relative)
                 if not path.is_file() or path.stat().st_size != size:
                     raise SetupError(f"Missing or damaged installed file: {relative}. Import your ISO again to repair it.")
         except (OSError, ValueError, KeyError, TypeError) as error:
-            return dict(installed=True, ready=False, message=str(error))
-        return dict(installed=True, ready=True, message="Installed. Files are verified before every launch.", install_dir=str(current))
+            return dict(installed=True, ready=False, hd_textures_installed=False, message=str(error))
+        hd = self.hd_status(current)
+        return dict(installed=True, ready=True, hd_textures_installed=hd,
+                    message=self.hd_warning or "Installed. Files are verified before every launch.", install_dir=str(current))
+
+    def hd_status(self, current, full=False):
+        self.hd_warning = ""
+        try:
+            return self.hd_catalog.validate(current, self.check_cancel, self.notify, full=full)
+        except Cancelled:
+            raise
+        except (OSError, ValueError):
+            self.hd_warning = "The optional HD texture pack needs repair. Install its download again; the base game is still ready."
+            return False
+
+    def install_hd_textures(self, archive):
+        require_closed()
+        current = self.active()
+        if not current or not self.status()["ready"]:
+            raise SetupError("Import or repair your Darkwatch ISO before installing optional HD textures.")
+        self.verify_package()
+        self.hd_catalog.install(Path(archive).absolute(), current, self.check_cancel, self.notify, require_closed)
+        return dict(installed=True, ready=True, install_dir=str(current), hd_textures_installed=True,
+                    message="HD gameplay textures installed. Enable HD Textures in Graphics.")
 
     def verify_package(self):
         for index, (relative, digest) in enumerate(self.files.items()):
@@ -285,7 +320,7 @@ class Setup:
                 if "file" in region and "payload/hd_ui/" + region["file"] not in self.files:
                     raise SetupError("The HD artwork package is incomplete.")
 
-    def verify(self):
+    def verify(self, optional=True):
         current = self.active()
         if not current:
             raise SetupError("Import your own Darkwatch ISO first.")
@@ -299,6 +334,8 @@ class Setup:
             if not path.is_file() or path.stat().st_size != size or self.digest(path) != digest:
                 raise SetupError(f"Missing or damaged installed file: {relative}. Import your ISO again to repair it.")
             done += size
+        if optional:
+            self.hd_verified = self.hd_status(current, full=True)
         self.notify("progress", "Installed files verified", percent=100)
         return current
 
@@ -402,7 +439,7 @@ class Setup:
                 while True:
                     self.check_cancel()
                     if time.monotonic() >= deadline:
-                        raise SetupError("Shader preparation took too long. Close other applications and try again.")
+                        raise SetupError("Shader preparation made no progress for too long. Close other applications and try again.")
                     try:
                         line = events.get(timeout=0.1)
                     except queue.Empty:
@@ -424,6 +461,8 @@ class Setup:
                             count <= 0 or done < completed or (total is not None and total != count) or
                             type(progress) not in (int, float) or not 0 <= progress <= 100):
                             raise SetupError("Shader preparation returned invalid progress.")
+                        if done > completed and done > 0:
+                            deadline = time.monotonic() + SHADER_PREPARE_TIMEOUT
                         completed, total = done, count
                         self.notify("shader_prepare", "Preparing shaders — %d of %d" % (done, count),
                                     percent=100 * done / count, completed=done, total=count)
@@ -480,9 +519,14 @@ class Setup:
             with iso.open("rb") as source:
                 original_stat = os.fstat(source.fileno())
                 offset, entries = self.find_volume(source, original_stat.st_size)
-                needed = sum(f["size"] for f in self.assets) + 512 * 1024 * 1024
+                # All three converted copies coexist with the extracted originals
+                # until verification. Reserve their space before extraction starts.
+                needed = (sum(f["size"] for f in self.assets) +
+                          sum(size for size, _ in character_content.INSTALLED.values()) + 512 * 1024 * 1024)
+                if previous and safe_path(previous, gameplay_hd.DIRECTORY).exists():
+                    needed += self.hd_catalog.total
                 if shutil.disk_usage(self.root).free < needed:
-                    raise SetupError("Not enough free space. Keep at least 4.5 GB free for a new installation, plus space for your saved data and cache.")
+                    raise SetupError(f"Not enough free space. Keep at least {needed / (1024 ** 3):.1f} GB free for installation, plus space for your saved data and cache.")
                 total = sum(f["size"] for f in self.assets)
                 done = 0
                 for item in self.assets:
@@ -507,15 +551,8 @@ class Setup:
                 final_stat = os.fstat(source.fileno())
                 if (original_stat.st_size, original_stat.st_mtime_ns) != (final_stat.st_size, final_stat.st_mtime_ns):
                     raise SetupError("The source ISO changed during import. Please retry with an unchanged file.")
-            self.notify("progress", "Preparing War Train and Splitter grenades from your disc", percent=86)
-            self.check_cancel()
-            pack = safe_path(stage, "assets/packfile.pck")
-            candidate = bonus_content.patch_pack(pack.read_bytes())
-            self.check_cancel()
-            pack.write_bytes(candidate)
-            del candidate
-            if self.digest(pack) != bonus_content.INSTALLED_SHA256:
-                raise SetupError("Prepared bonus content is damaged. The previous installation was kept.")
+            character_content.prepare(stage / "assets", self.package / "payload", self.check_cancel,
+                                      lambda message: self.notify("progress", message, percent=86))
             for relative, digest in self.files.items():
                 if relative.startswith("payload/runtime/") and not relative.endswith("/darkwatch_hd_ui_builder.exe"):
                     target = safe_path(stage, relative.removeprefix("payload/runtime/"))
@@ -530,16 +567,25 @@ class Setup:
             self.notify("progress", "Preserving saves, controls, and shader cache", percent=97)
             with self.user_data_source(previous) as user_data:
                 self.copy_user_data(user_data, stage)
+                try:
+                    self.hd_catalog.preserve(user_data, stage, self.check_cancel, self.notify, self.copy_file)
+                except Cancelled:
+                    raise
+                except gameplay_hd.PackError as error:
+                    # Optional damaged artwork must not prevent repairing the base game.
+                    gameplay_hd.remove_tree(stage, gameplay_hd.DIRECTORY)
+                    self.notify("progress", str(error) + " The previous copy was kept; reinstall the optional pack afterward.", percent=97)
                 self.prepare_shaders(stage)
                 hd = stage / "hd-ui.pack"
                 write_json(stage / "install.json", dict(schema_version=1, disc_sha256=self.files["payload/supported-disc.json"],
-                           content_revision=bonus_content.CONTENT_REVISION, partition_offset=offset,
+                           content_revision=character_content.CONTENT_REVISION, partition_offset=offset,
                            hd_ui=dict(size=hd.stat().st_size, sha256=self.digest(hd))))
                 self.check_cancel()
                 require_closed()
                 write_json(self.root / "active.json", dict(version=version))
                 committed = True
-            return dict(installed=True, ready=True, install_dir=str(stage), message="Darkwatch: Darker Edition is installed. Your original ISO was not changed.")
+            return dict(installed=True, ready=True, install_dir=str(stage), hd_textures_installed=self.hd_status(stage),
+                        message="Darkwatch: Darker Edition is installed. Your original ISO was not changed.")
         finally:
             if not committed:
                 checked = safe_path(versions, version)
@@ -548,7 +594,7 @@ class Setup:
 
     def play(self):
         require_closed()
-        current = self.verify()
+        current = self.verify(optional=False)
         self.prepare_shaders(current)
         self.check_cancel()
         require_closed()
@@ -574,6 +620,7 @@ def main(argv=None):
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument("--status", action="store_true")
     action.add_argument("--import-iso", type=Path)
+    action.add_argument("--install-hd-textures", type=Path)
     action.add_argument("--verify", action="store_true")
     action.add_argument("--play", action="store_true")
     args = parser.parse_args(argv)
@@ -585,15 +632,27 @@ def main(argv=None):
         with exclusive(setup.root):
             if args.import_iso:
                 result = setup.import_iso(args.import_iso)
+            elif args.install_hd_textures:
+                result = setup.install_hd_textures(args.install_hd_textures)
             elif args.play:
                 result = setup.play()
             else:
                 current = setup.verify()
-                result = dict(installed=True, ready=True, install_dir=str(current), message="All installed files verified.")
+                result = dict(installed=True, ready=True, install_dir=str(current), hd_textures_installed=setup.hd_verified,
+                              message=setup.hd_warning or "All installed files verified.")
             emit("result", **result, percent=100)
         return 0
     except (SetupError, intake.IntakeError, OSError, ValueError, KeyError, TypeError) as error:
-        emit("error", str(error), ready=False, cancelled=isinstance(error, Cancelled))
+        state = dict(ready=False)
+        if args.install_hd_textures and "setup" in locals():
+            try:
+                # Optional artwork failure must not disable an otherwise playable install.
+                setup.cancel_file = None
+                state = setup.status()
+                state.pop("message", None)
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+        emit("error", str(error), **state, cancelled=isinstance(error, Cancelled))
         return 1
 
 
