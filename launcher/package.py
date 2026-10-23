@@ -12,7 +12,7 @@ REFERENCE = REPO.parent / 'Urban Chaos Riot Response Recompiled'
 PYTHON = REFERENCE / '.tools/python'
 VS = Path('C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools')
 CRT = VS / 'VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT'
-VERSION = '0.4'
+VERSION = '0.5'
 RELEASE_PROFILE = {'name': 'release-candidate', 'diagnostics': False, 'strict_assets': True}
 LAUNCHER = 'Darkwatch Darker Edition.exe'
 DIRECT_PLAY = 'Play Darkwatch.exe'
@@ -23,14 +23,14 @@ PYTHON_FILES = ('python.exe', 'python312.dll', 'python3.dll', 'python312.zip',
 FORBIDDEN = {'.iso', '.xiso', '.xbe', '.pck', '.xmv', '.wmv', '.wav', '.pdb', '.log', '.dmp', '.pyc', '.dwt', '.pack'}
 GENERATED = {
     'payload/python/python312._pth': 'python312.zip\n.\n..\n',
-    'README.txt': '''Darkwatch: Darker Edition - 0.4
+    'README.txt': '''Darkwatch: Darker Edition - 0.5
 
-Version 0.4
-- Select Jericho or Cassidy; local split-screen co-op is BETA and still in testing.
-- Optional gameplay HD textures, installed separately through the launcher.
-- Zoom sensitivity, brightness, subtitle-panel control and automatic mouse input.
-- Setup recovery, quit confirmation and main-menu initialization fixes.
-Carries forward the 0.3 gameplay, graphics and interface features.
+Version 0.5
+- Select Spectral Cassidy in solo or co-op, with adapted first-person hands.
+- Expanded optional HD textures and corrected missing co-op texture connections.
+- Improved co-op HUD spacing and Player 2's own pause menus and controller settings.
+- Character loading, subtitle effects, controller detection and Coyote mouse-look fixes.
+Carries forward the 0.4 features. Local split-screen co-op remains BETA.
 
 Extract the entire ZIP into a new folder, then open Darkwatch Darker Edition.exe.
 Keep both EXEs and the payload folder together; do not run them inside the ZIP.
@@ -88,10 +88,13 @@ new version and backed up your saves. Verify Files checks without running the ga
 Graphics and Controls are available from the main menu and Pause. Esc pauses;
 right-click goes back in menus. Configure bindings in Controls. Choose Quit to
 Desktop in the main menu to close the game.
-Choose Characters for player appearance. Local co-op is under Multiplayer >
+Choose Characters for Jericho, Cassidy or Spectral Cassidy. Local co-op is under Multiplayer >
 CO-OP. Co-op is a beta feature; full campaign progression and two-player gameplay
 have not been fully verified. Character conversion uses your own disc; no original models, animations
 or voices are included in this package. The approved hand repaint is included.
+In co-op, Player 2 pauses with their controller to edit their own controller settings
+and select one of the five original control-layout presets. Arbitrary controller
+button remapping is not included. Mouse and keyboard bindings remain Player 1's.
 The gameplay HD pack is separate from the HD interface and character selection.
 PS4 and Switch Pro controllers use matching prompts and controller-layout pages.
 Button actions follow physical positions: Switch B confirms and A goes back.
@@ -106,11 +109,16 @@ reported no noticeable stutters on the opening route and boss fight. Preparation
 covers the known shader catalogue, not every possible campaign shader. Unseen
 shaders, driver work and ordinary loading can still cause pauses. Testing on a
 fresh Windows installation remains outstanding.
-Cassidy melee audio was accepted in the tested scene; her hurt voice remains
-inaudible and that investigation is paused. Co-op gameplay, subtitle afterimages,
-distant eye-glow alignment and reported room-specific slowdowns need more testing.
-The reported Controls freeze has not been reproduced locally. The menu transition
-fix passes offline checks but has not received live visual acceptance in this version.
+Cassidy loading, melee audio, co-op HUD placement, Player 2 settings ownership
+and subtitle appearance during effects were accepted in the tested scenes.
+Her hurt voice remains inaudible and that investigation is paused. Full co-op
+progression, automatic story-based appearance changes, all weapon poses and
+reported room-specific slowdowns need more testing. Coyote mouse-look and false
+controller-warning fixes pass offline checks; broader live validation is pending.
+The reported Controls freeze has not been reproduced locally. Faulty HD blood
+replacements use the original blood textures; corrected HD blood artwork is not
+included in this release. Existing 0.4 HD packs remain compatible; install the new
+separate pack for the added artwork.
 Original game content and branding belong to their owners.
 See licenses/ for dependency notices and artwork sources.
 ''',
@@ -183,7 +191,10 @@ def sources():
         'licenses/ARTWORK-SOURCES.md': HERE / 'assets/SOURCES.md',
     }
     for name in ('character_content.py', 'character_animation.py', 'character_assets.py',
-                 'character_archive.py', 'character_repaint.py', 'character-catalog.json'):
+                 'character_archive.py', 'character_repaint.py', 'character_boss.py',
+                 'character_boss_effects.py', 'character_spectral_hands.py', 'character_hand_seams.py',
+                 'character_secondary.py',
+                 'character-catalog.json'):
         plan['payload/' + name] = HERE / name
     for size in (1024, 256):
         name = f'cassidy-hands-{size}.dds'

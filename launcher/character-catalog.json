@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "content_revision": "wartrain-splitter-characters-v1",
+  "content_revision": "wartrain-splitter-characters-v2",
   "originals": {
     "audio.pck": {
       "size": 137741272,
@@ -61,6 +61,24 @@
       "offset": 12441600,
       "size": 202334,
       "sha256": "ab5cd1e6e409eeb650297932503f04eb408ef1ace669b49397f4e07ca36f4eef"
+    },
+    "characters/cassidyboss/base_cassidy_boss.bllist": {
+      "archive": "packfile.pck",
+      "offset": 13504390,
+      "size": 1111,
+      "sha256": "11059a56e5afef21a4ba2bb6a6fd50872b9df7bbab95c4e1afcb85b1ae6a0d2e"
+    },
+    "characters/cassidyboss/base_cassidy_boss.jlist": {
+      "archive": "packfile.pck",
+      "offset": 13505501,
+      "size": 1845,
+      "sha256": "35ac5d2af192001f7d2e02d40828ac840eebd66fbacc2eef6a1162d0914b5b1b"
+    },
+    "characters/cassidyboss/base_cassidy_boss.rx1": {
+      "archive": "packfile.pck",
+      "offset": 13510656,
+      "size": 946032,
+      "sha256": "cab37ad6d148fbef05bd859b91d51c0d8b905a7f9e918703c54aed35ceedd0ea"
     },
     "characters/dwagentfemale/base_dwagent_female_ragdoll.xml": {
       "archive": "packfile.pck",
@@ -2239,6 +2257,24 @@
       "offset": 27103465,
       "size": 8920,
       "sha256": "010a0534df7168ee95819ab5d0f3cc51a82d421847d36c1523e330f25c470f94"
+    },
+    "fx/cassidyaura.sep": {
+      "archive": "packfile.pck",
+      "offset": 48210728,
+      "size": 4432,
+      "sha256": "c851429cba9b4bed3d1a1358585b1a7817c2ed9ed16be7092a4734418fc895f6"
+    },
+    "fx/effects.bxml": {
+      "archive": "packfile.pck",
+      "offset": 48459840,
+      "size": 23464,
+      "sha256": "400e4b5cc62ee4b908cfb95fdaac8f5bece6473f2a82219743ae5506996603a0"
+    },
+    "fx/textures/effects/particles.rx1": {
+      "archive": "packfile.pck",
+      "offset": 47755264,
+      "size": 194600,
+      "sha256": "e1952533fb6697bb996be5a047d4720d7b4453633424cbb5af3a642649762e38"
     },
     "levels/multiplayer/dm_deathdealer/streaming/deathdealer_resources.bxml": {
       "archive": "LvlMulti.pck",
@@ -6835,8 +6871,22 @@
   },
   "installed": {
     "packfile.pck": {
+      "size": 120732531,
+      "sha256": "6a17c34ba180c839350297725248887c17b3b7540870978ee2b3ebb8b7cd778d"
+    },
+    "LvlSingl.pck": {
+      "size": 258077411,
+      "sha256": "ebf982c749184e05f7ed3342ce108d063e2e1c92611b19245d3c1871fb24c216"
+    },
+    "audio.pck": {
+      "size": 137958865,
+      "sha256": "f148f43fbaeedbaa3ba6465fd009a802681900dafb24de671dea1c2ffaa67c01"
+    }
+  },
+  "base_archives": {
+    "packfile.pck": {
       "size": 114588423,
-      "sha256": "d27bb649c1623f36ca62f2534305b15ef42e256244a94a6216eb0ef0f99a0030"
+      "sha256": "5e183fa7fa5b1bebd2297e52f688b00eb4013b7146b4e0d0e231f52e2b9bccc4"
     },
     "LvlSingl.pck": {
       "size": 236805364,

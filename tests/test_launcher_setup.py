@@ -14,6 +14,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "launcher"))
 
 
 def load(name, file):
@@ -24,7 +25,7 @@ def load(name, file):
     return module
 
 
-intake = load("intake", ROOT / "tools/intake.py")
+intake = sys.modules.get("intake") or load("intake", ROOT / "tools/intake.py")
 bonus = sys.modules.get("bonus_content") or load("bonus_content", ROOT / "launcher/bonus_content.py")
 gameplay_hd = sys.modules.get("gameplay_hd") or load("gameplay_hd", ROOT / "launcher/gameplay_hd.py")
 for name in ('character_animation', 'character_archive', 'character_assets', 'character_repaint', 'character_content'):
@@ -133,7 +134,10 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         shutil.copyfile(ROOT / "launcher/bonus_content.py", self.payload / "bonus_content.py")
         shutil.copyfile(ROOT / "launcher/gameplay_hd.py", self.payload / "gameplay_hd.py")
         for name in ('character_animation.py', 'character_archive.py', 'character_assets.py',
-                     'character_repaint.py', 'character_content.py', 'character-catalog.json'):
+                     'character_repaint.py', 'character_content.py', 'character_boss.py',
+                     'character_boss_effects.py', 'character_spectral_hands.py', 'character_hand_seams.py',
+                     'character_secondary.py',
+                     'character-catalog.json'):
             shutil.copyfile(ROOT / 'launcher' / name, self.payload / name)
         (self.payload / 'character-art').mkdir()
         for size in (1024, 256):

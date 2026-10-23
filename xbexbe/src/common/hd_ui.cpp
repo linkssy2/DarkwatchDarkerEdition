@@ -1,6 +1,7 @@
 #include "hd_ui.h"
 #include "hd_ui_assets.h"
 #include "gameplay_textures.h"
+#include "spectral_hand_textures.h"
 #include "graphics_view.h"
 #include "prompts.h"
 #include "app/app.h"
@@ -15,9 +16,13 @@ namespace darkwatch {
 namespace {
 std::atomic<bool> g_startup{false};
 std::atomic<bool> g_gameplay_available{false};
+constexpr uint64_t kHandSeamOffset = 115466240;
+constexpr uint32_t kHandSeamBytes = 19000;
+constexpr uint64_t kHandSeamHash = 0x7e7b0b359ebdcd84ull;
 bool Font(const hd::Asset& a) { return a.offset >= 93423668 && a.offset <= 94154164; }
 class HdUi final : public gpu::Extension {
     GameplayTextures gameplay_;
+    SpectralHandTextures spectral_hands_;
     HANDLE file_ = INVALID_HANDLE_VALUE, mapping_ = nullptr;
     const uint8_t* data_ = nullptr;
     uint64_t bytes_ = 0;
@@ -35,6 +40,10 @@ public:
     }
     bool Open(const std::filesystem::path& path) {
         gameplay_.Open(path.parent_path() / "gameplay-hd");
+        spectral_hands_.Open(path.parent_path() / "assets" / "packfile.pck",
+                             kHandSeamOffset, kHandSeamBytes, kHandSeamHash);
+        // Prepare the optional hand atlases before gameplay to avoid a first-draw hitch.
+        spectral_hands_.Prepare(gameplay_);
         file_ = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
         LARGE_INTEGER size{};
         if (file_ == INVALID_HANDLE_VALUE || !GetFileSizeEx(file_, &size) || size.QuadPart <= 0 ||
@@ -66,7 +75,9 @@ public:
     bool ReplaceTexture(const gpu::TextureDesc& d, const gpu::FormatInfo& fi, const uint8_t* original,
                         uint32_t bytes, const uint32_t* palette, gpu::TextureReplacement& out) override {
         if (!original || fi.depth || d.cube || d.linear || d.depth != 1) return false;
-        if (view::Snapshot().hd_textures && gameplay_.Replace(d, original, bytes, palette, out)) return true;
+        if (view::Snapshot().hd_textures &&
+            (spectral_hands_.Replace(d, original, bytes, palette, gameplay_, out) ||
+             gameplay_.Replace(d, original, bytes, palette, out))) return true;
         if (d.levels != 1) return false;
         const bool enabled = view::Snapshot().hd_ui;
         if (enabled && ReplacePromptTexture(d, fi, original, bytes, out)) return true;

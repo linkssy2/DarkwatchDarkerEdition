@@ -30,6 +30,21 @@ void DarkwatchCoopCallback(X86Context& ctx, uint8_t*) {
 void DarkwatchCoopEnter(X86Context& ctx, uint8_t* base) {
     if (HasLiteral(ctx,base,0x4298B8)) input::SetCoopKeyboard(!input::GetLastDevice().controller);
 }
+void DarkwatchCoopParticipants(X86Context& ctx, uint8_t* base) {
+    if (!base || ctx.ebp < 0x84 || !ctx.esi || ctx.esi > 0xFFFFFFFC ||
+        ctx.ebx != 0 || (ctx.edi != 0 && ctx.edi != 0x20) ||
+        ctx.eax != ctx.ebp-0xC || ctx.esp != ctx.ebp-0x84 ||
+        !mem::IsCommitted(ctx.esi) || !mem::IsCommitted(ctx.esi+3) ||
+        !mem::IsCommitted(ctx.ebp-0xC) || !mem::IsCommitted(ctx.ebp-5)) return;
+    uint32_t vtable, count;
+    std::memcpy(&vtable,base+ctx.esi,4);
+    std::memcpy(&count,base+ctx.ebp-8,4);
+    if (vtable != 0x429D38 || base[ctx.ebp-0xC] != 0xF || count != 4) return;
+    // This page creates two players; unused ports must not trigger disconnect prompts.
+    base[ctx.ebp-0xC] = 3;
+    count = 2;
+    std::memcpy(base+ctx.ebp-8,&count,4);
+}
 namespace darkwatch {
 void ResetCoopInput() { input::SetCoopKeyboard(false); }
 }

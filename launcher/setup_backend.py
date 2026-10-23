@@ -33,7 +33,7 @@ CHUNK = 8 * 1024 * 1024
 PARTITIONS = (0, 0x18300000)
 EXE = "darkwatch_xbe.exe"
 SETTINGS = "darkwatch_xbe_settings.toml"
-PACKAGE_VERSION = "0.4"
+PACKAGE_VERSION = "0.5"
 RELEASE_PROFILE = {"name": "release-candidate", "diagnostics": False, "strict_assets": True}
 # Maximum time without a completed shader, not a limit on the whole preparation.
 SHADER_PREPARE_TIMEOUT = 15 * 60
@@ -177,6 +177,8 @@ class Setup:
                      "payload/gameplay_hd.py", "payload/gameplay-hd-catalog.json", "payload/hd_ui/overrides.toml",
                      "payload/character_content.py", "payload/character_animation.py", "payload/character_assets.py",
                      "payload/character_archive.py", "payload/character_repaint.py", "payload/character-catalog.json",
+                     "payload/character_boss.py", "payload/character_boss_effects.py", "payload/character_spectral_hands.py",
+                     "payload/character_hand_seams.py", "payload/character_secondary.py",
                      "payload/character-art/cassidy-hands-1024.dds", "payload/character-art/cassidy-hands-256.dds",
                      "payload/runtime/" + EXE, "payload/runtime/darkwatch_hd_ui_builder.exe"):
             if path not in self.files:

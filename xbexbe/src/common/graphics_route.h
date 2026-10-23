@@ -15,6 +15,7 @@ struct GraphicsRouteState {
     int32_t controller_preset = -1; // Default, Chieftain, Lefty, Hopalong, Hoss; -1 unknown.
     bool paused = false;
     bool pause_settings_available = false;
+    uint32_t input_port = 0; // Guest port owning this local Pause; frontend uses port zero.
 };
 
 // Call on the guest thread. UI callers must use a published snapshot instead.
@@ -34,5 +35,7 @@ uint32_t TakeNativePauseEntry(uint8_t* base, uint32_t expected_options);
 }  // namespace darkwatch
 
 struct X86Context;
+// Hide only Pause's authored Xbox Live status before its original update.
+void DarkwatchPauseLiveStatus(X86Context& ctx, uint8_t* base);
 // Original localization result for GEN_Visual, after its owned reference is assigned.
 void DarkwatchGraphicsLabel(X86Context& ctx, uint8_t* base);

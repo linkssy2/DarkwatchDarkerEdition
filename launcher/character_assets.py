@@ -150,6 +150,17 @@ def element(values):
         dict(name=k,attributes={},value=v,children=[]) for k,v in values.items()])
 
 
+def remove_coop_eye_billboards(player):
+    # The stock co-op body uses two eye billboards absent from Chaz and Cassidy.
+    eye = child(player,'BillboardSpriteRenderComponent')
+    mapping = child(eye,'m_locatorToBillboardMap')['children']
+    if (len(eye['children']) != 2 or [n['attributes'] for n in mapping] != [
+            dict(key=key,value='FX/Billboards/eyeGlow_billboards') for key in ('loc_LeftEye','loc_RightEye')]
+            or child(eye,'m_visibleIn')['attributes']['value'] != 'ThirdPersonOnly'):
+        raise ValueError('Unrecognized billboard behavior; refusing to remove it')
+    player['children'].remove(eye)
+
+
 def candidate(original, cues, repainted_hands=False):
     if not set(HURT.values()).issubset(cues):
         raise ValueError('Cassidy hurt audio is absent')
@@ -158,15 +169,7 @@ def candidate(original, cues, repainted_hands=False):
     player = copy.deepcopy(child(original,'CoOpChaz'))
     hands = copy.deepcopy(child(original,'ChazHands'))
     player['attributes']['name'], hands['attributes']['name'] = PLAYER, HANDS
-    # This component only queues the two inherited male eye billboards. Keep all
-    # actual vampire abilities, particles, collision and damage components intact.
-    eye = child(player,'BillboardSpriteRenderComponent')
-    mapping = child(eye,'m_locatorToBillboardMap')['children']
-    if (len(eye['children']) != 2 or [n['attributes'] for n in mapping] != [
-            dict(key=key,value='FX/Billboards/eyeGlow_billboards') for key in ('loc_LeftEye','loc_RightEye')]
-            or child(eye,'m_visibleIn')['attributes']['value'] != 'ThirdPersonOnly'):
-        raise ValueError('Unrecognized billboard behavior; refusing to remove it')
-    player['children'].remove(eye)
+    remove_coop_eye_billboards(player)
     animation = child(player,'AnimationComponent')
     animation_map = child(animation,'m_AnimationFiles')['children']
     for alias,(source,target) in BODY_MAPS.items():
@@ -347,6 +350,7 @@ def mode_dependencies(tables,solo,solo_clips):
 def jericho_actor(original):
     result = copy.deepcopy(child(original, 'CoOpChaz'))
     source = child(original, 'Chaz')
+    remove_coop_eye_billboards(result)
     result['attributes']['name'] = JERICHO
     render = child(result, 'AlternativeModelsRenderComponent')
     body = child(child(source, 'AlternativeModelsRenderComponent'), 'm_modelResourcePath')['attributes']['value']

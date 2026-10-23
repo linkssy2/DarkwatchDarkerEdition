@@ -2,7 +2,7 @@
 #include <array>
 
 namespace darkwatch::settings {
-enum class Character { Jericho = 0, Cassidy = 1 };
+enum class Character { Jericho = 0, Cassidy = 1, SpectralCassidy = 2 };
 // Player one's choice is shared by solo and co-op; player two is independent.
 std::array<Character, 2> characters();
 Character configured_character(unsigned ordinal);

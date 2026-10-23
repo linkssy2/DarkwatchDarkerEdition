@@ -393,6 +393,11 @@ on_true = 0x0021B13B
 at = 0x000D6F51
 call = "DarkwatchScaleReticle"
 
+# Keep horizontal co-op groups two percent from their respective display edges.
+[[hook]]
+at = 0x000D77D3
+call = "DarkwatchCoopHudMargins"
+
 # Preserve original HUD proportions within verified full-screen health/ammo/text groups.
 # Original paths and byte pins: graphics-quality-20261017/hud/.
 [[hook]]
@@ -702,6 +707,17 @@ at = 0x000EA94B
 call = "DarkwatchCoopProfile"
 after = true
 
+# Only the two local co-op players belong in the required controller set.
+[[hook]]
+at = 0x000E75D2
+call = "DarkwatchCoopParticipants"
+after = true
+
+# Pause's dedicated XboxOnly live_aware child, before its visibility/status check.
+[[hook]]
+at = 0x000F0279
+call = "DarkwatchPauseLiveStatus"
+
 # Lua protected-call longjmp, after native register/stack restoration.
 [[hook]]
 at = 0x0025023D
@@ -716,6 +732,11 @@ call = "DarkwatchFatalAssert"
 [[hook]]
 at = 0x00159E95
 call = "DarkwatchCharacterInitialize"
+
+# Size only the resource metadata arena; original allocation and teardown stay paired.
+[[hook]]
+at = 0x001BD70E
+call = "DarkwatchCharacterResourceHeap"
 
 # Snapshot choices before the original single-player/co-op resource selection.
 [[hook]]
@@ -744,6 +765,11 @@ after = true
 at = 0x00098D8B
 call = "DarkwatchCharacterCostume"
 on_true = 0x00098D90
+
+# Private playable spectral leaf bones, after the original instance pose is rebuilt.
+[[hook]]
+at = 0x000696B6
+call = "DarkwatchCharacterSecondary"
 
 # Replace only Cassidy's mixed melee-start sound after local voice creation succeeds.
 [[hook]]

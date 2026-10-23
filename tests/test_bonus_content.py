@@ -64,6 +64,8 @@ class BonusImportTests(unittest.TestCase):
         (payload / "character-art").mkdir()
         for name in ('character_content.py', 'character_animation.py', 'character_assets.py',
                      'character_archive.py', 'character_repaint.py', 'character-catalog.json',
+                     'character_boss.py', 'character_boss_effects.py', 'character_spectral_hands.py',
+                     'character_hand_seams.py', 'character_secondary.py',
                      'character-art/cassidy-hands-1024.dds', 'character-art/cassidy-hands-256.dds'):
             (payload/name).write_bytes(b'synthetic character fixture')
         catalog = dict(schema_version=1, kind="darkwatch-gameplay-hd", version="1", texture_catalog_sha256="1" * 64,

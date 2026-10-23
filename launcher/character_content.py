@@ -16,14 +16,16 @@ import bonus_content
 import character_animation
 import character_archive as pck
 import character_assets as art
+import character_boss
+import character_boss_effects
 import character_repaint
 
-CONTENT_REVISION = 'wartrain-splitter-characters-v1'
-CATALOG_SHA256 = '704559029e6598724a5e9e2670bcb2e96b68efbbe8bc5040017da1c2b6d48c35'
+CONTENT_REVISION = 'wartrain-splitter-characters-v2'
+CATALOG_SHA256 = 'fc0d0ee90f780cd61d7caa15b4605bcfa46b3dd27dbc82be077d3a97412c6946'
 CHARACTERS = 'xml/actortemplates_characters.bxml'
 INSTALLED = {
-    'packfile.pck': (114588423, 'd27bb649c1623f36ca62f2534305b15ef42e256244a94a6216eb0ef0f99a0030'),
-    'LvlSingl.pck': (236805364, '62abe525a48bff26fe646e95814693aed225ec4f3ab6a94e94542fb3e48dccad'),
+    'packfile.pck': (120732531, '6a17c34ba180c839350297725248887c17b3b7540870978ee2b3ebb8b7cd778d'),
+    'LvlSingl.pck': (258077411, 'ebf982c749184e05f7ed3342ce108d063e2e1c92611b19245d3c1871fb24c216'),
     'audio.pck': (137958865, 'f148f43fbaeedbaa3ba6465fd009a802681900dafb24de671dea1c2ffaa67c01'),
 }
 REPAINT = {
@@ -160,7 +162,52 @@ def build_resources(source, payload):
         extension['LvlSingl.pck'][variant(path, 'jericho')] = art.encode(tree)
         tree, _ = art.append_resources(art.decode(outputs[path]), deps)
         extension['LvlSingl.pck'][variant(path)] = art.encode(tree)
-    return groups, extension
+    spectral = build_spectral(source, groups, extension)
+    return groups, extension, spectral
+
+
+def spectral_dependencies(read, references, solo):
+    """Keep the new body's residency separate from living Cassidy and Jericho."""
+    deps = [(character_boss.MODEL, kind) for kind in ('ModelResource', 'SkeletonLayoutResource')]
+    deps.extend([(character_boss.SOLO_LOCATOR if solo else character_boss.LOCATOR, 'LocatorResource'),
+                 (art.RAGDOLL, 'HavokObjectResource'),
+                 ('Characters/Player_First/ChazHands', 'AnimatedCharacterResource')])
+    deps.extend(character_boss_effects.dependencies())
+    for table in references:
+        if table['alias'] == ('Multi' if solo else 'SoloMulti'):
+            continue
+        deps.append((table['output'][:-5], 'AnimatedCharacterResource'))
+        deps.extend((clip['output'][:-5], kind) for clip in table['clips'] for kind in art.KINDS)
+    for node in art.walk(art.decode(read('characters/player_first/chazhands.bxml'))):
+        if node['name'] == 'KeyframeAnimation':
+            deps.extend((node['attributes']['Name'], kind) for kind in art.KINDS)
+    unique = {(art.norm(name), kind): (name, kind) for name, kind in deps}
+    return [unique[key] for key in sorted(unique)]
+
+
+def build_spectral(source, groups, extension):
+    """Add boss presentation without changing the verified living-player resources."""
+    read = source.read
+    outputs, references = character_boss.prepare(read)
+    prepared = art.decode(extension['packfile.pck'][CHARACTERS])
+    outputs[CHARACTERS] = art.encode(character_boss_effects.augment(prepared, art.decode(read(CHARACTERS)), references))
+    effects = character_boss_effects.prepare(read)
+    if outputs.keys() & effects.keys():
+        raise ValueError('Duplicate spectral presentation resource')
+    outputs.update(effects)
+    result = {'packfile.pck': outputs, 'LvlSingl.pck': {}}
+    dependencies = {solo: spectral_dependencies(read, references, solo) for solo in (False, True)}
+    resources = sorted(path for path in source.metadata['sources'] if path.startswith('levels/singleplayer/')
+                       and path.endswith(('_resources.bxml', '_resources_coop.bxml')))
+    if len(resources) != 102:
+        raise ValueError('Incomplete spectral hub coverage')
+    for path in resources:
+        target = variant(path)
+        raw = extension['LvlSingl.pck'].get(target, groups['LvlSingl.pck'][target])
+        tree, _ = art.append_resources(art.decode(raw), dependencies[not path.endswith('_coop.bxml')])
+        result['LvlSingl.pck'][variant(path, 'cassidy_spectral')] = art.encode(tree)
+    # The complete composed archives are checked before the installation is committed.
+    return result
 
 
 def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None):
@@ -176,7 +223,7 @@ def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None)
                 raise ValueError(f'Unsupported original character archive: {name}')
             streams[name] = stream
         progress('Preparing selectable characters...')
-        groups, extension = build_resources(Source(streams, metadata, cancel), payload)
+        groups, extension, spectral = build_resources(Source(streams, metadata, cancel), payload)
     with tempfile.TemporaryDirectory(prefix='.characters-', dir=assets) as temporary:
         staged = Path(temporary)
         for name in INSTALLED:
@@ -190,6 +237,10 @@ def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None)
             cancel()
             if name in extension:
                 raw = pck.compose(raw, extension[name])
+            checked(raw, metadata['base_archives'][name], name)
+            cancel()
+            if name in spectral:
+                raw = pck.compose(raw, spectral[name])
             checked(raw, metadata['installed'][name], name)
             (staged / name).write_bytes(raw)
             del raw

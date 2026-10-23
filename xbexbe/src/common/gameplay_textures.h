@@ -13,13 +13,22 @@ struct GameplayAsset {
     uint32_t width, height, levels, format, bytes, palette;
     uint32_t hd_width, hd_height, hd_levels;
     uint64_t native_hash;
+    uint32_t pack_revision = 1;
 };
 #include "gameplay_texture_assets.h"
+struct GameplayAlias {
+    uint64_t target_native_hash;
+    uint32_t width, height, levels, format, bytes;
+    uint64_t native_hash;
+};
+#include "gameplay_texture_aliases.h"
 
 // Index metadata only: decoded pack pixels load when a GPU upload needs them.
 class GameplayTextures {
     std::filesystem::path directory_;
     std::unordered_multimap<uint64_t, const GameplayAsset*> index_;
+    struct AliasMatch { const GameplayAlias* identity; const GameplayAsset* asset; };
+    std::unordered_multimap<uint64_t, AliasMatch> aliases_;
     static uint64_t Key(uint32_t width, uint32_t height, uint32_t format, uint32_t levels) {
         return uint64_t(width) | uint64_t(height)<<16 | uint64_t(format)<<32 | uint64_t(levels)<<40;
     }
@@ -56,11 +65,21 @@ class GameplayTextures {
         uint64_t hash = 0;
         std::memcpy(&hash, data.data() + data.size() - 8, 8);
         if (hash != hd::Hash({data.data(), data.size()-8})) return false;
+        // Pack v1 mapped grille RGB to six blood decals; retain originals for these exact files.
+        switch (hash) {
+        case 0x1df864062beaf83full: case 0x2e0cf7a8c407e4ccull: // bloodstain, base
+        case 0xd31ccba86361254bull: case 0xf696dd35268b687full: // bloodstain, distance
+        case 0x56fc1dd1a8f49fe4ull: case 0x605d2900fc98b8aeull: // arterial, base
+        case 0xc21786724088f17full: case 0xeb211f2e428b2f0dull: // arterial, distance
+        case 0x3c8432ed906cef7dull: case 0xbc1dee29427f24b4ull: // blood, base
+        case 0x7c7dc03b58236015ull: case 0x197dd929ef18d104ull: // blood, distance
+            return false;
+        }
         if (data[7] == '1') {
             const size_t native_bytes = size_t(a.palette) + a.bytes;
             if (hd::Hash({data.data()+24,native_bytes}) != a.native_hash ||
-                (a.palette && std::memcmp(palette,data.data()+24,a.palette)) ||
-                std::memcmp(original,data.data()+24+a.palette,a.bytes)) return false;
+                (original && ((a.palette && (!palette || std::memcmp(palette,data.data()+24,a.palette))) ||
+                 std::memcmp(original,data.data()+24+a.palette,a.bytes)))) return false;
         }
         const auto w = a.hd_width, h = a.hd_height, levels = a.hd_levels;
         gpu::TextureReplacement replacement;
@@ -79,8 +98,17 @@ class GameplayTextures {
     }
 public:
     void Open(const std::filesystem::path& directory) {
-        directory_=directory; index_.clear();
+        directory_=directory; index_.clear(); aliases_.clear();
+        size_t required = 0;
         for(const auto& a:kGameplayAssets) {
+            if (a.pack_revision == 1) ++required;
+            // The original download remains valid only when the entire extension is absent.
+            if (a.pack_revision == 2) {
+                std::error_code error;
+                const bool exists = std::filesystem::exists(directory/a.file, error);
+                if (error) { index_.clear(); return; }
+                if (!exists) continue;
+            }
             std::ifstream file(directory/a.file, std::ios::binary | std::ios::ate);
             const auto length = file.tellg();
             std::array<uint8_t,32> header{}; size_t pixels = 0;
@@ -90,19 +118,43 @@ public:
                 !Header(a, header, uint64_t(length), pixels)) { index_.clear(); return; }
             index_.emplace(Key(a.width,a.height,a.format,a.levels),&a);
         }
+        if (!required || (index_.size() != required && index_.size() != std::size(kGameplayAssets))) {
+            index_.clear(); return;
+        }
+        // Co-op can load the authored smaller dictionary for the same material.
+        for (const auto& alias : kGameplayAliases)
+            for (const auto& entry : index_)
+                if (entry.second->native_hash == alias.target_native_hash) {
+                    aliases_.emplace(Key(alias.width,alias.height,alias.format,alias.levels),
+                                     AliasMatch{&alias,entry.second});
+                    break;
+                }
     }
-    bool Available() const { return index_.size() == std::size(kGameplayAssets); }
+    bool Available() const { return !index_.empty(); }
+    // Derived hand textures reuse the verified optional pack before local seam repair.
+    bool LoadByNativeHash(uint64_t hash, gpu::TextureReplacement& out) const {
+        if (!Available()) return false;
+        for (const auto& a : kGameplayAssets)
+            if (a.native_hash == hash && Load(a, nullptr, nullptr, out)) return true;
+        return false;
+    }
     bool Replace(const gpu::TextureDesc& d, const uint8_t* original, uint32_t bytes,
                  const uint32_t* palette, gpu::TextureReplacement& out) const {
         if(!original || d.linear || d.cube || d.depth!=1 || (d.format==11 && !palette)) return false;
         const auto [begin,end]=index_.equal_range(Key(d.width,d.height,d.format,d.levels));
-        if(begin==end) return false;
+        const auto [alias_begin,alias_end]=aliases_.equal_range(Key(d.width,d.height,d.format,d.levels));
+        if(begin==end && alias_begin==alias_end) return false;
         uint64_t hash=14695981039346656037ull;
         if(d.format==11) for(uint8_t b:std::span(reinterpret_cast<const uint8_t*>(palette),1024)) hash=(hash^b)*1099511628211ull;
         for(uint8_t b:std::span(original,bytes)) hash=(hash^b)*1099511628211ull;
         for(auto it=begin;it!=end;++it) {
             const auto& a=*it->second;
             if(bytes==a.bytes && hash==a.native_hash && Load(a,original,palette,out)) return true;
+        }
+        for(auto it=alias_begin;it!=alias_end;++it) {
+            const auto& match=it->second;
+            if(bytes==match.identity->bytes && hash==match.identity->native_hash &&
+               Load(*match.asset,nullptr,nullptr,out)) return true;
         }
         return false;
     }

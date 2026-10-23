@@ -66,7 +66,9 @@ uint32_t ActivePause(const uint8_t* base) {
             uint32_t hud, owned;
             // EFB7C records the reciprocal HUD owner. The HUD itself can be
             // hidden while paused, so its visibility is deliberately not a gate.
-            if (!Read(base, uint64_t(root) + 0x24, local) || !(local & 1) ||
+            // F03E7/1E8F3D propagate the owning controller mask to Pause.
+            // CCE45 decodes this mask; local co-op uses ports zero and one.
+            if (!Read(base, uint64_t(root) + 0x24, local) || (local != 1 && local != 2) ||
                 !Field(base, root, 0xF4, hud) || !Field(base, hud, 0x120, owned) || owned != root) return 0;
             if (PauseLayoutActive(base, root, visible_layout)) return 0;
             return root;
@@ -107,7 +109,7 @@ struct PauseRows {
     uint32_t owner = 0, main = 0, menu = 0, rows[2]{}, removed[2]{};
     bool consumed = false;
 };
-PauseRows g_pause_rows;
+PauseRows g_pause_rows[2];
 
 bool PauseMenu(const uint8_t* base, uint32_t owner, uint32_t& main, uint32_t& menu,
                uint32_t& items, uint16_t& count) {
@@ -132,23 +134,23 @@ bool PauseMenu(const uint8_t* base, uint32_t owner, uint32_t& main, uint32_t& me
     }
     return true;
 }
-bool AddedRows(const uint8_t* base, uint32_t owner, uint32_t main, uint32_t menu,
+bool AddedRows(const PauseRows& rows, const uint8_t* base, uint32_t owner, uint32_t main, uint32_t menu,
                uint32_t items, uint16_t count) {
-    if (g_pause_rows.base != base || g_pause_rows.owner != owner || g_pause_rows.main != main ||
-        g_pause_rows.menu != menu || count != 6) return false;
+    if (rows.base != base || rows.owner != owner || rows.main != main ||
+        rows.menu != menu || count != 6) return false;
     const auto key = PauseControlsKey(base, owner);
     uint32_t page_key;
     if (!key || !Read(base, key, page_key)) return false;
     for (unsigned i = 0; i < 2; ++i) {
         uint32_t item, value;
-        if (!Read(base, uint64_t(items) + (2 + i) * 4, item) || item != g_pause_rows.rows[i] ||
+        if (!Read(base, uint64_t(items) + (2 + i) * 4, item) || item != rows.rows[i] ||
             !RefIs(base, item + 0x30, i ? "~CONTROLS" : "~GRAPHICS") ||
             !Field(base, item, 0x50, value) || value != page_key) return false;
     }
     uint32_t type, parent;
     uint8_t visible, focused;
     for (unsigned i = 0; i < 2; ++i) {
-        const auto removed = g_pause_rows.removed[i];
+        const auto removed = rows.removed[i];
         if (!Field(base, removed, 0, type) || type != 0x43C8F8 ||
             !Field(base, removed, 4, parent) || parent != menu ||
             !RefIs(base, removed + 0x30, i ? "XBL_XboxLiveOptions" : "GEN_Options") ||
@@ -171,6 +173,11 @@ GraphicsRouteState QueryGraphicsMenuRoute(const uint8_t* base) {
     uint32_t frontend, depth, options, vtable, page_depth, page, owner, main_page;
     options = ActivePause(base);
     result.paused = options != 0;
+    if (result.paused) {
+        uint8_t mask;
+        if (!Read(base, uint64_t(options) + 0x24, mask)) return {};
+        result.input_port = mask == 2 ? 1 : 0;
+    }
     // Only frontend Options uses E4BDD/E4D03's stack. In-game Pause is an
     // independently registered UI root, selected above from original input scope.
     if (!options && (!Read(base, kFrontend, frontend) || !Field(base, frontend, 8, depth) || !depth || depth > 20 ||
@@ -339,13 +346,14 @@ bool EnsureNativePauseEntries(uint8_t* base) {
     auto* thread = kernel::Current();
     if (!thread || !thread->ctx || base != kernel::g_base) return false;
     const auto route = QueryGraphicsMenuRoute(base);
+    auto& cached = g_pause_rows[route.input_port];
     uint32_t main, menu, items;
     uint16_t count;
     if (!route.paused || route.route != GraphicsMenuRoute::OptionsMain || !route.pause_settings_available ||
         !thread || !thread->ctx || base != kernel::g_base ||
         !PauseMenu(base, route.options, main, menu, items, count)) return false;
-    if (AddedRows(base, route.options, main, menu, items, count)) {
-        g_pause_rows.consumed = false; // Observed return to the original main page.
+    if (AddedRows(cached, base, route.options, main, menu, items, count)) {
+        cached.consumed = false; // Observed return to the original main page.
         return true;
     }
     uint32_t options_row, live_row;
@@ -416,7 +424,7 @@ bool EnsureNativePauseEntries(uint8_t* base) {
         kernel::CallGuest(call, 0x1E8E4F, {base[menu + 0x2E]});
     }
     // Six rows retain the original frame, spacing, selection indices and footer.
-    g_pause_rows = {base, route.options, main, menu, {rows[0], rows[1]}, {removed[0], removed[1]}, false};
+    cached = {base, route.options, main, menu, {rows[0], rows[1]}, {removed[0], removed[1]}, false};
     DarkwatchInvalidateMenuSnapshot();
     return true;
 }
@@ -425,17 +433,30 @@ uint32_t TakeNativePauseEntry(uint8_t* base, uint32_t expected_options) {
     const auto* thread = kernel::Current();
     if (!thread || !thread->ctx || base != kernel::g_base) return 0;
     const auto route = QueryGraphicsMenuRoute(base);
+    auto& cached = g_pause_rows[route.input_port];
     uint32_t main, menu, items, selected;
     uint16_t count;
     if (!route.paused || route.options != expected_options || route.route != GraphicsMenuRoute::Controls ||
-        g_pause_rows.consumed || !PauseMenu(base, route.options, main, menu, items, count) ||
-        !AddedRows(base, route.options, main, menu, items, count) ||
+        cached.consumed || !PauseMenu(base, route.options, main, menu, items, count) ||
+        !AddedRows(cached, base, route.options, main, menu, items, count) ||
         !Field(base, menu, 0x68, selected) || selected < 2 || selected > 3 ||
-        !base[g_pause_rows.rows[selected - 2] + 0x54]) return 0;
-    g_pause_rows.consumed = true;
+        !base[cached.rows[selected - 2] + 0x54]) return 0;
+    cached.consumed = true;
     return selected - 1;
 }
 }  // namespace darkwatch
+
+void DarkwatchPauseLiveStatus(X86Context& ctx, uint8_t* base) {
+    uint32_t type, status, parent;
+    // EFDA5 binds Pause+F0 to the XboxOnly "live_aware" child. F0279
+    // checks its visibility before updating the obsolete Xbox Live status.
+    if (base != kernel::g_base || !darkwatch::Field(base, ctx.esi, 0, type) ||
+        type != darkwatch::kPauseVtable || !darkwatch::Field(base, ctx.esi, 0xF0, status) ||
+        !darkwatch::Field(base, status, 0, type) || type != 0x43C36C ||
+        !darkwatch::Field(base, status, 4, parent) || parent != ctx.esi ||
+        !darkwatch::Span(base, status, 0x34) || !darkwatch::RefIs(base, status + 0x30, "live_aware")) return;
+    base[status + 0x2F] = 0;
+}
 
 void DarkwatchGraphicsLabel(X86Context& ctx, uint8_t* base) {
     uint32_t key_object, key_data, output;

@@ -72,6 +72,25 @@ X86_FUNC(sub_001EE8BE) {
     __imp__sub_001EE8BE(ctx, base);
 }
 
+void DarkwatchCoopHudMargins(X86Context& ctx, uint8_t* base) {
+    if (!Span(base, ctx.esi, 0x1E0) || Read(base, ctx.esi) != 0x427740 ||
+        ctx.ecx != ctx.esi || !Span(base, ctx.esp, 20) ||
+        !Span(base, Read(base, ctx.esp), 16)) return;
+    const uint32_t camera = Read(base, ctx.esi + 0x1DC);
+    if (!Span(base, camera, 0x68) || Read(base, camera) != 0x43F97C ||
+        Float(base, camera + 0x58) != 0 || Float(base, camera + 0x60) != 1 ||
+        Float(base, camera + 0x64) != 0.4975f) return;
+    const float top = Float(base, camera + 0x5C);
+    if (top != 0 && top != 0.5025f) return;
+    // D777B passes outer/inner TV-safe margins to the native whole-group clamp.
+    // Native two-player views leave a 0.005 divider; inset each by 2% of the display.
+    const float vertical = 0.04f / Float(base, camera + 0x64);
+    Store(base, ctx.esp + 4, 0.04f);
+    Store(base, ctx.esp + 8, vertical);
+    Store(base, ctx.esp + 12, 0.04f);
+    Store(base, ctx.esp + 16, vertical);
+}
+
 void DarkwatchHudQuad(X86Context& ctx, uint8_t* base) {
     if (!Active(base) || !Span(base, ctx.esi, 0x24) ||
         Read(base, ctx.esi + 0x20) != g_hud.camera ||

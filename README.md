@@ -1,9 +1,9 @@
 # Darkwatch: Darker Edition
 
-**PC port | Version 0.4 | Windows x64**
+**PC port | Version 0.5 | Windows x64 | Experimental Linux via Proton**
 
 [Release downloads](https://github.com/linkssy2/DarkwatchDarkerEdition/releases)
-| [Release notes](docs/RELEASE-0.4.md)
+| [Release notes](docs/RELEASE-0.5.md)
 
 An unofficial PC port of the original Xbox Darkwatch, powered by
 [XboxXBERecomp by TGP482](https://github.com/TGP482/Xbox-XBERecomp), with native
@@ -12,7 +12,7 @@ Xbox disc image. Original game files and the Microsoft XDK are not included.
 
 ## Install
 
-1. Extract **Darkwatch-Darker-Edition-0.4-Windows-x64.zip** into a short writable
+1. Extract **Darkwatch-Darker-Edition-0.5-Windows-x64.zip** into a short writable
    folder such as `C:/Games/Darkwatch`. The source ZIP is for developers.
 2. Open **Darkwatch Darker Edition.exe**, choose **Import ISO**, and select your
    supported original Xbox `.iso` or `.xiso`.
@@ -38,6 +38,19 @@ Requires Windows 10 version 1903 or newer / Windows 11 x64, .NET Framework 4.8,
 an x86-64-v2 CPU (including SSE4.2 and POPCNT), and a Direct3D 12 GPU supporting
 feature level 11_0. Dependencies are local; no administrator access is required.
 
+## Experimental Linux package
+
+The separate Linux package uses Proton to run the same Windows game and verified
+import backend, with a small Linux launcher in place of WPF. It is **experimental**,
+not a native Linux port. It requires native Linux Steam, installed Proton
+Experimental and its matching Steam Linux Runtime, Python 3.9 or newer, and
+compatible Vulkan graphics drivers. Flatpak Steam is not supported by this
+wrapper. See [the Linux instructions](launcher/linux/README-LINUX.md) for setup.
+Proton is supplied by the player and is not bundled.
+
+Wrapper and package checks do not establish Linux gameplay compatibility. Actual
+Linux graphics, sound, controller input and performance remain unverified.
+
 ## Features
 
 - Mouse-friendly menus, editable bindings, automatic mouse input and separate zoom sensitivity.
@@ -46,8 +59,10 @@ feature level 11_0. Dependencies are local; no administrator access is required.
 - Widescreen framing, resolution/internal scale, world/weapon FOV, reticle size,
   MSAA, anisotropic filtering, brightness and optional FPS display.
 - Restored HD menus, fonts and HUD; optional HD gameplay textures.
-- Jericho/Cassidy selection for single-player and **BETA local split-screen co-op**
+- Jericho, Cassidy or Spectral Cassidy selection for single-player and **BETA local split-screen co-op**
   through **Multiplayer → CO-OP**. Co-op testing is incomplete; online co-op is not supported.
+- Player 2 pause controls use their own profile and original controller presets.
+- Clear subtitles during scene effects and improved split-screen HUD placement.
 - Local shader preparation, portable saves and **Quit to Desktop** confirmation.
 
 **Esc pauses; right-click goes back in menus.** Switch buttons use physical
@@ -68,14 +83,18 @@ The required `default.xbe` SHA-256 is
 `72fc8033e01df4f22c703121cfd160969c642b18e841248224fc97a8f32050d7`.
 Allow at least 5 GB per import plus saves/cache and optional HD textures.
 
-Cassidy checkpoint loading and melee voice
-replacement received user confirmation on earlier candidates; Cassidy hurt
-sounds remain unresolved. Subtitle afterimages, distant eye-glow alignment,
-the reported pipe-room performance issue and an unreproduced Controls crash
-remain open. Full co-op gameplay, full-campaign completion, fresh Windows and
-physical PS4/Switch acceptance remain unverified. This combined release has
-not been live-tested. Unseen shaders, driver pipelines and loading may still
-cause pauses. Extreme weapon FOV can expose original model boundaries.
+Cassidy loading and melee audio, co-op HUD spacing, Player 2 settings ownership
+and subtitle appearance during effects received user confirmation in the tested
+scenes. Cassidy hurt audio remains inaudible and its investigation is paused.
+Full-campaign co-op, automatic story-based appearance changes, all weapon poses,
+fresh Windows and physical PS4/Switch acceptance remain unverified. Coyote
+mouse-look and false controller-warning corrections pass offline checks; broader
+live verification is pending. The Controls freeze is not reproduced locally, and
+reported room-specific slowdowns remain under investigation. Faulty HD blood
+replacements safely use the original blood textures; corrected HD blood artwork
+is not included. Existing 0.4 HD packs work; install the new separate pack for
+added artwork. Unseen shaders, driver pipelines and loading can still cause
+pauses. Extreme weapon FOV can expose original model boundaries.
 
 Routine recording, capture hotkeys and development probes are disabled in the
 player build. A failure may produce a small capped error report. The optional
@@ -84,7 +103,7 @@ FPS display remains available.
 ## Source
 
 See [build notes](docs/BUILDING.md), [code map](docs/CODE_MAP.md),
-[credits](CREDITS.md) and [release notes](docs/RELEASE-0.4.md).
+[credits](CREDITS.md) and [release notes](docs/RELEASE-0.5.md).
 This snapshot contains maintained integration, SDK patches, import code and
 selected synthetic tests. Generated game code, original disc files, disassembly,
 private research, captures, saves and build output are excluded. The compiled

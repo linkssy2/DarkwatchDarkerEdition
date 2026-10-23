@@ -126,6 +126,94 @@ class GameplayHDPackTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     pack.load_assets(metadata, compiled)
 
+    def test_replacement_input_requires_pinned_identity_not_just_valid_checksum(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            row, data, _, _, source, metadata, compiled = self.fixture(root)
+            pinned = root / 'pinned.json'
+            pack.package(source, root / 'original.zip', pinned, metadata, compiled, fnv)
+            replacement = pack.convert(data, row, fnv)
+            (source / 'fixture.dwt').write_bytes(replacement)
+            with self.assertRaisesRegex(ValueError, 'Unsupported private texture'):
+                pack.package(source, root / 'unpinned.zip', root / 'unpinned.json', metadata, compiled, fnv)
+            damaged = bytearray(replacement)
+            damaged[32] ^= 1
+            damaged[-8:] = struct.pack('<Q', fnv(damaged[:-8]))
+            pack.verify_replacement(damaged, row, fnv)  # A checksum cannot establish artwork identity.
+            (source / 'fixture.dwt').write_bytes(damaged)
+            with self.assertRaisesRegex(ValueError, 'differs from the pinned catalog'):
+                pack.package(source, root / 'tampered.zip', root / 'tampered.json', metadata, compiled, fnv,
+                             replacement_catalog=pinned)
+            self.assertFalse((root / 'tampered.json').exists())
+            self.assertFalse((root / 'tampered.zip.001').exists())
+
+    def test_replacement_catalog_and_receipt_must_match_before_packaging(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            row, data, _, _, source, metadata, compiled = self.fixture(root)
+            pinned = root / 'pinned.json'
+            pack.package(source, root / 'original.zip', pinned, metadata, compiled, fnv)
+            content = pinned.read_bytes()
+            (source / 'fixture.dwt').write_bytes(pack.convert(data, row, fnv))
+            catalog = json.loads(content)
+            invalid = [dict(catalog, files=catalog['files'] * 2),
+                       dict(catalog, files=[dict(catalog['files'][0], path='gameplay-hd/other.dwt')]),
+                       dict(catalog, files=[dict(catalog['files'][0], size=1)]),
+                       dict(catalog, texture_catalog_sha256='0' * 64)]
+            for index, changed in enumerate(invalid):
+                pinned.write_text(json.dumps(changed, indent=2) + '\n', encoding='utf-8')
+                output = root / f'bad-{index}.zip'
+                with self.assertRaises(ValueError):
+                    pack.package(source, output, root / 'bad.json', metadata, compiled, fnv,
+                                 replacement_catalog=pinned)
+                self.assertFalse(output.exists())
+            pinned.write_bytes(content)
+            (source / 'pack.json').write_bytes(b'wrong receipt')
+            with self.assertRaisesRegex(ValueError, 'receipt differs'):
+                pack.package(source, root / 'receipt.zip', root / 'bad.json', metadata, compiled, fnv,
+                             replacement_catalog=pinned)
+            self.assertFalse((root / 'receipt.zip').exists())
+
+    def test_extension_pins_exact_previous_download(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            row, data, _, _, source, metadata, compiled = self.fixture(root)
+            old = root / 'old.json'
+            pack.package(source, root/'old.zip', old, metadata, compiled, fnv)
+            prior = old.read_bytes()
+            extra = dict(row, name='extension', pack_revision=2)
+            (source/'extension.dwt').write_bytes(data)
+            metadata.write_text(json.dumps({'textures': [row, extra], 'previous_catalog': prior.decode()}))
+            lines = compiled.read_text().splitlines()
+            lines.insert(-1, lines[-2].replace('"fixture.dwt"', '"extension.dwt"').replace('ull},', 'ull,2},'))
+            compiled.write_text('\n'.join(lines) + '\n')
+            trusted = root/'new.json'
+            result = pack.package(source, root/'new.zip', trusted, metadata, compiled, fnv)
+            self.assertEqual(result['files'], 2)
+            new = json.loads(trusted.read_bytes())
+            self.assertEqual(new['previous_catalog'].encode(), prior)
+            self.assertEqual(new['files'][0], json.loads(prior)['files'][0])
+            for asset in (row, extra):
+                (source / (asset['name'] + '.dwt')).write_bytes(pack.convert(data, asset, fnv))
+            (source / 'pack.json').write_bytes(trusted.read_bytes())
+            copied = root / 'copied.json'
+            result = pack.package(source, root / 'copied.zip', copied, metadata, compiled, fnv,
+                                  replacement_catalog=trusted)
+            self.assertEqual(result['files'], 2)
+            self.assertEqual(copied.read_bytes(), trusted.read_bytes())
+            with zipfile.ZipFile(root / 'new.zip') as original, zipfile.ZipFile(root / 'copied.zip') as repacked:
+                self.assertEqual(original.namelist(), repacked.namelist())
+                for name in original.namelist():
+                    self.assertEqual(original.read(name), repacked.read(name))
+            (source / 'pack.json').unlink()
+            for asset in (row, extra):
+                (source / (asset['name'] + '.dwt')).write_bytes(data)
+            changed = json.loads(prior)
+            changed['files'][0]['sha256'] = '0' * 64
+            metadata.write_text(json.dumps({'textures': [row, extra], 'previous_catalog': json.dumps(changed)}))
+            with self.assertRaisesRegex(ValueError, 'byte-for-byte compatible'):
+                pack.package(source, root/'bad-extension.zip', root/'bad.json', metadata, compiled, fnv)
+
     def test_download_parts_exact_round_trip_and_corruption(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

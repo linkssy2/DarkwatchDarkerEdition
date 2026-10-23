@@ -2,6 +2,7 @@
 import io
 import json
 import os
+import shutil
 from pathlib import Path
 import stat
 import struct
@@ -107,6 +108,41 @@ class GameplayHdSetupTests(unittest.TestCase):
         path = self.root / "broken.zip"; path.write_bytes(b"not a ZIP")
         with self.assertRaisesRegex(ValueError, "valid complete ZIP"):
             self.install_pack(path)
+
+    def test_exact_previous_pack_installs_verifies_and_survives_update(self):
+        current = self.install_disc()
+        old_content = (self.payload / "gameplay-hd-catalog.json").read_bytes()
+        new_data = dict(self.catalog, previous_catalog=old_content.decode(),
+                        files=self.catalog["files"] + [dict(self.catalog["files"][0], path="gameplay-hd/extension.dwt")])
+        new_content = (json.dumps(new_data) + "\n").encode()
+        catalog = setup.gameplay_hd.Catalog(new_content)
+        quiet, cancel = lambda *a, **k: None, lambda: None
+        catalog.install(self.archive(), current, cancel, quiet, cancel)
+        self.assertTrue(catalog.validate(current, cancel, quiet, full=True))
+        self.assertIs(catalog.matching(old_content), catalog.previous)
+        before = self.snapshot(current / "gameplay-hd")
+        stage = self.root / "new-build"
+        stage.mkdir()
+        self.assertTrue(catalog.preserve(current, stage, cancel, quiet, shutil.copyfile))
+        self.assertEqual(self.snapshot(stage / "gameplay-hd"), before)
+        catalog.install(self.archive([("pack.json", new_content),
+                        ("gameplay-hd/example.dwt", self.texture),
+                        ("gameplay-hd/extension.dwt", self.texture)]), current, cancel, quiet, cancel)
+        self.assertTrue(catalog.validate(current, cancel, quiet, full=True))
+        self.assertIs(catalog.matching(new_content), catalog)
+        # Neither an incomplete extension nor a made-up receipt can claim compatibility.
+        (current / "gameplay-hd/extension.dwt").unlink()
+        with self.assertRaises(ValueError):
+            catalog.validate(current, cancel, quiet)
+        with self.assertRaises(ValueError):
+            catalog.matching(old_content + b" ")
+        for previous in (42, new_content.decode(), old_content.decode().replace('example.dwt', 'different.dwt')):
+            with self.assertRaises(ValueError):
+                setup.gameplay_hd.Catalog(json.dumps(dict(new_data, previous_catalog=previous)).encode())
+        # A previous-format download still receives full checksums on installation.
+        with self.assertRaises(ValueError):
+            catalog.install(self.archive([("pack.json", old_content),
+                            ("gameplay-hd/example.dwt", self.texture[:-1] + b"X")]), current, cancel, quiet, cancel)
 
     def test_zip_paths_duplicates_links_and_expansion_are_rejected(self):
         current = self.install_disc()

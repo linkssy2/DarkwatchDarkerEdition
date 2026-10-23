@@ -2,6 +2,7 @@
 #include <cstdint>
 struct X86Context;
 
+void DarkwatchCharacterResourceHeap(X86Context& ctx, uint8_t* base);
 void DarkwatchCharacterMissionBegin(X86Context& ctx, uint8_t* base);
 void DarkwatchCharacterMissionEnd(X86Context& ctx, uint8_t* base);
 void DarkwatchCharacterFile(X86Context& ctx, uint8_t* base);

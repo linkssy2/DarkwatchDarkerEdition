@@ -41,11 +41,12 @@ def load_assets(metadata, compiled):
                 not 0 < row['width'] <= 4096 or not 0 < row['height'] <= 4096 or
                 not 0 < row['native_levels'] <= row['dds_mips'] <= max(row['width'], row['height']).bit_length() or
                 not row['native_bytes'] or
+                type(row.get('pack_revision', 1)) is not int or row.get('pack_revision', 1) not in (1, 2) or
                 not re.fullmatch(r'[0-9a-f]{16}', row['native_fnv64']) or
                 not re.fullmatch(r'[0-9a-f]{64}', row['native_sha256'])):
             raise ValueError('Invalid texture metadata: ' + name)
         lines.append('    {' + json.dumps(name + '.dwt') + ',' + ','.join(map(str, numbers)) +
-                     ',0x' + row['native_fnv64'] + 'ull},')
+                     ',0x' + row['native_fnv64'] + 'ull' + (',2' if row.get('pack_revision', 1) == 2 else '') + '},')
     expected = '\n'.join(lines + ['};', ''])
     if not rows or compiled.read_text(encoding='utf-8') != expected:
         raise ValueError('Compiled texture catalog differs from the source metadata')
@@ -79,6 +80,37 @@ def verify_replacement(data, row, fnv):
     if (len(data) != 40 + pixel_bytes(row) or data[:32] != header or
             fnv(data[:-8]) != struct.unpack_from('<Q', data, len(data) - 8)[0]):
         raise ValueError('Invalid replacement-only texture: ' + row['name'])
+
+
+def encode_catalog(rows, records, metadata_sha, previous):
+    catalog = {'schema_version': 1, 'kind': 'darkwatch-gameplay-hd', 'version': '1',
+               'texture_catalog_sha256': metadata_sha, 'files': records}
+    if previous is not None:
+        old = json.loads(previous)
+        if ('previous_catalog' in old or
+                {r['path']: r for r in old['files']} !=
+                {r['path']: r for r, a in zip(records, rows) if a.get('pack_revision', 1) == 1}):
+            raise ValueError('Original HD pack catalog must remain byte-for-byte compatible')
+        catalog['previous_catalog'] = previous
+    return (json.dumps(catalog, indent=2) + '\n').encode('utf-8')
+
+
+def load_replacement_catalog(path, rows, metadata_sha, previous):
+    content = path.read_bytes()
+    catalog = json.loads(content)
+    records = catalog.get('files') if isinstance(catalog, dict) else None
+    if not isinstance(records, list) or len(records) != len(rows):
+        raise ValueError('Replacement catalog differs from the source metadata')
+    for row, record in zip(rows, records):
+        if (not isinstance(record, dict) or set(record) != {'path', 'size', 'sha256'} or
+                record['path'] != 'gameplay-hd/' + row['name'] + '.dwt' or
+                type(record['size']) is not int or record['size'] != 40 + pixel_bytes(row) or
+                not isinstance(record['sha256'], str) or not re.fullmatch(r'[0-9a-f]{64}', record['sha256'])):
+            raise ValueError('Invalid pinned replacement catalog entry')
+    # Preserve the exact installer receipt, including its previous-download compatibility.
+    if content != encode_catalog(rows, records, metadata_sha, previous):
+        raise ValueError('Replacement catalog differs from the source metadata or canonical receipt')
+    return content, {record['path']: record for record in records}
 
 
 def verify_archive(path, catalog_bytes, assets, fnv):
@@ -152,15 +184,24 @@ def split_archive(path, expected_sha, part_bytes=PART_BYTES):
     return result
 
 
-def package(source, output, trusted, metadata=METADATA, compiled=COMPILED, fnv=None):
+def package(source, output, trusted, metadata=METADATA, compiled=COMPILED, fnv=None,
+            replacement_catalog=None):
     rows, metadata_sha = load_assets(metadata, compiled)
     fnv = fnv or load_hash(ROOT / 'build/tools/gameplay_hash.dll')
+    previous = json.loads(metadata.read_bytes()).get('previous_catalog')
+    pinned = None
+    if replacement_catalog is not None:
+        pinned_bytes, pinned = load_replacement_catalog(replacement_catalog, rows, metadata_sha, previous)
     expected = {row['name'] + '.dwt' for row in rows}
     actual = set()
     for path in source.iterdir():
         if path.is_symlink() or path.is_junction() or not path.is_file():
             raise ValueError('Linked or non-file private texture input: ' + str(path))
         actual.add(path.name)
+    if pinned is not None and 'pack.json' in actual:
+        if (source / 'pack.json').read_bytes() != pinned_bytes:
+            raise ValueError('Source pack receipt differs from the pinned replacement catalog')
+        actual.remove('pack.json')
     if source.is_symlink() or source.is_junction() or actual != expected:
         raise ValueError('Private texture directory differs from the catalog')
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -168,15 +209,19 @@ def package(source, output, trusted, metadata=METADATA, compiled=COMPILED, fnv=N
     with zipfile.ZipFile(output, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=3, allowZip64=True) as archive:
         for index, row in enumerate(rows, 1):
             name = row['name'] + '.dwt'
-            data = convert((source / name).read_bytes(), row, fnv)
             member = 'gameplay-hd/' + name
+            data = (source / name).read_bytes()
+            if pinned is None:
+                data = convert(data, row, fnv)
+            else:
+                verify_replacement(data, row, fnv)
+                if hashlib.sha256(data).hexdigest() != pinned[member]['sha256']:
+                    raise ValueError('Replacement texture differs from the pinned catalog: ' + name)
             archive.writestr(member, data)
             records.append({'path': member, 'size': len(data), 'sha256': hashlib.sha256(data).hexdigest()})
             if index % 50 == 0:
                 print(f'Packaged {index}/{len(rows)} textures', flush=True)
-        catalog = {'schema_version': 1, 'kind': 'darkwatch-gameplay-hd', 'version': '1',
-                   'texture_catalog_sha256': metadata_sha, 'files': records}
-        catalog_bytes = (json.dumps(catalog, indent=2) + '\n').encode('utf-8')
+        catalog_bytes = encode_catalog(rows, records, metadata_sha, previous)
         archive.writestr('pack.json', catalog_bytes)
     result = verify_archive(output, catalog_bytes, rows, fnv)
     trusted.parent.mkdir(parents=True, exist_ok=True)
@@ -194,8 +239,11 @@ def main():
     parser.add_argument('--source', type=Path, default=ROOT / 'build/xbexbe-release/gameplay-hd')
     parser.add_argument('--output', type=Path, required=True, help='New optional texture ZIP; never overwritten')
     parser.add_argument('--catalog-output', type=Path, default=TRUSTED)
+    parser.add_argument('--replacement-catalog', type=Path,
+                        help='Independently validated catalog required for DWGAME02 input; never trust its receipt alone')
     args = parser.parse_args()
-    print(json.dumps(package(args.source, args.output, args.catalog_output), indent=2))
+    print(json.dumps(package(args.source, args.output, args.catalog_output,
+                             replacement_catalog=args.replacement_catalog), indent=2))
 
 
 if __name__ == '__main__':

@@ -11,7 +11,7 @@
 | `prompts.*` | Keyboard/mouse and Xbox, PlayStation, Switch prompt selection and artwork. |
 | `graphics.*`, `graphics_route.*`, `settings_skin.h` | Host settings pages, routing, persistence and original-style presentation. |
 | `graphics_camera.*`, `graphics_view.*`, `graphics_reticle.*`, `graphics_hud.*` | Separate world/weapon FOV, saved preferences, widescreen, reticle and HUD adjustments. |
-| `graphics_cinematic.*` | Guarded in-level cinematic border suppression; movie playback is explicitly excluded. |
+| `graphics_cinematic.*`, `graphics_subtitles.cpp` | In-level cinematic controls and original subtitle presentation isolated from scene feedback; movie playback is excluded. |
 | `script_resume.cpp`, `fatal_assert.cpp` | Mission script resume bridge and bounded fatal assertion handling. |
 | `coop.*`, `character_selection.*` | Beta local split-screen co-op routing, character selection and saved preferences. Co-op gameplay testing is incomplete; this is not online co-op. |
 | `character_runtime.*`, `character_runtime_data.h` | Guarded original actor/animation integration; the data header contains identity keys only. |
@@ -22,12 +22,14 @@
 | `hd_ui.*`, `hd_ui_*.h`, `xbexbe/src/tools/` | Runtime HD replacement and the local pack builder. Atlas headers contain layout/identity metadata, not extracted texture pixels. |
 | `xbexbe/hd_ui/` | Approved restored enhancement images and their exact override map. Original archives and assembled texture packs are excluded. |
 | `launcher/` | WPF launcher/direct start, verified import, portable saves, local shader preparation and package allowlist. |
+| `launcher/linux/` | Experimental Linux launcher around the existing Windows backend and game through a player-supplied Proton installation; no native Linux runtime. |
 | `launcher/bonus_content.py` | Three fixed-width XML selector edits in the user's verified original packfile, guarded by original and prepared hashes. No game asset payload is included. |
 | `launcher/character_content.py`, `character-catalog.json` | Coordinates own-disc character preparation and verifies original, intermediate and installed archive identities. |
 | `launcher/character_archive.py`, `character_assets.py` | Archive parsing/composition and model, locator and binary XML adaptation. |
-| `launcher/character_animation.py`, `character_repaint.py` | Adapts own-disc poses while retaining timing/events, and applies the authored hand textures. |
+| `launcher/character_*.py` | Adapts own-disc characters, animation, hands and presentation while retaining original player rules; no model or animation payload is included. |
 | `launcher/gameplay_hd.py`, `gameplay-hd-catalog.json` | Optional HD texture installation, integrity checks and rollback. |
 | `tools/package_gameplay_hd.py` | Separately provisioned texture packaging; strips native reference bytes. |
+| `tools/package_linux.py` | Packages the exact verified Windows files and three allowlisted Proton wrapper files; excludes installed data and records readback hashes. |
 | `tools/intake.py` | Project-owned XDVDFS parser and extractor. |
 | `scripts/` | Native/launcher build entry points and source fingerprinting. |
 | `tests/` | Selected synthetic tests suitable for public distribution. |
@@ -66,9 +68,14 @@ while preserving saves, settings and compatible cache. The launcher tests use
 synthetic archives to cover preparation and transactional installation without
 starting the game.
 
-Weapon FOV borrows the registered player camera only for the first-person model pass, then restores the world projection. Both preferences retain the original at 100%. Cutscene Borders skips only the active cinematic manager's two border draws; animation, camera, fades and subtitles keep their original paths. The authored view, cinematic-guard and ImGui tests are included; original-function fixtures remain private.
+Weapon FOV borrows the registered player camera only for the first-person model pass, then restores the world projection. Both preferences retain the original at 100%. Cutscene Borders skips only the active cinematic manager's two border draws. Subtitle presentation retains original glyph layout and timing but draws separately from scene feedback. The authored view, cinematic-guard and ImGui tests are included; original-function fixtures remain private.
 
 Main-menu additions are prepared during the original menu initializer before its
 first layout, including return from gameplay. Input callbacks still require the
 active page owner. Diagnostic modules remain in source for development, but the
 release profile compiles out their recording paths; bounded fatal reports remain.
+
+Player 2 pause navigation and Apply follow the pausing player's controller/profile.
+The original five controller layouts are presets, not arbitrary button remapping.
+HUD spacing and Player 2 ownership were accepted in tested co-op scenes; profile
+persistence after a complete process restart still needs an independent check.

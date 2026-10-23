@@ -7,7 +7,7 @@ created locally and must not be committed or redistributed with this source.
 The Windows player package contains compiled recompiled gameplay; it is not
 only a generic emulator or launcher.
 
-## Requirements
+## Windows build requirements
 
 - Windows x64, PowerShell 7, Git, CMake 3.25 or newer, and Ninja on `PATH`.
 - Visual Studio 2022 C++ Build Tools with Clang, x64 tools and a Windows SDK.
@@ -51,7 +51,7 @@ XBE, and builds the development runtime. The release build uses a separate
 object/output directory and reuses those dependency source checkouts. Running
 `-Release` before the first build currently fails because those checkouts do not
 exist. `dependencies.lock.json` records the revisions retained from version 0.1
-for version 0.4; dependency tags in the SDK should resolve to those commits.
+for version 0.5; dependency tags in the SDK should resolve to those commits.
 
 `-Stage Recompile` regenerates title code without rebuilding the runtime.
 `-Stage Symbols` records a signature-scan comparison without replacing the
@@ -85,7 +85,7 @@ The public source is therefore not yet a one-command clean-machine packager.
 After provisioning and a successful release runtime build:
 
 ```powershell
-./scripts/build-launcher.ps1 -Output 'C:/build-output/Darkwatch-0.4'
+./scripts/build-launcher.ps1 -Output 'C:/build-output/Darkwatch-0.5'
 ```
 
 The output directory must not already exist. The script builds both launcher
@@ -93,6 +93,29 @@ EXEs and validates an explicit package allowlist. It includes approved
 enhancement PNGs, authored Cassidy hand repaints and edited branding, while
 original disc files, character archives and assembled packs are excluded. Import and shader preparation happen locally
 when the player supplies their disc. Keep all package files together.
+
+## Experimental Proton wrapper
+
+`launcher/linux/` provides the experimental Linux launcher for an already built
+Windows package. It runs the packaged import backend and game through the
+player's Proton installation; it does not compile the D3D12 runtime for Linux.
+See its [README](../launcher/linux/README-LINUX.md) for the host requirements and commands.
+The native runtime and package build instructions above still require Windows.
+
+After producing a verified Windows release directory, make the experimental
+archive without adding installed game data:
+
+```powershell
+.venv/Scripts/python.exe tools/package_linux.py --windows-package 'C:/build-output/Darkwatch-0.5' --output 'C:/build-output/Darkwatch-0.5-Linux-Proton-Experimental.tar.gz' --audit 'C:/build-output/linux-package-audit.json'
+```
+
+The packager copies the verified Windows allowlist under `windows/`, adds only
+the approved Proton wrapper files and Linux README, then reads back and
+hashes every archive member. It refuses to overwrite an existing archive.
+
+The wrapper uses the existing disc verification, portable data and shader
+preparation paths. Synthetic wrapper tests do not verify actual Linux graphics,
+audio, controller behavior or performance. No tested Proton version is claimed.
 
 ## Tests
 
@@ -120,7 +143,8 @@ or complete shader coverage.
 `launcher/character_*.py` reconstructs the three character archives from the
 verified own-disc import. `character-catalog.json` pins source resources and
 prepared output identities; it contains no model, animation or voice payloads.
-The hand repaints are separate authored enhancement images. Do not substitute
+Living Cassidy hand repaints are separate authored enhancement images. Spectral
+body and hand resources are derived locally from the supplied disc. Do not substitute
 prebuilt development archives into the Windows package.
 
 `gameplay-hd-catalog.json` identifies the optional texture download. Its pixels
@@ -133,3 +157,8 @@ contain matching/fingerprint metadata, not textures.
 The maintained native address-key headers are included as metadata. Original
 native body/byte regression fixtures and private acceptance recordings remain
 excluded. Synthetic source tests do not establish live gameplay acceptance.
+
+Version 0.5 retains the pinned SDK revision with an updated maintained patch.
+Source checks cover the exported synthetic suite and native host fixtures; they
+do not replace a clean-machine full rebuild or full-campaign testing. Local co-op
+remains beta, and Cassidy hurt-voice work remains paused.

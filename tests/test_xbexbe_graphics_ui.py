@@ -149,9 +149,9 @@ namespace mem {uint8_t* Base(){return memory;}}
 namespace gpu {static uint32_t effective_samples=1;uint32_t MsaaSamples(){return effective_samples;}}
 namespace input {
 static DeviceSnapshot device;
-static ControllerFamily connected_family=ControllerFamily::Xbox;
+static ControllerFamily connected_family=ControllerFamily::Xbox, player_two_family=ControllerFamily::Xbox;
 DeviceSnapshot GetLastDevice(){return device;}
-ControllerFamily GetControllerFamily(int port){return port==0?connected_family:ControllerFamily::Xbox;}
+ControllerFamily GetControllerFamily(int port){return port==0?connected_family:player_two_family;}
 void SetActive(bool value){active=value;}
 }
 namespace darkwatch {
@@ -637,6 +637,63 @@ CONTROLLER_COVERAGE = r'''
 '''
 
 
+PLAYER_TWO_COVERAGE = r'''
+ // P2's pause publishes the same themed page but edits only P2's native controls.
+ auto PollTwo=[](unsigned buttons=0,unsigned a=0,unsigned b=0){
+  input::Pad p{};p.connected=true;p.buttons=uint16_t(buttons);p.analog[0]=uint8_t(a);p.analog[1]=uint8_t(b);
+  DarkwatchGraphicsPad(1,p);return p;
+ };
+ for(auto family:{input::ControllerFamily::Xbox,input::ControllerFamily::PlayStation,input::ControllerFamily::Switch}){
+  route={};Poll();PollTwo();Frame();Frame();
+  route.route=darkwatch::GraphicsMenuRoute::Controls;route.options=0x433300;route.page=0x433400;
+  route.paused=true;route.input_port=1;route.controls_available=true;route.controller_preset=0;
+  route.sensitivity_min=1;route.sensitivity_max=10;route.sensitivity=5;
+  darkwatch::native_pause_owner=route.options;darkwatch::native_pause_entry=2;
+  input::device={1,false,input::ControllerFamily::Xbox};input::player_two_family=family;
+  field_bounds.clear();button_centers.clear();Poll();PollTwo();Frame();Frame();
+  CHECK(g_open&&g_from_pause&&!g_page_graphics&&PlayerTwoControls());
+  CHECK(g_navigation_port==1&&field_bounds.count("##controller sensitivity"));
+  for(const char* hidden:{"MOUSE SENSITIVITY","ZOOM SENSITIVITY","AIMING ASSISTANCE","LOOK CENTERING","KEYBOARD & MOUSE BINDINGS"})
+   CHECK(std::find(rendered_text.begin(),rendered_text.end(),hidden)==rendered_text.end());
+  CHECK(!button_centers.count("RESET DEFAULTS"));
+  const auto pc_before=darkwatch::controls;
+  const auto applies_before=darkwatch::controls_applies,saves_before=saves;
+  const auto original_before=darkwatch::original_applies,presets_before=darkwatch::preset_applies,configured=darkwatch::configure_calls;
+  Poll(2);CHECK(g_pad==0); // P1 cannot move P2's overlay selection.
+  auto two=PollTwo(2);CHECK(g_pad==2&&two.buttons==0);PollTwo();Frame();
+  ClickNamed("CONTROLLER LAYOUT...");Frame();
+  CHECK(g_controller_layout&&g_layout_family==family&&!g_configuring&&darkwatch::configure_calls==configured);
+  CHECK(std::find(rendered_text.begin(),rendered_text.end(),family==input::ControllerFamily::Xbox?"XBOX CONTROLLER":
+        family==input::ControllerFamily::PlayStation?"PLAYSTATION CONTROLLER":"SWITCH CONTROLLER")!=rendered_text.end());
+  auto bounds=field_bounds["##controller preset"];Click(bounds.z-10,(bounds.y+bounds.w)/2);Frame();
+  auto* popup=ImGui::FindWindowByName("##Combo_00");CHECK(popup&&popup->Active);
+  const auto top=popup->WorkRect.Min;const float line=bounds.w-bounds.y-2*ImGui::GetStyle().FramePadding.y;
+  Click(top.x+30,top.y+line/2+2*(line+ImGui::GetStyle().ItemSpacing.y));Frame();
+  CHECK(g_original_draft.controller_preset==2&&route.controller_preset==0);
+  ClickNamed("BACK");Frame();g_original_draft.invert=true;g_original_draft.vibration=false;g_original_draft.sensitivity=8;
+  ClickNamed("APPLY");Poll();PollTwo();Frame();
+  CHECK(route.invert&&!route.vibration&&route.sensitivity==8&&route.controller_preset==2);
+  CHECK(darkwatch::original_applies==original_before+1&&darkwatch::preset_applies==presets_before+1);
+  CHECK(darkwatch::controls_applies==applies_before&&saves==saves_before);
+  CHECK(!std::memcmp(&darkwatch::controls,&pc_before,sizeof(pc_before)));
+  // Cancel a fresh edit: no native setter, no PC settings write, Back on P2 only.
+  g_original_draft.sensitivity=2;g_original_draft.controller_preset=4;
+  ClickNamed("BACK");auto one=Poll(0,0,255);CHECK(!one.analog[1]);
+  two=PollTwo(0,0,255);CHECK(two.analog[1]==255);
+  route.route=darkwatch::GraphicsMenuRoute::OptionsMain;Poll();PollTwo();Poll();PollTwo();Frame();Frame();
+  CHECK(!g_open&&!g_leave&&!g_block_release&&route.sensitivity==8&&route.controller_preset==2);
+  CHECK(darkwatch::original_applies==original_before+1&&darkwatch::controls_applies==applies_before);
+ }
+ // Main-menu Options returns to player-one navigation and PC binding controls.
+ route={};route.route=darkwatch::GraphicsMenuRoute::Controls;route.options=0x422200;route.page=0x422300;
+ route.controls_available=true;route.controller_preset=0;
+ Poll();Poll();Frame();Frame();CHECK(g_navigation_port==0&&!PlayerTwoControls());
+ CHECK(std::find(rendered_text.begin(),rendered_text.end(),"KEYBOARD & MOUSE BINDINGS")!=rendered_text.end());
+ input::device={};input::connected_family=input::player_two_family=input::ControllerFamily::Xbox;
+ std::puts("PASS real ImGui P2 Controls: owner-port navigation/Back, Xbox/PS/Switch presets, Apply/Cancel, PC settings unchanged, main-menu P1 restoration");
+'''
+
+
 class GraphicsUiTests(unittest.TestCase):
     def run_fixture(self, fixture):
         compiler = shutil.which("clang++")
@@ -656,7 +713,7 @@ class GraphicsUiTests(unittest.TestCase):
 
     def test_real_imgui_page_and_input_lifetime(self):
         ran = self.run_fixture(FIXTURE.replace('ImGui::DestroyContext();std::puts(',
-                                              CONTROLLER_COVERAGE + 'ImGui::DestroyContext();std::puts('))
+                                              CONTROLLER_COVERAGE + PLAYER_TWO_COVERAGE + 'ImGui::DestroyContext();std::puts('))
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
 
     def test_previous_child_outline_is_detected(self):

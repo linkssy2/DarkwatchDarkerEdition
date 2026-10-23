@@ -1,4 +1,5 @@
 #include "character_runtime.h"
+#include "character_secondary.h"
 #include "character_selection.h"
 #include "kernel/kernel.h"
 #include "core/log.h"
@@ -20,6 +21,8 @@ constexpr Type types[]{
     {0x4955C8, 0x439114, 0x1BF0EF}, // BoneAnimatedResource
     {0x49D594, 0x440694, 0x326C19}, // AnimatedPathResource
     {0x495600, 0x43919C, 0x1BF5DC}, // EventSequenceResource
+    {0x495870, 0x439714, 0x1C0433}, // ParticleEffectResource
+    {0x495830, 0x4393C0, 0x1BFB70}, // TexDictionaryResource
 };
 struct Dependency { uint32_t hash; uint8_t type, modes; };
 struct Route { uint32_t hash; uint8_t mode; bool audio; };
@@ -27,7 +30,7 @@ struct Route { uint32_t hash; uint8_t mode; bool audio; };
 
 struct Held { uint32_t record, data; };
 std::vector<Held> held;
-std::atomic<unsigned> mission{0}; // count in bits 0..1; Cassidy slots in bits 2..3.
+std::atomic<unsigned> mission{0}; // Count: bits 0..1; Cassidy slots: 2..3; spectral P2/P1: 4/5.
 std::atomic<unsigned> unavailable{0};
 std::atomic<unsigned> reported{0};
 uint32_t owner = 0;
@@ -73,6 +76,10 @@ bool String(const uint8_t* base, uint64_t address, std::string& value, unsigned 
 bool OwnedString(const uint8_t* base, uint32_t address, std::string& value) {
     uint32_t handle;
     return Read(base, address, handle) && handle && String(base, uint64_t(handle) + 2, value, 63);
+}
+bool CassidyActor(const std::string& name) {
+    return name == "CassidySolo" || name == "CassidyPlayerTwo" ||
+        name == "CassidySpectralPlayerTwo" || name == "CassidySpectralSolo";
 }
 uint32_t Hash(std::string value, bool resource = false) {
     uint32_t crc = ~0u;
@@ -187,6 +194,7 @@ bool CoopTemplate(const uint8_t* base, uint32_t manager, bool& coop) {
     coop = resolved == "CoOpChaz"; return true;
 }
 void Reset(const X86Context& ctx, uint8_t* base) {
+    DarkwatchCharacterSecondaryReset();
     mission.store(0);
     unavailable.store(0);
     reported.store(0);
@@ -194,6 +202,17 @@ void Reset(const X86Context& ctx, uint8_t* base) {
     Release(ctx); owner = 0;
 }
 } // namespace
+
+void DarkwatchCharacterResourceHeap(X86Context& ctx, uint8_t* base) {
+    uint32_t bytes, caller, initial[4];
+    if (base != kernel::g_base || ctx.ecx != ctx.esi || ctx.eax ||
+        !Read(base, ctx.esp, bytes) || bytes != 0x16800 ||
+        !Read(base, uint64_t(ctx.esp) + 8, caller) || caller != 0x1B6D44 ||
+        !Read(base, ctx.esi, initial) ||
+        std::any_of(std::begin(initial), std::end(initial), [](uint32_t v) { return v != 0; })) return;
+    // Extra character keys need both old and new resource-map rows during native rehash.
+    Write(base, ctx.esp, uint32_t(1024 * 1024));
+}
 
 void DarkwatchCharacterMissionEnd(X86Context& ctx, uint8_t* base) {
     if (ctx.ecx == owner) Reset(ctx, base);
@@ -207,16 +226,25 @@ void DarkwatchCharacterMissionBegin(X86Context& ctx, uint8_t* base) {
         !Read(base, uint64_t(ctx.esi) + 0xEC, mode) || mode) return;
     const auto choices = darkwatch::settings::characters();
     const auto cassidy = darkwatch::settings::Character::Cassidy;
+    const auto spectral = darkwatch::settings::Character::SpectralCassidy;
+    const bool selected[]{choices[0] == cassidy || choices[0] == spectral,
+                          choices[1] == cassidy || choices[1] == spectral};
     owner = ctx.esi;
     if (!DarkwatchCharacterContentReady()) {
-        const unsigned failed = count == 2 ? 3 : choices[0] == cassidy ? 1 : 0;
+        const unsigned failed = count == 2 ? 3 : selected[0] ? 1 : 0;
         unavailable.store(failed);
         for (unsigned player = 0; player < count; ++player)
             if (failed & (1u << player)) Reject(base, player, "content", 0,
-                choices[player] == cassidy ? "Cassidy" : "Jericho");
+                choices[player] == spectral ? "SpectralCassidy" : selected[player] ? "Cassidy" : "Jericho");
         return;
     }
-    mission.store(count | (choices[0] == cassidy ? 4 : 0) | (count == 2 && choices[1] == cassidy ? 8 : 0));
+    // The chapter is assigned before this hook, even when its preload list is cached.
+    std::string chapter;
+    const bool spectral_two = count == 2 && (choices[1] == spectral ||
+        (choices[1] == cassidy && OwnedString(base, owner, chapter) &&
+         std::find(std::begin(spectral_chapters), std::end(spectral_chapters), Hash(chapter)) != std::end(spectral_chapters)));
+    mission.store(count | (selected[0] ? 4 : 0) | (count == 2 && selected[1] ? 8 : 0) |
+                  (spectral_two ? 16 : 0) | (choices[0] == spectral ? 32 : 0));
 }
 
 void DarkwatchCharacterFile(X86Context& ctx, uint8_t* base) {
@@ -238,15 +266,33 @@ void DarkwatchCharacterFile(X86Context& ctx, uint8_t* base) {
     const bool cassidy = state & 12;
     // Added solo preloads cannot consume the original sequential stream bundle.
     // A missing Cassidy sibling lets the native loader use individual archive reads.
-    const bool stream = cassidy && (state & 3) == 1 && path.size() >= 15 &&
+    const bool stream = cassidy && ((state & 3) == 1 || (state & 48)) && path.size() >= 15 &&
         Hash(path.substr(path.size() - 15)) == Hash("_streamfile.str");
-    const auto hash = stream ? Hash(path.substr(0, path.size() - 15) + "_resources.bxml") : path_hash;
+    const bool audio_stream = cassidy && path.size() > 9 &&
+        Hash(path.substr(path.size() - 9)) == Hash("Audio.str");
+    std::string audio_path;
+    if (audio_stream) {
+        // Audio bundles embed the old bank layout too; use its verified individual-file fallback.
+        audio_path = path;
+        for (char& c : audio_path) {
+            if (c == '\\') c = '/';
+            if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+        }
+        const auto directory = audio_path.rfind("/streaming/");
+        if (directory == std::string::npos) return;
+        audio_path.replace(directory, 11, "/resources/audio/");
+        audio_path.replace(audio_path.size() - 9, 9, ".bblf");
+    }
+    const auto hash = audio_stream ? Hash(audio_path) :
+        stream ? Hash(path.substr(0, path.size() - 15) + "_resources.bxml") : path_hash;
     const auto route = std::find_if(std::begin(routes), std::end(routes), [hash](const Route& r) { return r.hash == hash; });
     if (!startup) {
-        if (route == std::end(routes) || (stream && (route->mode != 1 || route->audio))) return;
+        if (route == std::end(routes) || (stream && (route->mode != 1 || route->audio)) ||
+            (audio_stream && !route->audio)) return;
         if (!cassidy && ((state & 3) != 2 || route->audio || route->mode != 2)) return;
     }
-    const char* suffix = startup || cassidy ? "_cassidy" : "_jericho";
+    const bool spectral = !startup && !route->audio && (state & 48);
+    const char* suffix = spectral ? "_cassidy_spectral" : startup || cassidy ? "_cassidy" : "_jericho";
     const auto dot = path.rfind('.');
     if (dot == std::string::npos || path.size() + std::strlen(suffix) > 255) return;
     path.insert(dot, suffix);
@@ -272,9 +318,12 @@ void DarkwatchCharacterSpawn(X86Context& ctx, uint8_t* base) {
         return;
     }
     if (!cassidy && !coop) { unavailable.fetch_and(~(1u << ctx.edi)); return; }
-    const unsigned family = cassidy ? (coop ? 2 : 1) : 4;
-    const char* name = cassidy ? (coop ? "CassidyPlayerTwo" : "CassidySolo") : "JerichoCoop";
-    const char* hands = cassidy ? (coop ? "CassidyPlayerTwoHands" : "CassidySoloHands") : "ChazHands";
+    const bool spectral = cassidy && (state & (ctx.edi == 0 ? 32 : 16));
+    const unsigned family = spectral ? (coop ? 8 : 16) : cassidy ? (coop ? 2 : 1) : 4;
+    const char* name = spectral ? (coop ? "CassidySpectralPlayerTwo" : "CassidySpectralSolo") :
+        cassidy ? (coop ? "CassidyPlayerTwo" : "CassidySolo") : "JerichoCoop";
+    const char* hands = spectral ? (coop ? "CassidySpectralHands" : "CassidySpectralSoloHands") :
+        cassidy ? (coop ? "CassidyPlayerTwoHands" : "CassidySoloHands") : "ChazHands";
     if (!Actor(base, actor_manager, name)) { Reject(base, ctx.edi, "body", family, name); return; }
     if (!Actor(base, actor_manager, hands)) { Reject(base, ctx.edi, "hands", family, hands); return; }
     const char* audio_failure = "-";
@@ -300,7 +349,7 @@ bool DarkwatchCharacterCostume(X86Context& ctx, uint8_t* base) {
         !Read(base, uint64_t(ctx.ebp) + 12, item) || item != ctx.edi ||
         !OwnedString(base, item, name) || (name != "cloak" && name != "Civ_cloak") ||
         !OwnedString(base, actor + 0x50, character) ||
-        (character != "CassidySolo" && character != "CassidyPlayerTwo") ||
+        !CassidyActor(character) ||
         !Read(base, uint64_t(actor) + 0x68, group) ||
         !Read(base, uint64_t(actor) + 0x6C, scope) ||
         !Read(base, uint64_t(ctx.ebp) - 4, scratch) || scratch) return false;
@@ -326,5 +375,5 @@ bool DarkwatchCharacterIsCassidyPlayer(const uint8_t* base, uint32_t actor) {
         Read(base, uint64_t(owner) + 0xEC, mode) && !mode &&
         Read(base, uint64_t(actor) + 0x98, category) && category == 9 &&
         OwnedString(base, actor + 0x50, character) &&
-        (character == "CassidySolo" || character == "CassidyPlayerTwo");
+        CassidyActor(character);
 }

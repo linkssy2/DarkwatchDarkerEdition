@@ -99,8 +99,8 @@ bool AimComponent(const uint8_t* base, uint32_t actor, uint32_t vtable, uint32_t
     return result != 0;
 }
 
-bool ActiveHorseCamera(const uint8_t* base, uint32_t rider, uint32_t& camera) {
-    uint32_t component = 0, stack = 0, list = 0, type = 0, linked_rider = 0, horse = 0;
+bool ActiveVehicleCamera(const uint8_t* base, uint32_t rider, uint32_t& camera) {
+    uint32_t component = 0, stack = 0, list = 0, type = 0, linked_rider = 0, vehicle = 0;
     uint16_t count = 0;
     // Original CameraComponent's event CD pushes the mounted camera. Its manager
     // updates only the final stack entry (216040), not every retained camera.
@@ -110,10 +110,15 @@ bool ActiveHorseCamera(const uint8_t* base, uint32_t rider, uint32_t& camera) {
         !AimRead(base, uint64_t(list) + uint64_t(count - 1) * 4, camera) ||
         !AimField(base, camera, 0, type) || type != 0x423B30 ||
         !AimField(base, camera, 0x74, linked_rider) || linked_rider != rider ||
-        !AimField(base, camera, 0x64, horse) || !AimComponent(base, horse, 0x41DA58, component)) return false;
+        !AimField(base, camera, 0x64, vehicle)) return false;
+    uint32_t horse_component = 0, wagon_component = 0;
+    bool horse = AimComponent(base, vehicle, 0x41DA58, horse_component);
+    bool wagon = AimComponent(base, vehicle, 0x41DBE8, wagon_component);
+    if (horse == wagon) return false;
+    component = horse ? horse_component : wagon_component;
     uint32_t linked_camera = 0;
-    // HorseComponent creates this camera at 76BCC and releases it at 76C47.
-    return AimField(base, component, 0xE8, linked_camera) && linked_camera == camera &&
+    // Horse (76BCC) and Coyote (7A11D) create the same camera at different offsets.
+    return AimField(base, component, horse ? 0xE8 : 0x3B0, linked_camera) && linked_camera == camera &&
            AimField(base, component, 0x3C, linked_rider) && linked_rider == rider;
 }
 
@@ -136,7 +141,7 @@ const char* ReadMouseTarget(const X86Context& ctx, const uint8_t* base, unsigned
     if (self != controller || uint64_t(controller) + 0xC != reference || reference != map) return "nonlocal";
     t.local = true;
     uint32_t rider = 0, mounted_camera = 0;
-    if (AimField(base, t.owner, 0xC, rider) && ActiveHorseCamera(base, rider, mounted_camera))
+    if (AimField(base, t.owner, 0xC, rider) && ActiveVehicleCamera(base, rider, mounted_camera))
         return "mounted-camera";
     if (!AimField(base, ctx.ebp, 4, t.caller) || !AimField(base, ctx.ebp, 0, t.parent)) return "stack";
     // StateVampireJump delegates to StateJump's look update (A9531 -> A1AC5).
@@ -321,7 +326,7 @@ const char* ReadHorseMouseTarget(const X86Context& ctx, const uint8_t* base, Mou
     uint8_t enabled = 0, inhibited = 0;
     if (!AimField(base, manager, 0x120, enabled) || !AimField(base, manager, 0x121, inhibited) ||
         !enabled || inhibited) return "controller-disabled";
-    if (!ActiveHorseCamera(base, t.owner, active_camera) || active_camera != t.state) return "attachment";
+    if (!ActiveVehicleCamera(base, t.owner, active_camera) || active_camera != t.state) return "attachment";
     if (!AimField(base, ctx.ebp, 8, t.dt) || !std::isfinite(t.dt) || t.dt <= 0 || t.dt > .25f ||
         !AimField(base, t.state, 0x124, t.inversion) || t.inversion > 1 ||
         !AimField(base, t.state, 0x114, t.lower) || !AimField(base, t.state, 0x118, t.upper) ||

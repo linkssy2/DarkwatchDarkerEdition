@@ -131,7 +131,7 @@ class Archive(io.RawIOBase):
 
 
 class Catalog:
-    def __init__(self, content):
+    def __init__(self, content, *, allow_previous=True):
         if len(content) > 2 * 1024 * 1024:
             raise PackError("HD texture catalog is too large.")
         def unique(pairs):
@@ -165,6 +165,24 @@ class Catalog:
         self.total = sum(size for size, _ in self.files.values())
         if self.total > 32 * 1024 * 1024 * 1024:
             raise PackError("HD texture catalog exceeds its size limit.")
+        self.previous = None
+        if "previous_catalog" in data:
+            previous = data["previous_catalog"]
+            if not allow_previous or not isinstance(previous, str):
+                raise PackError("Unsupported previous HD texture catalog.")
+            self.previous = Catalog(previous.encode("utf-8"), allow_previous=False)
+            if (len(self.previous.files) >= len(self.files) or
+                    any(self.files.get(name) != record for name, record in self.previous.files.items())):
+                raise PackError("Previous HD textures differ from the current catalog.")
+
+    def matching(self, content):
+        for catalog in (self, self.previous):
+            if catalog is not None and catalog.content == content:
+                return catalog
+        raise PackError("HD texture pack is incomplete or incompatible. Install the matching texture download again.")
+
+    def receipt_sizes(self):
+        return {len(catalog.content) for catalog in (self, self.previous) if catalog is not None}
 
     @staticmethod
     def header(data, length):
@@ -182,8 +200,11 @@ class Catalog:
         if not folder.exists():
             return False
         receipt = checked(folder, RECEIPT)
-        if not receipt.is_file() or receipt.stat().st_size != len(self.content) or receipt.read_bytes() != self.content:
+        if not receipt.is_file() or receipt.stat().st_size not in self.receipt_sizes():
             raise PackError("HD texture pack is incomplete or incompatible. Install the matching texture download again.")
+        selected = self.matching(receipt.read_bytes())
+        if selected is not self:
+            return selected.validate(current, cancel, notify, full)
         expected = {Path(name).name for name in self.files} | {RECEIPT}
         if {path.name for path in folder.iterdir()} != expected:
             raise PackError("HD texture pack contains missing or unexpected files. Install the texture download again.")
@@ -213,6 +234,12 @@ class Catalog:
         try:
             with Archive(archive, self.total * 1.01 + 4 * 1024 * 1024) as stream, zipfile.ZipFile(stream) as source:
                 entries = source.infolist()
+                receipts = [entry for entry in entries if entry.filename == RECEIPT]
+                if len(receipts) != 1 or receipts[0].file_size not in self.receipt_sizes():
+                    raise PackError("HD texture download has a missing or incompatible catalog.")
+                selected = self.matching(source.read(receipts[0]))
+                if selected is not self:
+                    return selected.extract(archive, stage, cancel, notify)
                 expected = {**self.files, RECEIPT: (len(self.content), hashlib.sha256(self.content).hexdigest())}
                 if len(entries) != len(expected):
                     raise PackError("HD texture download has missing or unexpected files.")
@@ -293,8 +320,11 @@ class Catalog:
         try:
             if not self.validate(previous, cancel, notify):
                 return False
+            selected = self.matching(checked(checked(previous, DIRECTORY), RECEIPT).read_bytes())
         except (OSError, intake.IntakeError) as error:
             raise PackError("The previous optional HD texture pack could not be verified.") from error
+        if selected is not self:
+            return selected.preserve(previous, stage, cancel, notify, copy)
         target = checked(stage, DIRECTORY)
         target.mkdir()
         for name in self.files:

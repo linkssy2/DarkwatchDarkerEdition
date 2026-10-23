@@ -180,5 +180,5 @@ def compose(source, replacements):
             expected = original['raw'][old['offset']:old['offset'] + old['size']]
         actual = result['raw'][entry['offset']:entry['offset'] + entry['size']]
         if actual != expected:
-            raise AssertionError('Payload preservation failure')
+            raise AssertionError('Payload preservation failure: ' + name)
     return bytes(payload)

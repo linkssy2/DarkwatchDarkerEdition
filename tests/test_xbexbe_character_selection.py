@@ -28,29 +28,33 @@ void Write(const char* s){std::ofstream f("settings.toml");f<<s;assert(f);}
 std::string Read(){std::ifstream f("settings.toml");return {std::istreambuf_iterator<char>(f),{}};}
 int main(){
  using namespace darkwatch::settings;
- constexpr auto J=Character::Jericho,C=Character::Cassidy;
+ constexpr auto J=Character::Jericho,C=Character::Cassidy,S=Character::SpectralCassidy;
+ static_assert(int(J)==0&&int(C)==1&&int(S)==2);
  app::Load();assert((characters()==std::array{J,J}));
  assert(configured_character(0)==J&&configured_character(1)==J&&configured_character(2)==J&&configured_character(~0u)==J);
- for(auto p1:{J,C})for(auto p2:{J,C}){
+ for(auto p1:{J,C,S})for(auto p2:{J,C,S}){
   const std::array expected{p1,p2};assert(set_characters(expected)&&app::Save());
   assert(set_characters({J,J}));app::Load();assert(characters()==expected);
   assert(configured_character(0)==p1&&configured_character(1)==p2);
  }
  assert(set_characters({C,J}));assert(!set_characters({Character(-1),C})&&(characters()==std::array{C,J}));
- assert(!set_characters({J,Character(2)})&&(characters()==std::array{C,J}));
+ assert(!set_characters({J,Character(3)})&&(characters()==std::array{C,J}));
  Write("player_one_character='Cassidy'\n");app::Load();assert((characters()==std::array{C,J}));
  Write("player_two_character='Cassidy'\n");app::Load();assert((characters()==std::array{J,C}));
- for(const char* s:{"[malformed", "player_one_character=1\nplayer_two_character=false\n", "player_one_character='cassidy'\nplayer_two_character='Tala'\n", "player_one_character=['Cassidy']\nplayer_two_character={}\n"}){
+ Write("player_one_character='Spectral Cassidy'\n");app::Load();assert((characters()==std::array{S,J}));
+ Write("player_two_character='Spectral Cassidy'\n");app::Load();assert((characters()==std::array{J,S}));
+ assert(app::Save()&&Read().find("Spectral Cassidy")!=std::string::npos);
+ for(const char* s:{"[malformed", "player_one_character=1\nplayer_two_character=false\n", "player_one_character='cassidy'\nplayer_two_character='Tala'\n", "player_one_character=['Cassidy']\nplayer_two_character={}\n", "player_one_character='spectral cassidy'\nplayer_two_character='SpectralCassidy'\n"}){
   assert(set_characters({C,C}));Write(s);app::Load();assert((characters()==std::array{J,J}));
  }
- assert(set_characters({J,C})&&app::Save());const auto saved=Read();
+ assert(set_characters({J,S})&&app::Save());const auto saved=Read();
  HANDLE held=CreateFileW(L"settings.toml",GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);assert(held!=INVALID_HANDLE_VALUE);
  assert(set_characters({C,J})&&!app::Save()&&Read()==saved);CloseHandle(held);
- assert((characters()==std::array{C,J}));app::Load();assert((characters()==std::array{J,C}));
- const std::array a{J,C},b{C,J};assert(set_characters(a));std::atomic<bool> done=false;
+ assert((characters()==std::array{C,J}));app::Load();assert((characters()==std::array{J,S}));
+ const std::array a{J,S},b{S,C};assert(set_characters(a));std::atomic<bool> done=false;
  std::thread writer([&]{for(unsigned i=0;i<10000;++i)assert(set_characters(i&1?a:b));done=true;});
  do{const auto value=characters();assert(value==a||value==b);}while(!done);writer.join();
- std::puts("character settings: defaults, all pairs, independent persistence, invalid values, failed atomic save and coherent snapshots passed");
+ std::puts("character settings: original defaults/tokens, all nine pairs, spectral persistence, invalid values, failed atomic save and coherent snapshots passed");
 }
 '''
 
@@ -60,7 +64,7 @@ int main(){
  io.ConfigFlags|=ImGuiConfigFlags_NavEnableKeyboard|ImGuiConfigFlags_NavEnableGamepad;
  ImFontConfig font;font.SizePixels=22;g_body=io.Fonts->AddFontDefault(&font);g_title=g_body;
  unsigned char* pixels;int w,h;io.Fonts->GetTexDataAsRGBA32(&pixels,&w,&h);
- using namespace darkwatch::settings;constexpr auto J=Character::Jericho,C=Character::Cassidy;
+ using namespace darkwatch::settings;constexpr auto J=Character::Jericho,C=Character::Cassidy,S=Character::SpectralCassidy;
  route={};darkwatch::character_owner=0x123400;Frame();CHECK(!g_open);
  DarkwatchCharactersOpen(0);Poll();Frame();CHECK(!g_open);
  DarkwatchCharactersOpen(darkwatch::character_owner);
@@ -69,34 +73,36 @@ int main(){
  Poll();Frame();CHECK(g_released);
  CHECK(std::find(rendered_text.begin(),rendered_text.end(),"CHARACTERS")!=rendered_text.end());
  CHECK(std::find(rendered_text.begin(),rendered_text.end(),"Changes take effect when you start your next mission.")!=rendered_text.end());
+ CHECK(std::find(rendered_text.begin(),rendered_text.end(),"Spectral Cassidy is available from the start.\nCassidy follows the story for player two.")!=rendered_text.end());
  CHECK((characters()==std::array{J,J}));
- for(int one=0;one<2;++one)for(int two=0;two<2;++two){
+ constexpr const char* labels[]{"Jericho","Cassidy","Spectral Cassidy"};
+ for(int one=0;one<3;++one)for(int two=0;two<3;++two){
   auto previous=characters();const auto saved=saves;
-  SelectQuality("##player one character",one,one?"Cassidy":"Jericho");
+  SelectQuality("##player one character",one,labels[one]);
   CHECK(characters()==previous&&g_character_draft[0]==Character(one));
-  SelectQuality("##player two character",two,two?"Cassidy":"Jericho");
+  SelectQuality("##player two character",two,labels[two]);
   CHECK(characters()==previous&&g_character_draft[1]==Character(two));
   ClickNamed("APPLY");CHECK((characters()==std::array{Character(one),Character(two)})&&saves==saved+1);
   CHECK(g_open&&g_characters&&!g_leave);
  }
  SelectQuality("##player one character",0,"Jericho");ClickNamed("BACK");
- CHECK(!g_open&&!DarkwatchGraphicsVisible()&&!g_leave&&(characters()==std::array{C,C}));
+ CHECK(!g_open&&!DarkwatchGraphicsVisible()&&!g_leave&&(characters()==std::array{S,S}));
  p=Poll(0,0,255);CHECK(!p.analog[1]&&g_block_release);Poll();Frame();CHECK(!g_block_release);
  for(unsigned exit=0;exit<3;++exit){
   DarkwatchCharactersOpen(darkwatch::character_owner);Poll();Frame();Poll();Frame();
-  CHECK((g_character_draft==std::array{C,C}));SelectQuality("##player two character",0,"Jericho");
+  CHECK((g_character_draft==std::array{S,S}));SelectQuality("##player two character",0,"Jericho");
   if(exit==0){io.AddKeyEvent(ImGuiKey_Escape,true);Frame();io.AddKeyEvent(ImGuiKey_Escape,false);Frame();}
   if(exit==1){io.AddMouseButtonEvent(1,true);Frame();Frame();Frame();io.AddMouseButtonEvent(1,false);Frame();}
   if(exit==2){Poll(0,0,255);Frame();Frame();Frame();}
-  CHECK(!g_open&&!g_leave&&(characters()==std::array{C,C}));Poll();Frame();Frame();
+  CHECK(!g_open&&!g_leave&&(characters()==std::array{S,S}));Poll();Frame();Frame();
  }
  DarkwatchCharactersOpen(darkwatch::character_owner);Poll();Frame();Poll();Frame();save_ok=false;
  SelectQuality("##player one character",0,"Jericho");ClickNamed("APPLY");
- CHECK((characters()==std::array{J,C})&&std::string(g_notice).find("session only")!=std::string::npos);
+ CHECK((characters()==std::array{J,S})&&std::string(g_notice).find("session only")!=std::string::npos);
  // Replacing the original owner cancels the page and discards its unsaved draft.
  SelectQuality("##player two character",0,"Jericho");darkwatch::character_owner+=4;
- Poll();Frame();CHECK(!g_open&&!DarkwatchGraphicsVisible()&&!g_leave&&(characters()==std::array{J,C}));
- Poll();Frame();DarkwatchCharactersOpen(darkwatch::character_owner);Poll();Frame();CHECK((g_character_draft==std::array{J,C}));
+ Poll();Frame();CHECK(!g_open&&!DarkwatchGraphicsVisible()&&!g_leave&&(characters()==std::array{J,S}));
+ Poll();Frame();DarkwatchCharactersOpen(darkwatch::character_owner);Poll();Frame();CHECK((g_character_draft==std::array{J,S}));
  darkwatch::character_owner=0;Poll();Frame();CHECK(!g_open&&!DarkwatchGraphicsVisible());
  // Fallback feedback draws without opening a menu or consuming game input, then expires.
  unavailable_characters=0;Frame();const auto baseline=ImGui::GetForegroundDrawList()->VtxBuffer.Size;
@@ -106,7 +112,7 @@ int main(){
   CHECK(ImGui::GetForegroundDrawList()->VtxBuffer.Size==baseline);
  }
  unavailable_characters=0;Frame();CHECK(ImGui::GetForegroundDrawList()->VtxBuffer.Size==baseline);
- ImGui::DestroyContext();std::puts("actual Characters ImGui: both selectors/all pairs, draft Apply/Back, controller opening hold, keyboard/mouse/pad exit, save failure and stale owner passed");
+ ImGui::DestroyContext();std::puts("actual Characters ImGui: both third choices/all nine pairs, draft Apply/Back, controller opening hold, keyboard/mouse/pad exit, save failure and stale owner passed");
 }
 '''
 

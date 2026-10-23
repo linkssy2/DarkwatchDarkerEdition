@@ -33,6 +33,7 @@ std::atomic<bool> g_visual{false}, g_leave{false}, g_configuring{false};
 bool g_controls = false, g_subtitles_available = false;
 std::atomic<uint64_t> g_set_subtitles{0};
 std::atomic<uint32_t> g_pad{0};
+std::atomic<uint32_t> g_navigation_port{0};
 uint32_t g_options = 0;
 std::atomic<bool> g_released{false}, g_block_release{false};
 bool g_open = false, g_confirm = false;
@@ -174,16 +175,23 @@ void Back() {
     } else Close();
 }
 
+bool PlayerTwoControls() { return g_original_draft.paused && g_original_draft.input_port == 1; }
+
 void ApplyControls() {
-    if (!ControlsApply(g_controls_draft)) {
+    const bool player_two = PlayerTwoControls();
+    if (!player_two && !ControlsApply(g_controls_draft)) {
         g_notice = "Cannot apply these bindings. Check for duplicate or reserved keys.";
         return;
     }
-    g_controls_draft = ControlsSnapshot();
+    if (!player_two) g_controls_draft = ControlsSnapshot();
     if (g_original_draft.controls_available) {
         std::lock_guard lock(g_original_lock);
         g_control_request = {g_options, g_original_draft.invert, g_original_draft.vibration, false,
                              g_original_draft.sensitivity, true, g_original_draft.controller_preset};
+    }
+    if (player_two) {
+        g_notice = "Player 2 controls applied. Resume to save this player's profile.";
+        return;
     }
     g_notice = app::Save() ? "Controls saved. Original profile settings save when you leave Options."
                           : "Could not save controls. Changes will last for this session only.";
@@ -411,10 +419,12 @@ void ControllerSymbol(ImDrawList* draw, ImVec2 center, float scale, ControllerPr
 
 void ControllerLayoutContent(float scale) {
     const auto device = input::GetLastDevice();
-    if (device.controller && device.family != input::ControllerFamily::Xbox) g_layout_family = device.family;
+    if (PlayerTwoControls()) g_layout_family = input::GetControllerFamily(g_original_draft.input_port);
+    else if (device.controller && device.family != input::ControllerFamily::Xbox) g_layout_family = device.family;
     ImGui::SetCursorPos({88 * scale, 119 * scale});
     ImGui::SetWindowFontScale(.75f);
-    ImGui::TextUnformatted(g_layout_family == input::ControllerFamily::PlayStation ? "PLAYSTATION CONTROLLER" : "SWITCH CONTROLLER");
+    ImGui::TextUnformatted(g_layout_family == input::ControllerFamily::PlayStation ? "PLAYSTATION CONTROLLER" :
+                          g_layout_family == input::ControllerFamily::Switch ? "SWITCH CONTROLLER" : "XBOX CONTROLLER");
     ImGui::SameLine(500 * scale); ImGui::SetNextItemWidth(400 * scale);
     ImGui::BeginDisabled(!g_original_draft.controls_available);
     if (g_layout_opened) {ImGui::SetKeyboardFocusHere(); g_layout_opened = false;}
@@ -462,12 +472,14 @@ void ControllerLayoutContent(float scale) {
 }
 
 void ControlsContent(float scale, bool just_opened) {
+    const bool player_two = PlayerTwoControls();
     // Keep the capture frame isolated even if the window thread just published its result.
     bool capturing = g_capture_action >= 0 && g_conflict_action < 0;
     CaptureBinding();
     ImGui::SetCursorPos({0, 132 * scale});
     ImGui::BeginChild("Controls scroll", {938 * scale, 308 * scale}, false);
     ImGui::BeginDisabled(capturing || g_conflict_action >= 0);
+    if (!player_two) {
     { MenuRow row("MOUSE SENSITIVITY", 8, scale);
       float sensitivity = g_controls_draft.mouse_millidegrees / 50.f;
       if (ImGui::SliderFloat("##mouse sensitivity", &sensitivity, .02f, 20.f, "%.2fx", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_Logarithmic))
@@ -485,21 +497,25 @@ void ControlsContent(float scale, bool just_opened) {
     ImGui::PushTextWrapPos(900 * scale);
     Hint("Aiming assistance attracts the view near targets. Look centering recenters your view.");
     ImGui::PopTextWrapPos();
+    }
+    const float controller_y = player_two ? 8.f : 292.f;
     ImGui::BeginDisabled(!g_original_draft.controls_available);
-    { MenuRow row("INVERT LOOK", 292, scale); Toggle("##invert look", g_original_draft.invert); }
-    { MenuRow row("PAD VIBRATION", 348, scale); Toggle("##vibration", g_original_draft.vibration); }
-    { MenuRow row("PAD SENSITIVITY", 404, scale);
+    { MenuRow row("INVERT LOOK", controller_y, scale); Toggle("##invert look", g_original_draft.invert);
+      if (player_two && just_opened) ImGui::SetItemDefaultFocus(); }
+    { MenuRow row("PAD VIBRATION", controller_y + 56, scale); Toggle("##vibration", g_original_draft.vibration); }
+    { MenuRow row("PAD SENSITIVITY", controller_y + 112, scale);
       ImGui::SliderInt("##controller sensitivity", &g_original_draft.sensitivity,
                       g_original_draft.sensitivity_min, g_original_draft.sensitivity_max); }
     ImGui::EndDisabled();
-    ImGui::SetCursorPos({88 * scale, 464 * scale});
+    ImGui::SetCursorPos({88 * scale, (controller_y + 172) * scale});
     if (!g_original_draft.controls_available) ImGui::TextDisabled("Original settings are unavailable on this page.");
     if (g_layout_returned) {ImGui::SetKeyboardFocusHere(); g_layout_returned = false;}
     if (MenuButton("CONTROLLER LAYOUT...")) {
         ControlsCancelCapture(); g_capture_action = -1;
         const auto device = input::GetLastDevice();
-        const auto family = device.controller ? device.family : input::GetControllerFamily(0);
-        if (family != input::ControllerFamily::Xbox) {
+        const auto family = player_two ? input::GetControllerFamily(g_original_draft.input_port) :
+            device.controller ? device.family : input::GetControllerFamily(0);
+        if (player_two || family != input::ControllerFamily::Xbox) {
             g_layout_family = family;
             g_controller_layout = g_layout_opened = true;
             g_released = false; g_pad = 0;
@@ -515,6 +531,12 @@ void ControlsContent(float scale, bool just_opened) {
         }
     }
     if (KnownPreset()) {ImGui::SameLine(); ImGui::TextDisabled("Current: %s", kPresetNames[g_original_draft.controller_preset]);}
+    if (player_two) {
+        ImGui::SetCursorPos({88 * scale, 240 * scale});
+        ImGui::PushTextWrapPos(900 * scale);
+        Hint("Player 2 controller settings. Controller Layout offers five control schemes.");
+        ImGui::PopTextWrapPos();
+    } else {
     ImGui::SetCursorPos({88 * scale, 530 * scale});
     ImGui::BeginGroup(); ImGui::PushTextWrapPos(912 * scale);
     ImGui::TextUnformatted("KEYBOARD & MOUSE BINDINGS");
@@ -548,6 +570,7 @@ void ControlsContent(float scale, bool just_opened) {
         ImGui::EndTable();
     }
     ImGui::PopTextWrapPos(); ImGui::EndGroup();
+    }
     ImGui::EndDisabled(); EndSettingsChild();
     if (g_conflict_action >= 0) {
         ImGui::SetCursorPos({220 * scale, 490 * scale});
@@ -570,9 +593,11 @@ void ControlsContent(float scale, bool just_opened) {
     ImGui::SetCursorPos({220 * scale, 541 * scale});
     ImGui::BeginDisabled(capturing || g_conflict_action >= 0);
     if (MenuButton("APPLY", {200 * scale, 39 * scale})) ApplyControls();
-    ImGui::SameLine(450 * scale);
-    if (MenuButton("RESET DEFAULTS", {250 * scale, 39 * scale})) {
-        g_controls_draft = ControlsDefaults(); g_notice = "PC defaults restored in this draft. Select Apply to save.";
+    if (!player_two) {
+        ImGui::SameLine(450 * scale);
+        if (MenuButton("RESET DEFAULTS", {250 * scale, 39 * scale})) {
+            g_controls_draft = ControlsDefaults(); g_notice = "PC defaults restored in this draft. Select Apply to save.";
+        }
     }
     ImGui::SameLine(720 * scale);
     if (MenuButton("BACK", {192 * scale, 39 * scale})) Close();
@@ -590,13 +615,15 @@ void CharactersContent(float scale, bool just_opened) {
     for (unsigned i = 0; i < g_character_draft.size(); ++i) {
         MenuRow row(labels[i], 8 + 72 * i, scale);
         int choice = int(g_character_draft[i]);
-        if (ImGui::Combo(ids[i], &choice, "Jericho\0Cassidy\0"))
+        if (ImGui::Combo(ids[i], &choice, "Jericho\0Cassidy\0Spectral Cassidy\0"))
             g_character_draft[i] = settings::Character(choice);
         if (just_opened && !i) ImGui::SetItemDefaultFocus();
     }
     ImGui::SetCursorPos({88 * scale, 172 * scale});
-    Hint("Player one's choice is shared by single-player and co-op. Player two's choice is used in co-op.");
-    ImGui::SetCursorPos({88 * scale, 228 * scale});
+    Hint("Player one: single-player and co-op. Player two: co-op only.");
+    ImGui::SetCursorPos({88 * scale, 208 * scale});
+    Hint("Spectral Cassidy is available from the start.\nCassidy follows the story for player two.");
+    ImGui::SetCursorPos({88 * scale, 268 * scale});
     Hint("Changes take effect when you start your next mission.");
     EndSettingsChild();
     ImGui::SetCursorPos({220 * scale, 490 * scale}); Hint(g_notice);
@@ -676,6 +703,11 @@ void DarkwatchGraphicsPad(int port, input::Pad& pad) {
         const auto entry = darkwatch::TakeNativePauseEntry(mem::Base(), state.options);
         bool controls = state.route == darkwatch::GraphicsMenuRoute::Controls;
         bool visual = state.route == darkwatch::GraphicsMenuRoute::Visual || controls || g_characters_owner.load() || g_quit_owner.load();
+        const uint32_t owner_port = g_characters_owner.load() || g_quit_owner.load() ? 0 : state.paused ? state.input_port :
+            state.route == GraphicsMenuRoute::Hidden ? g_navigation_port.load() : 0;
+        if (g_navigation_port.exchange(owner_port) != owner_port) {
+            g_pad = 0; g_released = false;
+        }
         ControlRequest request;
         {
             std::lock_guard lock(g_original_lock);
@@ -704,12 +736,17 @@ void DarkwatchGraphicsPad(int port, input::Pad& pad) {
         if (!controls) g_configuring = false;
         uint64_t requested = g_set_subtitles.exchange(0);
         if (requested && visual) darkwatch::SetGraphicsSubtitles(mem::Base(), uint32_t(requested >> 1), (requested & 1) != 0);
+        if (g_leave && !visual) g_leave = false;
+    }
+    // Only the player who opened Pause drives its host page or receives Back.
+    // Port-zero polling still owns guest UI publication and queued mutations.
+    if (port == int(g_navigation_port.load())) {
+        const bool visual = g_visual.load();
         uint32_t keys = (pad.buttons & 15) | (pad.analog[0] ? 16 : 0) | (pad.analog[1] ? 32 : 0);
         if (pad.ly > 16000) keys |= 1;
         if (pad.ly < -16000) keys |= 2;
         if (pad.lx < -16000) keys |= 4;
         if (pad.lx > 16000) keys |= 8;
-        if (g_leave && !visual) g_leave = false;
         if (visual || g_leave) {
             if (!keys) g_released = true;
             g_pad = g_released ? keys : 0;
@@ -721,7 +758,7 @@ void DarkwatchGraphicsPad(int port, input::Pad& pad) {
     if (g_visual || g_leave || g_block_release) {
         bool connected = pad.connected;
         pad = {}; pad.connected = connected;
-        if (port == 0 && g_leave && g_visual) pad.analog[1] = 255;
+        if (port == int(g_navigation_port.load()) && g_leave && g_visual) pad.analog[1] = 255;
         input::SetActive(false);
     }
 }
