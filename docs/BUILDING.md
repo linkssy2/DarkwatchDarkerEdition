@@ -85,7 +85,7 @@ The public source is therefore not yet a one-command clean-machine packager.
 After provisioning and a successful release runtime build:
 
 ```powershell
-./scripts/build-launcher.ps1 -Output 'C:/build-output/Darkwatch-0.5'
+./scripts/build-launcher.ps1 -Output 'C:/build-output/Darkwatch-0.5.5'
 ```
 
 The output directory must not already exist. The script builds both launcher
@@ -94,7 +94,7 @@ enhancement PNGs, authored Cassidy hand repaints and edited branding, while
 original disc files, character archives and assembled packs are excluded. Import and shader preparation happen locally
 when the player supplies their disc. Keep all package files together.
 
-## Experimental Proton wrapper
+## Linux 0.5.5 compatibility package
 
 `launcher/linux/` provides the experimental Linux launcher for an already built
 Windows package. It runs the packaged import backend and game through the
@@ -106,7 +106,7 @@ After producing a verified Windows release directory, make the experimental
 archive without adding installed game data:
 
 ```powershell
-.venv/Scripts/python.exe tools/package_linux.py --windows-package 'C:/build-output/Darkwatch-0.5' --output 'C:/build-output/Darkwatch-0.5-Linux-Proton-Experimental.tar.gz' --audit 'C:/build-output/linux-package-audit.json'
+.venv/Scripts/python.exe tools/package_linux.py --windows-package 'C:/build-output/Darkwatch-0.5.5' --output 'C:/build-output/Darkwatch-0.5.5-Linux-Proton-Experimental.tar.gz' --audit 'C:/build-output/linux-package-audit.json'
 ```
 
 The packager copies the verified Windows allowlist under `windows/`, adds only

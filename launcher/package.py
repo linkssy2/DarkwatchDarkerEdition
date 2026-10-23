@@ -12,7 +12,7 @@ REFERENCE = REPO.parent / 'Urban Chaos Riot Response Recompiled'
 PYTHON = REFERENCE / '.tools/python'
 VS = Path('C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools')
 CRT = VS / 'VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT'
-VERSION = '0.5'
+VERSION = '0.5.5'
 RELEASE_PROFILE = {'name': 'release-candidate', 'diagnostics': False, 'strict_assets': True}
 LAUNCHER = 'Darkwatch Darker Edition.exe'
 DIRECT_PLAY = 'Play Darkwatch.exe'
@@ -23,9 +23,12 @@ PYTHON_FILES = ('python.exe', 'python312.dll', 'python3.dll', 'python312.zip',
 FORBIDDEN = {'.iso', '.xiso', '.xbe', '.pck', '.xmv', '.wmv', '.wav', '.pdb', '.log', '.dmp', '.pyc', '.dwt', '.pack'}
 GENERATED = {
     'payload/python/python312._pth': 'python312.zip\n.\n..\n',
-    'README.txt': '''Darkwatch: Darker Edition - 0.5
+    'README.txt': '''Darkwatch: Darker Edition - 0.5.5
 
-Version 0.5
+Linux compatibility release: use ../README-LINUX.md for Steam setup.
+The inherited Windows graphical launcher is not the recommended Proton entry.
+
+Features inherited from 0.5
 - Select Spectral Cassidy in solo or co-op, with adapted first-person hands.
 - Expanded optional HD textures and corrected missing co-op texture connections.
 - Improved co-op HUD spacing and Player 2's own pause menus and controller settings.

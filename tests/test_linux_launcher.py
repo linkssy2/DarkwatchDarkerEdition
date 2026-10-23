@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import signal
+import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -182,6 +183,108 @@ class LinuxLauncherTests(unittest.TestCase):
             popen, _ = self.action_patches(process)
             self.assertEqual(linux.run_action(self.root, self.tools, "--verify", output=lambda _: None), 1)
             popen.assert_called_once()
+
+    def test_backend_error_shows_bounded_proton_tail_but_success_stays_quiet(self):
+        lines = [f"Proton line {index}: " + "x" * 1100 for index in range(11)]
+        for event, code in (("error", 1), ("result", 0)):
+            with self.subTest(event=event):
+                process = Process()
+                process.stdout = io.StringIO("\n".join(lines) + "\n" +
+                                             json.dumps(dict(event=event, message="Finished")) + "\n")
+                self.action_patches(process)
+                messages = []
+                self.assertEqual(linux.run_action(self.root, self.tools, "--verify", output=messages.append), code)
+                expected = ["Finished"] + ([line[:1000] for line in lines[-8:]] if code else [])
+                self.assertEqual(messages, expected)
+
+
+    def test_shader_progress_is_visible_but_does_not_complete_the_action(self):
+        events = [dict(event="shader_prepare", message="Preparing shaders", percent=50),
+                  dict(event="shader_ready", message="Shaders are ready", percent=100)]
+        for complete in (False, True):
+            with self.subTest(complete=complete):
+                process = Process(events + ([dict(event="result", message="Installed")] if complete else []))
+                self.action_patches(process)
+                messages = []
+                self.assertEqual(linux.run_action(self.root, self.tools, "--import-iso", output=messages.append),
+                                 0 if complete else 1)
+                self.assertEqual(messages[:2], ["50%  Preparing shaders", "Shaders are ready"])
+
+
+    @unittest.skipUnless(os.name == "posix", "Native Linux symlink behavior")
+    def test_shell_resolves_a_linked_entrypoint_and_preserves_arguments(self):
+        shell = self.root / "Darkwatch.sh"
+        self.write(shell, (ROOT / "launcher/linux/Darkwatch.sh").read_text(encoding="utf-8"))
+        shell.chmod(0o755)
+        self.write(self.root / "linux/launcher.py", "import json, sys; print(json.dumps(sys.argv[1:]))\n")
+        shortcut = self.root.parent / "Darkwatch shortcut.sh"
+        shortcut.symlink_to(shell)
+        result = subprocess.run([str(shortcut), "--import-iso", "a disc's path.iso"],
+                                capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), ["--import-iso", "a disc's path.iso"])
+
+
+    @unittest.skipUnless(os.name == "posix", "Native Linux symlink behavior")
+    def test_native_preflight_rejects_linked_payload_and_gamedata_before_proton(self):
+        outside = self.root.parent / "outside"
+        outside.mkdir()
+        self.write(outside / "file", "do not modify")
+        popen, _ = self.action_patches(Process())
+        for relative, directory in (("windows", True), ("windows/payload/linked", True),
+                                    ("windows/payload/linked-file", False), ("GameData", True),
+                                    ("GameData/linked", True), ("GameData/linked-file", False)):
+            with self.subTest(path=relative):
+                path = self.root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                backup = path.with_name(path.name + "-saved") if path.exists() else None
+                if backup:
+                    path.rename(backup)
+                path.symlink_to(outside if directory else outside / "file", target_is_directory=directory)
+                try:
+                    with self.assertRaisesRegex(linux.LauncherError, "linked file or folder"):
+                        linux.run_action(self.root, self.tools, "--status")
+                finally:
+                    path.unlink()
+                    if backup:
+                        backup.rename(path)
+        popen.assert_not_called()
+        self.assertEqual((outside / "file").read_text(), "do not modify")
+
+
+    @unittest.skipUnless(os.name == "posix", "Native Linux symlink behavior")
+    def test_parent_steam_iso_aliases_and_proton_prefix_links_remain_supported(self):
+        parent_alias = self.root.parent / "parent alias"
+        parent_alias.symlink_to(self.root.parent, target_is_directory=True)
+        steam_alias = self.root / "Steam alias"
+        steam_alias.symlink_to(self.steam, target_is_directory=True)
+        disc = self.root.parent / "actual disc.iso"
+        self.write(disc, "disc fixture")
+        disc_alias = self.root / "disc alias.iso"
+        disc_alias.symlink_to(disc)
+        prefix_link = self.root / ".proton/pfx/dosdevices/z:"
+        prefix_link.parent.mkdir(parents=True)
+        prefix_link.symlink_to("/", target_is_directory=True)
+        tools = linux.steam_tools(steam_alias)
+        self.assertEqual(tools, self.tools)
+        popen, _ = self.action_patches(Process([dict(event="result", message="Installed")]))
+        self.assertEqual(linux.run_action(parent_alias / self.root.name, tools, "--import-iso", disc_alias, lambda _: None), 0)
+        self.assertEqual(popen.call_args.args[0][-1], WINE_PATH(disc))
+        self.assertEqual(popen.call_args.kwargs["env"]["STEAM_COMPAT_DATA_PATH"], str(self.root / ".proton"))
+        self.assertTrue(prefix_link.is_symlink())
+
+
+    @unittest.skipUnless(os.name == "posix", "Native Linux symlink behavior")
+    def test_cyclic_input_path_reports_launcher_error_before_proton(self):
+        cycle = self.root / "cycle.iso"
+        cycle.symlink_to(cycle.name)
+        popen, _ = self.action_patches(Process())
+        with self.assertRaisesRegex(linux.LauncherError, "Could not resolve path"):
+            linux.run_action(self.root, self.tools, "--import-iso", cycle)
+        with self.assertRaisesRegex(linux.LauncherError, "Could not resolve path"):
+            linux.steam_tools(self.steam, cycle)
+        popen.assert_not_called()
+
 
     def test_cancel_is_cooperative_unique_and_cleaned_after_process_finishes(self):
         process = Process()

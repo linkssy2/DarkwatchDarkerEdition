@@ -18,6 +18,24 @@ class LauncherError(Exception):
     pass
 
 
+def resolve_path(path):
+    try:
+        return Path(path).expanduser().resolve()
+    except (OSError, RuntimeError) as error:
+        raise LauncherError("Could not resolve path: " + str(path) + ". " + str(error)) from None
+
+
+def check_native_links(root):
+    # Wine can report Linux symlinks as ordinary files and directories.
+    pending = [root]
+    while pending:
+        path = pending.pop()
+        if path.is_symlink():
+            raise LauncherError("A linked file or folder inside the Windows payload or GameData is not supported: " + str(path))
+        if path.is_dir():
+            pending.extend(path.iterdir())
+
+
 def vdf_values(path, key):
     """Read quoted scalar fields from Steam's local manifests, without executing them."""
     if not path.is_file():
@@ -34,16 +52,16 @@ def steam_tools(steam_root=None, proton_path=None):
         Path(os.environ.get("STEAM_COMPAT_CLIENT_INSTALL_PATH", "~/.local/share/Steam")).expanduser(),
         Path("~/.steam/steam").expanduser(), Path("~/.steam/root").expanduser(),
     ]
-    steam = next((p.resolve() for p in candidates if (p / "steamapps").is_dir()), None)
+    steam = next((resolve_path(p) for p in candidates if (p / "steamapps").is_dir()), None)
     if steam is None:
         raise LauncherError("Native Linux Steam was not found. Use --steam-root with its installed folder.")
     libraries = [steam]
     for value in vdf_values(steam / "steamapps/libraryfolders.vdf", "path"):
-        path = Path(value).expanduser().resolve()
+        path = resolve_path(value)
         if path not in libraries and (path / "steamapps").is_dir():
             libraries.append(path)
     if proton_path:
-        proton = Path(proton_path).expanduser().resolve()
+        proton = resolve_path(proton_path)
         if proton.is_dir():
             proton /= "proton"
     else:
@@ -63,7 +81,7 @@ def steam_tools(steam_root=None, proton_path=None):
             continue
         entry = library / "steamapps/common" / names[0] / "_v2-entry-point"
         if entry.is_file() and os.access(entry, os.X_OK):
-            return steam, proton.resolve(), entry.resolve()
+            return steam, resolve_path(proton), resolve_path(entry)
     raise LauncherError("Install the Steam Linux Runtime required by this Proton tool in Steam (app " +
                         required[0] + "). Nothing was downloaded or installed by this launcher.")
 
@@ -135,8 +153,10 @@ def launch_environment(root, steam, proton, runtime, input_path=None):
 
 
 def run_action(root, tools, action, input_path=None, output=print):
-    root = Path(root).resolve()
+    root = resolve_path(root)
     package = root / "windows"
+    for folder in (package, root / "GameData"):
+        check_native_links(folder)
     python = package / "payload/python/python.exe"
     backend = package / "payload/setup_backend.py"
     adapter = root / "linux/run_backend.py"
@@ -144,7 +164,7 @@ def run_action(root, tools, action, input_path=None, output=print):
         if not path.is_file():
             raise LauncherError("The Windows payload is incomplete. Extract the entire Linux package again: " + str(path))
     if input_path:
-        input_path = Path(input_path).expanduser().resolve()
+        input_path = resolve_path(input_path)
         if not input_path.is_file():
             raise LauncherError("File not found: " + str(input_path))
     for folder in (root / "GameData", root / ".proton", root / ".proton/cache"):
@@ -188,12 +208,12 @@ def run_action(root, tools, action, input_path=None, output=print):
                 except ValueError:
                     noise.append(line.strip()[:1000])
                     continue
-                if not isinstance(event, dict) or event.get("event") not in ("progress", "result", "status", "error"):
+                if not isinstance(event, dict) or event.get("event") not in ("progress", "shader_prepare", "shader_ready", "result", "status", "error"):
                     continue
                 kind = event["event"]
                 message = str(event.get("message", ""))
                 percent = event.get("percent")
-                text = (str(percent) + "%  " if kind == "progress" and percent is not None else "") + message
+                text = (str(percent) + "%  " if kind in ("progress", "shader_prepare") and percent is not None else "") + message
                 if text and text != last:
                     output(text)
                     last = text
@@ -206,10 +226,9 @@ def run_action(root, tools, action, input_path=None, output=print):
             code = process.wait()
         if cancelled:
             return 130
-        if failed:
-            return 1
-        if code or not terminal:
-            output("Proton or the installer stopped before completing this action (exit " + str(code) + ").")
+        if failed or code or not terminal:
+            if not failed:
+                output("Proton or the installer stopped before completing this action (exit " + str(code) + ").")
             for line in noise:
                 if line:
                     output(line)
@@ -235,7 +254,7 @@ def main(argv=None):
     if not sys.platform.startswith("linux"):
         parser.error("Run this launcher on Linux. Use the Windows launcher on Windows.")
     try:
-        root = Path(__file__).resolve().parents[1]
+        root = resolve_path(__file__).parents[1]
         tools = steam_tools(args.steam_root, args.proton)
         for name in ("import_iso", "install_hd_textures", "verify", "play", "status"):
             value = getattr(args, name)

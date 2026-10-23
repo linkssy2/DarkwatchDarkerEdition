@@ -1,9 +1,9 @@
 # Darkwatch: Darker Edition
 
-**PC port | Version 0.5 | Windows x64 | Experimental Linux via Proton**
+**PC port | Windows 0.5 | Linux compatibility test 0.5.5 via Proton**
 
 [Release downloads](https://github.com/linkssy2/DarkwatchDarkerEdition/releases)
-| [Release notes](docs/RELEASE-0.5.md)
+| [Windows 0.5 notes](docs/RELEASE-0.5.md) | [Linux 0.5.5 notes](docs/RELEASE-0.5.5.md)
 
 An unofficial PC port of the original Xbox Darkwatch, powered by
 [XboxXBERecomp by TGP482](https://github.com/TGP482/Xbox-XBERecomp), with native
@@ -38,18 +38,20 @@ Requires Windows 10 version 1903 or newer / Windows 11 x64, .NET Framework 4.8,
 an x86-64-v2 CPU (including SSE4.2 and POPCNT), and a Direct3D 12 GPU supporting
 feature level 11_0. Dependencies are local; no administrator access is required.
 
-## Experimental Linux package
+## Linux 0.5.5 compatibility test
 
-The separate Linux package uses Proton to run the same Windows game and verified
-import backend, with a small Linux launcher in place of WPF. It is **experimental**,
-not a native Linux port. It requires native Linux Steam, installed Proton
-Experimental and its matching Steam Linux Runtime, Python 3.9 or newer, and
-compatible Vulkan graphics drivers. Flatpak Steam is not supported by this
-wrapper. See [the Linux instructions](launcher/linux/README-LINUX.md) for setup.
-Proton is supplied by the player and is not bundled.
+[Download the Linux-only 0.5.5 release](https://github.com/linkssy2/DarkwatchDarkerEdition/releases/tag/v0.5.5).
+It runs the Windows runtime through Proton; this is not a native Linux port.
+Use one Steam shortcut to the bundled Python for import, optional HD installation
+and play. Setup shows completion/errors and retains file verification.
+See [the Linux instructions](launcher/linux/README-LINUX.md) for exact Target,
+Start In and Launch Options, updates and all five existing 0.5 HD parts.
 
-Wrapper and package checks do not establish Linux gameplay compatibility. Actual
-Linux graphics, sound, controller input and performance remain unverified.
+Use native Steam, Proton Experimental and compatible Vulkan drivers. System
+Python is only needed for the optional terminal route. Steam/Proton are not
+bundled. Linux graphics, movies, audio, controllers and gameplay still need
+live testing. Flatpak Steam is unverified. Windows users should continue using
+the 0.5 Windows download above; no new Windows download accompanies 0.5.5.
 
 ## Features
 

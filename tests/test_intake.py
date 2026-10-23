@@ -5,6 +5,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from intake import IntakeError, MAGIC, SECTOR_SIZE, XDVDFS, extract_image, parse_directory, protect_source, safe_destination
@@ -89,6 +90,42 @@ class DirectoryTests(unittest.TestCase):
                 self.skipTest("Creating symlinks is not permitted on this host")
             with self.assertRaisesRegex(IntakeError, "symbolic link"):
                 safe_destination(root, "link/file")
+
+    def test_mount_or_junction_above_managed_root_is_allowed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root = parent / "installation"
+            with mock.patch.object(Path, "is_junction", lambda path: path == parent, create=True):
+                self.assertEqual(safe_destination(root, "assets/file"), root / "assets/file")
+
+    def test_managed_root_and_child_junctions_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "installation"
+            for linked in (root, root / "assets", root / "assets/file"):
+                with self.subTest(linked=linked), mock.patch.object(
+                        Path, "is_junction", lambda path: path == linked, create=True):
+                    with self.assertRaisesRegex(IntakeError, "symbolic link or junction"):
+                        safe_destination(root, "assets/file")
+
+    def test_real_linked_parent_allows_extraction_but_linked_root_does_not(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            actual = parent / "actual"
+            actual.mkdir()
+            alias = parent / "alias"
+            try:
+                alias.symlink_to(actual, target_is_directory=True)
+            except OSError:
+                self.skipTest("Creating symlinks is not permitted on this host")
+            raw = image_with_root(node(size=4))
+            raw[50 * SECTOR_SIZE:50 * SECTOR_SIZE + 4] = b"good"
+            disc = parent / "disc.iso"
+            disc.write_bytes(raw)
+            extract_image(disc, alias / "files", alias / "analysis")
+            self.assertEqual((actual / "files/file").read_bytes(), b"good")
+            self.assertEqual(disc.read_bytes(), raw)
+            with self.assertRaisesRegex(IntakeError, "symbolic link"):
+                safe_destination(alias, "file")
 
     def test_direct_output_source_alias_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -147,12 +147,16 @@ def digest_file(path: Path) -> str:
 
 
 def safe_destination(root: Path, relative: str) -> Path:
+    root = root.absolute()
     candidate = root.joinpath(*relative.split("/"))
     if not candidate.resolve().is_relative_to(root.resolve()):
         raise IntakeError(f"Destination escapes extraction directory: {candidate}")
     for ancestor in [candidate, *candidate.parents]:
         if ancestor.is_symlink() or (hasattr(ancestor, "is_junction") and ancestor.is_junction()):
             raise IntakeError(f"Destination uses a symbolic link or junction: {ancestor}")
+        # Wine's mapped drive ancestors are outside the managed output tree.
+        if ancestor == root:
+            break
     return candidate
 
 
