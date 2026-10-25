@@ -214,6 +214,62 @@ class GameplayHDPackTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'byte-for-byte compatible'):
                 pack.package(source, root/'bad-extension.zip', root/'bad.json', metadata, compiled, fnv)
 
+    def test_three_generations_pin_every_published_receipt_and_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            row, data, _, _, source, metadata, compiled = self.fixture(root)
+            rows, previous = [], None
+            for revision in (1, 2, 3):
+                asset = dict(row, name=f'generation-{revision}', pack_revision=revision)
+                rows.append(asset)
+                (source / (asset['name'] + '.dwt')).write_bytes(data)
+                if revision == 1:
+                    (source / 'fixture.dwt').unlink()
+                contents = dict(textures=rows)
+                if previous is not None:
+                    contents['previous_catalog'] = previous.decode()
+                metadata.write_text(json.dumps(contents))
+                base = '    {"%s.dwt",2,2,1,11,%s,8,2,2,2,0x%sull%s},'
+                compiled.write_text('\n'.join([
+                    '// Generated from gameplay_hd_assets.json; metadata only, no original pixels.',
+                    'inline constexpr GameplayAsset kGameplayAssets[]{',
+                    *(base % (a['name'], a['native_bytes'], a['native_fnv64'],
+                              ',' + str(a['pack_revision']) if a['pack_revision'] > 1 else '') for a in rows),
+                    '};', '']))
+                trusted = root / f'generation-{revision}.json'
+                result = pack.package(source, root / f'generation-{revision}.zip', trusted,
+                                      metadata, compiled, fnv)
+                self.assertEqual(result['files'], revision)
+                receipt = json.loads(trusted.read_bytes())
+                if previous is not None:
+                    self.assertEqual(receipt['previous_catalog'].encode(), previous)
+                previous = trusted.read_bytes()
+            # Both nested historical receipts have exact file/SHA membership.
+            current = json.loads(previous)
+            for depth in (0, 1):
+                altered = json.loads(current['previous_catalog'])
+                target = altered
+                if depth:
+                    target = json.loads(altered['previous_catalog'])
+                target['files'][0]['sha256'] = '0' * 64
+                if depth:
+                    altered['previous_catalog'] = json.dumps(target)
+                with self.assertRaisesRegex(ValueError, 'byte-for-byte compatible'):
+                    pack.encode_catalog(rows, current['files'], current['texture_catalog_sha256'], json.dumps(altered))
+            for wrong_previous in (None, json.loads(current['previous_catalog'])['previous_catalog']):
+                with self.assertRaisesRegex(ValueError, 'byte-for-byte compatible'):
+                    pack.encode_catalog(rows, current['files'], current['texture_catalog_sha256'], wrong_previous)
+            with self.assertRaisesRegex(ValueError, 'Unsupported HD pack revision'):
+                pack.encode_catalog([dict(row, pack_revision=4)], current['files'], '0' * 64, previous.decode())
+            # Repack the complete reviewed replacement-only generation unchanged.
+            for asset in rows:
+                (source / (asset['name'] + '.dwt')).write_bytes(pack.convert(data, asset, fnv))
+            (source / 'pack.json').write_bytes(previous)
+            copied = root / 'copied.json'
+            pack.package(source, root / 'copied.zip', copied, metadata, compiled, fnv,
+                         replacement_catalog=trusted)
+            self.assertEqual(copied.read_bytes(), previous)
+
     def test_download_parts_exact_round_trip_and_corruption(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -33,8 +33,9 @@ class DirectPlayFixture {
             json.Serialize(new {args=args,cwd=Environment.CurrentDirectory,
                 encoding=Environment.GetEnvironmentVariable("PYTHONIOENCODING")}),Encoding.UTF8);
         Console.WriteLine("not JSON"); Console.WriteLine("null");
+        if(mode=="cold-es"||mode=="error-es") Console.WriteLine("{\"event\":\"status\",\"language\":\"es\"}");
         Console.WriteLine("{\"event\":\"progress\",\"percent\":100}");
-        if(mode=="cold"||mode=="cancel") {
+        if(mode=="cold"||mode=="cold-es"||mode=="cancel") {
             Console.WriteLine("{\"event\":\"shader_prepare\",\"message\":\"Preparing shaders — 1 of 2\",\"percent\":50,\"completed\":1,\"total\":2}");
             if(mode=="cancel") {
                 string token=null;
@@ -47,6 +48,7 @@ class DirectPlayFixture {
             Console.WriteLine("{\"event\":\"shader_prepare\",\"message\":\"Preparing shaders — 2 of 2\",\"percent\":100,\"completed\":2,\"total\":2}");
         }
         if(mode=="stderr") {Console.Error.Write(new string('É',700));return 2;}
+        if(mode=="error-es") { Console.WriteLine("{\"event\":\"error\",\"message\":\"Close Darkwatch before installing, repairing, or starting another copy.\"}"); return 1; }
         if(mode=="large-stderr") Console.Error.Write(new string('E',262144));
         if(mode=="error"||mode=="error-then-success") {
             Console.WriteLine(json.Serialize(new { @event="error",message=new string('誤',700)}));
@@ -83,7 +85,7 @@ class DirectPlayHarness {
                     stdout=info.RedirectStandardOutput,stderr=info.RedirectStandardError,
                     outcode=info.StandardOutputEncoding.CodePage,errcode=info.StandardErrorEncoding.CodePage,
                     encoding=info.EnvironmentVariables["PYTHONIOENCODING"]}));
-            } else if(args[0]=="prepare"||args[0]=="cancel"||args[0]=="close") {
+            } else if(args[0]=="prepare"||args[0]=="prepare-es"||args[0]=="cancel"||args[0]=="close") {
                 int updates=0,cancels=0;Launcher view=null;
                 string token=Path.Combine(args[2],".cancel-fixture");Directory.CreateDirectory(args[2]);
                 try {
@@ -92,8 +94,10 @@ class DirectPlayHarness {
                         if(view==null)view=Launcher.Preparing(()=>{++cancels;File.WriteAllText(token,"cancel");});
                         view.UpdatePreparation(item);
                         if(view.Window.IsVisible)throw new Exception("Preparation fixture showed a window");
-                        if(((TextBlock)view.Window.FindName("StateTitle")).Text!="PREPARING SHADERS")throw new Exception("Missing preparation title");
+                        if(((TextBlock)view.Window.FindName("StateTitle")).Text!=(args[0]=="prepare-es"?"PREPARANDO SHADERS":"PREPARING SHADERS"))throw new Exception("Missing preparation title");
+                        if(args[0]=="prepare-es"&&!((TextBlock)view.Window.FindName("StatusText")).Text.StartsWith("Preparando shaders — "))throw new Exception("Shader progress stayed English");
                         if(((Grid)view.Window.FindName("LaunchActions")).Visibility!=Visibility.Collapsed)throw new Exception("Preparation exposes launch actions");
+                        if(((StackPanel)view.Window.FindName("LanguageActions")).Visibility!=Visibility.Collapsed)throw new Exception("Preparation exposes language mutation");
                         if(((ProgressBar)view.Window.FindName("Progress")).Value!=Convert.ToDouble(item["percent"]))throw new Exception("Wrong shader progress");
                         if(((Image)view.Window.FindName("Cover")).Source==null)throw new Exception("Preparation lost artwork");
                         if(args[0]=="cancel")((Button)view.Window.FindName("CancelButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -225,6 +229,16 @@ class DirectPlayTests(unittest.TestCase):
         self.assertTrue(response["ok"])
         self.assertEqual(response["updates"], 2)
         self.assertFalse(response["shown"])
+
+    def test_spanish_status_is_retained_for_direct_preparation_and_errors(self):
+        response, _ = self.run_fixture("cold-es", operation="prepare-es")
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["updates"], 2)
+        self.assertFalse(response["shown"])
+        response, _ = self.run_fixture("error-es")
+        self.assertFalse(response["ok"])
+        self.assertIn("Cierra Darkwatch", response["message"])
+        self.assertIn("importar o reparar", response["message"])
 
     def test_cancel_from_preparation_view_reaches_backend_and_does_not_report_success(self):
         for operation in ("cancel", "close"):

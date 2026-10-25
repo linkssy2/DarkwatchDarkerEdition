@@ -79,7 +79,7 @@ int main(){
             run = subprocess.run([str(exe)],cwd=folder,capture_output=True,text=True)
             self.assertEqual(run.returncode,0,run.stdout+run.stderr)
 
-    def test_legacy_pack_or_complete_extension_only(self):
+    def test_two_published_packs_or_complete_current_generation_only(self):
         compiler = shutil.which('clang++')
         if not compiler:
             self.skipTest('Requires compiler')
@@ -90,7 +90,9 @@ int main(){
 inline constexpr GameplayAsset kGameplayAssets[]{
  {"base.dwt",1,1,1,6,4,0,1,1,1,11},
  {"new-a.dwt",1,1,1,6,4,0,1,1,1,12,2},
- {"new-b.dwt",1,1,1,6,4,0,1,1,1,13,2}
+ {"new-b.dwt",1,1,1,6,4,0,1,1,1,13,2},
+ {"current-a.dwt",1,1,1,6,4,0,1,1,1,14,3},
+ {"current-b.dwt",1,1,1,6,4,0,1,1,1,15,3}
 };
 ''')
             (folder/'test.cpp').write_text(r'''
@@ -110,6 +112,22 @@ int main(int argc,char**){
   Write(0);std::error_code error;std::filesystem::exists(kGameplayAssets[1].file,error);assert(error);
   t.Open(".");assert(!t.Available());return 0;
  }
+ // Exhaust every possible partial install: only the three complete released
+ // generations qualify, never a later group without its earlier additions.
+ for(unsigned mask=0;mask<32;++mask){
+  for(unsigned i=0;i<5;++i){
+   std::filesystem::remove(kGameplayAssets[i].file);if(mask&(1u<<i))Write(i);
+  }
+  t.Open(".");bool valid=mask==1||mask==7||mask==31;assert(t.Available()==valid);
+  for(unsigned i=0;i<5;++i)assert(t.LoadByNativeHash(11+i,out)==(valid&&bool(mask&(1u<<i))));
+ }
+ // A changed current payload cannot pass its lazy integrity check; a damaged
+ // current header invalidates the install rather than downgrading it silently.
+ {std::fstream f("current-a.dwt",std::ios::binary|std::ios::in|std::ios::out);f.seekp(32);f.put('x');}
+ t.Open(".");assert(t.Available()&&!t.LoadByNativeHash(14,out)&&t.LoadByNativeHash(11,out));
+ Write(3);{std::fstream f("current-a.dwt",std::ios::binary|std::ios::in|std::ios::out);f.seekp(8);f.put('x');}
+ t.Open(".");assert(!t.Available());
+ for(const auto& a:kGameplayAssets)std::filesystem::remove(a.file);
  t.Open(".");assert(!t.Available());
  Write(0);t.Open(".");assert(t.Available()&&t.LoadByNativeHash(11,out));
  assert(!t.LoadByNativeHash(12,out)&&!t.LoadByNativeHash(13,out));

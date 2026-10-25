@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 struct X86Context;
+bool DarkwatchHideReplacedMenuContent(X86Context& ctx, uint8_t* base);
 void DarkwatchMenuRenderBegin(X86Context& ctx, uint8_t* base);
 void DarkwatchMenuRow(X86Context& ctx, uint8_t* base);
 void DarkwatchMenuRenderEnd(X86Context& ctx, uint8_t* base);

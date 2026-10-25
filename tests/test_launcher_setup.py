@@ -11,10 +11,12 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "launcher"))
+sys.path.insert(0, str(ROOT / 'launcher'))
 
 
 def load(name, file):
@@ -28,6 +30,7 @@ def load(name, file):
 intake = sys.modules.get("intake") or load("intake", ROOT / "tools/intake.py")
 bonus = sys.modules.get("bonus_content") or load("bonus_content", ROOT / "launcher/bonus_content.py")
 gameplay_hd = sys.modules.get("gameplay_hd") or load("gameplay_hd", ROOT / "launcher/gameplay_hd.py")
+language_pack = sys.modules.get("language_pack") or load("language_pack", ROOT / "launcher/language_pack.py")
 for name in ('character_animation', 'character_archive', 'character_assets', 'character_repaint', 'character_content'):
     if name not in sys.modules:
         load(name, ROOT / 'launcher' / (name + '.py'))
@@ -133,10 +136,11 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         shutil.copyfile(ROOT / "launcher/setup_backend.py", self.payload / "setup_backend.py")
         shutil.copyfile(ROOT / "launcher/bonus_content.py", self.payload / "bonus_content.py")
         shutil.copyfile(ROOT / "launcher/gameplay_hd.py", self.payload / "gameplay_hd.py")
+        shutil.copyfile(ROOT / "launcher/language_pack.py", self.payload / "language_pack.py")
         for name in ('character_animation.py', 'character_archive.py', 'character_assets.py',
                      'character_repaint.py', 'character_content.py', 'character_boss.py',
                      'character_boss_effects.py', 'character_spectral_hands.py', 'character_hand_seams.py',
-                     'character_secondary.py',
+                     'character_secondary.py', 'character_preview.py', 'character_roster.py',
                      'character-catalog.json'):
             shutil.copyfile(ROOT / 'launcher' / name, self.payload / name)
         (self.payload / 'character-art').mkdir()
@@ -167,6 +171,15 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
                                                             sha(self.installed_data['packfile.pck']))})
         fixture.start()
         self.addCleanup(fixture.stop)
+        def fixture_preview(assets, output, cancel):
+            # Preview codec has focused tests; exercise its real transaction here.
+            cancel()
+            data = b'synthetic private preview cache'
+            output.write_bytes(data)
+            return dict(version=setup.character_preview.VERSION, size=len(data), sha256=sha(data))
+        preview = patch.object(setup.character_preview, 'prepare', side_effect=fixture_preview)
+        preview.start()
+        self.addCleanup(preview.stop)
         self.disc = dict(schema_version=1, xbe_sha256=sha(self.data["default.xbe"]),
                          files=[dict(path=name, size=len(blob), sha256=sha(blob)) for name, blob in self.data.items()])
         (self.payload / "supported-disc.json").write_text(json.dumps(self.disc))
@@ -242,6 +255,127 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
             time.sleep(.02)
         self.assertEqual((current / "worker-ran.txt").read_text(), "harmless launcher fixture")
 
+    def test_optional_spanish_install_selection_repair_and_invalid_media(self):
+        text = b"synthetic Spanish catalogue"
+        files = {"language_text.bin": text, "assets/audioDlg.pck": b"synthetic Spanish dialogue"}
+        catalog = dict(schema_version=1, language="es", files={name: dict(size=len(data), sha256=sha(data)) for name, data in files.items()})
+        (self.payload / "spanish-catalog.json").write_text(json.dumps(catalog))
+        self.repin()
+        self.backend = setup.Setup(self.package, self.install, notify=lambda *a, **k: None)
+        first = self.install_disc()
+        before = (first / "assets/packfile.pck").read_bytes()
+        self.assertEqual(self.backend.status()["language"], "en")
+        with self.assertRaisesRegex(setup.SetupError, "Spanish language pack needs repair"):
+            self.backend.set_language("es")
+        archive = self.root / "spanish.zip"
+        with zipfile.ZipFile(archive, "w") as stream:
+            for name, data in files.items():
+                stream.writestr(name, data)
+        self.assertTrue(self.backend.install_spanish(archive)["spanish_installed"])
+        self.assertEqual(self.backend.set_language("es")["language"], "es")
+        self.assertEqual((first / "assets/packfile.pck").read_bytes(), before)
+        second = self.install_disc()
+        self.assertNotEqual(first, second)
+        self.assertTrue(self.backend.status()["spanish_installed"])
+        self.assertEqual(self.backend.status()["language"], "es")
+        saved = self.snapshot(second)
+        real_copy = self.backend.copy_file
+        def fail_media(source, destination):
+            if str(destination).replace("\\", "/").endswith("language/es/assets/audioDlg.pck"):
+                Path(destination).write_bytes(b"partial")
+                raise OSError("synthetic media copy failure")
+            return real_copy(source, destination)
+        with patch.object(self.backend, "copy_file", side_effect=fail_media):
+            repaired = self.install_disc()
+        self.assertFalse((repaired / "language/es").exists())
+        self.assertEqual(self.snapshot(second), saved)
+        self.assertTrue(self.backend.status()["ready"])
+        self.assertFalse(self.backend.status()["spanish_installed"])
+        self.backend.install_spanish(archive)
+        second = repaired
+        (second / "language/es/language_text.bin").write_bytes(b"x" * len(text))
+        with self.assertRaisesRegex(setup.SetupError, "Spanish language pack needs repair"):
+            self.backend.play()
+        self.backend.verify()
+        self.assertIn("Spanish", self.backend.hd_warning)
+        self.assertTrue(self.backend.status()["ready"])
+        self.backend.set_language("en")
+        self.assertEqual(language_pack.selected(second), "en")
+
+    def test_builtin_spanish_clean_import_upgrade_optional_voices_and_repair(self):
+        # Start with an older English installation, then add the new launcher payload.
+        old = self.install_disc()
+        settings = old / setup.SETTINGS
+        settings.write_text('[controls]\nsensitivity=1.7\n', encoding="utf-8")
+        (old / "hdd").mkdir()
+        (old / "hdd/save.bin").write_bytes(b"user progress")
+        text = b"DWES0003 translated fixture"
+        location = self.payload / "language/es/language_text.bin"
+        location.parent.mkdir(parents=True)
+        location.write_bytes(text)
+        text_catalog = dict(schema_version=1, language="es", files={
+            "language_text.bin": dict(size=len(text), sha256=sha(text))})
+        (self.payload / "spanish-text-catalog.json").write_text(json.dumps(text_catalog))
+        voices = {"language_text.bin": b"older private text", "assets/audioDlg.pck": b"optional voice fixture"}
+        (self.payload / "spanish-catalog.json").write_text(json.dumps(dict(schema_version=1, language="es", files={
+            name: dict(size=len(data), sha256=sha(data)) for name, data in voices.items()})))
+        self.repin()
+        self.backend = setup.Setup(self.package, self.install, notify=lambda *a, **k: None)
+        state = self.backend.status()
+        self.assertTrue(state["spanish_installed"])
+        self.assertFalse(state["spanish_audio_installed"])
+        self.assertFalse((old / "language/es/language_text.bin").exists())
+        self.assertEqual(self.backend.set_language("es")["language"], "es")
+        self.assertEqual((old / "language/es/language_text.bin").read_bytes(), text)
+        self.assertIn("sensitivity=1.7", settings.read_text())
+        before = settings.read_bytes()
+        with patch.object(setup, "game_running", return_value=True), self.assertRaises(setup.SetupError):
+            self.backend.set_language("en")
+        self.assertEqual(settings.read_bytes(), before)
+        archive = self.root / "voices.zip"
+        with zipfile.ZipFile(archive, "w") as stream:
+            for name, data in voices.items():
+                stream.writestr(name, data)
+        self.assertTrue(self.backend.install_spanish(archive)["spanish_audio_installed"])
+        self.assertEqual((old / "language/es/language_text.bin").read_bytes(), text)
+        self.assertTrue(self.backend.spanish_valid(old))
+        repaired = self.install_disc()
+        self.assertTrue(self.backend.spanish_valid(repaired))
+        self.assertEqual(language_pack.selected(repaired), "es")
+        self.assertEqual((repaired / "hdd/save.bin").read_bytes(), b"user progress")
+        self.assertEqual((repaired / "language/es/assets/audioDlg.pck").read_bytes(), voices["assets/audioDlg.pck"])
+        self.assertEqual(settings.read_bytes(), before)
+        # A saved Spanish preference with the old, incompatible V2 resource is
+        # repaired before Play without resetting saves, controls, or voices.
+        translated = repaired / "language/es/language_text.bin"
+        translated.write_bytes(b"DWES0002 older translated fixture")
+        saved_settings = (repaired / setup.SETTINGS).read_bytes()
+        self.assertFalse(self.backend.text_catalog.validate(repaired))
+        with patch.object(self.backend, "prepare_shaders"), patch.object(setup.subprocess, "Popen") as launch:
+            launch.return_value.wait.return_value = 0
+            self.backend.play()
+            launch.assert_called_once()
+        self.assertEqual(translated.read_bytes(), text)
+        self.assertEqual((repaired / setup.SETTINGS).read_bytes(), saved_settings)
+        self.assertEqual((repaired / "hdd/save.bin").read_bytes(), b"user progress")
+        self.assertEqual((repaired / "language/es/assets/audioDlg.pck").read_bytes(), voices["assets/audioDlg.pck"])
+        # Corrupt media cannot be admitted just because the built-in text is valid.
+        media = repaired / "language/es/assets/audioDlg.pck"
+        media.write_bytes(b"x" * len(voices["assets/audioDlg.pck"]))
+        with self.assertRaisesRegex(setup.SetupError, "Spanish language pack needs repair"):
+            self.backend.play()
+        self.backend.set_language("en")
+        self.assertEqual(language_pack.selected(repaired), "en")
+        # A fresh import also includes text without importing an optional archive.
+        fresh = setup.Setup(self.package, self.root / "fresh", notify=lambda *a, **k: None)
+        installed = Path(fresh.import_iso(self.iso)["install_dir"])
+        self.assertTrue(fresh.spanish_valid(installed))
+        self.assertTrue(fresh.status()["spanish_installed"])
+        self.assertFalse(fresh.status()["spanish_audio_installed"])
+        location.write_bytes(b"x" * len(text))
+        with self.assertRaisesRegex(setup.SetupError, "Built-in Spanish text is damaged"):
+            setup.Setup(self.package, self.install)
+
     def test_portable_package_moves_with_saves_and_launches_only_from_new_folder(self):
         current = self.install_disc()
         settings = current / setup.SETTINGS
@@ -274,6 +408,35 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         self.assertEqual((relocated / setup.SETTINGS).read_bytes(), b"portable settings")
         self.assertEqual((relocated / "hdd/E/save.dat").read_bytes(), b"portable progress")
         self.assertEqual((relocated / "cache/shader.bin").read_bytes(), b"portable cache")
+
+    def test_same_folder_status_verify_play_preserve_all_save_bytes(self):
+        current = self.install_disc()
+        files = {"hdd/E/UDATA/43430016/profile/Profile 1": b"existing signed profile fixture",
+                 "hdd/E/UDATA/43430016/damaged/Profile 2": b"interrupted profile",
+                 "hdd/E/UDATA/43430016/empty/Profile 3": b"",
+                 "hdd2/E/UDATA/43430016/other/Profile 1": b"second instance progress"}
+        for relative, data in files.items():
+            path = current / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        original = {name: self.snapshot(current / name) for name in ("hdd", "hdd2")}
+        pointer = (self.install / "active.json").read_bytes()
+        children = []
+        real_popen = subprocess.Popen
+        def spawn(*args, **kwargs):
+            child = real_popen(*args, **kwargs)
+            children.append(child)
+            return child
+        self.assertTrue(self.backend.status()["ready"])
+        self.assertEqual(self.backend.verify(), current)
+        with patch.object(subprocess, "Popen", side_effect=spawn):
+            self.backend.play()
+        for child in children:
+            self.assertEqual(child.wait(timeout=5), 0)
+        self.assertEqual(self.backend.active(), current)
+        self.assertEqual((self.install / "active.json").read_bytes(), pointer)
+        for name, contents in original.items():
+            self.assertEqual(self.snapshot(current / name), contents)
 
     @unittest.skipUnless(os.name == "nt", "Previous Windows launcher migration")
     def test_first_import_adopts_prior_saves_without_using_legacy_for_play(self):

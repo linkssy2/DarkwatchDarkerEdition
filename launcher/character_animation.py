@@ -336,16 +336,17 @@ def _witness(tree):
     return result
 
 
-def prepare(read, decode, encode):
+def prepare(read, decode, encode, model=CASSIDY, character="cassidy"):
     """Return 619 adapted clips, five maps and their preload references.
 
     The importer supplies a source-hash-verifying read(path) function. BXML
     decode/encode are supplied to share the importer's validated format parser.
     """
-    models = {path: frames(read(path)) for path in (STORM, CHAZ, CASSIDY)}
-    params = {path: parameters(models[path], models[CASSIDY]) for path in (STORM, CHAZ)}
+    models = {path: frames(read(path)) for path in (STORM, CHAZ, model)}
+    params = {path: parameters(models[path], models[model]) for path in (STORM, CHAZ)}
     outputs, tables, reusable = {}, [], {}
     for alias, source, destination, basis, witness, count in TABLES:
+        destination = destination.replace('cassidy', character)
         table = decode(read(source))
         witnessed = _witness(decode(read(witness)))
         if (source[:-5], 'AnimatedCharacterResource') not in witnessed:
@@ -367,7 +368,7 @@ def prepare(read, decode, encode):
                 target = reusable.get(key)
                 if target is None:
                     stem = 'coop' if basis == STORM else 'chaz'
-                    target = 'characters/player_two/cassidyanimations/' + stem + '/' + original
+                    target = 'characters/player_two/' + character + 'animations/' + stem + '/' + original
                     if target in outputs:
                         raise ValueError('Retarget destination collision')
                     outputs[target] = data
@@ -398,7 +399,7 @@ def prepare(read, decode, encode):
             raise ValueError('Unsupported solo packed animation')
         data, changed = retarget(raw, params[CHAZ])
         sha = hashlib.sha256(data).hexdigest()
-        target = reusable.get((original, sha), 'characters/player_two/cassidyanimations/solo/' + original)
+        target = reusable.get((original, sha), 'characters/player_two/' + character + 'animations/solo/' + original)
         if target in outputs and outputs[target] != data:
             raise ValueError('Solo animation destination collision')
         outputs[target] = data
@@ -410,7 +411,7 @@ def prepare(read, decode, encode):
     data = encode(table)
     if decode(data) != table:
         raise ValueError('Solo animation table roundtrip failed')
-    outputs['characters/player_two/cassidysolomultiplayeranimation.bxml'] = data
+    outputs['characters/player_two/' + character + 'solomultiplayeranimation.bxml'] = data
     if len(outputs) != 624:
         raise ValueError('Incomplete character animation output')
     return outputs, tables, solo_clips

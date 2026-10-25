@@ -2,7 +2,10 @@
 #include <cstdint>
 
 namespace darkwatch {
-enum class GraphicsMenuRoute { Hidden, OptionsMain, Visual, Controls };
+enum class GraphicsMenuRoute { Hidden, OptionsMain, Visual, Controls, Audio };
+struct AudioSettings {
+    int music = 100, effects = 100, speech = 100;
+};
 struct GraphicsRouteState {
     GraphicsMenuRoute route = GraphicsMenuRoute::Hidden;
     uint32_t options = 0;
@@ -16,13 +19,20 @@ struct GraphicsRouteState {
     bool paused = false;
     bool pause_settings_available = false;
     uint32_t input_port = 0; // Guest port owning this local Pause; frontend uses port zero.
+    bool audio_available = false;
+    AudioSettings audio;
 };
 
 // Call on the guest thread. UI callers must use a published snapshot instead.
 GraphicsRouteState QueryGraphicsMenuRoute(const uint8_t* base);
+// Presentation only: the original root can still draw after losing frontend ownership.
+bool HideFrontendSettingsContent(const uint8_t* base, uint32_t options);
+// Remove only the original frontend Options Xbox Live row, retaining ownership.
+void EnsureNativeOptionsEntries(uint8_t* base, uint32_t options);
 // Rejects an old UI request if its original Options object is no longer active.
 bool SetGraphicsSubtitles(uint8_t* base, uint32_t expected_options, bool enabled);
 bool SetOriginalControls(uint8_t* base, uint32_t expected_options, bool invert, bool vibration, int32_t sensitivity);
+bool SetOriginalAudio(uint8_t* base, uint32_t expected_options, const AudioSettings& settings);
 bool SetControllerPreset(uint8_t* base, uint32_t expected_options, int32_t preset);
 bool OpenControllerConfiguration(uint8_t* base, uint32_t expected_options);
 // Use the Pause owner's registered original Controls page and normal page push.

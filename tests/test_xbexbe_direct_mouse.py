@@ -23,14 +23,25 @@ static darkwatch::ControlsSettings controls;
 darkwatch::ControlsSettings darkwatch::ControlsSnapshot(){return controls;}
 static const void* controls_load_table=nullptr;
 static void* controls_save_table=nullptr;
+static const void* audio_load_table=nullptr;
+static void* audio_save_table=nullptr;
 static const void* view_load_table=nullptr;
 static void* view_save_table=nullptr;
 void darkwatch::ControlsLoad(const void* t){controls_load_table=t;}
 void darkwatch::ControlsSave(void* t){controls_save_table=t;}
+void darkwatch::AudioLoad(const void* t){audio_load_table=t;}
+void darkwatch::AudioSave(void* t){audio_save_table=t;}
 void darkwatch::view::Load(const void* t){view_load_table=t;}
 void darkwatch::view::Save(void* t){view_save_table=t;}
 void darkwatch::settings::LoadCharacters(const void*){}
 void darkwatch::settings::SaveCharacters(void*){}
+// Localization has an actual parser/lookup/file-overlay fixture; aiming owns no language state.
+void darkwatch::language::Load(const void*){}
+void darkwatch::language::Save(void*){}
+bool darkwatch::language::Initialize(const std::filesystem::path&){return true;}
+bool darkwatch::language::Spanish(){return false;}
+std::filesystem::path app::ExeDir(){return {};}
+void kernel::SetGameFileOverlay(const std::string&){}
 bool darkwatch::ControlsMessage(void*,uint32_t,uintptr_t,intptr_t,intptr_t*){return false;}
 // The graphics page has its own actual ImGui/input fixture; isolate direct aiming here.
 void DarkwatchGraphicsInit() {}
@@ -172,7 +183,7 @@ int main(){
  Yaw(-.4);Pitch(-.2);
  CHECK(app::kGame.options.empty()&&app::kGame.load&&app::kGame.save);
  app::kGame.load(memory);app::kGame.save(memory);
- CHECK(controls_load_table==memory&&view_load_table==memory&&controls_save_table==memory&&view_save_table==memory);
+ CHECK(controls_load_table==memory&&audio_load_table==memory&&view_load_table==memory&&controls_save_table==memory&&audio_save_table==memory&&view_save_table==memory);
  CHECK(app::kGame.message==darkwatch::ControlsMessage);
  // Each latched pair retains one sensitivity even if the UI changes settings between axes.
  Reset();Frame(20,40);Yaw(-1);controls.mouse_millidegrees=100;Pitch(2);
@@ -248,6 +259,8 @@ def frontend_fixture(folder):
     (folder / "common").mkdir(exist_ok=True)
     (folder / "common/settings_skin.h").write_text(
         "#pragma once\nnamespace darkwatch::skin { inline void Finalize() {} }\n")
+    (folder / "common/character_preview.h").write_text(
+        "#pragma once\nnamespace darkwatch::preview { inline bool Finalize() { return true; } }\n")
 
 
 class DirectMouseTests(unittest.TestCase):

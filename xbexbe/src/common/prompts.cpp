@@ -1,5 +1,7 @@
 #include "prompts.h"
+#include "prompt_owner.h"
 #include "controls.h"
+#include "language.h"
 #include "hd_ui_assets.h"
 #include "hd_ui_font.h"
 #include "app/app.h"
@@ -58,6 +60,7 @@ uint32_t g_texture=0;
 bool g_failed=false, g_have_settings=false;
 uint64_t g_revision=0;
 input::DeviceSnapshot g_device{};
+input::PadBindings g_controller_bindings{};
 darkwatch::ControlsSettings g_settings{};
 thread_local bool g_in_call=false;
 std::array<uint64_t,16> g_font_trace{};
@@ -451,10 +454,13 @@ bool TextureName(const uint8_t* base,uint32_t texture) {
         !std::strcmp(name,"xboxsmall")||!std::strcmp(name,"xboxsmallglow");
 }
 void Refresh(uint8_t* base) {
-    const auto device=input::GetLastDevice();const auto settings=darkwatch::ControlsSnapshot();
+    const int port=darkwatch::prompt_owner::Port(base);
+    const auto prompt=port<0?input::GetControllerPromptSnapshot():input::GetControllerPromptSnapshot(port);
+    const auto device=prompt.device;const auto settings=darkwatch::ControlsSnapshot();
     if(!g_have_settings||device.controller!=g_device.controller||(device.controller&&device.family!=g_device.family)||
+       prompt.bindings!=g_controller_bindings||
        std::memcmp(settings.bindings.data(),g_settings.bindings.data(),sizeof(settings.bindings))) {
-        g_device=device;g_settings=settings;g_have_settings=true;++g_revision;
+        g_device=device;g_controller_bindings=prompt.bindings;g_settings=settings;g_have_settings=true;++g_revision;
     }
     DarkwatchRefreshMenuBars(base,g_revision);
 }
@@ -466,15 +472,27 @@ unsigned Key(unsigned action) {
 bool CString(const uint8_t* base,uint32_t p,std::string& text,unsigned limit=80) {
     text.clear();for(unsigned i=0;i<limit;++i){char c;if(!Read(base,uint64_t(p)+i,c))return false;if(!c)return true;text+=c;}return false;
 }
-bool Reference(const uint8_t* base,uint32_t ref,std::string& text) {
-    uint32_t p=0;return Read(base,ref,p)&&p&&CString(base,p+2,text);
+bool Reference(const uint8_t* base,uint32_t ref,std::string& text,unsigned limit=80) {
+    uint32_t p=0;return Read(base,ref,p)&&p&&p<=UINT32_MAX-2&&CString(base,p+2,text,limit);
 }
 std::string Lower(std::string s) {for(char& c:s)if(c>='A'&&c<='Z')c=char(c-'A'+'a');return s;}
 bool SetReference(X86Context& ctx,uint8_t* base,uint32_t output,const std::string& value) {
-    if(!Span(base,output,4)||value.size()>160||ctx.esp<1024||!Span(base,uint64_t(ctx.esp)-1024,1024))return false;
-    X86Context call=ctx;call.esp-=192;std::memcpy(base+call.esp,value.c_str(),value.size()+1);
+    if(value.size()>16384)return false;
+    const uint32_t reserve=uint32_t((value.size()+64+15)&~size_t(15));
+    uint32_t previous=0;
+    if(!Read(base,output,previous)||(previous&&!Span(base,previous,3))||ctx.esp<reserve+1024||
+       !Span(base,uint64_t(ctx.esp)-reserve-1024,reserve+1024))return false;
+    X86Context call=ctx;call.esp-=reserve;const uint32_t temporary=call.esp,chars=temporary+16;
+    std::memset(base+temporary,0,4);
+    std::memcpy(base+chars,value.c_str(),value.size()+1);
+    // Construct first: allocation failure must retain the original subtitle.
+    call.ecx=temporary;kernel::CallGuest(call,0x138FA,{chars});
+    uint32_t replacement=0;
+    if(!Read(base,temporary,replacement)||!replacement)return false;
     call.ecx=output;kernel::CallGuest(call,0x11C1A,{});
-    call.ecx=output;kernel::CallGuest(call,0x138FA,{call.esp});return true;
+    // Transfer the newly constructed reference; no extra retain/release pair.
+    std::memcpy(base+output,&replacement,4);
+    std::memset(base+temporary,0,4);return true;
 }
 } // namespace
 
@@ -537,11 +555,18 @@ void DarkwatchPromptFont(X86Context& ctx,uint8_t* base) {
             const bool alternate=g_device.family==input::ControllerFamily::PlayStation||g_device.family==input::ControllerFamily::Switch;
             // Stable reserved tokens remain readable even when the localized result was cached
             // on PC. Existing authored controller icons are restored exactly.
-            if(alternate&&i<16){custom=true;badgeKey=ControllerBadge(g_device.family,kActions[i]);}
+            if(i<16) {
+                const unsigned physical=g_controller_bindings[kActions[i]];
+                if(alternate){custom=true;badgeKey=ControllerBadge(g_device.family,physical);}
+                else {
+                    const auto original=std::find(kActions.begin(),kActions.begin()+16,physical);
+                    map=it->original[size_t(original-kActions.begin())];
+                    if(map<0&&(physical==4||physical==5)){custom=true;badgeKey=physical==5?258:257;}
+                }
+            }
             else if(i==16||i==21){custom=true;badgeKey=alternate?ControllerBadge(g_device.family,16):259;}
             else if(i==20||i==25){custom=true;badgeKey=alternate?ControllerBadge(g_device.family,17):260;}
             else if((i>=17&&i<=19)||(i>=22&&i<=24))map=-1;
-            else if((i==10||i==11)&&map<0){custom=true;badgeKey=i==10?258:257;}
             if(custom)map=int16_t(it->first+i);
         } else if(i>=21&&i<=24) {
             // Lefty uses the left stick to look. Keep the expanded token stable,
@@ -569,11 +594,29 @@ void DarkwatchPromptFontDestroy(X86Context& ctx,uint8_t* base) {
 }
 void DarkwatchPromptLocalization(X86Context& ctx,uint8_t* base) {
     if(g_in_call||base!=kernel::g_base)return;
-    uint32_t key=0,output=0;std::string name;
-    if(!Read(base,uint64_t(ctx.ebp)+12,key)||!Reference(base,key,name)||!Read(base,uint64_t(ctx.ebp)+8,output))return;
-    name=Lower(name);
-    if(name=="gen_pressstart"||name=="gen_pressstartcontinue") {
-        SetReference(ctx,base,output,name=="gen_pressstart"?"Press ^pcStart":"Press ^pcStart to Continue");
+    uint32_t key=0,identity=0,output=0;
+    if(!Read(base,uint64_t(ctx.ebp)+12,key)||!Read(base,key,identity)||!Read(base,uint64_t(ctx.ebp)+8,output))return;
+    // The original table resolver takes a hashed text ID, not a string reference.
+    static const auto restart=darkwatch::language::NativeKey("GEN_REVERTSTORYMODE");
+    static const auto start=darkwatch::language::NativeKey("GEN_PRESSSTART");
+    static const auto resume=darkwatch::language::NativeKey("GEN_PRESSSTARTCONTINUE");
+    if(identity==restart) {
+        SetReference(ctx,base,output,darkwatch::language::Guest("Replay this chapter? Your saved campaign progress will be kept."));
+    } else if(identity==start||identity==resume) {
+        const bool controller=input::GetLastDevice().controller;
+        SetReference(ctx,base,output,darkwatch::language::Guest(identity==start?
+            (controller?"Press ^pcStart":"Press any key to start"):
+            (controller?"Press ^pcStart to Continue":"Press any key to continue")));
+    } else if(darkwatch::language::Spanish()) {
+        std::string original;
+        if(!Reference(base,output,original,16385))return;
+        auto translated=darkwatch::language::Translate(identity,original);
+        // Native ~literal registration strips ~ and hashes the displayed label.
+        // Only known project copy whose returned text matches that identity can
+        // use this fallback; ordinary game text keeps its exact context match.
+        if(translated.empty()&&original.size()<=128&&identity==darkwatch::language::NativeKey(original))
+            translated=darkwatch::language::Guest(original.c_str());
+        if(!translated.empty()&&translated!=original)SetReference(ctx,base,output,translated);
     }
 }
 void DarkwatchPromptStartToken(X86Context& ctx,uint8_t* base) {

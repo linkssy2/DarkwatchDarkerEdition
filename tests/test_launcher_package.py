@@ -16,6 +16,38 @@ SPEC.loader.exec_module(package)
 
 
 class LauncherPackageTests(unittest.TestCase):
+    def test_spanish_resource_is_bundled_without_media_and_requires_compatible_reader(self):
+        with patch.object(package, 'hd_sources', return_value={}):
+            plan = package.sources()
+        self.assertIn('payload/language/es/language_text.bin', plan)
+        self.assertIn('payload/spanish-text-catalog.json', plan)
+        self.assertFalse(any(Path(name).suffix.lower() in ('.pck', '.xmv', '.wav') for name in plan))
+        with tempfile.TemporaryDirectory() as folder, patch.object(package, 'REPO', Path(folder)):
+            root = Path(folder)
+            source_name = 'xbexbe/src/common/language.cpp'
+            source = root / source_name
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b'fixture v3 reader')
+            build = {'host_sources': {'files': [{'path': source_name, 'sha256': package.sha(source)}]}}
+            resource, catalog = root / 'text.bin', root / 'catalog.json'
+            plan = {'payload/language/es/language_text.bin': resource, 'payload/spanish-text-catalog.json': catalog}
+            def pin():
+                catalog.write_text(json.dumps(dict(schema_version=1, language='es', files={
+                    'language_text.bin': dict(size=resource.stat().st_size, sha256=package.sha(resource))})))
+            resource.write_bytes(b'DWES0003translated fixture')
+            pin()
+            package.check_spanish_text(plan, build)
+            for old_format in (b'DWES0001original English context', b'DWES0002old fingerprint'):
+                resource.write_bytes(old_format)
+                pin()
+                with self.assertRaisesRegex(ValueError, 'translation-only'):
+                    package.check_spanish_text(plan, build)
+            resource.write_bytes(b'DWES0003translated fixture')
+            pin()
+            source.write_bytes(b'different reader')
+            with self.assertRaisesRegex(ValueError, 'reader differs'):
+                package.check_spanish_text(plan, build)
+
     def test_only_recorded_release_runtime_can_be_packaged(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(package, 'REPO', Path(folder)):
             root = Path(folder) / 'build/xbexbe-release'
@@ -23,7 +55,11 @@ class LauncherPackageTests(unittest.TestCase):
             exe = root / 'darkwatch_xbe.exe'
             exe.write_bytes(b'release runtime fixture')
             manifest = root / 'build-manifest.json'
-            info = {'executable': {'sha256': package.sha(exe)}, 'release_profile': package.RELEASE_PROFILE}
+            sdk_patch = package.REPO / 'patches/xbexbe.patch'
+            sdk_patch.parent.mkdir()
+            sdk_patch.write_bytes(b'fixture SDK patch')
+            info = {'executable': {'sha256': package.sha(exe)}, 'release_profile': package.RELEASE_PROFILE,
+                    'toolchain': {'build_patch': {'sha256': package.sha(sdk_patch)}}}
             plan = {'payload/runtime/darkwatch_xbe.exe': exe}
             manifest.write_text(json.dumps(info))
             self.assertEqual(package.check_sources(plan), package.sha(exe))
@@ -35,6 +71,33 @@ class LauncherPackageTests(unittest.TestCase):
             manifest.write_text(json.dumps(info))
             exe.write_bytes(b'different runtime')
             with self.assertRaisesRegex(ValueError, 'Runtime differs'):
+                package.check_sources(plan)
+
+    def test_current_sdk_patch_must_match_recorded_runtime_build(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(package, 'REPO', Path(folder)):
+            root = package.REPO / 'build/xbexbe-release'
+            root.mkdir(parents=True)
+            exe = root / 'darkwatch_xbe.exe'
+            exe.write_bytes(b'fixture runtime')
+            sdk_patch = package.REPO / 'patches/xbexbe.patch'
+            sdk_patch.parent.mkdir()
+            sdk_patch.write_bytes(b'compiled SDK fixes')
+            manifest = root / 'build-manifest.json'
+            info = {'executable': {'sha256': package.sha(exe)}, 'release_profile': package.RELEASE_PROFILE,
+                    'toolchain': {'build_patch': {'sha256': package.sha(sdk_patch)}}}
+            plan = {'payload/runtime/darkwatch_xbe.exe': exe}
+            manifest.write_text(json.dumps(info))
+            self.assertEqual(package.check_sources(plan), package.sha(exe))
+            sdk_patch.write_bytes(b'new shader fix not compiled yet')
+            with self.assertRaisesRegex(ValueError, 'SDK patch differs'):
+                package.check_sources(plan)
+            sdk_patch.write_bytes(b'compiled SDK fixes')
+            manifest.write_text(json.dumps(dict(info, toolchain={})))
+            with self.assertRaisesRegex(ValueError, 'SDK patch differs'):
+                package.check_sources(plan)
+            manifest.write_text(json.dumps(info))
+            sdk_patch.unlink()
+            with self.assertRaisesRegex(ValueError, 'SDK patch differs'):
                 package.check_sources(plan)
 
     def test_exact_allowlist_and_original_payload_boundary(self):
@@ -156,7 +219,7 @@ class LauncherPackageTests(unittest.TestCase):
             exe.write_bytes(b'fixture host program')
             plan = {'payload/supported-disc.json': disc, 'payload/runtime/darkwatch_xbe.exe': exe}
             out = root / 'package'
-            with patch.object(package, 'sources', return_value=plan), patch.object(package, 'check_sources', return_value=package.sha(exe)):
+            with patch.object(package, 'sources', return_value=plan), patch.object(package, 'check_build', return_value={'executable': {'sha256': package.sha(exe)}}) as check_build:
                 info = package.assemble(out)
                 self.assertFalse(info['complete'])
                 self.assertEqual((out / 'payload/python/python312._pth').read_text(), 'python312.zip\n.\n..\n')
@@ -172,6 +235,15 @@ class LauncherPackageTests(unittest.TestCase):
                 self.assertTrue(complete['complete'])
                 self.assertEqual(complete['release_profile'], package.RELEASE_PROFILE)
                 self.assertEqual(package.verify(out), complete['files'])
+                # Linux packaging uses this same verifier for an existing Windows payload.
+                check_build.side_effect = ValueError('SDK patch differs from the runtime build; rebuild it first.')
+                with self.assertRaisesRegex(ValueError, 'SDK patch differs'):
+                    package.verify(out)
+                check_build.side_effect = None
+                check_build.return_value = {'executable': {'sha256': '1' * 64}}
+                with self.assertRaisesRegex(ValueError, 'Packaged runtime differs'):
+                    package.verify(out)
+                check_build.return_value = {'executable': {'sha256': package.sha(exe)}}
                 with self.assertRaises(ValueError):
                     package.finalize(out)
                 for name in (package.LAUNCHER, package.DIRECT_PLAY):

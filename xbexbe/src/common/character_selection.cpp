@@ -22,7 +22,7 @@ Character configured_character(unsigned ordinal) {
 
 bool set_characters(std::array<Character, 2> choices) {
     for (auto choice : choices)
-        if (choice != Character::Jericho && choice != Character::Cassidy && choice != Character::SpectralCassidy) return false;
+        if (!ValidCharacter(choice)) return false;
     std::lock_guard guard(lock);
     configured = choices;
     return true;
@@ -33,8 +33,8 @@ void LoadCharacters(const void* table) {
     std::array<Character, 2> choices{Character::Jericho, Character::Jericho};
     for (unsigned i = 0; i < choices.size(); ++i) {
         const auto choice = t[keys[i]].value_or(std::string{});
-        if (choice == "Cassidy") choices[i] = Character::Cassidy;
-        else if (choice == "Spectral Cassidy") choices[i] = Character::SpectralCassidy;
+        for (unsigned id = 0; id < kCharacterCount; ++id)
+            if (choice == kCharacterNames[id]) { choices[i] = Character(id); break; }
     }
     set_characters(choices);
 }
@@ -43,7 +43,6 @@ void SaveCharacters(void* table) {
     auto& t = *static_cast<toml::table*>(table);
     const auto choices = characters();
     for (unsigned i = 0; i < choices.size(); ++i)
-        t.insert_or_assign(keys[i], choices[i] == Character::SpectralCassidy ? "Spectral Cassidy" :
-                                   choices[i] == Character::Cassidy ? "Cassidy" : "Jericho");
+        t.insert_or_assign(keys[i], CharacterName(choices[i]));
 }
 } // namespace darkwatch::settings

@@ -11,7 +11,7 @@
 | `prompts.*` | Keyboard/mouse and Xbox, PlayStation, Switch prompt selection and artwork. |
 | `graphics.*`, `graphics_route.*`, `settings_skin.h` | Host settings pages, routing, persistence and original-style presentation. |
 | `graphics_camera.*`, `graphics_view.*`, `graphics_reticle.*`, `graphics_hud.*` | Separate world/weapon FOV, saved preferences, widescreen, reticle and HUD adjustments. |
-| `graphics_cinematic.*`, `graphics_subtitles.cpp` | In-level cinematic controls and original subtitle presentation isolated from scene feedback; movie playback is excluded. |
+| `graphics_cinematic.*`, `graphics_presentation.cpp` | In-level cinematic controls and original subtitle presentation isolated from scene feedback; movie playback is excluded. |
 | `script_resume.cpp`, `fatal_assert.cpp` | Mission script resume bridge and bounded fatal assertion handling. |
 | `coop.*`, `character_selection.*` | Beta local split-screen co-op routing, character selection and saved preferences. Co-op gameplay testing is incomplete; this is not online co-op. |
 | `character_runtime.*`, `character_runtime_data.h` | Guarded original actor/animation integration; the data header contains identity keys only. |
@@ -29,7 +29,7 @@
 | `launcher/character_*.py` | Adapts own-disc characters, animation, hands and presentation while retaining original player rules; no model or animation payload is included. |
 | `launcher/gameplay_hd.py`, `gameplay-hd-catalog.json` | Optional HD texture installation, integrity checks and rollback. |
 | `tools/package_gameplay_hd.py` | Separately provisioned texture packaging; strips native reference bytes. |
-| `tools/package_linux.py` | Packages the exact verified Windows files and three allowlisted Proton wrapper files; excludes installed data and records readback hashes. |
+| `tools/package_linux.py` | Packages the exact verified Windows files and four allowlisted Proton wrapper files; excludes installed data and records readback hashes. |
 | `tools/intake.py` | Project-owned XDVDFS parser and extractor. |
 | `scripts/` | Native/launcher build entry points and source fingerprinting. |
 | `tests/` | Selected synthetic tests suitable for public distribution. |
@@ -76,6 +76,18 @@ active page owner. Diagnostic modules remain in source for development, but the
 release profile compiles out their recording paths; bounded fatal reports remain.
 
 Player 2 pause navigation and Apply follow the pausing player's controller/profile.
-The original five controller layouts are presets, not arbitrary button remapping.
+The five original layouts remain presets; per-player controller rebinding adds editable physical-button mappings.
 HUD spacing and Player 2 ownership were accepted in tested co-op scenes; profile
 persistence after a complete process restart still needs an independent check.
+
+## Version 0.6 additions
+
+| Location | Purpose |
+| --- | --- |
+| `audio_settings.*` | Host Audio page and saved channel-output preference. |
+| `boss_intro.*` | Original mounted-boss intro event timing independent of display rate. |
+| `campaign_replay.*`, `coop_saves.*` | Replay isolation and separate co-op progression storage. |
+| `save_profile_io.*`, `save_storage.*` | Read-only profile lookup, atomic writes and backup recovery. |
+| `coop_characters.*`, `character_preview.*`, `launcher/character_roster.py` | Two-player selection, local rotating previews and roster identities. |
+| `graphics_presentation.*`, `language.*`, `prompt_owner.*` | Final UI presentation, language selection and input ownership. |
+| `launcher/spanish_*.py`, `launcher/language/` | Pinned translation-only text, optional voice import and integrity checks. |

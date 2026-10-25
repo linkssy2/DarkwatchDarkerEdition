@@ -300,6 +300,12 @@ XPP_MemoryUnitType          = 0x40D300
 at = 0x0002A35E
 call = "DarkwatchActorScriptTick"
 
+# First horseback boss: close the authored spawn/AI-disable race before sequence updates.
+# Original event/order evidence and negative control: missing-boss-20261024/.
+[[hook]]
+at = 0x0022FADC
+call = "DarkwatchBossIntroStart"
+
 # Direct mouse plus optional XBE_PERF witnesses; original evidence: direct-mouse-integration-plan.json.
 [[hook]]
 at = 0x000A286C
@@ -369,6 +375,19 @@ call = "DarkwatchBeginWeaponView"
 [[hook]]
 at = 0x000DEE24
 call = "DarkwatchEndWeaponView"
+
+# Scope the authored Blood Frenzy screen particles without changing world/weapon cameras.
+[[hook]]
+at = 0x001F851A
+call = "DarkwatchBeginPowerView"
+
+[[hook]]
+at = 0x001F851F
+call = "DarkwatchEndPowerView"
+
+[[hook]]
+at = 0x001CDA84
+call = "DarkwatchPowerViewProjection"
 
 # Only the cinematic manager's two ScreenMaskEffect quads; movie playback is excluded.
 # Original owner/draw evidence: viewmodel-cinematics-20261018/cinematics/.
@@ -669,10 +688,28 @@ call = "DarkwatchMenuRow"
 at = 0x001E9764
 call = "DarkwatchMenuRenderEnd"
 
+# Replaced menu pages have no native contents, including their unfocused fades.
+# Retain the original root renderer's fade timer and visibility cleanup.
+[[hook]]
+at = 0x001EC67F
+call = "DarkwatchHideReplacedMenuContent"
+on_true = 0x001EC6C5
+
 [[hook]]
 at = 0x001E9885
 call = "DarkwatchMenuInput"
 after = true
+
+# Preserve campaign progress before the original chapter-restart callback.
+[[hook]]
+at = 0x000E65E8
+call = "DarkwatchCampaignReplayBegin"
+on_true = 0x000E6640
+
+[[hook]]
+at = 0x000E669A
+call = "DarkwatchCampaignReplayBeforeChapter"
+on_true = 0x000E68DF
 
 # Main's authored children/footer exist; prepare rows before the first layout.
 [[hook]]
@@ -708,6 +745,16 @@ call = "DarkwatchCoopProfile"
 after = true
 
 # Only the two local co-op players belong in the required controller set.
+# Add choices after both authored panels exist; save only at the native Ready gate.
+[[hook]]
+at = 0x000E7981
+call = "DarkwatchCoopCharactersInitialize"
+
+[[hook]]
+at = 0x000E75BD
+call = "DarkwatchCoopCharactersCommit"
+on_true = 0x000E76FA
+
 [[hook]]
 at = 0x000E75D2
 call = "DarkwatchCoopParticipants"
@@ -759,6 +806,11 @@ after = true
 at = 0x000FA2A5
 call = "DarkwatchCharacterSpawn"
 after = true
+
+# Keep authored player-type checks compatible with the playable visual clones.
+[[hook]]
+at = 0x000FD51A
+call = "DarkwatchCharacterScriptType"
 
 # Omit only Jericho's separate costume grant on an actual Cassidy player clone.
 [[hook]]

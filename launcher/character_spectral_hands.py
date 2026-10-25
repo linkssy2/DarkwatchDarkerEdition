@@ -102,7 +102,7 @@ def _geometry(raw, index):
                 inverse_bytes=raw[inv:inv+bones*64], geometry=raw[geos[index][0]-12:geos[index][1]])
 
 
-def _finger_weights(source, used, triangles, inverses, old, new, child, side, scale, target, binds):
+def _finger_weights(source, used, triangles, inverses, old, new, child, side, scale, target, binds, tala=False):
     """Diffuse anatomical finger seeds across the connected original surface.
 
     The boss has rigid hand bones. Nearest-surface transfer from a gloved hand
@@ -111,7 +111,7 @@ def _finger_weights(source, used, triangles, inverses, old, new, child, side, sc
     """
     points, weld, nodes = [], {}, []
     for vertex in used:
-        point = _point(tuple(v*boss.SCALE for v in source['positions'][vertex]), inverses[old[2]])
+        point = _point(tuple(v*(1. if tala else boss.SCALE) for v in source['positions'][vertex]), inverses[old[2]])
         key = tuple(round(v,6) for v in point)
         if key not in weld:
             weld[key] = len(points)
@@ -140,14 +140,18 @@ def _finger_weights(source, used, triangles, inverses, old, new, child, side, sc
             if len(found) > 2:
                 result.append(found)
         return sorted(result,key=lambda group:sum(points[n][1] for n in group)/len(group))
-    fingers, thumb = branches(reach*.63), branches(reach*.46)
-    if len(fingers) != 5 or len(thumb) != 2:
+    fingers, thumb = branches(reach*(.65 if tala else .63)), branches(reach*.46)
+    if len(fingers) != (2 if tala else 5) or len(thumb) != 2:
         raise ValueError('Original hand finger branches differ')
     families = ((7,), (7,), (7,), (5,6), (9,10)) if side == 'left' else (
         (17,18), (17,18), (17,18), (15,16), (19,20))
+    if tala:
+        # Tala's original hand has two joined finger lobes and a separate thumb.
+        fingers.append(thumb[-1])
+        families = ((7,), (5,6), (9,10)) if side == 'left' else ((17,18), (15,16), (19,20))
     fixed = {n:{new[2]:1.} for n,p in enumerate(points) if p[0] < reach*.26}
     for j,(group,bones) in enumerate(zip(fingers,families)):
-        if j == 4:
+        if j == len(families)-1:
             group = thumb[-1]
         joint = _point(binds[bones[-1]][12:15],target['inverse'][new[2]])[2]/scale
         for n in group:
@@ -353,17 +357,19 @@ def _normals(model):
     return packed
 
 
-def _emit(model, original, spectral, source, target):
+def _emit(model, original, spectral, source, target, plain_material=None):
     count, triangles = len(model['positions']),len(model['triangles'])
     indices = [i for tri in model['triangles'] for i in tri]
     align = lambda n:(n+15)&~15
     header = bytearray(36+24+16+align(2*len(indices)))
     offset = align(24+36+24)-24
-    struct.pack_into('<IHH7I',header,0,len(header),1,1,5,count,36,0,0,0,0)
+    stride = 36 if model['uv1'] else 28
+    struct.pack_into('<IHH7I',header,0,len(header),1,1,5,count,stride,0,0,0,0)
     struct.pack_into('<6I',header,36,min(indices),max(indices)-min(indices)+1,len(indices),offset+24,0,0)
     struct.pack_into('<'+str(len(indices))+'H',header,offset,*indices)
-    vertices = b''.join(struct.pack('<3fII4f',*p,n,c,*uv,*uv1) for p,n,c,uv,uv1 in zip(
-        model['positions'],_normals(model),model['colors'],model['uv'],model['uv1']))
+    uv1 = model['uv1'] or [()] * count
+    vertices = b''.join(struct.pack('<3fII' + ('4f' if stride == 36 else '2f'),*p,n,c,*uv,*extra)
+        for p,n,c,uv,extra in zip(model['positions'],_normals(model),model['colors'],model['uv'],uv1))
     native = _chunk(0x510,_chunk(1,struct.pack('<I',5)+header+vertices))
     prefix = bytearray(target['skin_prefix'])
     palette,reverse = struct.unpack_from('<256i',prefix,8),struct.unpack_from('<256i',prefix,1032)
@@ -381,26 +387,33 @@ def _emit(model, original, spectral, source, target):
         skin += bytes(weights)+struct.pack('<4H',*ids)
     skin += target['inverse_bytes']+bytes(12)
     materials = [part for tag,part in rw.chunks(_one(source['geometry'],8),12) if tag == 7]
-    if len(materials) != 3 or b'BossCassidy_body_X\0' not in materials[2] or b'stripe_X\0' not in materials[2]:
-        raise ValueError('Original spectral skin material differs')
-    material = _chunk(8,_chunk(1,struct.pack('<2I',1,0xffffffff))+materials[2])
+    if plain_material is None:
+        if len(materials) != 3 or b'BossCassidy_body_X\0' not in materials[2] or b'stripe_X\0' not in materials[2]:
+            raise ValueError('Original spectral skin material differs')
+        selected_material = materials[2]
+    else:
+        if len(materials) != 3 or plain_material not in materials[1]:
+            raise ValueError('Original plain skin material differs')
+        selected_material = materials[1]
+    material = _chunk(8,_chunk(1,struct.pack('<2I',1,0xffffffff))+selected_material)
     geom = bytearray(_one(source['geometry'],1)[12:])
     struct.pack_into('<2I',geom,4,triangles,count)
     center = [(min(p[k] for p in model['positions'])+max(p[k] for p in model['positions']))/2 for k in range(3)]
     struct.pack_into('<4f',geom,16,*center,max(math.dist(center,p) for p in model['positions']))
     mesh = _chunk(0x50e,struct.pack('<5I',0,1,len(indices),len(indices),0))
-    extension = _chunk(3,mesh+native+_chunk(0x511,struct.pack('<I',0x01005545))+_chunk(0x116,_chunk(1,skin)))
+    extension = _chunk(3,mesh+native+_chunk(0x511,struct.pack('<I',0x01005545 if stride == 36 else 0x01000545))+_chunk(0x116,_chunk(1,skin)))
     geometry = _chunk(15,_chunk(1,geom)+material+extension)
     geolist = _chunk(26,_chunk(1,struct.pack('<I',1))+geometry)
     old_clump = next(part for tag,part in rw.chunks(original) if tag == 0x10)
     boss_clump = next(part for tag,part in rw.chunks(spectral) if tag == 0x10)
     body_atomic = next(part for tag,part in rw.chunks(boss_clump,12)
-                       if tag == 20 and struct.unpack_from('<I',_one(part,1),16)[0] == 2)
+                       if tag == 20 and struct.unpack_from('<I',_one(part,1),16)[0] ==
+                       (2 if plain_material is None else 0))
     parts = []
     for tag,part in rw.chunks(old_clump,12):
         if tag == 26:
             part = geolist
-        elif tag == 20:
+        elif tag == 20 and plain_material is None:
             # Keep the player's frame binding, but the boss's skin-MatFX
             # pipeline2 and atomic enable flag are required for the dual UVs.
             part = rw.rebuild(part,_one(part,1)+_one(body_atomic,3))

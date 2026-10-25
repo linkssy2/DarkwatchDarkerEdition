@@ -45,14 +45,14 @@ class SteamSetupTests(unittest.TestCase):
         backend.main = mock.Mock(side_effect=main)
         return backend
 
-    def command(self, backend, *arguments, stdout=None, stderr=None, import_error=None):
+    def command(self, backend, *arguments, stdout=None, stderr=None, import_error=None, dialog_responses=None):
         output = io.StringIO() if stdout is None else stdout
         errors = io.StringIO() if stderr is None else stderr
         with ExitStack() as stack:
             stack.enter_context(mock.patch.object(adapter, "__file__", str(self.script)))
             stack.enter_context(mock.patch.object(adapter.importlib, "import_module",
                                                  return_value=backend, side_effect=import_error))
-            dialogs = stack.enter_context(mock.patch.object(adapter, "notify", return_value=True))
+            dialogs = stack.enter_context(mock.patch.object(adapter, "notify", return_value=True, side_effect=dialog_responses))
             stack.enter_context(mock.patch.object(sys, "stdout", output))
             stack.enter_context(mock.patch.object(sys, "stderr", errors))
             result = adapter.main(arguments)
@@ -84,7 +84,7 @@ class SteamSetupTests(unittest.TestCase):
         arguments = backend.main.call_args.args[0]
         self.assertEqual(arguments, ["--install-root", str(self.root / "GameData"),
                                      "--package", str(self.root / "windows"), "--status"])
-        explicit = ["--package=another package", "--install-root", "my data", "--import-iso", "game.iso"]
+        explicit = ["--package=another package", "--install-root", "my data", "--set-language", "es"]
         self.assertEqual(self.command(backend, *explicit)[0], 0)
         backend.main.assert_called_with(explicit)
         self.assertEqual(sys.path, before)
@@ -162,6 +162,45 @@ class SteamSetupTests(unittest.TestCase):
         self.assertEqual(dialogs, [])
         self.assertEqual(sleep.call_args_list, [mock.call(1), mock.call(1)])
 
+    def test_language_dialog_forwards_both_choices_without_starting_game(self):
+        for choice, language in ((6, "es"), (7, "en")):
+            with self.subTest(language=language):
+                backend = self.worker([dict(event="result", message="Language saved", language=language)])
+                code, _, _, dialogs = self.command(backend, "--interactive", "--language",
+                                                  dialog_responses=[choice, True])
+                self.assertEqual(code, 0)
+                self.assertEqual(backend.main.call_args.args[0][-2:], ["--set-language", language])
+                self.assertEqual(dialogs[0].kwargs, {"buttons": 0x203})
+                self.assertIn("Español", dialogs[0].args[0])
+                self.assertIn("English", dialogs[0].args[0])
+                self.assertEqual(dialogs[1], mock.call("Language saved"))
+                backend.game_running.assert_not_called()
+
+    def test_language_cancel_does_not_change_settings_or_create_report(self):
+        backend = self.worker()
+        original = backend.emit
+        code, _, _, dialogs = self.command(backend, "--interactive", "--language", dialog_responses=[2])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(dialogs), 1)
+        backend.main.assert_not_called()
+        self.assertIs(backend.emit, original)
+        self.assertFalse((self.root / adapter.ERROR_FILE).exists())
+
+    def test_language_dialog_failure_does_not_default_to_a_language(self):
+        backend = self.worker()
+        code, _, _, dialogs = self.command(backend, "--interactive", "--language", dialog_responses=[0, True])
+        self.assertEqual(code, 1)
+        backend.main.assert_not_called()
+        self.assertIn("Could not open the language selector", dialogs[-1].args[0])
+        self.assertEqual(dialogs[-1].kwargs, {"error": True})
+
+    def test_language_choice_preserves_backend_refusal(self):
+        backend = self.worker([dict(event="error", message="Close Darkwatch before changing language.")], code=1)
+        code, _, _, dialogs = self.command(backend, "--interactive", "--language", dialog_responses=[6, True])
+        self.assertEqual(code, 1)
+        self.assertIn("Close Darkwatch", dialogs[-1].args[0])
+        self.assertEqual(dialogs[-1].kwargs, {"error": True})
+
     def test_broken_pipe_does_not_change_success_at_interpreter_shutdown(self):
         source = f'''
 import importlib.util, os, sys
@@ -206,6 +245,10 @@ raise SystemExit(adapter.run_interactive(Path({str(self.root)!r}), ["--verify"])
             self.assertTrue(adapter.notify("Original error", error=True))
         self.assertEqual(output.getvalue(), "")
         self.assertEqual([call.args[-1] for call in box.call_args_list], [0x10040, 0x10010])
+        box = mock.Mock(return_value=6)
+        with mock.patch.object(ctypes, "WinDLL", return_value=SimpleNamespace(MessageBoxW=box), create=True):
+            self.assertEqual(adapter.notify("Choose language", buttons=0x203), 6)
+        self.assertEqual(box.call_args.args[-1], 0x10243)
         with mock.patch.object(ctypes, "WinDLL", side_effect=OSError("no UI"), create=True), \
              mock.patch.object(sys, "stderr", new_callable=io.StringIO) as output:
             self.assertFalse(adapter.notify("Original error", error=True))

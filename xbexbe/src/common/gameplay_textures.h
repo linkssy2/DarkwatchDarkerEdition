@@ -97,13 +97,24 @@ class GameplayTextures {
         return true;
     }
 public:
+    // The menu needs only its few allowlisted materials. Validate those files
+    // with the normal loader, without scanning the entire pack a second time.
+    static bool LoadPreviewByNativeHash(const std::filesystem::path& directory,
+                                       uint64_t hash, gpu::TextureReplacement& out) {
+        GameplayTextures preview;
+        preview.directory_ = directory;
+        for (const auto& asset : kGameplayAssets)
+            if (asset.native_hash == hash && preview.Load(asset, nullptr, nullptr, out)) return true;
+        return false;
+    }
     void Open(const std::filesystem::path& directory) {
         directory_=directory; index_.clear(); aliases_.clear();
-        size_t required = 0;
+        std::array<size_t,3> required{}, present{};
         for(const auto& a:kGameplayAssets) {
-            if (a.pack_revision == 1) ++required;
-            // The original download remains valid only when the entire extension is absent.
-            if (a.pack_revision == 2) {
+            if (a.pack_revision < 1 || a.pack_revision > required.size()) { index_.clear(); return; }
+            ++required[a.pack_revision - 1];
+            // A released generation remains valid when all later additions are absent.
+            if (a.pack_revision > 1) {
                 std::error_code error;
                 const bool exists = std::filesystem::exists(directory/a.file, error);
                 if (error) { index_.clear(); return; }
@@ -117,9 +128,15 @@ public:
             if (!file.read(reinterpret_cast<char*>(header.data()), header.size()) || length < 0 ||
                 !Header(a, header, uint64_t(length), pixels)) { index_.clear(); return; }
             index_.emplace(Key(a.width,a.height,a.format,a.levels),&a);
+            ++present[a.pack_revision - 1];
         }
-        if (!required || (index_.size() != required && index_.size() != std::size(kGameplayAssets))) {
-            index_.clear(); return;
+        if (!required[0]) { index_.clear(); return; }
+        bool absent = false;
+        for (size_t revision = 0; revision < required.size(); ++revision) {
+            if (!present[revision]) absent = true;
+            else if (absent || present[revision] != required[revision]) {
+                index_.clear(); return;
+            }
         }
         // Co-op can load the authored smaller dictionary for the same material.
         for (const auto& alias : kGameplayAliases)

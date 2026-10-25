@@ -6,15 +6,16 @@
 #include "native_menu.h"
 #include "graphics.h"
 #include "coop.h"
+#include "campaign_replay.h"
 #include "app/app.h"
 #include "kernel/kernel.h"
 #include "kernel/memory.h"
 
 namespace darkwatch {
 namespace {
-constexpr const char* kLabels[]{"~CHARACTERS", "~QUIT TO DESKTOP"};
-constexpr const char* kLinks[]{"~darkwatch_characters", "~darkwatch_desktop_quit"};
-constexpr float kHeight = .21f * (7.f / 5.f);
+constexpr const char* kLabels[]{"~QUIT TO DESKTOP"};
+constexpr const char* kLinks[]{"~darkwatch_desktop_quit"};
+constexpr float kHeight = .21f * (6.f / 5.f);
 constexpr float kCenter = -.68f + kHeight;
 // The longer exit caption needs more room at Main's original 1.4 font scale.
 // Extend rightward, retaining the authored left edge (.57 - .29).
@@ -22,9 +23,10 @@ constexpr float kHalfWidth = .34f;
 constexpr float kCenterX = .28f + kHalfWidth;
 struct AddedRow {
     const uint8_t* base = nullptr;
-    uint32_t root = 0, menu = 0, character = 0, row = 0;
+    uint32_t root = 0, menu = 0, row = 0;
     bool posted = false;
 } added;
+thread_local uint32_t continuing_single_player = 0;
 
 bool Span(const uint8_t* base, uint64_t address, uint32_t size) {
     const auto end = address + size;
@@ -75,13 +77,13 @@ bool MainMenu(const uint8_t* base, uint32_t root, uint32_t& menu, uint32_t& rows
         !Field(base, menu, 0, type) || type != 0x43C8B8 ||
         !Field(base, menu, 4, parent) || parent != root ||
         !Read(base, uint64_t(menu) + 0x2F, visible) || (require_visible && !visible) ||
-        !Read(base, uint64_t(menu) + 0x58, count) || (count != 5 && count != 7) ||
+        !Read(base, uint64_t(menu) + 0x58, count) || (count != 5 && count != 6) ||
         !Field(base, menu, 0x5C, rows) || !Span(base, rows, count * 4) ||
         !Field(base, menu, 0x64, shown) || shown ||
         !Field(base, menu, 0x68, selected) || selected >= count) return false;
     constexpr const char* names[]{"GEN_SinglePlayer", "GEN_Multiplayer", "GEN_Options",
-        "PROFILE_ProfileScreenTitle", "GEN_Extras", kLabels[0], kLabels[1]};
-    constexpr const char* links[]{"chapter_select", "multiplayer_main", "options", "profile_select", "extras", kLinks[0], kLinks[1]};
+        "PROFILE_ProfileScreenTitle", "GEN_Extras", kLabels[0]};
+    constexpr const char* links[]{"chapter_select", "multiplayer_main", "options", "profile_select", "extras", kLinks[0]};
     for (unsigned i = 0; i < count; ++i) {
         uint32_t row;
         if (!Read(base, uint64_t(rows) + i * 4, row) || !Span(base, row, 0x68) ||
@@ -92,21 +94,41 @@ bool MainMenu(const uint8_t* base, uint32_t root, uint32_t& menu, uint32_t& rows
     return true;
 }
 bool IsAdded(const uint8_t* base, uint32_t root, uint32_t menu, uint32_t rows, uint16_t count) {
-    uint32_t character, row;
-    return count == 7 && added.base == base && added.root == root && added.menu == menu &&
-        Read(base, uint64_t(rows) + 5 * 4, character) && character == added.character &&
-        Read(base, uint64_t(rows) + 6 * 4, row) && row == added.row;
+    uint32_t row;
+    return count == 6 && added.base == base && added.root == root && added.menu == menu &&
+        Read(base, uint64_t(rows) + 5 * 4, row) && row == added.row;
 }
 } // namespace
 
 uint32_t CharacterMenuOwner(const uint8_t* base) { return ActiveMain(base); }
+
+bool ContinueSinglePlayer(uint8_t* base, uint32_t owner) {
+    auto* thread = kernel::Current();
+    uint32_t menu, rows, selected, row;
+    uint16_t count;
+    if (!owner || base != kernel::g_base || ActiveMain(base) != owner || !thread || !thread->ctx ||
+        !MainMenu(base, owner, menu, rows, count) || !IsAdded(base, owner, menu, rows, count) ||
+        !Field(base, menu, 0x68, selected) || selected || !Read(base, rows, row) ||
+        !base[row + 0x54] || !base[row + 0x2F] || thread->ctx->esp < 0x2000 ||
+        !Span(base, uint64_t(thread->ctx->esp) - 0x2000, 0x2000)) return false;
+    if (!DarkwatchCampaignReplayFinish(*thread->ctx, base)) return false;
+    // Resume the original action with a fresh guest frame, never a saved callback stack.
+    auto call = *thread->ctx;
+    call.esp -= 0x100;
+    call.ecx = owner;
+    continuing_single_player = owner;
+    const auto result = kernel::CallGuest(call, 0xEA9B7, {0});
+    continuing_single_player = 0;
+    DarkwatchInvalidateMenuSnapshot();
+    return (result & 255) != 0;
+}
 
 bool ConfirmDesktopQuit(uint8_t* base, uint32_t owner) {
     uint32_t menu, rows, selected;
     uint16_t count;
     if (!owner || base != kernel::g_base || ActiveMain(base) != owner ||
         !MainMenu(base, owner, menu, rows, count) || !IsAdded(base, owner, menu, rows, count) ||
-        !Field(base, menu, 0x68, selected) || selected != 6 ||
+        !Field(base, menu, 0x68, selected) || selected != 5 ||
         !base[added.row + 0x54] || !base[added.row + 0x2F]) return false;
     // Revalidate the owner on the guest thread before using the existing shutdown path.
     if (!added.posted) {
@@ -139,8 +161,8 @@ bool EnsureMainEntries(uint8_t* base, uint32_t root, const X86Context& context, 
     const auto scratch = context.esp - 0x80;
     X86Context call = context;
     call.esp = scratch - 0x10;
-    uint32_t created[2]{};
-    for (unsigned n = 0; n < 2; ++n) {
+    uint32_t created[1]{};
+    for (unsigned n = 0; n < 1; ++n) {
         std::memset(base + scratch, 0, 0x80);
         std::memcpy(base + scratch + 0x20, kLabels[n], std::strlen(kLabels[n]) + 1);
         std::memcpy(base + scratch + 0x40, kLinks[n], std::strlen(kLinks[n]) + 1);
@@ -177,7 +199,7 @@ bool EnsureMainEntries(uint8_t* base, uint32_t root, const X86Context& context, 
     std::memcpy(base + menu + 0x14, &kCenter, sizeof(kCenter));
     std::memcpy(base + menu + 0x18, &kHalfWidth, sizeof(kHalfWidth));
     std::memcpy(base + menu + 0x1C, &kHeight, sizeof(kHeight));
-    added = {base, root, menu, created[0], created[1], false};
+    added = {base, root, menu, created[0], false};
     DarkwatchInvalidateMenuSnapshot();
     return true;
 }
@@ -190,6 +212,7 @@ bool EnsureDesktopQuitEntry(uint8_t* base) {
 } // namespace darkwatch
 
 void DarkwatchMainMenuInitialize(X86Context& ctx, uint8_t* base) {
+    DarkwatchCampaignReplayEnd(ctx, base);
     // Main's authored children and footer exist here, before its first layout.
     // Construction precedes registration/focus, unlike input and confirmation.
     auto* thread = kernel::Current();
@@ -204,10 +227,15 @@ bool DarkwatchDesktopQuit(X86Context& ctx, uint8_t* base) {
     if (!root || base != kernel::g_base || ctx.edi != root ||
         !MainMenu(base, root, menu, rows, count) || !IsAdded(base, root, menu, rows, count) ||
         ctx.eax != menu || !Field(base, menu, 0x68, selected) ||
-        (selected != 5 && selected != 6)) return false;
-    const auto row = selected == 5 ? added.character : added.row;
+        (selected != 0 && selected != 5)) return false;
+    uint32_t row;
+    if (!Read(base, uint64_t(rows) + selected * 4, row)) return false;
     if (ctx.ecx != row || !base[row + 0x54] || !base[row + 0x2F]) return false;
-    if (selected == 5) {
+    if (selected == 0) {
+        if (continuing_single_player == root) {
+            continuing_single_player = 0;
+            return false;
+        }
         DarkwatchCharactersOpen(root);
         return true;
     }

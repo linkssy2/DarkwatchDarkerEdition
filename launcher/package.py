@@ -12,7 +12,7 @@ REFERENCE = REPO.parent / 'Urban Chaos Riot Response Recompiled'
 PYTHON = REFERENCE / '.tools/python'
 VS = Path('C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools')
 CRT = VS / 'VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT'
-VERSION = '0.5.5'
+VERSION = '0.6'
 RELEASE_PROFILE = {'name': 'release-candidate', 'diagnostics': False, 'strict_assets': True}
 LAUNCHER = 'Darkwatch Darker Edition.exe'
 DIRECT_PLAY = 'Play Darkwatch.exe'
@@ -23,17 +23,16 @@ PYTHON_FILES = ('python.exe', 'python312.dll', 'python3.dll', 'python312.zip',
 FORBIDDEN = {'.iso', '.xiso', '.xbe', '.pck', '.xmv', '.wmv', '.wav', '.pdb', '.log', '.dmp', '.pyc', '.dwt', '.pack'}
 GENERATED = {
     'payload/python/python312._pth': 'python312.zip\n.\n..\n',
-    'README.txt': '''Darkwatch: Darker Edition - 0.5.5
+    'README.txt': '''Darkwatch: Darker Edition - 0.6
 
-Linux compatibility release: use ../README-LINUX.md for Steam setup.
-The inherited Windows graphical launcher is not the recommended Proton entry.
-
-Features inherited from 0.5
-- Select Spectral Cassidy in solo or co-op, with adapted first-person hands.
-- Expanded optional HD textures and corrected missing co-op texture connections.
-- Improved co-op HUD spacing and Player 2's own pause menus and controller settings.
-- Character loading, subtitle effects, controller detection and Coyote mouse-look fixes.
-Carries forward the 0.4 features. Local split-screen co-op remains BETA.
+Version 0.6
+- Eight playable characters with rotating solo previews and two-player co-op selection.
+- Per-player controller rebinding, updated Audio controls and optional surround output.
+- Built-in Spanish text/subtitles with launcher language selection.
+- Separate co-op saves, chapter replay protection and safer profile storage.
+- Fixes for menu transitions, controller-menu crashes, HUD effects and campaign events.
+- Matching Windows and experimental Linux/Proton packages; optional HD pack updated.
+Carries forward the 0.5 features. Local split-screen co-op remains BETA.
 
 Extract the entire ZIP into a new folder, then open Darkwatch Darker Edition.exe.
 Keep both EXEs and the payload folder together; do not run them inside the ZIP.
@@ -47,6 +46,8 @@ Gameplay HD textures are a separate optional download. Download all numbered
 texture parts into one folder. Use Install HD Textures in the launcher and select
 the .zip.001 file (or the complete texture ZIP). The Graphics toggle stays
 unavailable until the pack is installed; HD menus, fonts and HUD remain included.
+Earlier HD downloads remain compatible. Install the updated pack to add HD
+coverage for the expanded character roster, including colored trooper hands.
 Play from this launcher has no ten-minute test timer.
 
 After importing once, open Play Darkwatch.exe to start the game directly without
@@ -69,7 +70,7 @@ The supported disc is the original Xbox revision with executable SHA-256:
 72fc8033e01df4f22c703121cfd160969c642b18e841248224fc97a8f32050d7
 Setup accepts a full Xbox disc image or XISO and checks all 23 original files.
 The file picker accepts both .iso and .xiso filenames; no renaming is needed.
-Other revisions are rejected. Keep at least 5 GB free per import, plus space
+Other revisions are rejected. Keep at least 6 GB free per import, plus space
 for saves and shader cache. Your source ISO is never modified.
 
 The launcher stores everything it installs in GameData/ beside both EXEs.
@@ -85,20 +86,37 @@ preserves saves, settings and cache.
 For an earlier per-user installation, import your ISO once here; setup copies its
 matching saved data and settings into the new portable install, leaving the old
 installation untouched. Later repairs preserve the portable saves and cache.
-Previous versions remain on disk. Do not delete them until you have checked the
-new version and backed up your saves. Verify Files checks without running the game.
+Each successful import creates a new extracted installation and retains the old
+version, so updates require additional disk space. The ISO itself is not copied.
+Do not delete previous installations until you have checked the new version and
+backed up your saves. Verify Files checks without running the game.
 
 Graphics and Controls are available from the main menu and Pause. Esc pauses;
 right-click goes back in menus. Configure bindings in Controls. Choose Quit to
 Desktop in the main menu to close the game.
-Choose Characters for Jericho, Cassidy or Spectral Cassidy. Local co-op is under Multiplayer >
-CO-OP. Co-op is a beta feature; full campaign progression and two-player gameplay
-have not been fully verified. Character conversion uses your own disc; no original models, animations
-or voices are included in this package. The approved hand repaint is included.
-In co-op, Player 2 pauses with their controller to edit their own controller settings
-and select one of the five original control-layout presets. Arbitrary controller
-button remapping is not included. Mouse and keyboard bindings remain Player 1's.
+Single Player opens rotating character previews. Choices include Jericho,
+Civilian Jericho, Cassidy, Spectral Cassidy, Tala, and the standard, blue and red
+Darkwatch Troopers.
+Choose a character, then Continue to choose a chapter or resume your save.
+Local co-op is under Multiplayer > CO-OP. Choose each player's character in the
+left and right co-op panels; both players must select Ready to confirm their choices.
+Co-op is a beta feature; full campaign progression and two-player gameplay have
+not been fully verified. Character previews and conversion use your own disc;
+no original models, animations or voices are included in this package.
+The approved hand repaint is included.
+In co-op, Player 2 pauses with their controller to edit their own controller settings.
+Controls supports controller-button rebinding as well as the original layout presets.
+Each player's bindings are saved separately. Mouse and keyboard remain Player 1's.
+Audio offers Music, Effects and Speech volume plus Stereo or Surround output.
+Surround requires a compatible configured device; otherwise output falls back to stereo.
 The gameplay HD pack is separate from the HD interface and character selection.
+Spanish text and subtitles are built in. Import your ISO first, close the game,
+then choose English or Español in Game Language. No separate translation download
+is needed. The choice applies on the next launch, including Play Darkwatch.exe.
+Import / Repair preserves your choice and refreshes the included translation.
+Spanish Voices is a separate optional ZIP import; it is not needed for translated
+text or subtitles. Without it, speech stays original. Movies and music stay original.
+Spanish localization remains a test candidate and needs in-game verification.
 PS4 and Switch Pro controllers use matching prompts and controller-layout pages.
 Button actions follow physical positions: Switch B confirms and A goes back.
 Native USB and Bluetooth paths are enabled but have not been tested on physical
@@ -112,17 +130,24 @@ reported no noticeable stutters on the opening route and boss fight. Preparation
 covers the known shader catalogue, not every possible campaign shader. Unseen
 shaders, driver work and ordinary loading can still cause pauses. Testing on a
 fresh Windows installation remains outstanding.
-Cassidy loading, melee audio, co-op HUD placement, Player 2 settings ownership
-and subtitle appearance during effects were accepted in the tested scenes.
-Her hurt voice remains inaudible and that investigation is paused. Full co-op
-progression, automatic story-based appearance changes, all weapon poses and
-reported room-specific slowdowns need more testing. Coyote mouse-look and false
-controller-warning fixes pass offline checks; broader live validation is pending.
-The reported Controls freeze has not been reproduced locally. Faulty HD blood
-replacements use the original blood textures; corrected HD blood artwork is not
-included in this release. Existing 0.4 HD packs remain compatible; install the new
-separate pack for the added artwork.
+Cassidy loading, melee audio, co-op HUD placement, Player 2 settings ownership,
+character selection and subtitle appearance were accepted in tested scenes.
+Controller menu opening/editing and co-op navigation received user acceptance;
+the latest transition and profile-startup fixes also passed an agent menu test.
+The reported controller-menu crash was traced and its original failure reproduced
+in a regression test. This does not establish every controller or machine.
+Cassidy hurt audio remains unresolved. Full campaign/co-op progression, story
+transitions, every character/weapon combination, surround speaker balance and
+Spanish presentation need broader live testing. High-FPS mounted-boss and
+selectable-character tree fixes pass original-path checks; encounter completion
+has not been verified live. Linux gameplay, audio and controllers remain unverified.
+Existing 0.4 and 0.5 HD packs remain compatible; install the new separate pack
+for the added character artwork. No physical PS4/Switch retest was performed.
 Original game content and branding belong to their owners.
+Spanish community translation: ZARF, DXEV2BYZARF V2; integration and compatibility
+corrections by Darkwatch: Darker Edition. The bundled translation stores context
+identifiers and Spanish text, not the original English tables. Community media is
+optional and is not included in the base launcher package.
 See licenses/ for dependency notices and artwork sources.
 ''',
     'licenses/DEPENDENCIES.txt': '''XboxXBERecomp by TGP482 (MIT): https://github.com/TGP482/Xbox-XBERecomp
@@ -181,6 +206,10 @@ def sources():
         'payload/setup_backend.py': HERE / 'setup_backend.py',
         'payload/bonus_content.py': HERE / 'bonus_content.py',
         'payload/gameplay_hd.py': HERE / 'gameplay_hd.py',
+        'payload/language_pack.py': HERE / 'language_pack.py',
+        'payload/spanish-catalog.json': HERE / 'spanish-catalog.json',
+        'payload/spanish-text-catalog.json': HERE / 'spanish-text-catalog.json',
+        'payload/language/es/language_text.bin': HERE / 'language/es/language_text.bin',
         'payload/gameplay-hd-catalog.json': HERE / 'gameplay-hd-catalog.json',
         'payload/intake.py': REPO / 'tools/intake.py',
         'payload/supported-disc.json': HERE / 'supported-disc.json',
@@ -196,7 +225,7 @@ def sources():
     for name in ('character_content.py', 'character_animation.py', 'character_assets.py',
                  'character_archive.py', 'character_repaint.py', 'character_boss.py',
                  'character_boss_effects.py', 'character_spectral_hands.py', 'character_hand_seams.py',
-                 'character_secondary.py',
+                 'character_secondary.py', 'character_preview.py', 'character_roster.py',
                  'character-catalog.json'):
         plan['payload/' + name] = HERE / name
     for size in (1024, 256):
@@ -231,21 +260,49 @@ def check_texture_catalog(path, build):
         raise ValueError('HD download catalog is stale or invalid; rebuild the optional texture pack.')
 
 
-def check_sources(plan):
+def check_build(runtime):
     build = json.loads((REPO / 'build/xbexbe-release/build-manifest.json').read_text(encoding='utf-8'))
     if build.get('release_profile') != RELEASE_PROFILE:
         raise ValueError('Package requires the quiet release-candidate runtime with strict installed assets.')
-    if sha(plan['payload/runtime/darkwatch_xbe.exe']) != build['executable']['sha256']:
+    sdk_patch = REPO / 'patches/xbexbe.patch'
+    recorded_patch = build.get('toolchain', {}).get('build_patch', {}).get('sha256')
+    if not sdk_patch.is_file() or sha(sdk_patch) != recorded_patch:
+        raise ValueError('SDK patch differs from the runtime build; rebuild it first.')
+    if sha(runtime) != build['executable']['sha256']:
         raise ValueError('Runtime differs from the recorded build; rebuild it first.')
+    return build
+
+
+def check_sources(plan):
+    build = check_build(plan['payload/runtime/darkwatch_xbe.exe'])
     if 'payload/gameplay-hd-catalog.json' in plan:
         check_texture_catalog(plan['payload/gameplay-hd-catalog.json'], build)
     if 'payload/character-catalog.json' in plan:
         check_character_catalog(plan, build)
+    if 'payload/spanish-text-catalog.json' in plan:
+        check_spanish_text(plan, build)
     for name, source in plan.items():
         safe_relative(name)
         if not source.is_file() or source.is_symlink() or source.is_junction():
             raise ValueError('Missing or linked package input: ' + str(source))
     return build['executable']['sha256']
+
+
+def check_spanish_text(plan, build):
+    """Require the translation-only format and its compiled runtime reader."""
+    catalog = json.loads(plan['payload/spanish-text-catalog.json'].read_bytes())
+    if (catalog.get('schema_version') != 1 or catalog.get('language') != 'es' or
+            set(catalog.get('files', {})) != {'language_text.bin'}):
+        raise ValueError('Expected the built-in Spanish text catalog.')
+    text = plan['payload/language/es/language_text.bin']
+    row = catalog['files']['language_text.bin']
+    if (text.stat().st_size != row['size'] or
+            sha(text) != row['sha256'] or text.read_bytes()[:8] != b'DWES0003'):
+        raise ValueError('Built-in Spanish text must match its translation-only catalog.')
+    source = 'xbexbe/src/common/language.cpp'
+    recorded = {row['path']: row['sha256'] for row in build.get('host_sources', {}).get('files', [])}
+    if recorded.get(source) != sha(REPO / source):
+        raise ValueError('Spanish text reader differs from the runtime build; rebuild it first.')
 
 
 def check_character_catalog(plan, build):
@@ -345,8 +402,13 @@ def verify(output):
     info = json.loads((output / 'package-manifest.json').read_text(encoding='utf-8'))
     if not info.get('complete') or info['version'] != VERSION or info.get('release_profile') != RELEASE_PROFILE:
         raise ValueError('Incomplete launcher package')
-    if set(info['files']) != set(sources()) | set(GENERATED) | {LAUNCHER, DIRECT_PLAY}:
+    plan = sources()
+    if set(info['files']) != set(plan) | set(GENERATED) | {LAUNCHER, DIRECT_PLAY}:
         raise ValueError('Package allowlist changed')
+    runtime_sha = check_build(output / 'payload/runtime/darkwatch_xbe.exe')['executable']['sha256']
+    if (info.get('runtime_sha256') != runtime_sha or
+            info['files'].get('payload/runtime/darkwatch_xbe.exe') != runtime_sha):
+        raise ValueError('Packaged runtime differs from the current build; assemble a new package.')
     return audit(output, info['files'], disc_hashes(output))
 
 

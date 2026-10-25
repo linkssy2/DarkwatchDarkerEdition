@@ -2,7 +2,19 @@
 #include <array>
 
 namespace darkwatch::settings {
-enum class Character { Jericho = 0, Cassidy = 1, SpectralCassidy = 2 };
+enum class Character {
+    Jericho = 0, Cassidy = 1, SpectralCassidy = 2, CivilianJericho = 3,
+    Trooper = 4, BlueTrooper = 5, RedTrooper = 6, Tala = 7
+};
+inline constexpr std::array<const char*, 8> kCharacterNames{
+    "Jericho", "Cassidy", "Spectral Cassidy", "Civilian Jericho",
+    "Darkwatch Trooper", "Blue Trooper", "Red Trooper", "Tala"
+};
+inline constexpr unsigned kCharacterCount = kCharacterNames.size();
+constexpr bool ValidCharacter(Character character) { return unsigned(character) < kCharacterCount; }
+constexpr const char* CharacterName(Character character) {
+    return kCharacterNames[ValidCharacter(character) ? unsigned(character) : 0];
+}
 // Player one's choice is shared by solo and co-op; player two is independent.
 std::array<Character, 2> characters();
 Character configured_character(unsigned ordinal);

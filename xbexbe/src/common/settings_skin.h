@@ -86,7 +86,10 @@ inline bool Meta(std::ifstream& original, uint32_t offset, uint32_t bytes, uint6
 }
 inline const uint8_t* Glyph(const Metadata& meta, unsigned code) {
     int16_t index;
-    std::memcpy(&index, meta.bytes.data() + 36 + meta.extended * 2 + code * 2, 2);
+    const unsigned first = U32(meta.bytes.data() + 24);
+    if (code >= 128 && (code < first || code - first >= meta.extended)) return nullptr;
+    const unsigned offset = code < 128 ? meta.extended + code : code - first;
+    std::memcpy(&index, meta.bytes.data() + 36 + offset * 2, 2);
     return index >= 0 && unsigned(index) < meta.count ? meta.bytes.data() + 292 + meta.extended * 2 + index * 21 : nullptr;
 }
 // Copy the prepared native cell before removing its transparent bearings.
@@ -140,14 +143,18 @@ inline void Density(Image& image, float logical_height) {
 inline ImFont* Font(ImFontAtlas* atlas, float cap, const Image& image, const Metadata& meta,
                     const Image& body_image, const Metadata& body_meta) {
     // A single fallback glyph supplies ImGui's required font source. Every
-    // printable ASCII glyph is replaced below with original game artwork.
+    // printable glyph is replaced below with original game artwork.
     static const ImWchar fallback[]{'?', '?', 0};
     const float line_height = cap + (cap <= 24 ? 6 : 8);
     const auto metrics = Measure(image, meta, cap), body_metrics = Measure(body_image, body_meta, cap);
     ImFontConfig config; config.SizePixels = line_height; config.GlyphRanges = fallback;
     ImFont* font = atlas->AddFontDefault(&config);
-    for (unsigned code = 32; code < 127; ++code) {
-        const unsigned mapped = code >= 'a' && code <= 'z' ? code - 'a' + 'A' : code;
+    std::vector<unsigned> codes;
+    for (unsigned code = 32; code < 127; ++code) codes.push_back(code);
+    for (unsigned code : {0xA1u, 0xBFu, 0xC1u, 0xC9u, 0xCDu, 0xD1u, 0xD3u, 0xDAu, 0xDCu,
+                          0xE1u, 0xE9u, 0xEDu, 0xF1u, 0xF3u, 0xFAu, 0xFCu}) codes.push_back(code);
+    for (unsigned code : codes) {
+        const unsigned mapped = (code >= 'a' && code <= 'z') || code >= 0xE0 ? code - 32 : code;
         const Metadata* selected = &meta; const Image* pixels = &image;
         const Metrics* m = &metrics;
         const uint8_t* glyph = Glyph(meta, mapped);

@@ -80,6 +80,18 @@ void ControlsLoad(const void* table) {
         next.bindings = ControlsDefaults().bindings;
         ControlsApply(next);
     }
+    const auto* controllers = t["controller_bindings"].as_table();
+    for (int port = 0; port < 2; ++port) {
+        auto bindings = input::DefaultPadBindings();
+        const auto* row = controllers ? (*controllers)[port ? "player_2" : "player_1"].as_array() : nullptr;
+        bool valid = row && row->size() == bindings.size();
+        if (valid) for (size_t i = 0; i < bindings.size(); ++i) {
+            const auto button = (*row)[i].value<int64_t>();
+            if (!button || *button < 0 || *button >= int64_t(bindings.size())) { valid = false; break; }
+            bindings[i] = uint8_t(*button);
+        }
+        if (!valid || !input::SetPadBindings(port, bindings)) input::SetPadBindings(port, input::DefaultPadBindings());
+    }
 }
 
 void ControlsSave(void* table) {
@@ -94,13 +106,22 @@ void ControlsSave(void* table) {
     for (size_t i = 0; i < settings.bindings.size(); ++i)
         bindings.insert(kBindingKeys[i], toml::array{int64_t(settings.bindings[i].keys[0]), int64_t(settings.bindings[i].keys[1])});
     t.insert_or_assign("key_bindings", std::move(bindings));
+    toml::table controllers;
+    for (int port = 0; port < 2; ++port) {
+        toml::array row;
+        for (auto button : input::GetPadBindings(port)) row.push_back(int64_t(button));
+        controllers.insert(port ? "player_2" : "player_1", std::move(row));
+    }
+    t.insert_or_assign("controller_bindings", std::move(controllers));
 }
 
 void ControlsBeginCapture() {
+    input::CancelPadCapture();
     std::lock_guard lock(g_capture_lock);
     g_captured = 0; g_capturing = true;
 }
 void ControlsCancelCapture() {
+    input::CancelPadCapture();
     std::lock_guard lock(g_capture_lock);
     g_captured = 0; g_capturing = false;
 }
@@ -117,12 +138,14 @@ uint32_t ControlsTakeCapture() {
 
 bool ControlsMessage(void*, uint32_t message, uintptr_t wp, intptr_t lp, intptr_t* result) {
     std::lock_guard lock(g_capture_lock);
-    if (!g_capturing) return false;
     if (message == WM_KILLFOCUS || message == WM_DESTROY ||
         (message == WM_ACTIVATE && LOWORD(wp) == WA_INACTIVE)) {
+        input::CancelPadCapture();
+        if (!g_capturing) return false;
         g_capturing = false; g_captured = kCaptureCancelled;
         return false;
     }
+    if (!g_capturing) return false;
     uint32_t key = 0;
     if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) {
         if (lp & (intptr_t(1) << 30)) { *result = 0; return true; }

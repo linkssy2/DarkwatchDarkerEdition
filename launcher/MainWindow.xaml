@@ -40,6 +40,42 @@
       <Setter Property="FontSize" Value="12"/>
       <Setter Property="Padding" Value="12,10"/>
     </Style>
+    <Style TargetType="ComboBoxItem">
+      <Setter Property="Foreground" Value="#F1E9DA"/>
+      <Setter Property="Background" Value="#15181D"/>
+      <Setter Property="Padding" Value="10,7"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBoxItem">
+        <Border x:Name="Choice" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"><ContentPresenter/></Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Choice" Property="Background" Value="#622026"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.38"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style TargetType="ComboBox">
+      <Setter Property="Foreground" Value="#F1E9DA"/>
+      <Setter Property="Background" Value="#20232A"/>
+      <Setter Property="BorderBrush" Value="#696C70"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBox">
+        <Grid>
+          <ToggleButton Focusable="False" IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" ClickMode="Press">
+            <ToggleButton.Template><ControlTemplate TargetType="ToggleButton">
+              <Border Background="#20232A" BorderBrush="#696C70" BorderThickness="1"><TextBlock Text="▾" Foreground="#F1E9DA" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0"/></Border>
+            </ControlTemplate></ToggleButton.Template>
+          </ToggleButton>
+          <ContentPresenter Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" Margin="10,0,30,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+          <Border x:Name="Focus" BorderBrush="#FAEDD1" BorderThickness="2" Visibility="Collapsed" IsHitTestVisible="False"/>
+          <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True" Focusable="False">
+            <Border Background="#15181D" BorderBrush="#696C70" BorderThickness="1" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"><ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/></Border>
+          </Popup>
+        </Grid>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Focus" Property="Visibility" Value="Visible"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.38"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
   </Window.Resources>
   <Viewbox Stretch="Uniform" StretchDirection="DownOnly">
   <Border Width="1060" Height="720" Background="#0C0E11" BorderBrush="#74777C" BorderThickness="1">
@@ -65,9 +101,9 @@
             <Border Height="3" Background="#7C2026" VerticalAlignment="Bottom"/>
           </Grid>
         </Border>
-        <Grid Grid.Column="1" Margin="42,30,42,26">
+        <Grid Grid.Column="1" Margin="42,24,42,20">
           <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/><RowDefinition Height="30"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/><RowDefinition Height="18"/><RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
           </Grid.RowDefinitions>
           <StackPanel>
@@ -78,16 +114,16 @@
                 <TextBlock Text="D A R K E R   E D I T I O N" Margin="2,8,0,0" FontSize="14" Foreground="#B9635C"/>
               </StackPanel>
             </Grid>
-            <Rectangle Height="1" Fill="#56565B" Margin="0,24,0,0"/>
+            <Rectangle Height="1" Fill="#56565B" Margin="0,16,0,0"/>
           </StackPanel>
           <StackPanel Grid.Row="2">
             <TextBlock x:Name="StateTitle" Text="PREPARE YOUR HUNT" FontFamily="Georgia" FontSize="22"/>
-            <TextBlock x:Name="StateDescription" Text="Bring your own original Xbox Darkwatch ISO. Import it once to prepare Darker Edition on this PC." FontSize="15" LineHeight="24" TextWrapping="Wrap" Foreground="#B8B7B5" Margin="0,12,0,18"/>
-            <Border Background="#15181D" BorderBrush="#373B42" BorderThickness="1" Padding="16,13">
+            <TextBlock x:Name="StateDescription" Text="Bring your own original Xbox Darkwatch ISO. Import it once to prepare Darker Edition on this PC." FontSize="14" LineHeight="21" TextWrapping="Wrap" Foreground="#B8B7B5" Margin="0,8,0,12"/>
+            <Border Background="#15181D" BorderBrush="#373B42" BorderThickness="1" Padding="12,9">
               <StackPanel>
-                <TextBlock Text="YOUR DISC, ENHANCED" FontSize="11" FontWeight="SemiBold" Foreground="#C8AE89"/>
-                <TextBlock Text="Widescreen · HD interface · Mouse &amp; keyboard" FontSize="13" Foreground="#B8B7B5" Margin="0,7,0,0"/>
-                <TextBlock Text="Original game files are not included." FontSize="12" Foreground="#85898F" Margin="0,7,0,0"/>
+                <TextBlock x:Name="DiscTitle" Text="YOUR DISC, ENHANCED" FontSize="11" FontWeight="SemiBold" Foreground="#C8AE89"/>
+                <TextBlock x:Name="DiscFeatures" Text="Widescreen · HD interface · Mouse &amp; keyboard" FontSize="12" Foreground="#B8B7B5" Margin="0,5,0,0"/>
+                <TextBlock x:Name="DiscNotice" Text="Original game files are not included." FontSize="11" Foreground="#85898F" Margin="0,5,0,0"/>
               </StackPanel>
             </Border>
           </StackPanel>
@@ -108,9 +144,20 @@
               <Button x:Name="TextureButton" Content="INSTALL HD TEXTURES" Style="{StaticResource Quiet}" IsEnabled="False" ToolTip="Import your ISO first. Download all HD pack parts into one folder, then select the .001 file. A complete ZIP also works."/>
               <TextBlock x:Name="TextureStatus" Text="Optional download · Gameplay textures not installed" Foreground="#85898F" FontSize="11" Margin="0,7,0,0" TextWrapping="Wrap"/>
             </StackPanel>
+            <StackPanel x:Name="LanguageActions" Margin="0,12,0,0">
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <ComboBox x:Name="LanguageChoice" SelectedIndex="0" Height="36" IsEnabled="False" AutomationProperties.Name="Game language">
+                  <ComboBoxItem Content="English" Tag="en"/>
+                  <ComboBoxItem x:Name="SpanishChoice" Content="Español" Tag="es" IsEnabled="False"/>
+                </ComboBox>
+                <Button x:Name="SpanishButton" Grid.Column="2" Content="SPANISH VOICES" Height="36" Padding="8,6" Style="{StaticResource Quiet}" IsEnabled="False"/>
+              </Grid>
+              <TextBlock x:Name="LanguageStatus" Text="Game language · Import your ISO first" Foreground="#85898F" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
             <Button x:Name="CancelButton" Content="CANCEL" Style="{StaticResource Quiet}" Visibility="Collapsed" Margin="0,12,0,0"/>
           </StackPanel>
-          <TextBlock Grid.Row="5" Text="DARKER EDITION   /   0.5" Foreground="#676B72" FontSize="10" Margin="0,22,0,0"/>
+          <TextBlock Grid.Row="5" Text="DARKER EDITION   /   0.6" Foreground="#676B72" FontSize="10" Margin="0,16,0,0"/>
         </Grid>
       </Grid>
     </Grid>

@@ -41,12 +41,13 @@ def load_assets(metadata, compiled):
                 not 0 < row['width'] <= 4096 or not 0 < row['height'] <= 4096 or
                 not 0 < row['native_levels'] <= row['dds_mips'] <= max(row['width'], row['height']).bit_length() or
                 not row['native_bytes'] or
-                type(row.get('pack_revision', 1)) is not int or row.get('pack_revision', 1) not in (1, 2) or
+                type(row.get('pack_revision', 1)) is not int or row.get('pack_revision', 1) not in (1, 2, 3) or
                 not re.fullmatch(r'[0-9a-f]{16}', row['native_fnv64']) or
                 not re.fullmatch(r'[0-9a-f]{64}', row['native_sha256'])):
             raise ValueError('Invalid texture metadata: ' + name)
         lines.append('    {' + json.dumps(name + '.dwt') + ',' + ','.join(map(str, numbers)) +
-                     ',0x' + row['native_fnv64'] + 'ull' + (',2' if row.get('pack_revision', 1) == 2 else '') + '},')
+                     ',0x' + row['native_fnv64'] + 'ull' +
+                     (',' + str(row['pack_revision']) if row.get('pack_revision', 1) > 1 else '') + '},')
     expected = '\n'.join(lines + ['};', ''])
     if not rows or compiled.read_text(encoding='utf-8') != expected:
         raise ValueError('Compiled texture catalog differs from the source metadata')
@@ -85,12 +86,29 @@ def verify_replacement(data, row, fnv):
 def encode_catalog(rows, records, metadata_sha, previous):
     catalog = {'schema_version': 1, 'kind': 'darkwatch-gameplay-hd', 'version': '1',
                'texture_catalog_sha256': metadata_sha, 'files': records}
-    if previous is not None:
-        old = json.loads(previous)
-        if ('previous_catalog' in old or
-                {r['path']: r for r in old['files']} !=
-                {r['path']: r for r, a in zip(records, rows) if a.get('pack_revision', 1) == 1}):
+    revision = max(row.get('pack_revision', 1) for row in rows)
+    if not 1 <= revision <= 3:
+        raise ValueError('Unsupported HD pack revision')
+    remaining = previous
+    # Each published generation is an exact prefix of the additive catalog.
+    # Retain its original receipt bytes, not a newly serialized approximation.
+    while revision > 1:
+        revision -= 1
+        if not isinstance(remaining, str) or len(remaining.encode('utf-8')) > 2 * 1024 * 1024:
             raise ValueError('Original HD pack catalog must remain byte-for-byte compatible')
+        old = json.loads(remaining)
+        expected = {r['path']: r for r, a in zip(records, rows) if a.get('pack_revision', 1) <= revision}
+        if (not isinstance(old, dict) or old.get('schema_version') != 1 or
+                old.get('kind') != 'darkwatch-gameplay-hd' or old.get('version') != '1' or
+                not re.fullmatch(r'[0-9a-f]{64}', old.get('texture_catalog_sha256', '')) or
+                not isinstance(old.get('files'), list) or len(old['files']) != len(expected) or
+                not all(isinstance(r, dict) and isinstance(r.get('path'), str) for r in old['files']) or
+                {r['path']: r for r in old['files']} != expected):
+            raise ValueError('Original HD pack catalog must remain byte-for-byte compatible')
+        remaining = old.get('previous_catalog')
+    if remaining is not None:
+        raise ValueError('Unsupported previous HD texture catalog')
+    if previous is not None:
         catalog['previous_catalog'] = previous
     return (json.dumps(catalog, indent=2) + '\n').encode('utf-8')
 

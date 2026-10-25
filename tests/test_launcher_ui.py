@@ -47,6 +47,19 @@ class ProtocolFixture {
             Console.WriteLine("{\"event\":\"result\",\"message\":\"HD fixture installed\",\"percent\":100,\"installed\":true,\"ready\":true,\"hd_textures_installed\":true}");
             return 0;
         }
+        if(mode=="spanish") {
+            int at=Array.IndexOf(args,"--install-spanish");
+            if(at<0||at+1>=args.Length||args[at+1]!=@"C:\Downloads\Español 🦇.zip") return 12;
+            Console.WriteLine("{\"event\":\"result\",\"message\":\"Spanish fixture installed\",\"installed\":true,\"ready\":true,\"spanish_installed\":true,\"language\":\"en\"}");
+            return 0;
+        }
+        if(mode=="language-es"||mode=="language-en") {
+            int at=Array.IndexOf(args,"--set-language");
+            string language=mode.Substring(9);
+            if(at<0||at+1>=args.Length||args[at+1]!=language) return 13;
+            Console.WriteLine("{\"event\":\"result\",\"message\":\"Language fixture changed\",\"installed\":true,\"ready\":true,\"spanish_installed\":true,\"language\":\""+language+"\"}");
+            return 0;
+        }
         Console.WriteLine("{\"event\":\"result\",\"message\":\"Verified fixture only\",\"percent\":100,\"installed\":true,\"ready\":true,\"install_dir\":\"C:\\\\Fixture\\\\Active\"}");
         return 0;
     }
@@ -131,8 +144,9 @@ class LauncherUiHarness {
             Check(image!=null&&image.PixelWidth>0&&image.PixelHeight>0,"Missing embedded image "+name);
         }
         Check(Element<Button>(l,"ImportButton").IsEnabled,"Fresh import disabled");
-        foreach(string name in new[]{"PlayButton","VerifyButton","FolderButton","TextureButton"})
+        foreach(string name in new[]{"PlayButton","VerifyButton","FolderButton","TextureButton","SpanishButton"})
             Check(!Element<Button>(l,name).IsEnabled,"Fresh "+name+" enabled");
+        Check(!Element<ComboBox>(l,"LanguageChoice").IsEnabled&&!Element<ComboBoxItem>(l,"SpanishChoice").IsEnabled,"Fresh language controls enabled");
         State(l,new Dictionary<string,object>{{"installed",true},{"ready",true},{"install_dir",@"C:\Fixture\Version"},{"message","Ready – fixture"},{"percent",120}});
         Check((string)Field(l,"gameDirectory")==@"C:\Fixture\Version","Backend install_dir was ignored");
         Check(Element<TextBlock>(l,"StatusText").Text=="Ready – fixture","Unicode status changed");
@@ -212,10 +226,63 @@ class LauncherUiHarness {
         Evidence["cancel_event_and_locked_token_recovery"]=true;
     }
 
+    static void Language() {
+        Check(Launcher.SpanishPackFilter=="Darker Edition Spanish pack (*.zip)|*.zip","Spanish picker accepts unexpected formats");
+        var l=new Launcher(true);
+        State(l,new Dictionary<string,object>{{"installed",true},{"ready",true},{"language","en"},{"spanish_installed",false}});
+        Check(Element<Button>(l,"SpanishButton").IsEnabled,"Ready game cannot install Spanish");
+        Check(Element<ComboBox>(l,"LanguageChoice").IsEnabled&&!Element<ComboBoxItem>(l,"SpanishChoice").IsEnabled,"Missing pack must disable Spanish only");
+        Element<ComboBox>(l,"LanguageChoice").SelectedIndex=1;
+        Check(Element<ComboBox>(l,"LanguageChoice").SelectedIndex==0&&!(bool)Field(l,"busy"),"Missing pack selection reached backend");
+        State(l,new Dictionary<string,object>{{"spanish_installed",true},{"spanish_audio_installed",false}});
+        Check(Element<ComboBoxItem>(l,"SpanishChoice").IsEnabled,"Bundled Spanish requires an optional download");
+        Check((string)Element<Button>(l,"SpanishButton").Content=="SPANISH VOICES","Text availability incorrectly implies voices installed");
+        Check(Element<TextBlock>(l,"LanguageStatus").Text.Contains("Text and subtitles included"),"Included translation is not explained");
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","language-es");
+        Element<ComboBox>(l,"LanguageChoice").SelectedIndex=1;
+        Pump(()=>!(bool)Field(l,"busy")); Idle(l);
+        Check((string)Field(l,"language")=="es","Bundled Spanish could not be selected before voice import");
+        Evidence["builtin_spanish_without_voice_download"]=true;
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","spanish");
+        Finish((Task)Call(l,"Run","--install-spanish",@"C:\Downloads\Español 🦇.zip")); Idle(l);
+        Check(Element<ComboBoxItem>(l,"SpanishChoice").IsEnabled,"Installed Spanish still disabled");
+        State(l,new Dictionary<string,object>{{"language","es"},{"spanish_installed",true}});
+        Check(!(bool)Field(l,"busy")&&Element<ComboBox>(l,"LanguageChoice").SelectedIndex==1,"Programmatic language refresh started an operation");
+        Check((string)Element<Button>(l,"PlayButton").Content=="JUGAR","Spanish action missing");
+        Check(Element<TextBlock>(l,"StateTitle").Text=="LA NOCHE TE ESPERA","Spanish title missing");
+        Check(Element<TextBlock>(l,"DiscFeatures").Text.Contains("Ratón"),"Spanish accent lost");
+        foreach(var example in new[]{
+            new[]{"Preparing shaders — 12 of 4440","Preparando shaders — 12 de 4440"},
+            new[]{"Verifying data/audioDlg.pck","Verificando data/audioDlg.pck"},
+            new[]{"Importing Movies1.pck","Importando Movies1.pck"},
+            new[]{"Instalación verificada.","Instalación verificada."}}) {
+            Check(Launcher.Localize(example[0],"es")==example[1],"Translated progress changed a filename, count or Spanish text");
+            Check(Launcher.Localize(example[0],"en")==example[0],"English progress changed");
+        }
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","language-en");
+        Element<ComboBox>(l,"LanguageChoice").SelectedIndex=0;
+        Check((bool)Field(l,"busy")&&!Element<ComboBox>(l,"LanguageChoice").IsEnabled,"User selection did not lock language controls");
+        Pump(()=>!(bool)Field(l,"busy")); Idle(l);
+        Check((string)Field(l,"language")=="en"&&(string)Element<Button>(l,"PlayButton").Content=="PLAY","English switch did not restore copy");
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","error");
+        Element<ComboBox>(l,"LanguageChoice").SelectedIndex=1;
+        Pump(()=>!(bool)Field(l,"busy")); Idle(l);
+        Check((string)Field(l,"language")=="en"&&Element<ComboBox>(l,"LanguageChoice").SelectedIndex==0,"Failed language change was retained");
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","language-es");
+        Element<ComboBox>(l,"LanguageChoice").SelectedIndex=1;
+        Pump(()=>!(bool)Field(l,"busy")); Idle(l);
+        Check((string)Field(l,"language")=="es","User Spanish selection was not applied");
+        var preparation=Launcher.Preparing(()=>{});
+        preparation.UpdatePreparation(new Dictionary<string,object>{{"event","shader_prepare"},{"language","es"},{"message","Preparando shaders"}});
+        Check(Element<TextBlock>(preparation,"StateTitle").Text=="PREPARANDO SHADERS","Direct preparation stayed English");
+        Check(Element<StackPanel>(preparation,"LanguageActions").Visibility==Visibility.Collapsed,"Preparation exposed language mutations");
+        Evidence["language_selection_install_rollback_and_no_reentrancy"]=true;
+    }
+
     static void Preview(string destination) {
         Directory.CreateDirectory(destination);
-        foreach(string state in new[]{"fresh","ready","hd-installed","importing","shaders"}) {
-            var l=state=="shaders"?Launcher.Preparing(()=>{}):new Launcher(true);string path=Path.Combine(destination,"launcher-"+state+".png");
+        foreach(string state in new[]{"fresh","ready","hd-installed","importing","shaders","spanish-ready","spanish-shaders"}) {
+            var l=state.EndsWith("shaders")?Launcher.Preparing(()=>{}):new Launcher(true);string path=Path.Combine(destination,"launcher-"+state+".png");
             Call(l,"FitToWorkArea",new Rect(0,0,1920,1080));
             l.RenderPreview(path,state);
             Check(!l.Window.IsVisible,"Preview showed a desktop window");
@@ -245,12 +312,15 @@ class LauncherUiHarness {
             var content=(FrameworkElement)l.Window.Content;
             content.Measure(new Size(l.Window.Width,l.Window.Height));
             content.Arrange(new Rect(0,0,l.Window.Width,l.Window.Height));content.UpdateLayout();
-            foreach(string name in new[]{"ImportButton","PlayButton","VerifyButton","FolderButton","TextureButton","CloseButton"}) {
+            foreach(string name in new[]{"ImportButton","PlayButton","VerifyButton","FolderButton","TextureButton","SpanishButton","CloseButton"}) {
                 var button=Element<Button>(l,name);
                 var bounds=button.TransformToAncestor(content).TransformBounds(new Rect(new Point(0,0),button.RenderSize));
                 Check(bounds.Left>=0&&bounds.Top>=0&&bounds.Right<=l.Window.Width+1&&bounds.Bottom<=l.Window.Height+1,
                       "Clipped launcher button "+name+" on small/high-DPI desktop");
             }
+            var notice=Element<TextBlock>(l,"DiscNotice").TransformToAncestor(content).TransformBounds(new Rect(new Point(),Element<TextBlock>(l,"DiscNotice").RenderSize));
+            var status=Element<TextBlock>(l,"StatusText").TransformToAncestor(content).TransformBounds(new Rect(new Point(),Element<TextBlock>(l,"StatusText").RenderSize));
+            Check(notice.Bottom<status.Top,"Optional language controls overlap launcher description");
             Check(!l.Window.IsVisible,"Small desktop check showed a window");
         }
         Evidence["release_preview_api_absent"]=true;
@@ -263,7 +333,7 @@ class LauncherUiHarness {
         try {
             var app=new Application {ShutdownMode=ShutdownMode.OnExplicitShutdown};
             SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext());
-            Quote(); ResourcesAndState(); ProcessEvents(); Cancellation(); Preview(args[0]); ReleaseAndSmallDesktop(args[1]);
+            Quote(); ResourcesAndState(); ProcessEvents(); Cancellation(); Language(); Preview(args[0]); ReleaseAndSmallDesktop(args[1]);
             Evidence["shown_windows"]=0; Evidence["real_backend_or_game_started"]=false;
             Console.WriteLine(Json.Serialize(Evidence)); return 0;
         } catch(Exception ex) {Console.Error.WriteLine(ex);return 1;}

@@ -29,13 +29,16 @@ bool DarkwatchCharacterMelee(X86Context& ctx, uint8_t* base) {
         !darkwatch::melee::Read(base, uint64_t(ctx.ebp) - 8, event) ||
         !darkwatch::melee::Read(base, uint64_t(event) + 4, event) || event != 0x17C ||
         !darkwatch::melee::Read(base, uint64_t(component) + 0x58, actor) ||
-        !DarkwatchCharacterIsCassidyPlayer(base, actor) ||
-        ctx.esp < 0x2000 || !darkwatch::melee::Span(base, uint64_t(ctx.esp) - 0x2000, 0x2000) ||
-        !DarkwatchCharacterAudioReady(base)) return false;
+        ctx.esp < 0x2000 || !darkwatch::melee::Span(base, uint64_t(ctx.esp) - 0x2000, 0x2000)) return false;
+    const bool tala = DarkwatchCharacterIsTalaPlayer(base, actor);
+    if ((!tala && !DarkwatchCharacterIsCassidyPlayer(base, actor)) ||
+        !DarkwatchCharacterAudioReady(base, nullptr, tala)) return false;
 
     const uint32_t scratch = ctx.esp - 0x100;
-    std::memcpy(base + scratch + 16, "CASSIDY", 8);
-    std::memcpy(base + scratch + 32, "CASS_ATTK", 10);
+    const char* bank = tala ? "TALA" : "CASSIDY";
+    const char* cue = tala ? "TALA_ATTACK" : "CASS_ATTK";
+    std::memcpy(base + scratch + 16, bank, std::strlen(bank) + 1);
+    std::memcpy(base + scratch + 32, cue, std::strlen(cue) + 1);
     X86Context call = ctx;
     call.esp = scratch;
     call.ecx = scratch;
@@ -56,6 +59,6 @@ bool DarkwatchCharacterMelee(X86Context& ctx, uint8_t* base) {
     kernel::CallGuest(call, 0x11C1A, {});
     call.ecx = scratch + 4;
     kernel::CallGuest(call, 0x11C1A, {});
-    // Keep the original mixed weapon sample if no Cassidy sound was created.
+    // Keep the original mixed weapon sample if no character sound was created.
     return created;
 }

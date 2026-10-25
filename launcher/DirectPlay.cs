@@ -21,6 +21,7 @@ namespace DarkwatchDarkerEdition
         {
             var json = new JavaScriptSerializer();
             string failure = null;
+            string language = "en";
             bool started = false, cancelled = false;
             // Use the same verified installation and launch lock as the full launcher.
             using (var process = new Process { StartInfo = SetupProcess.Create(package, installRoot, "--play", cancelFile: cancelFile) }) {
@@ -31,23 +32,28 @@ namespace DarkwatchDarkerEdition
                     Dictionary<string, object> item;
                     try { item = json.Deserialize<Dictionary<string, object>>(line); }
                     catch (ArgumentException) { continue; }
-                    object kind, message, ready, pid, wasCancelled;
+                    object kind, message, ready, pid, wasCancelled, selectedLanguage;
                     if (item == null || !item.TryGetValue("event", out kind)) continue;
+                    if (item.TryGetValue("language", out selectedLanguage)) language = Object.Equals(selectedLanguage, "es") ? "es" : "en";
                     if (Object.Equals(kind, "error") && item.TryGetValue("message", out message))
                         failure = Convert.ToString(message);
                     if (Object.Equals(kind, "error") && item.TryGetValue("cancelled", out wasCancelled) && Object.Equals(wasCancelled, true)) cancelled = true;
-                    if (Object.Equals(kind, "shader_prepare") && progress != null) progress(item);
+                    if (Object.Equals(kind, "shader_prepare") && progress != null) {
+                        item["language"] = language;
+                        progress(item);
+                    }
                     if (Object.Equals(kind, "result") && item.TryGetValue("ready", out ready) && Object.Equals(ready, true)
                         && item.TryGetValue("pid", out pid) && pid is int && (int)pid > 0)
                         started = true;
                 }
                 process.WaitForExit();
                 string stderr = errors.Result;
-                if (cancelled) throw new OperationCanceledException("Shader preparation was canceled. Completed shaders are kept.");
+                if (cancelled) throw new OperationCanceledException(language == "es" ? "Se canceló la preparación de shaders. Se conservan los shaders completados." : "Shader preparation was canceled. Completed shaders are kept.");
                 if (process.ExitCode != 0 || !started || failure != null) {
-                    if (String.IsNullOrWhiteSpace(failure)) failure = String.IsNullOrWhiteSpace(stderr) ? "Darkwatch could not start." : stderr;
+                    if (String.IsNullOrWhiteSpace(failure)) failure = String.IsNullOrWhiteSpace(stderr) ? (language == "es" ? "No se pudo iniciar Darkwatch." : "Darkwatch could not start.") : stderr;
+                    failure = Launcher.Localize(failure, language);
                     throw new IOException((failure.Length > 500 ? failure.Substring(0, 500) : failure)
-                        + "\n\nOpen Darkwatch Darker Edition.exe to import or repair your game.");
+                        + (language == "es" ? "\n\nAbre Darkwatch Darker Edition.exe para importar o reparar el juego." : "\n\nOpen Darkwatch Darker Edition.exe to import or repair your game."));
                 }
             }
         }

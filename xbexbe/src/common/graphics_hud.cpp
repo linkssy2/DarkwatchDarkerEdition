@@ -1,5 +1,6 @@
 #include "graphics_hud.h"
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include "app/app.h"
@@ -11,6 +12,7 @@ X86_EXTERN_FUNC(__imp__sub_001EE8BE);
 namespace {
 struct HudScope {uint8_t* base = nullptr; uint32_t root = 0, camera = 0; float anchor = 0;};
 thread_local HudScope g_hud;
+std::atomic<bool> g_split_view{false};
 
 bool Span(const uint8_t* base, uint64_t address, uint32_t size) {
     const uint64_t end = address + size;
@@ -65,6 +67,8 @@ HudScope Scope(X86Context& ctx, uint8_t* base) {
 bool Active(uint8_t* base) {return g_hud.base == base && Camera(g_hud);}
 } // namespace
 
+bool DarkwatchHudSplitView() {return g_split_view.load(std::memory_order_relaxed);}
+
 X86_FUNC(sub_001EE8BE) {
     const HudScope previous = g_hud;
     g_hud = Scope(ctx, base);
@@ -75,13 +79,16 @@ X86_FUNC(sub_001EE8BE) {
 void DarkwatchCoopHudMargins(X86Context& ctx, uint8_t* base) {
     if (!Span(base, ctx.esi, 0x1E0) || Read(base, ctx.esi) != 0x427740 ||
         ctx.ecx != ctx.esi || !Span(base, ctx.esp, 20) ||
-        !Span(base, Read(base, ctx.esp), 16)) return;
+        !Span(base, Read(base, ctx.esp), 16)) {g_split_view = false; return;}
     const uint32_t camera = Read(base, ctx.esi + 0x1DC);
     if (!Span(base, camera, 0x68) || Read(base, camera) != 0x43F97C ||
         Float(base, camera + 0x58) != 0 || Float(base, camera + 0x60) != 1 ||
-        Float(base, camera + 0x64) != 0.4975f) return;
+        Float(base, camera + 0x64) != 0.4975f) {g_split_view = false; return;}
     const float top = Float(base, camera + 0x5C);
-    if (top != 0 && top != 0.5025f) return;
+    if (top != 0 && top != 0.5025f) {g_split_view = false; return;}
+    // The host counter reads this value without following guest pointers on
+    // the drawing thread. A later full-screen/invalid viewport resets it.
+    g_split_view.store(true, std::memory_order_relaxed);
     // D777B passes outer/inner TV-safe margins to the native whole-group clamp.
     // Native two-player views leave a 0.005 divider; inset each by 2% of the display.
     const float vertical = 0.04f / Float(base, camera + 0x64);

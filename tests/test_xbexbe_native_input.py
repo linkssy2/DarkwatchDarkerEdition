@@ -85,6 +85,14 @@ static void Tap(uint32_t key){Key(key,true);Key(key,false);}
 NATIVE_KEY_BRIDGE
 int main(){
  Init();SetActive(true); // A keyboard remains available when SDL cannot initialize.
+ SetMenuMode(true);auto initial_keys=GetPointerSnapshot().key_presses;
+ NativeKey(WM_KEYDOWN,'Z',intptr_t(1)<<30);CHECK(GetPointerSnapshot().key_presses==initial_keys);
+ NativeKey(WM_KEYUP,'Z');NativeKey(WM_KEYDOWN,'Z');CHECK(GetPointerSnapshot().key_presses==initial_keys+1);
+ NativeKey(WM_KEYUP,'Z');
+ NativeKey(WM_SYSKEYDOWN,VK_MENU);SetActive(false);SetActive(true); // Alt-up happened in another window.
+ NativeKey(WM_KEYDOWN,'Z');CHECK(GetPointerSnapshot().key_presses==initial_keys+2);NativeKey(WM_KEYUP,'Z');
+ native_modifiers=true;NativeKey(WM_KEYDOWN,'Z');CHECK(GetPointerSnapshot().key_presses==initial_keys+2);
+ NativeKey(WM_KEYUP,'Z');native_modifiers=false;SetMenuMode(false);
  CHECK(Poll(0).connected&&!Poll(1).connected&&!Poll(-1).connected);
  Tap(0x0D);CHECK(!Poll(0).buttons);Frame();CHECK(Poll(0).buttons==0x10);
  Pad snapshot=Poll(0);for(int i=0;i<20;i++){Equal(Poll(0),snapshot);Poll(1);}
@@ -176,8 +184,9 @@ class NativeInputTests(unittest.TestCase):
             window = (SDK / "app/main.cpp").read_text()
             clause = re.search(r"    if \(msg == WM_KEYDOWN[^\n]*\)\n        input::Key\([^;]+;", window)
             self.assertIsNotNone(clause)
-            bridge = ("enum { WM_KEYDOWN=0x100, WM_KEYUP=0x101, WM_SYSKEYDOWN=0x104, WM_SYSKEYUP=0x105 };\n"
-                      "static void NativeKey(uint32_t msg,uintptr_t wp) {\n" + clause.group() + "\n}")
+            bridge = ("enum { WM_KEYDOWN=0x100, WM_KEYUP=0x101, WM_SYSKEYDOWN=0x104, WM_SYSKEYUP=0x105, VK_SHIFT=0x10, VK_CONTROL=0x11, VK_MENU=0x12, VK_LWIN=0x5B, VK_RWIN=0x5C };\n"
+                      "static bool native_modifiers=false;static short GetKeyState(int){return native_modifiers?short(-32768):0;}\n"
+                      "static void NativeKey(uint32_t msg,uintptr_t wp,intptr_t lp=0) {\n" + clause.group() + "\n}")
             path.write_text(FIXTURE.replace("NATIVE_KEY_BRIDGE", bridge))
             result = subprocess.run([compiler, "-std=c++20", "-O1", "-fuse-ld=lld", "-I", str(folder),
                                      "-I", str(SDK), str(path), "-o", str(exe)],

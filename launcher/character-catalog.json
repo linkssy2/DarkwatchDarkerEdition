@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "content_revision": "wartrain-splitter-characters-v2",
+  "content_revision": "wartrain-splitter-characters-v3",
   "originals": {
     "audio.pck": {
       "size": 137741272,
@@ -3511,6 +3511,66 @@
       "offset": 108589056,
       "size": 216502,
       "sha256": "723c0fbc742317a3a4e4a5a070802cb6cd3c1db67f877ed7dff05bbb7ed86cad"
+    },
+    "characters/player_third/base_jerichociv.rx1": {
+      "archive": "packfile.pck",
+      "offset": 27789312,
+      "size": 353456,
+      "sha256": "a1abaac00ac4b1cc24fa16077478defea463791f0475d9f41f6daf989845c657"
+    },
+    "characters/multiplayer/base_dwstormtrooper_blue.rx1": {
+      "archive": "packfile.pck",
+      "offset": 20598784,
+      "size": 130744,
+      "sha256": "37bb3be6b4578ce57d3595ac7a2b034952da255949c4322db2ab8259827b3a3b"
+    },
+    "characters/talaagent/base_agenttala.rx1": {
+      "archive": "packfile.pck",
+      "offset": 36687872,
+      "size": 198104,
+      "sha256": "61ec2ceac3ebf48f560413492ef566918cc4b6e17ea2348ca8318a5db7899efb"
+    },
+    "characters/multiplayer/base_dwstormtrooper_red.rx1": {
+      "archive": "packfile.pck",
+      "offset": 20736000,
+      "size": 130736,
+      "sha256": "52f07f4e0568cfde03c28467ccd3e5f73ef06b40fd9327b7a7af5558e65e17ae"
+    },
+    "characters/multiplayer/base_dwstormtrooper.jlist": {
+      "archive": "packfile.pck",
+      "offset": 20425316,
+      "size": 559,
+      "sha256": "1f75f807e4686ed32da668762bb8eb6866968072ecd2ebb68bb2f21b562121f7"
+    },
+    "characters/player_third/base_jerichociv.jlist": {
+      "archive": "packfile.pck",
+      "offset": 27785753,
+      "size": 559,
+      "sha256": "1f75f807e4686ed32da668762bb8eb6866968072ecd2ebb68bb2f21b562121f7"
+    },
+    "characters/multiplayer/base_dwstormtrooper.bllist": {
+      "archive": "packfile.pck",
+      "offset": 20424378,
+      "size": 938,
+      "sha256": "9f86b2290f4429fafe54fd5f56605246612d68ae7f3ff1e8aa20f259af0c5c79"
+    },
+    "characters/talaagent/base_agenttala.jlist": {
+      "archive": "packfile.pck",
+      "offset": 36685605,
+      "size": 559,
+      "sha256": "1f75f807e4686ed32da668762bb8eb6866968072ecd2ebb68bb2f21b562121f7"
+    },
+    "characters/talaagent/base_agenttala.bllist": {
+      "archive": "packfile.pck",
+      "offset": 36685112,
+      "size": 493,
+      "sha256": "2a4ad8acc035c713b1eec23cf8cf91536658e9288c2fc05d6b4179cc3f34c446"
+    },
+    "audio/tala/tala.babf": {
+      "archive": "audio.pck",
+      "offset": 83215776,
+      "size": 5040,
+      "sha256": "0e8b8c4d2866ea07588c8579de9065582d6d17dac661ddd082512c55875db551"
     }
   },
   "v7_outputs": {
@@ -6871,16 +6931,16 @@
   },
   "installed": {
     "packfile.pck": {
-      "size": 120732531,
-      "sha256": "6a17c34ba180c839350297725248887c17b3b7540870978ee2b3ebb8b7cd778d"
+      "size": 133411077,
+      "sha256": "61ecad4b43070941e066c1b69e2ba03b67f0a846c0298472f3111f5f055a1425"
     },
     "LvlSingl.pck": {
-      "size": 258077411,
-      "sha256": "ebf982c749184e05f7ed3342ce108d063e2e1c92611b19245d3c1871fb24c216"
+      "size": 1170739944,
+      "sha256": "97a1b7d06cc2ee42de3875685cc5d6c561b5a34275de072b0aa5e2463110c64e"
     },
     "audio.pck": {
-      "size": 137958865,
-      "sha256": "f148f43fbaeedbaa3ba6465fd009a802681900dafb24de671dea1c2ffaa67c01"
+      "size": 145688078,
+      "sha256": "c889f14963005bb796e29d84ad06c7ab52fa1d8b138a7107f8fa7355e73970f1"
     }
   },
   "base_archives": {
@@ -6891,6 +6951,20 @@
     "LvlSingl.pck": {
       "size": 236805364,
       "sha256": "62abe525a48bff26fe646e95814693aed225ec4f3ab6a94e94542fb3e48dccad"
+    },
+    "audio.pck": {
+      "size": 137958865,
+      "sha256": "f148f43fbaeedbaa3ba6465fd009a802681900dafb24de671dea1c2ffaa67c01"
+    }
+  },
+  "spectral_archives": {
+    "packfile.pck": {
+      "size": 120732531,
+      "sha256": "6a17c34ba180c839350297725248887c17b3b7540870978ee2b3ebb8b7cd778d"
+    },
+    "LvlSingl.pck": {
+      "size": 258077411,
+      "sha256": "ebf982c749184e05f7ed3342ce108d063e2e1c92611b19245d3c1871fb24c216"
     },
     "audio.pck": {
       "size": 137958865,

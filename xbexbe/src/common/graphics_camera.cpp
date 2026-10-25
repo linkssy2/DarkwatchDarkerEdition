@@ -20,6 +20,8 @@ std::mutex g_camera_lock;
 PlayerCamera g_player_camera;
 struct WeaponView {uint32_t frame = 0, renderer = 0, camera = 0, raster = 0; float scale = 1;};
 thread_local WeaponView g_weapon_view;
+struct PowerView {uint32_t frame = 0, node = 0, raster = 0; float scale = 1;};
+thread_local PowerView g_power_view;
 
 bool Span(const uint8_t* base, uint64_t address, uint32_t size) {
     const uint64_t end = address + size;
@@ -148,4 +150,48 @@ void DarkwatchEndWeaponView(X86Context& ctx, uint8_t* base) {
         !ScaleValid(base, saved.camera, previous) || ctx.esp < 256 ||
         !Span(base, uint64_t(ctx.esp) - 256, 256)) return;
     SetScale(ctx, base, saved.camera, saved.scale, 0xDEE24);
+}
+
+void DarkwatchBeginPowerView(X86Context& ctx, uint8_t* base) {
+    // B851D binds this authored screen effect to its player's camera. Its first
+    // emitter is a fixed 2.1 x 1.1 rectangle; world FOV must not shrink it.
+    // +50 is the original CRC32 of the resolved resource path, not the body aura.
+    if (g_power_view.frame || !Span(base, ctx.ecx, 0x70) ||
+        Read(base, ctx.ecx + 0x50) != 0x9EA613DE || !base[ctx.ecx + 0x62] ||
+        Read(base, ctx.ecx + 0x54) != 1 || !Span(base, ctx.ebp, 12) ||
+        !Span(base, ctx.esi, 4) || Read(base, ctx.esi) != ctx.ecx) return;
+    PlayerCamera player;
+    {std::lock_guard lock(g_camera_lock); player = g_player_camera;}
+    float scale;
+    if (!player.owner || Read(base, ctx.ebp + 8) != player.camera ||
+        !Span(base, player.owner, 0x14) || Read(base, player.owner + 0xC) != player.camera ||
+        !CameraValid(base, player.camera, player.raster) ||
+        Read(base, ctx.ecx + 0x68) != player.raster ||
+        !ScaleValid(base, player.camera, scale) ||
+        !std::isfinite(player.aspect_scale) || player.aspect_scale <= 0) return;
+    const float factor = scale / player.aspect_scale;
+    if (!std::isfinite(factor) || factor < 0.5f || factor > 2.0f || factor == 1) return;
+    g_power_view = {ctx.ebp, ctx.esi, player.raster, factor};
+}
+
+void DarkwatchEndPowerView(X86Context& ctx, uint8_t*) {
+    if (g_power_view.frame == ctx.ebp && g_power_view.node == ctx.esi) g_power_view = {};
+}
+
+void DarkwatchPowerViewProjection(X86Context& ctx, uint8_t* base) {
+    // 1CD874 has copied the active RW camera's reciprocal view windows into its
+    // local particle projection. Change only this draw, leaving zoom, the world,
+    // first-person weapons and other particle effects on their original paths.
+    if (!g_power_view.frame || ctx.esi != g_power_view.raster ||
+        !Span(base, ctx.ebp, 0x14) || base[ctx.ebp + 0x10] ||
+        !Span(base, ctx.esp, 0x78)) return;
+    float x, y;
+    std::memcpy(&x, base + ctx.esp + 0x60, 4);
+    std::memcpy(&y, base + ctx.esp + 0x74, 4);
+    if (!std::isfinite(x) || !std::isfinite(y) || x <= 0 || y <= 0) return;
+    x *= g_power_view.scale;
+    y *= g_power_view.scale;
+    if (!std::isfinite(x) || !std::isfinite(y)) return;
+    std::memcpy(base + ctx.esp + 0x60, &x, 4);
+    std::memcpy(base + ctx.esp + 0x74, &y, 4);
 }

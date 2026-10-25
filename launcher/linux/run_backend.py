@@ -13,14 +13,14 @@ ERROR_FILE = "last-setup-error.txt"
 MAX_ERROR_BYTES = 16384
 
 
-def notify(message, error=False):
+def notify(message, error=False, buttons=0):
     try:
         import ctypes
         box = ctypes.WinDLL("user32", use_last_error=True).MessageBoxW
         box.argtypes = (ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint)
         box.restype = ctypes.c_int
-        return bool(box(None, str(message), "Darkwatch: Darker Edition",
-                        0x10000 | (0x10 if error else 0x40)))
+        return box(None, str(message), "Darkwatch: Darker Edition",
+                   0x10000 | (0x10 if error else 0x40) | buttons)
     except Exception as failure:
         try:
             print(str(message) + "\nCould not show setup dialog: " + str(failure), file=sys.stderr)
@@ -127,7 +127,18 @@ def run_interactive(root, arguments):
             backend = importlib.import_module("setup_backend")
             original_emit = backend.emit
             backend.emit = capture
-            if any(arg.partition("=")[0] in ("--import-iso", "--install-hd-textures")
+            if "--language" in arguments:
+                choice = notify("Game language / Idioma del juego\n\n"
+                                "Yes / Sí: Español\nNo: English\nCancel / Cancelar: Keep current language / No cambiar\n\n"
+                                "Applies on the next launch. Close Darkwatch first.\n"
+                                "Se aplica al iniciar el juego. Cierra Darkwatch primero.", buttons=0x203)
+                if choice == 2:
+                    return 0
+                if choice not in (6, 7):
+                    raise RuntimeError("Could not open the language selector. Use --set-language en or --set-language es.")
+                index = arguments.index("--language")
+                arguments = arguments[:index] + ["--set-language", "es" if choice == 6 else "en"] + arguments[index + 1:]
+            if any(arg.partition("=")[0] in ("--import-iso", "--install-hd-textures", "--install-spanish")
                    for arg in arguments):
                 notify("Press OK to begin setup. Import and preparation may take several minutes. "
                        "Leave Steam running; another message will confirm completion or explain any error.")

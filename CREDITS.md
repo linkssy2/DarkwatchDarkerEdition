@@ -20,3 +20,7 @@ as freely licensed original game artwork.
 Character adaptations and optional texture matching are prepared locally from
 the supported disc. Original models, animations and voices remain the property
 of their creators and are excluded from this source and the launcher download.
+
+- **ZARF (DXEV2BYZARF V2):** Spanish community translation, integrated with
+  text-layout and compatibility corrections. Original voices and movie files
+  are not bundled; optional compatible voice content is supplied separately.

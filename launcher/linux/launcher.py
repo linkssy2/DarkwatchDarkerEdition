@@ -25,17 +25,6 @@ def resolve_path(path):
         raise LauncherError("Could not resolve path: " + str(path) + ". " + str(error)) from None
 
 
-def check_native_links(root):
-    # Wine can report Linux symlinks as ordinary files and directories.
-    pending = [root]
-    while pending:
-        path = pending.pop()
-        if path.is_symlink():
-            raise LauncherError("A linked file or folder inside the Windows payload or GameData is not supported: " + str(path))
-        if path.is_dir():
-            pending.extend(path.iterdir())
-
-
 def vdf_values(path, key):
     """Read quoted scalar fields from Steam's local manifests, without executing them."""
     if not path.is_file():
@@ -112,6 +101,17 @@ def portable_directory(path):
     path.mkdir(parents=True, exist_ok=True)
 
 
+def check_native_links(root):
+    # Wine can report Linux symlinks as ordinary files and directories.
+    pending = [root]
+    while pending:
+        path = pending.pop()
+        if path.is_symlink():
+            raise LauncherError("A linked file or folder inside the Windows payload or GameData is not supported: " + str(path))
+        if path.is_dir():
+            pending.extend(path.iterdir())
+
+
 @contextmanager
 def action_lock(path):
     import fcntl
@@ -163,6 +163,11 @@ def run_action(root, tools, action, input_path=None, output=print):
     for path in (python, backend, package / "package-manifest.json", adapter):
         if not path.is_file():
             raise LauncherError("The Windows payload is incomplete. Extract the entire Linux package again: " + str(path))
+    language = input_path if action == "--set-language" else None
+    if language is not None:
+        if language not in ("en", "es"):
+            raise LauncherError("Choose en or es.")
+        input_path = None
     if input_path:
         input_path = resolve_path(input_path)
         if not input_path.is_file():
@@ -177,6 +182,8 @@ def run_action(root, tools, action, input_path=None, output=print):
                "--cancel-file", wine_path(cancel), action]
     if input_path:
         command.append(wine_path(input_path))
+    elif language is not None:
+        command.append(language)
     cancelled = False
     playing = False
 
@@ -219,7 +226,10 @@ def run_action(root, tools, action, input_path=None, output=print):
                     last = text
                 if kind == "status":
                     output("Ready to play: " + ("yes" if event.get("ready") else "no") +
-                           ". HD textures: " + ("installed" if event.get("hd_textures_installed") else "not installed") + ".")
+                           ". HD textures: " + ("installed" if event.get("hd_textures_installed") else "not installed") +
+                           ". Language: " + str(event.get("language", "en")) +
+                           ". Spanish text: " + ("available" if event.get("spanish_installed") else "unavailable") +
+                           ". Spanish voices: " + ("installed" if event.get("spanish_audio_installed") else "not installed") + ".")
                 terminal |= kind in ("result", "status", "error")
                 failed |= kind == "error"
                 playing |= action == "--play" and kind == "result" and bool(event.get("pid"))
@@ -247,6 +257,8 @@ def main(argv=None):
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument("--import-iso", type=Path, metavar="FILE")
     actions.add_argument("--install-hd-textures", type=Path, metavar="FILE")
+    actions.add_argument("--install-spanish", type=Path, metavar="FILE")
+    actions.add_argument("--set-language", choices=("en", "es"))
     actions.add_argument("--verify", action="store_true")
     actions.add_argument("--play", action="store_true")
     actions.add_argument("--status", action="store_true")
@@ -256,22 +268,27 @@ def main(argv=None):
     try:
         root = resolve_path(__file__).parents[1]
         tools = steam_tools(args.steam_root, args.proton)
-        for name in ("import_iso", "install_hd_textures", "verify", "play", "status"):
+        for name in ("import_iso", "install_hd_textures", "install_spanish", "set_language", "verify", "play", "status"):
             value = getattr(args, name)
             if value:
-                return run_action(root, tools, "--" + name.replace("_", "-"), value if isinstance(value, Path) else None)
+                return run_action(root, tools, "--" + name.replace("_", "-"), value if isinstance(value, (Path, str)) else None)
         if not sys.stdin.isatty():
             parser.error("Choose an action such as --status, --import-iso FILE, or --play.")
-        choices = {"1": "--play", "2": "--import-iso", "3": "--install-hd-textures", "4": "--verify", "5": "--status"}
+        choices = {"1": "--play", "2": "--import-iso", "3": "--install-hd-textures", "4": "--verify", "5": "--status",
+                   "6": "--install-spanish", "7": "--set-language"}
         while True:
-            print("\nDarkwatch: Darker Edition\n1 Play\n2 Import ISO / XISO\n3 Install HD texture pack\n4 Verify files\n5 Status\n0 Quit")
+            print("\nDarkwatch: Darker Edition\n1 Play\n2 Import ISO / XISO\n3 Install HD texture pack\n4 Verify files\n5 Status\n6 Install optional Spanish voices\n7 Language / Idioma\n0 Quit")
             choice = input("> ").strip()
             if choice == "0":
                 return 0
             if choice not in choices:
                 continue
             path = None
-            if choice in ("2", "3"):
+            if choice == "7":
+                path = input("English: en / Español: es (blank to cancel): ").strip().lower()
+                if path not in ("en", "es"):
+                    continue
+            if choice in ("2", "3", "6"):
                 value = input("File path (blank to cancel): ").strip()
                 if not value:
                     continue

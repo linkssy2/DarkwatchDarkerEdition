@@ -24,13 +24,14 @@ constexpr Type types[]{
     {0x495870, 0x439714, 0x1C0433}, // ParticleEffectResource
     {0x495830, 0x4393C0, 0x1BFB70}, // TexDictionaryResource
 };
-struct Dependency { uint32_t hash; uint8_t type, modes; };
+struct Dependency { uint32_t hash; uint8_t type; uint32_t modes; };
 struct Route { uint32_t hash; uint8_t mode; bool audio; };
 #include "character_runtime_data.h"
 
 struct Held { uint32_t record, data; };
 std::vector<Held> held;
-std::atomic<unsigned> mission{0}; // Count: bits 0..1; Cassidy slots: 2..3; spectral P2/P1: 4/5.
+// Count: bits 0..1; Cassidy slots: 2..3; spectral P2/P1: 4/5; additional IDs: 8..15.
+std::atomic<unsigned> mission{0};
 std::atomic<unsigned> unavailable{0};
 std::atomic<unsigned> reported{0};
 uint32_t owner = 0;
@@ -80,6 +81,36 @@ bool OwnedString(const uint8_t* base, uint32_t address, std::string& value) {
 bool CassidyActor(const std::string& name) {
     return name == "CassidySolo" || name == "CassidyPlayerTwo" ||
         name == "CassidySpectralPlayerTwo" || name == "CassidySpectralSolo";
+}
+unsigned Selection(unsigned state, unsigned player) {
+    const unsigned added = (state >> (8 + 4 * player)) & 15;
+    if (added) return added;
+    if (!(state & (4u << player))) return 0;
+    return state & (player ? 16 : 32) ? 2 : 1;
+}
+bool Roster(unsigned state) { return (state & 0xFF00) != 0; }
+struct Presentation { const char* solo; const char* coop; const char* solo_hands; const char* coop_hands; };
+constexpr Presentation presentations[]{
+    {"Chaz", "JerichoCoop", "ChazHands", "ChazHands"},
+    {"CassidySolo", "CassidyPlayerTwo", "CassidySoloHands", "CassidyPlayerTwoHands"},
+    {"CassidySpectralSolo", "CassidySpectralPlayerTwo", "CassidySpectralSoloHands", "CassidySpectralHands"},
+    {"CivilianJerichoSolo", "CivilianJerichoCoop", "CivilianJerichoHands", "CivilianJerichoHands"},
+    {"TrooperSolo", "TrooperCoop", "ChazHands", "ChazHands"},
+    {"BlueTrooperSolo", "BlueTrooperCoop", "BlueTrooperHands", "BlueTrooperHands"},
+    {"RedTrooperSolo", "RedTrooperCoop", "RedTrooperHands", "RedTrooperHands"},
+    {"TalaSolo", "TalaCoop", "TalaSoloHands", "TalaCoopHands"},
+};
+static_assert(std::size(presentations) == darkwatch::settings::kCharacterCount);
+unsigned Family(unsigned choice, bool coop) {
+    if (choice >= 3) return 1u << (5 + 2 * (choice - 3) + unsigned(coop));
+    return choice == 2 ? (coop ? 8 : 16) : choice == 1 ? (coop ? 2 : 1) : 4;
+}
+bool PlayerTemplate(const std::string& name, bool& solo, unsigned& choice) {
+    for (unsigned i = 0; i < std::size(presentations); ++i) {
+        if (i && name == presentations[i].solo) { solo = true; choice = i; return true; }
+        if (name == presentations[i].coop) { solo = false; choice = i; return true; }
+    }
+    return false;
 }
 uint32_t Hash(std::string value, bool resource = false) {
     uint32_t crc = ~0u;
@@ -224,18 +255,20 @@ void DarkwatchCharacterMissionBegin(X86Context& ctx, uint8_t* base) {
     uint32_t count, mode;
     if (!Read(base, uint64_t(ctx.esi) + 0x4C, count) || (count != 1 && count != 2) ||
         !Read(base, uint64_t(ctx.esi) + 0xEC, mode) || mode) return;
-    const auto choices = darkwatch::settings::characters();
+    auto choices = darkwatch::settings::characters();
+    for (auto& choice : choices)
+        if (unsigned(choice) >= std::size(presentations)) choice = darkwatch::settings::Character::Jericho;
     const auto cassidy = darkwatch::settings::Character::Cassidy;
     const auto spectral = darkwatch::settings::Character::SpectralCassidy;
     const bool selected[]{choices[0] == cassidy || choices[0] == spectral,
                           choices[1] == cassidy || choices[1] == spectral};
     owner = ctx.esi;
     if (!DarkwatchCharacterContentReady()) {
-        const unsigned failed = count == 2 ? 3 : selected[0] ? 1 : 0;
+        const unsigned failed = count == 2 ? 3 : unsigned(choices[0]) ? 1 : 0;
         unavailable.store(failed);
         for (unsigned player = 0; player < count; ++player)
             if (failed & (1u << player)) Reject(base, player, "content", 0,
-                choices[player] == spectral ? "SpectralCassidy" : selected[player] ? "Cassidy" : "Jericho");
+                presentations[unsigned(choices[player])].solo);
         return;
     }
     // The chapter is assigned before this hook, even when its preload list is cached.
@@ -244,7 +277,9 @@ void DarkwatchCharacterMissionBegin(X86Context& ctx, uint8_t* base) {
         (choices[1] == cassidy && OwnedString(base, owner, chapter) &&
          std::find(std::begin(spectral_chapters), std::end(spectral_chapters), Hash(chapter)) != std::end(spectral_chapters)));
     mission.store(count | (selected[0] ? 4 : 0) | (count == 2 && selected[1] ? 8 : 0) |
-                  (spectral_two ? 16 : 0) | (choices[0] == spectral ? 32 : 0));
+                  (spectral_two ? 16 : 0) | (choices[0] == spectral ? 32 : 0) |
+                  (unsigned(choices[0]) >= 3 ? unsigned(choices[0]) << 8 : 0) |
+                  (count == 2 && unsigned(choices[1]) >= 3 ? unsigned(choices[1]) << 12 : 0));
 }
 
 void DarkwatchCharacterFile(X86Context& ctx, uint8_t* base) {
@@ -264,11 +299,11 @@ void DarkwatchCharacterFile(X86Context& ctx, uint8_t* base) {
         }) && DarkwatchCharacterContentReady();
     if (!state && !startup) return;
     const bool cassidy = state & 12;
-    // Added solo preloads cannot consume the original sequential stream bundle.
-    // A missing Cassidy sibling lets the native loader use individual archive reads.
-    const bool stream = cassidy && ((state & 3) == 1 || (state & 48)) && path.size() >= 15 &&
+    const bool roster = Roster(state);
+    // Added preloads cannot consume the original sequential bundle; a missing sibling uses archive reads.
+    const bool stream = (roster || (cassidy && ((state & 3) == 1 || (state & 48)))) && path.size() >= 15 &&
         Hash(path.substr(path.size() - 15)) == Hash("_streamfile.str");
-    const bool audio_stream = cassidy && path.size() > 9 &&
+    const bool audio_stream = (cassidy || roster) && path.size() > 9 &&
         Hash(path.substr(path.size() - 9)) == Hash("Audio.str");
     std::string audio_path;
     if (audio_stream) {
@@ -289,12 +324,18 @@ void DarkwatchCharacterFile(X86Context& ctx, uint8_t* base) {
     if (!startup) {
         if (route == std::end(routes) || (stream && (route->mode != 1 || route->audio)) ||
             (audio_stream && !route->audio)) return;
-        if (!cassidy && ((state & 3) != 2 || route->audio || route->mode != 2)) return;
+        if (!cassidy && !roster && ((state & 3) != 2 || route->audio || route->mode != 2)) return;
     }
     const bool spectral = !startup && !route->audio && (state & 48);
-    const char* suffix = spectral ? "_cassidy_spectral" : startup || cassidy ? "_cassidy" : "_jericho";
+    std::string suffix = spectral ? "_cassidy_spectral" : startup || cassidy ? "_cassidy" : "_jericho";
+    if (!startup && roster) {
+        unsigned first = Selection(state, 0), second = Selection(state, 1);
+        if ((state & 3) == 2 && first > second) std::swap(first, second);
+        suffix = "_roster_" + std::to_string(first);
+        if ((state & 3) == 2) suffix += "_" + std::to_string(second);
+    }
     const auto dot = path.rfind('.');
-    if (dot == std::string::npos || path.size() + std::strlen(suffix) > 255) return;
+    if (dot == std::string::npos || path.size() + suffix.size() > 255) return;
     path.insert(dot, suffix);
     std::memcpy(base + ctx.ebp - 0x108, path.c_str(), path.size() + 1);
 }
@@ -310,24 +351,24 @@ void DarkwatchCharacterSpawn(X86Context& ctx, uint8_t* base) {
         !Read(base, uint64_t(game) + 0x4C, count) || count != (state & 3) ||
         !Read(base, uint64_t(game) + 0xEC, mode) || mode ||
         !Read(base, 0x4AD370, actor_manager) || !actor_manager) return;
-    const bool cassidy = state & (4u << ctx.edi);
-    if (cassidy || count == 2) unavailable.fetch_or(1u << ctx.edi);
+    const unsigned choice = Selection(state, ctx.edi);
+    if (choice >= std::size(presentations)) return;
+    const bool cassidy = choice == 1 || choice == 2;
+    if (choice || count == 2) unavailable.fetch_or(1u << ctx.edi);
     bool coop;
     if (!CoopTemplate(base, actor_manager, coop)) {
-        if (cassidy || count == 2) Reject(base, ctx.edi, "alias", 0, cassidy ? "Cassidy" : "Jericho");
+        if (choice || count == 2) Reject(base, ctx.edi, "alias", 0, presentations[choice].solo);
         return;
     }
-    if (!cassidy && !coop) { unavailable.fetch_and(~(1u << ctx.edi)); return; }
-    const bool spectral = cassidy && (state & (ctx.edi == 0 ? 32 : 16));
-    const unsigned family = spectral ? (coop ? 8 : 16) : cassidy ? (coop ? 2 : 1) : 4;
-    const char* name = spectral ? (coop ? "CassidySpectralPlayerTwo" : "CassidySpectralSolo") :
-        cassidy ? (coop ? "CassidyPlayerTwo" : "CassidySolo") : "JerichoCoop";
-    const char* hands = spectral ? (coop ? "CassidySpectralHands" : "CassidySpectralSoloHands") :
-        cassidy ? (coop ? "CassidyPlayerTwoHands" : "CassidySoloHands") : "ChazHands";
+    if (!choice && !coop) { unavailable.fetch_and(~(1u << ctx.edi)); return; }
+    const unsigned family = Family(choice, coop);
+    const auto& presentation = presentations[choice];
+    const char* name = coop ? presentation.coop : presentation.solo;
+    const char* hands = coop ? presentation.coop_hands : presentation.solo_hands;
     if (!Actor(base, actor_manager, name)) { Reject(base, ctx.edi, "body", family, name); return; }
     if (!Actor(base, actor_manager, hands)) { Reject(base, ctx.edi, "hands", family, hands); return; }
     const char* audio_failure = "-";
-    if (cassidy && !DarkwatchCharacterAudioReady(base, &audio_failure)) {
+    if ((cassidy || choice == 7) && !DarkwatchCharacterAudioReady(base, &audio_failure, choice == 7)) {
         Reject(base, ctx.edi, "audio", family, name, nullptr, 0, audio_failure); return;
     }
     if (!Acquire(ctx, base, family, ctx.edi, name)) return;
@@ -337,11 +378,34 @@ void DarkwatchCharacterSpawn(X86Context& ctx, uint8_t* base) {
     unavailable.fetch_and(~(1u << ctx.edi));
 }
 
+void DarkwatchCharacterScriptType(X86Context& ctx, uint8_t* base) {
+    const unsigned state = mission.load();
+    uint32_t actor, count, mode, category, text;
+    std::string character;
+    if (!state || !owner || ctx.ebp < 4 ||
+        !Read(base, uint64_t(owner) + 0x4C, count) || count != (state & 3) ||
+        !Read(base, uint64_t(owner) + 0xEC, mode) || mode ||
+        !Read(base, uint64_t(ctx.ebp) - 4, actor) || !actor ||
+        !Read(base, uint64_t(actor) + 0x98, category) || category != 9 ||
+        !Read(base, uint64_t(actor) + 0x50, text) || !text ||
+        uint64_t(text) + 2 != ctx.esi || !OwnedString(base, actor + 0x50, character)) return;
+    bool solo; unsigned choice;
+    if (!PlayerTemplate(character, solo, choice)) return;
+    const uint32_t original = solo ? 0x425814 : 0x42581C;
+    const char* expected = solo ? "Chaz" : "CoOpChaz";
+    const size_t bytes = std::strlen(expected) + 1;
+    if (!Span(base, original, bytes) || std::memcmp(base + original, expected, bytes)) return;
+    // Authored scripts recognize player classes; visual clones retain their real template names.
+    ctx.esi = original;
+}
+
 bool DarkwatchCharacterCostume(X86Context& ctx, uint8_t* base) {
     const unsigned state = mission.load();
     uint32_t actor, item, count, mode, group, scope, scratch;
     std::string name, character;
-    if (!(state & 12) || !owner || ctx.ebp < 0x34 || ctx.esp != ctx.ebp - 0x34 ||
+    bool solo; unsigned choice;
+    if (!(state & 12) && !Roster(state)) return false;
+    if (!owner || ctx.ebp < 0x34 || ctx.esp != ctx.ebp - 0x34 ||
         !Span(base, ctx.esp, 0x44) ||
         !Read(base, uint64_t(owner) + 0x4C, count) || count != (state & 3) ||
         !Read(base, uint64_t(owner) + 0xEC, mode) || mode ||
@@ -349,7 +413,7 @@ bool DarkwatchCharacterCostume(X86Context& ctx, uint8_t* base) {
         !Read(base, uint64_t(ctx.ebp) + 12, item) || item != ctx.edi ||
         !OwnedString(base, item, name) || (name != "cloak" && name != "Civ_cloak") ||
         !OwnedString(base, actor + 0x50, character) ||
-        !CassidyActor(character) ||
+        !PlayerTemplate(character, solo, choice) || !choice ||
         !Read(base, uint64_t(actor) + 0x68, group) ||
         !Read(base, uint64_t(actor) + 0x6C, scope) ||
         !Read(base, uint64_t(ctx.ebp) - 4, scratch) || scratch) return false;
@@ -357,7 +421,7 @@ bool DarkwatchCharacterCostume(X86Context& ctx, uint8_t* base) {
     std::memcpy(arguments, base + ctx.esp, sizeof(arguments));
     const uint32_t expected[]{item, group, scope, 1, 1, ctx.ebp - 4, 1};
     if (!std::equal(std::begin(arguments), std::end(arguments), std::begin(expected))) return false;
-    // Riding spawn points grant Jericho's coat separately; keep Cassidy's body unobscured.
+    // Riding spawn points grant Jericho's coat separately; other bodies do not wear it.
     // The native null-result path cleans this call and continues the remaining inventory.
     ctx.eax = 0;
     return true;
@@ -376,4 +440,15 @@ bool DarkwatchCharacterIsCassidyPlayer(const uint8_t* base, uint32_t actor) {
         Read(base, uint64_t(actor) + 0x98, category) && category == 9 &&
         OwnedString(base, actor + 0x50, character) &&
         CassidyActor(character);
+}
+
+bool DarkwatchCharacterIsTalaPlayer(const uint8_t* base, uint32_t actor) {
+    const unsigned state = mission.load();
+    uint32_t count, mode, category;
+    std::string character;
+    return (Selection(state, 0) == 7 || ((state & 3) == 2 && Selection(state, 1) == 7)) &&
+        owner && actor && Read(base, uint64_t(owner) + 0x4C, count) && count == (state & 3) &&
+        Read(base, uint64_t(owner) + 0xEC, mode) && !mode &&
+        Read(base, uint64_t(actor) + 0x98, category) && category == 9 &&
+        OwnedString(base, actor + 0x50, character) && (character == "TalaSolo" || character == "TalaCoop");
 }

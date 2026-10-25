@@ -16,6 +16,7 @@ constexpr uint32_t kPauseMainVtable = 0x0042BF8C;
 constexpr uint32_t kMainVtable = 0x0042BEF8;
 constexpr uint32_t kVisualVtable = 0x0042C08C;
 constexpr uint32_t kControlsVtable = 0x0042BE9C;
+constexpr uint32_t kAudioVtable = 0x0042BE48;
 constexpr uint32_t kControllerConfigVtable = 0x00429C10;
 
 bool Span(const uint8_t* base, uint64_t address, uint32_t size) {
@@ -166,7 +167,116 @@ bool PauseFrame(const uint8_t* base, uint32_t owner, uint32_t menu, uint32_t& fr
         Span(base, frame, 0x44) && RefIs(base, frame + 0x30, "frame") &&
         Span(base, uint64_t(owner) + 0xFC, 16) && Span(base, uint64_t(frame) + 0x10, 16);
 }
+bool AudioWidgets(const uint8_t* base, uint32_t page, uint32_t (&widgets)[3]) {
+    for (unsigned i = 0; i < 3; ++i) {
+        int32_t minimum, maximum;
+        if (!Field(base, page, 0xC + i * 4, widgets[i]) || !Span(base, widgets[i], 0x88) ||
+            !Read(base, uint64_t(widgets[i]) + 0x5C, minimum) || minimum != 0 ||
+            !Read(base, uint64_t(widgets[i]) + 0x60, maximum) || maximum != 10) return false;
+    }
+    return true;
+}
 }  // namespace
+
+bool HideFrontendSettingsContent(const uint8_t* base, uint32_t options) {
+    uint32_t type, depth, page, owner, menu, frame, pages, page_type;
+    uint16_t count;
+    if (base != kernel::g_base || !Span(base, options, 0xF4) ||
+        !Field(base, options, 0, type) || type != kOptionsVtable ||
+        !RefIs(base, options + 0x30, "options") ||
+        !Field(base, options, 0x60, depth) || depth > 5 ||
+        !Field(base, options, 0x60 + std::max(depth, 1u) * 4, page) ||
+        !Field(base, page, 0, page_type) ||
+        (page_type != kControlsVtable && page_type != kVisualVtable && page_type != kAudioVtable) ||
+        !Field(base, page, 8, owner) || owner != options ||
+        !Read(base, uint64_t(options) + 0x58, count) || !count || count > 16 ||
+        !Field(base, options, 0x5C, pages) || !Span(base, pages, count * 4)) return false;
+    // New-profile E9F8F replaces the sole page. EBB76 leaves that last slot
+    // intact at depth zero while the original root completes its exit fade.
+    bool registered = false;
+    for (unsigned i = 0; i < count; ++i) {
+        uint32_t entry;
+        if (!Read(base, uint64_t(pages) + i * 4, entry)) return false;
+        registered |= entry == page;
+    }
+    const char* name = page_type == kControlsVtable ? "controls_options" :
+        page_type == kVisualVtable ? "visual_options" : "audio_options";
+    if (!registered || !Field(base, page, 4, menu) || !Span(base, menu, 0xA4) ||
+        !Field(base, menu, 0, type) || type != 0x43C8B8 ||
+        !RefIs(base, menu + 0x30, name) ||
+        !Field(base, menu, 4, frame) || !Field(base, frame, 0, type) || type != 0x43C934 ||
+        !RefIs(base, frame + 0x30, "frame") || !Field(base, frame, 4, owner) || owner != options) return false;
+    constexpr const char* controls[]{"GEN_InvertLook", "GEN_Vibration", "GEN_LookSensitivity"};
+    constexpr const char* audio[]{"GEN_Music", "GEN_FX", "GEN_Speech"};
+    const unsigned widgets = page_type == kVisualVtable ? 1 : 3;
+    for (unsigned i = 0; i < widgets; ++i) {
+        uint32_t widget, label;
+        const bool slider = page_type == kAudioVtable || (page_type == kControlsVtable && i == 2);
+        // Audio uses the textured slider derived by 1FDCB0, not the base slider.
+        const uint32_t widget_type = page_type == kAudioVtable ? 0x43D798 : slider ? 0x43C97C : 0x43C9B0;
+        const char* key = page_type == kControlsVtable ? controls[i] :
+            page_type == kVisualVtable ? "GEN_Subtitles" : audio[i];
+        if (!Field(base, page, 0xC + i * 4, widget) || !Span(base, widget, slider ? 0x88 : 0x90) ||
+            !Field(base, widget, 0, type) || type != widget_type ||
+            !Field(base, widget, 4, owner) || owner != menu ||
+            !RefIs(base, widget + 0x30, key)) return false;
+        if (!slider && (!Field(base, widget, 0x58, label) || !Span(base, label, 0x50))) return false;
+        if (slider) {
+            int32_t minimum, maximum; float value;
+            if (!Read(base, uint64_t(widget) + 0x5C, minimum) ||
+                !Read(base, uint64_t(widget) + 0x60, maximum) || minimum > maximum ||
+                !Read(base, uint64_t(options) + (page_type == kAudioVtable ? 0x8C + i * 4 : 0x80), value) ||
+                !std::isfinite(value)) return false;
+            if (page_type == kAudioVtable && (minimum != 0 || maximum != 10 || value < 0 || value > 1)) return false;
+        }
+    }
+    return true;
+}
+
+void EnsureNativeOptionsEntries(uint8_t* base, uint32_t options) {
+    auto* thread = kernel::Current();
+    uint32_t type, main, menu, owner, frame, items, shown, selected;
+    uint16_t count;
+    if (!thread || !thread->ctx || base != kernel::g_base ||
+        !Field(base, options, 0, type) || type != kOptionsVtable ||
+        !RefIs(base, options + 0x30, "options") ||
+        !Field(base, options, 0xF0, main) || !Field(base, main, 0, type) || type != kMainVtable ||
+        !Field(base, main, 8, owner) || owner != options || !Field(base, main, 4, menu) ||
+        !Span(base, menu, 0xA4) || !Field(base, menu, 0, type) || type != 0x43C8B8 ||
+        !RefIs(base, menu + 0x30, "main_options") ||
+        !Field(base, menu, 4, frame) || !Field(base, frame, 0, type) || type != 0x43C934 ||
+        !Field(base, frame, 4, owner) || owner != options || !RefIs(base, frame + 0x30, "frame") ||
+        !Read(base, uint64_t(menu) + 0x58, count) || (count != 5 && count != 4) ||
+        !Field(base, menu, 0x5C, items) || !Span(base, items, 20) ||
+        !Field(base, menu, 0x64, shown) || shown != count ||
+        !Field(base, menu, 0x68, selected) || selected >= count) return;
+    constexpr const char* names[]{"GEN_Controls", "GEN_Visual", "GEN_Audio", "XBL_XboxLive", "GEN_Reset"};
+    constexpr const char* links[]{"controls_options", "visual_options", "audio_options", "xbox_live_options"};
+    uint32_t rows[5];
+    for (unsigned i = 0; i < 5; ++i) {
+        const unsigned index = count == 4 && i >= 3 ? 7 - i : i;
+        if (!Read(base, uint64_t(items) + index * 4, rows[i]) || !Span(base, rows[i], 0x68) ||
+            !Field(base, rows[i], 0, type) || type != 0x43C8F8 ||
+            !Field(base, rows[i], 4, owner) || owner != menu ||
+            !RefIs(base, rows[i] + 0x30, names[i]) ||
+            (i < 4 && !RefIs(base, rows[i] + 0x50, links[i]))) return;
+    }
+    // Keep the removed row owned by the original child list. Retain its pointer
+    // outside the active vector so an original parent fade cannot reshow it.
+    X86Context call = *thread->ctx;
+    if (base[rows[3] + 0x2E]) { call.ecx = rows[3]; kernel::CallGuest(call, 0x1E8E4F, {0}); }
+    if (base[rows[3] + 0x2F]) { call.ecx = rows[3]; kernel::CallGuest(call, 0x1E8E77, {0}); }
+    if (count == 4) return;
+    const uint32_t ordered[]{rows[0], rows[1], rows[2], rows[4], rows[3]};
+    std::memcpy(base + items, ordered, sizeof(ordered));
+    const uint16_t final_count = 4;
+    const uint32_t final_shown = 4, final_selected = std::min(selected, 3u);
+    std::memcpy(base + menu + 0x58, &final_count, sizeof(final_count));
+    std::memcpy(base + menu + 0x64, &final_shown, sizeof(final_shown));
+    std::memcpy(base + menu + 0x68, &final_selected, sizeof(final_selected));
+    if (selected == 3) { call.ecx = rows[4]; kernel::CallGuest(call, 0x1E8E4F, {base[menu + 0x2E]}); }
+    DarkwatchInvalidateMenuSnapshot();
+}
 
 GraphicsRouteState QueryGraphicsMenuRoute(const uint8_t* base) {
     GraphicsRouteState result;
@@ -200,6 +310,8 @@ GraphicsRouteState QueryGraphicsMenuRoute(const uint8_t* base) {
             result.subtitles_available = Span(base, widget, 0x90);
             result.subtitles = subtitles != 0;
         }
+    } else if (!result.paused && vtable == kAudioVtable) {
+        result.route = GraphicsMenuRoute::Audio;
     } else if (vtable == kControlsVtable) {
         result.route = GraphicsMenuRoute::Controls;
         uint32_t preset_ref;
@@ -234,6 +346,16 @@ GraphicsRouteState QueryGraphicsMenuRoute(const uint8_t* base) {
             result.controls_available = true;
         }
     } else return result;
+    if (result.route == GraphicsMenuRoute::Audio ||
+        (result.paused && result.route == GraphicsMenuRoute::Controls)) {
+        float values[3]; uint32_t widgets[3];
+        if ((result.paused || AudioWidgets(base, page, widgets)) &&
+            Read(base, uint64_t(options) + 0x8C, values) &&
+            std::all_of(std::begin(values), std::end(values), [](float v) { return std::isfinite(v) && v >= 0 && v <= 1; })) {
+            result.audio = {int(std::lround(values[0] * 100)), int(std::lround(values[1] * 100)), int(std::lround(values[2] * 100))};
+            result.audio_available = true;
+        }
+    }
     result.options = options;
     result.page = page;
     return result;
@@ -284,6 +406,35 @@ bool SetOriginalControls(uint8_t* base, uint32_t expected_options, bool invert, 
     std::memcpy(&bits, &value, sizeof(bits));
     call = *thread->ctx; call.ecx = route.options + 0x78;
     kernel::CallGuest(call, 0xE7463, {bits});
+    base[route.options + 0xE4] = 1;
+    return true;
+}
+
+bool SetOriginalAudio(uint8_t* base, uint32_t expected_options, const AudioSettings& settings) {
+    const auto route = QueryGraphicsMenuRoute(base);
+    auto* thread = kernel::Current();
+    const int values[]{settings.music, settings.effects, settings.speech};
+    uint32_t widgets[3]{};
+    if (!route.audio_available || route.options != expected_options ||
+        !thread || !thread->ctx || base != kernel::g_base ||
+        thread->ctx->esp < 0x100 || !Span(base, uint64_t(thread->ctx->esp) - 0x100, 0x100) ||
+        std::any_of(std::begin(values), std::end(values), [](int v) { return v < 0 || v > 100; }) ||
+        (!route.paused && !AudioWidgets(base, route.page, widgets))) return false;
+    // F536E updates these same profile fields; Pause owns the same settings
+    // copy but does not construct an Audio handler or its volume widgets.
+    constexpr uint32_t setters[]{0xF525B, 0xF5272, 0xF5289};
+    for (unsigned i = 0; i < 3; ++i) {
+        X86Context call = *thread->ctx;
+        if (widgets[i]) {
+            call.ecx = widgets[i];
+            kernel::CallGuest(call, 0x1F0210, {uint32_t((values[i] + 5) / 10), 0});
+            call = *thread->ctx;
+        }
+        const float value = float(values[i]) / 100.f;
+        uint32_t bits; std::memcpy(&bits, &value, sizeof(bits));
+        call.ecx = route.options + 0x78;
+        kernel::CallGuest(call, setters[i], {bits});
+    }
     base[route.options + 0xE4] = 1;
     return true;
 }

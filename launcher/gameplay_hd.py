@@ -131,7 +131,7 @@ class Archive(io.RawIOBase):
 
 
 class Catalog:
-    def __init__(self, content, *, allow_previous=True):
+    def __init__(self, content, *, previous_limit=2):
         if len(content) > 2 * 1024 * 1024:
             raise PackError("HD texture catalog is too large.")
         def unique(pairs):
@@ -168,21 +168,29 @@ class Catalog:
         self.previous = None
         if "previous_catalog" in data:
             previous = data["previous_catalog"]
-            if not allow_previous or not isinstance(previous, str):
+            # Keep exact published receipts, including their older compatibility
+            # receipt. The two released generations bound parsing and admission.
+            if previous_limit <= 0 or not isinstance(previous, str):
                 raise PackError("Unsupported previous HD texture catalog.")
-            self.previous = Catalog(previous.encode("utf-8"), allow_previous=False)
+            self.previous = Catalog(previous.encode("utf-8"), previous_limit=previous_limit - 1)
             if (len(self.previous.files) >= len(self.files) or
                     any(self.files.get(name) != record for name, record in self.previous.files.items())):
                 raise PackError("Previous HD textures differ from the current catalog.")
 
+    def generations(self):
+        catalog = self
+        while catalog is not None:
+            yield catalog
+            catalog = catalog.previous
+
     def matching(self, content):
-        for catalog in (self, self.previous):
-            if catalog is not None and catalog.content == content:
+        for catalog in self.generations():
+            if catalog.content == content:
                 return catalog
         raise PackError("HD texture pack is incomplete or incompatible. Install the matching texture download again.")
 
     def receipt_sizes(self):
-        return {len(catalog.content) for catalog in (self, self.previous) if catalog is not None}
+        return {len(catalog.content) for catalog in self.generations()}
 
     @staticmethod
     def header(data, length):

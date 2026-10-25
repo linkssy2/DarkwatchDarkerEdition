@@ -1,4 +1,4 @@
-# Darkwatch: Darker Edition 0.5.5 — Experimental Linux / Proton
+# Darkwatch: Darker Edition 0.6 — Experimental Linux / Proton
 
 This package runs the Windows port through Proton. Darkwatch's Linux graphics,
 audio, movies and controls still need live testing. Co-op remains beta. Supply
@@ -48,15 +48,49 @@ README when that folder is writable. If even the first dialog never appears,
 Python/Proton may not have started: launch Steam from a terminal and keep its
 error output. Do not edit manifest hashes or disable verification.
 
+## English / Español
+
+Spanish text and subtitles are included with this build. After importing your
+disc, close Darkwatch and temporarily set the same Steam shortcut's Launch
+Options to:
+
+```text
+-B "linux/run_backend.py" --interactive --language
+```
+
+Click Play to open **Game language / Idioma del juego**. Choose **Yes / Sí** for
+Español, **No** for English, or **Cancel** to keep your current language. After
+the saved-language confirmation, restore the `--play` command. The language is
+remembered for future launches; this selector does not appear on every play.
+You can also use `--set-language es` or `--set-language en` instead of `--language`.
+
+Voices remain in their original language unless you install a matching optional
+Spanish voice pack. If one is supplied separately, place its
+ZIP beside this README, then use:
+
+```text
+-B "linux/run_backend.py" --interactive --install-spanish "Spanish-Voices.zip"
+```
+
+Replace the filename with the pack's actual name. After installation, choose
+Español and restore the play command. The voice pack is optional; it is not
+needed for Spanish text or subtitles. Movies remain unchanged.
+
 ## Optional HD textures
 
-The existing 0.5 HD download works with this package. Download **all five** files
-`Darkwatch-Darker-Edition-0.5-HD-Textures.zip.001` through `.005`. Keep the names
+For the expanded character roster, use the updated HD pack accompanying this
+build. Download all its numbered parts together and use its `.zip.001` filename
+in the command below. Older packs remain compatible but lack the new character
+textures.
+
+The existing 0.4 and 0.5 HD downloads remain compatible. For all added character
+textures, download **all five** files
+`Darkwatch-Darker-Edition-0.6-HD-Textures.zip.001` through `.005`. Keep the names
 unchanged and put all five parts together in the package folder. Close Darkwatch,
 then temporarily change the same Steam shortcut's Launch Options to:
 
 ```text
--B "linux/run_backend.py" --interactive --install-hd-textures "Darkwatch-Darker-Edition-0.5-HD-Textures.zip.001"
+-B "linux/run_backend.py" --interactive --install-hd-textures "Darkwatch-Darker-Edition-0.6-HD-Textures.zip.001"
 ```
 
 Click Play, wait for the completion dialog, then restore the `--play` command.
@@ -81,8 +115,12 @@ folder, and copy your existing `GameData/` into it. Point the existing shortcut'
 **Target** to the new `windows/payload/python/python.exe` and **Start In** to the
 new package folder. Use the import command with your own disc to repair the
 installation with the new runtime, then restore the play command. Saves,
-settings, the optional HD pack and compatible completed game shader caches are
+settings, optional HD and Spanish voice packs, and compatible completed game shader caches are
 preserved. Keep the old folder until the new installation and saves are checked.
+
+Each successful import creates another extracted installation and keeps the old
+version. Updates therefore use additional disk space; the ISO itself is only read.
+Back up your saves before removing any previous installation.
 
 If moving from the terminal route below, copy `GameData/` and keep the old
 `.proton/` as a backup. The Steam shortcut uses its own prefix and may rebuild
@@ -102,13 +140,17 @@ and install its matching **Steam Linux Runtime**. In the extracted folder:
 ./Darkwatch.sh
 ```
 
-Choose Import, let shader preparation finish, then choose Play. The menu also
-offers HD installation, Verify and Status. Leave the terminal open during play.
+Choose Import, let shader preparation finish, then choose Play. Choose
+**Language / Idioma** to select English or Español before playing. The menu also
+offers HD and optional Spanish voice installation, Verify and Status. Leave the terminal open during play.
 Commands are also available:
 
 ```sh
 ./Darkwatch.sh --import-iso "/home/me/Games/Darkwatch.iso"
-./Darkwatch.sh --install-hd-textures "/home/me/Downloads/Darkwatch-Darker-Edition-0.5-HD-Textures.zip.001"
+./Darkwatch.sh --install-hd-textures "/home/me/Downloads/Darkwatch-Darker-Edition-0.6-HD-Textures.zip.001"
+./Darkwatch.sh --set-language es
+./Darkwatch.sh --set-language en
+./Darkwatch.sh --install-spanish "/home/me/Downloads/Spanish-Voices.zip"
 ./Darkwatch.sh --status
 ./Darkwatch.sh --verify
 ./Darkwatch.sh --play
@@ -124,7 +166,8 @@ Flatpak Steam is not supported by this terminal wrapper.
 This route keeps its prefix and driver caches in the package's hidden
 `.proton/`. Preserve both `GameData/` and `.proton/` when moving or updating a
 terminal installation. Press Ctrl+C once to request setup cancellation and
-allow rollback. Close Darkwatch before import, repair or HD installation.
+allow rollback. Close Darkwatch before import, repair, installing optional packs
+or changing language.
 
 Linked external parents, ISO paths and shortcuts to `Darkwatch.sh` are supported.
 The terminal wrapper checks that `windows/` and `GameData/` contain no native

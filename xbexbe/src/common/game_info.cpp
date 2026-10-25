@@ -3,16 +3,20 @@
 #include "common/graphics.h"
 #include "common/graphics_view.h"
 #include "common/controls.h"
+#include "common/audio_settings.h"
 #include "common/character_selection.h"
+#include "common/character_preview.h"
 #include "common/menu_cursor.h"
 #include "common/native_menu.h"
 #include "common/hd_ui.h"
 #include "common/settings_skin.h"
 #include "common/shader_preparation.h"
+#include "common/language.h"
+#include "kernel/kernel.h"
 
 namespace {
 void InitDirectMouse();
-void LoadFrontendAssets() { darkwatch::InitializeMenuCursor(); darkwatch::skin::Finalize(); darkwatch::InitializeHdUi(); }
+void LoadFrontendAssets() { darkwatch::InitializeMenuCursor(); darkwatch::skin::Finalize(); darkwatch::preview::Finalize(); darkwatch::InitializeHdUi(); }
 void DrawUi(double fps) { DarkwatchGraphicsUi(fps); DarkwatchMenuUi(fps); }
 }
 
@@ -25,8 +29,8 @@ const app::GameInfo app::kGame = {
     .splash = L"splash",
     .missing = L"Darkwatch's original default.xbe and game files were not found in assets.",
     .images = {{"default.xbe", "darkwatch_xbe"}},
-    .load = [](const void* table) {darkwatch::ControlsLoad(table); darkwatch::view::Load(table); darkwatch::settings::LoadCharacters(table);},
-    .save = [](void* table) {darkwatch::ControlsSave(table); darkwatch::view::Save(table); darkwatch::settings::SaveCharacters(table);},
+    .load = [](const void* table) {darkwatch::ControlsLoad(table); darkwatch::AudioLoad(table); darkwatch::view::Load(table); darkwatch::settings::LoadCharacters(table); darkwatch::language::Load(table);},
+    .save = [](void* table) {darkwatch::ControlsSave(table); darkwatch::AudioSave(table); darkwatch::view::Save(table); darkwatch::settings::SaveCharacters(table); darkwatch::language::Save(table);},
     .init = InitDirectMouse,
     .loaded = LoadFrontendAssets,
     .window = DarkwatchGraphicsWindow,
@@ -57,6 +61,9 @@ const app::GameInfo app::kGame = {
 
 namespace {
 void InitDirectMouse() {
+    darkwatch::language::Initialize(app::ExeDir());
+    kernel::SetGameFileOverlay(darkwatch::language::Spanish()
+        ? (app::ExeDir()/"language"/"es"/"assets").string() : std::string{});
     DarkwatchGraphicsInit();
     input::SetMouseToStick(false);
 }

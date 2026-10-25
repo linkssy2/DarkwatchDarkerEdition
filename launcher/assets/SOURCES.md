@@ -24,8 +24,9 @@ and encoded at standard Windows icon sizes for the launcher EXE.
 
 Darkwatch artwork and marks belong to their respective rights holders. Inclusion
 in this release does not mean these artworks are freely licensed.
-Original disc files, audio, movies and the generated HD texture pack are excluded
-from the launcher payload. The HD pack is prepared locally from the user's ISO.
+Original disc files, audio and movies are excluded from the launcher payload.
+The HD interface is prepared locally from the user's ISO. The optional HD gameplay
+texture pack is a separate download, installed through the launcher.
 
 An additional clear-logo download was inspected but rejected for visible edge
 artifacts; it is not used or included in the launcher package.

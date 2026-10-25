@@ -1,118 +1,53 @@
 # Darkwatch: Darker Edition
 
-**PC port | Windows 0.5 | Linux compatibility test 0.5.5 via Proton**
+**PC port · Windows 0.6 · Experimental Linux/Proton 0.6**
 
-[Release downloads](https://github.com/linkssy2/DarkwatchDarkerEdition/releases)
-| [Windows 0.5 notes](docs/RELEASE-0.5.md) | [Linux 0.5.5 notes](docs/RELEASE-0.5.5.md)
+[Release downloads](https://github.com/linkssy2/DarkwatchDarkerEdition/releases) · [0.6 changes and HD installation](docs/RELEASE-0.6.md)
 
 An unofficial PC port of the original Xbox Darkwatch, powered by
-[XboxXBERecomp by TGP482](https://github.com/TGP482/Xbox-XBERecomp), with native
-Direct3D 12 rendering and statically recompiled gameplay. Bring your own supported
-Xbox disc image. Original game files and the Microsoft XDK are not included.
+[XboxXBERecomp by TGP482](https://github.com/TGP482/Xbox-XBERecomp), with Direct3D 12 rendering and statically recompiled gameplay. Bring your own supported original Xbox ISO or XISO. Original disc files and the Microsoft XDK are not included.
 
-## Install
+## Windows
 
-1. Extract **Darkwatch-Darker-Edition-0.5-Windows-x64.zip** into a short writable
-   folder such as `C:/Games/Darkwatch`. The source ZIP is for developers.
-2. Open **Darkwatch Darker Edition.exe**, choose **Import ISO**, and select your
-   supported original Xbox `.iso` or `.xiso`.
+1. Extract **Darkwatch-Darker-Edition-0.6-Windows-x64.zip** into a short writable folder such as `C:/Games/Darkwatch`. The source ZIP is for developers.
+2. Open **Darkwatch Darker Edition.exe**, choose **Import ISO**, and select your disc image.
 3. Wait for import and shader preparation to finish, then choose **Play**.
 
-After setup, **Play Darkwatch.exe** starts directly. Both launch paths prepare
-missing shaders before gameplay. Normal play has no time limit.
+After setup, **Play Darkwatch.exe** starts directly. Both paths prepare missing shaders before play. Normal play has no time limit.
 
-Keep both EXEs, `payload/`, and `GameData/` together. Imported files, saves,
-bindings, settings and shader cache remain inside the portable folder. For an
-update, extract into a new folder, copy your existing `GameData/` into it, then
-use **Import / Repair** with your original disc. This prepares the character
-content locally while preserving saves, settings and compatible cache. Keep your
-old folder until you have checked your saves.
+Keep both EXEs, `payload/` and `GameData/` together. Saves, settings, imported files and game caches remain inside this portable folder. To update, extract into a new folder, copy the existing `GameData/`, then use **Import / Repair** with your original disc. This prepares the current character resources while preserving saves, settings and compatible cache. Earlier extracted installations are retained, so imports consume additional disk space. The ISO is only read. Keep your old folder until you verify your saves.
 
-The optional HD gameplay texture pack is a separate download. Keep all numbered
-parts together and select its `.zip.001` file using **Install HD Textures** in the
-launcher, or select the complete texture ZIP. The Graphics toggle is unavailable
-until installation completes. HD menus, fonts and HUD are included separately;
-the gameplay pack does not replace them. Videos remain original.
+Requires Windows 10 version 1903 or newer / Windows 11 x64, .NET Framework 4.8, an x86-64-v2 CPU (including SSE4.2 and POPCNT), and a Direct3D 12 GPU supporting feature level 11_0. No administrator access is required.
 
-Requires Windows 10 version 1903 or newer / Windows 11 x64, .NET Framework 4.8,
-an x86-64-v2 CPU (including SSE4.2 and POPCNT), and a Direct3D 12 GPU supporting
-feature level 11_0. Dependencies are local; no administrator access is required.
+## Linux / Proton
 
-## Linux 0.5.5 compatibility test
+Use the **0.6 Linux-Proton-Experimental** archive and its [Linux instructions](launcher/linux/README-LINUX.md). The recommended route uses one Steam shortcut to the bundled Python for import, language selection, HD installation and play. Use native Steam, Proton Experimental and compatible Vulkan drivers. Steam/Proton are not bundled.
 
-[Download the Linux-only 0.5.5 release](https://github.com/linkssy2/DarkwatchDarkerEdition/releases/tag/v0.5.5).
-It runs the Windows runtime through Proton; this is not a native Linux port.
-Use one Steam shortcut to the bundled Python for import, optional HD installation
-and play. Setup shows completion/errors and retains file verification.
-See [the Linux instructions](launcher/linux/README-LINUX.md) for exact Target,
-Start In and Launch Options, updates and all five existing 0.5 HD parts.
+The game payload matches Windows. This is a Proton compatibility package; Linux graphics, audio, movies, controllers and gameplay still need live testing. Flatpak Steam is unverified. System Python is only needed for the optional terminal route.
 
-Use native Steam, Proton Experimental and compatible Vulkan drivers. System
-Python is only needed for the optional terminal route. Steam/Proton are not
-bundled. Linux graphics, movies, audio, controllers and gameplay still need
-live testing. Flatpak Steam is unverified. Windows users should continue using
-the 0.5 Windows download above; no new Windows download accompanies 0.5.5.
+## Textures and language
+
+The optional HD pack is a separate five-part download. Keep `.zip.001` through `.005` together; in **Install HD Textures**, select `.zip.001` and let the launcher read all parts. Do not extract the parts separately. Enable **Graphics → HD Textures → Apply** after installation. Existing 0.4/0.5 packs remain compatible; the new pack adds expanded-character coverage. HD menus, fonts and HUD are included independently.
+
+Choose **English / Español** in the launcher for game text and subtitles. Optional Spanish voices require a separately supplied compatible pack. Movie files remain original. Linux language selection uses the same Steam shortcut as described in its README.
 
 ## Features
 
-- Mouse-friendly menus, editable bindings, automatic mouse input and separate zoom sensitivity.
-- Xbox, PS4, Switch Pro and paired Joy-Con controls with matching prompts.
-- Graphics and Controls accessible from the main menu and Pause.
-- Widescreen framing, resolution/internal scale, world/weapon FOV, reticle size,
-  MSAA, anisotropic filtering, brightness and optional FPS display.
-- Restored HD menus, fonts and HUD; optional HD gameplay textures.
-- Jericho, Cassidy or Spectral Cassidy selection for single-player and **BETA local split-screen co-op**
-  through **Multiplayer → CO-OP**. Co-op testing is incomplete; online co-op is not supported.
-- Player 2 pause controls use their own profile and original controller presets.
-- Clear subtitles during scene effects and improved split-screen HUD placement.
-- Local shader preparation, portable saves and **Quit to Desktop** confirmation.
+- Mouse and keyboard input, editable bindings and separate zoom sensitivity.
+- Xbox, PS4, Switch Pro and paired Joy-Con controls with matching prompts and per-player button rebinding.
+- Separate Graphics, Controls and Audio pages, accessible by mouse or controller.
+- Widescreen, world/weapon FOV, reticle size, brightness, MSAA and in-game cutscene border controls.
+- Eight selectable characters, rotating previews and a two-player co-op character selector.
+- Beta local split-screen co-op, separate co-op saves and protected chapter replay.
+- War Train and Splitter selector restoration, prepared from the player's supported disc.
+- Local shader preparation, portable data, and a direct-start executable.
 
-**Esc pauses; right-click goes back in menus.** Switch buttons use physical
-positions: B selects and A goes back. PS4 uses Cross and Circle. Controllers
-presented as Xbox by a remapper show Xbox prompts. A single Joy-Con does not
-provide the complete dual-stick controls.
+## Testing and limitations
 
-The retained War Train chapter and Splitter Grenade campaign placements use your
-supported Xbox disc, with no PS2 disc assets. After a Splitter pickup, use D-pad Up
-(Up Arrow by default) to change grenade type. Original campaign progression is
-retained. High-FPS script and vampire-jump mouse fixes from earlier releases remain.
+Co-op remains beta. Full-campaign progression, every character/weapon/story transition, surround output and complete Spanish presentation have not been verified. High-FPS mounted-boss and tree-damage fixes pass regression checks but still need live encounter tests. Cassidy hurt audio remains unresolved. Earlier reports of snow-level crashes and missing saves are not claimed resolved by the storage safeguards. Unseen shaders, driver pipelines and loading can still cause pauses; extreme weapon FOV can expose model boundaries.
 
-## Supported disc and limitations
+Routine logging, capture hotkeys and development probes are disabled in player builds. Failures may produce a small capped error report. The optional FPS display remains available.
 
-Setup verifies all 23 files of the supported North American Xbox revision. Both
-full Xbox ISO and trimmed XISO layouts work; other revisions are rejected.
-The required `default.xbe` SHA-256 is
-`72fc8033e01df4f22c703121cfd160969c642b18e841248224fc97a8f32050d7`.
-Allow at least 5 GB per import plus saves/cache and optional HD textures.
+## Source and credits
 
-Cassidy loading and melee audio, co-op HUD spacing, Player 2 settings ownership
-and subtitle appearance during effects received user confirmation in the tested
-scenes. Cassidy hurt audio remains inaudible and its investigation is paused.
-Full-campaign co-op, automatic story-based appearance changes, all weapon poses,
-fresh Windows and physical PS4/Switch acceptance remain unverified. Coyote
-mouse-look and false controller-warning corrections pass offline checks; broader
-live verification is pending. The Controls freeze is not reproduced locally, and
-reported room-specific slowdowns remain under investigation. Faulty HD blood
-replacements safely use the original blood textures; corrected HD blood artwork
-is not included. Existing 0.4 HD packs work; install the new separate pack for
-added artwork. Unseen shaders, driver pipelines and loading can still cause
-pauses. Extreme weapon FOV can expose original model boundaries.
-
-Routine recording, capture hotkeys and development probes are disabled in the
-player build. A failure may produce a small capped error report. The optional
-FPS display remains available.
-
-## Source
-
-See [build notes](docs/BUILDING.md), [code map](docs/CODE_MAP.md),
-[credits](CREDITS.md) and [release notes](docs/RELEASE-0.5.md).
-This snapshot contains maintained integration, SDK patches, import code and
-selected synthetic tests. Generated game code, original disc files, disassembly,
-private research, captures, saves and build output are excluded. The compiled
-player executable contains recompiled gameplay; it is not only a generic launcher.
-
-Approved restored artwork and launcher branding are included as enhancements.
-Character archives are reconstructed locally from the player's verified disc;
-original models, animations and voices are not shipped. Artwork and original
-marks remain with their owners; see [provenance](launcher/assets/SOURCES.md)
-and [notices](COPYRIGHT). No original game source or XDK distribution is included.
+See [build instructions](docs/BUILDING.md), [code map](docs/CODE_MAP.md), [credits](CREDITS.md) and [release notes](docs/RELEASE-0.6.md). The maintained source includes host integration, SDK patches, import tools and selected synthetic tests. Generated gameplay code, original game archives, private instruction fixtures, installed saves and caches are excluded. The compiled player executable contains recompiled gameplay logic.

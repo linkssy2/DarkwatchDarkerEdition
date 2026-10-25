@@ -17,7 +17,8 @@ template<class T> bool Read(const uint8_t* base, uint64_t at, T& value) {
     if (!Span(base, at, sizeof(value))) return false;
     std::memcpy(&value, base + at, sizeof(value)); return true;
 }
-template<size_t N> bool Text(const uint8_t* base, uint32_t ref, const char (&expected)[N]) {
+bool Text(const uint8_t* base, uint32_t ref, const char* expected) {
+    const size_t N = std::strlen(expected) + 1;
     if (!ref || !Span(base, uint64_t(ref) + 2, N)) return false;
     for (size_t i = 0; i < N; ++i) {
         char ch = char(base[uint64_t(ref) + 2 + i]);
@@ -28,7 +29,7 @@ template<size_t N> bool Text(const uint8_t* base, uint32_t ref, const char (&exp
     return true;
 }
 // 23C644 uses interned-name keys; 1006AF uses request IDs. Both maps have 8-byte rows.
-bool LayoutBank(const uint8_t* base, uint32_t layout, uint32_t& found) {
+bool LayoutBank(const uint8_t* base, uint32_t layout, uint32_t& found, const char* bank_name) {
     uint32_t buckets, count, total, seen = 0;
     found = 0;
     if (!Read(base, uint64_t(layout) + 4, buckets) || !Read(base, uint64_t(layout) + 8, count) ||
@@ -44,7 +45,7 @@ bool LayoutBank(const uint8_t* base, uint32_t layout, uint32_t& found) {
             uint32_t key, record;
             if (!Read(base, uint64_t(rows) + j * 8, key) || !Read(base, uint64_t(rows) + j * 8 + 4, record) ||
                 !key || (key >> 2) % count != i) return false;
-            if (Text(base, key, "cassidy")) {
+            if (Text(base, key, bank_name)) {
                 if (found || !record) return false;
                 found = record;
             }
@@ -67,12 +68,13 @@ uint32_t LoadedBank(const uint8_t* base, uint32_t loader, uint32_t id) {
     }
     return found;
 }
-bool Resident(const uint8_t* base, uint32_t loader, uint32_t record, const char** failure) {
+bool Resident(const uint8_t* base, uint32_t loader, uint32_t record, const char** failure, bool tala) {
     uint32_t type, name, file, definition, refs, id, bank;
     uint8_t preload;
+    const char* bank_name = tala ? "tala" : "cassidy";
     if (!Read(base, record, type) || type != 0x43ED18 ||
-        !Read(base, uint64_t(record) + 4, name) || !Text(base, name, "cassidy") ||
-        !Read(base, uint64_t(record) + 8, file) || !Text(base, file, "cassidy"))
+        !Read(base, uint64_t(record) + 4, name) || !Text(base, name, bank_name) ||
+        !Read(base, uint64_t(record) + 8, file) || !Text(base, file, bank_name))
         return Failed(failure, "audio bank entry");
     if (!Read(base, uint64_t(record) + 12, preload) || preload != 1 ||
         !Read(base, uint64_t(record) + 20, refs) || !refs || refs > INT32_MAX)
@@ -85,7 +87,7 @@ bool Resident(const uint8_t* base, uint32_t loader, uint32_t record, const char*
     uint32_t state, owned_id, xsb, stream_list, handle, path; uint16_t streams;
     if (!Read(base, bank, type) || type != 0x43EDD4 ||
         !Read(base, uint64_t(bank) + 4, owned_id) || owned_id != id ||
-        !Read(base, uint64_t(bank) + 12, path) || !Text(base, path, "audio/cassidy/cassidy.xsb"))
+        !Read(base, uint64_t(bank) + 12, path) || !Text(base, path, tala ? "audio/tala/tala.xsb" : "audio/cassidy/cassidy.xsb"))
         return Failed(failure, "audio loaded bank identity");
     if (!Read(base, uint64_t(bank) + 8, state) || state != 2)
         return Failed(failure, "audio bank pending or failed");
@@ -101,7 +103,7 @@ bool Resident(const uint8_t* base, uint32_t loader, uint32_t record, const char*
 }
 } // namespace
 
-bool DarkwatchCharacterAudioReady(uint8_t* base, const char** failure) {
+bool DarkwatchCharacterAudioReady(uint8_t* base, const char** failure, bool tala) {
     if (failure) *failure = nullptr;
     uint32_t audio, loader, type, engine, node, count;
     if (!Read(base, 0x4AD2FC, audio) || !audio || !Read(base, audio, type) || type != 0x43E4B0 ||
@@ -120,11 +122,11 @@ bool DarkwatchCharacterAudioReady(uint8_t* base, const char** failure) {
             !Read(base, uint64_t(layout) + 0x10, active))
             return Failed(failure, "audio layout identity");
         if (active) {
-            if (!LayoutBank(base, layout, record)) return Failed(failure, "audio layout bank map");
+            if (!LayoutBank(base, layout, record, tala ? "tala" : "cassidy")) return Failed(failure, "audio layout bank map");
             if (record) {
                 // The preloaded layout retains this bank until 20D0A0 clears active before unloading.
                 uint32_t current_audio, current_loader;
-                if (!Resident(base, loader, record, failure)) return false;
+                if (!Resident(base, loader, record, failure, tala)) return false;
                 if (!Read(base, uint64_t(layout) + 0x10, active) || !active ||
                     !Read(base, 0x4AD2FC, current_audio) || current_audio != audio ||
                     !Read(base, 0x4B4F80, current_loader) || current_loader != loader)
@@ -134,5 +136,5 @@ bool DarkwatchCharacterAudioReady(uint8_t* base, const char** failure) {
         }
         node = next;
     }
-    return Failed(failure, "audio Cassidy bank absent from active layouts");
+    return Failed(failure, tala ? "audio Tala bank absent from active layouts" : "audio Cassidy bank absent from active layouts");
 }

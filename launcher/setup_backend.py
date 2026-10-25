@@ -27,13 +27,15 @@ import intake
 import bonus_content
 import gameplay_hd
 import character_content
+import character_preview
+import language_pack
 
 CHUNK = 8 * 1024 * 1024
 # Same original-Xbox game partition locations supported by the pinned runtime.
 PARTITIONS = (0, 0x18300000)
 EXE = "darkwatch_xbe.exe"
 SETTINGS = "darkwatch_xbe_settings.toml"
-PACKAGE_VERSION = "0.5.5"
+PACKAGE_VERSION = "0.6"
 RELEASE_PROFILE = {"name": "release-candidate", "diagnostics": False, "strict_assets": True}
 # Maximum time without a completed shader, not a limit on the whole preparation.
 SHADER_PREPARE_TIMEOUT = 15 * 60
@@ -178,7 +180,8 @@ class Setup:
                      "payload/character_content.py", "payload/character_animation.py", "payload/character_assets.py",
                      "payload/character_archive.py", "payload/character_repaint.py", "payload/character-catalog.json",
                      "payload/character_boss.py", "payload/character_boss_effects.py", "payload/character_spectral_hands.py",
-                     "payload/character_hand_seams.py", "payload/character_secondary.py",
+                     "payload/character_hand_seams.py", "payload/character_secondary.py", "payload/character_preview.py",
+                     "payload/character_roster.py",
                      "payload/character-art/cassidy-hands-1024.dds", "payload/character-art/cassidy-hands-256.dds",
                      "payload/runtime/" + EXE, "payload/runtime/darkwatch_hd_ui_builder.exe"):
             if path not in self.files:
@@ -209,6 +212,25 @@ class Setup:
         self.hd_catalog = gameplay_hd.Catalog(catalog.read_bytes())
         self.hd_warning = ""
         self.hd_verified = False
+        self.language_catalog = None
+        language_catalog = "payload/spanish-catalog.json"
+        if language_catalog in self.files:
+            path = safe_path(self.package, language_catalog)
+            if self.digest(path) != self.files[language_catalog]:
+                raise SetupError("Spanish pack catalog is damaged. Extract a fresh launcher package.")
+            self.language_catalog = language_pack.Catalog(path.read_bytes())
+        self.text_catalog = None
+        text_catalog = "payload/spanish-text-catalog.json"
+        if text_catalog in self.files:
+            path = safe_path(self.package, text_catalog)
+            if self.digest(path) != self.files[text_catalog]:
+                raise SetupError("Spanish text catalog is damaged. Extract a fresh launcher package.")
+            self.text_catalog = language_pack.Catalog(path.read_bytes())
+            text = safe_path(self.package, "payload/language/es/language_text.bin")
+            if (set(self.text_catalog.files) != {"language_text.bin"} or
+                    self.files.get("payload/language/es/language_text.bin") != self.digest(text) or
+                    not self.text_catalog.validate(safe_path(self.package, "payload"), self.check_cancel)):
+                raise SetupError("Built-in Spanish text is damaged. Extract a fresh launcher package.")
 
     def check_cancel(self):
         if self.cancel_file and self.cancel_file.exists():
@@ -278,6 +300,7 @@ class Setup:
         current = self.active()
         if not current:
             return dict(installed=False, ready=False, hd_textures_installed=False,
+                        language="en", spanish_installed=False,
                         message="Import your own supported Darkwatch ISO to begin.")
         try:
             for relative, size, _ in self.installed_files(current):
@@ -288,7 +311,78 @@ class Setup:
             return dict(installed=True, ready=False, hd_textures_installed=False, message=str(error))
         hd = self.hd_status(current)
         return dict(installed=True, ready=True, hd_textures_installed=hd,
-                    message=self.hd_warning or "Installed. Files are verified before every launch.", install_dir=str(current))
+                    message=self.hd_warning or "Installed. Files are verified before every launch.", install_dir=str(current),
+                    **self.language_status(current))
+
+    def language_status(self, current):
+        try:
+            audio = bool(self.language_catalog and self.language_catalog.validate(current, self.check_cancel, full=False, media_only=True))
+            available = bool(self.text_catalog or (self.language_catalog and self.language_catalog.validate(current, self.check_cancel, full=False)))
+        except Cancelled:
+            raise
+        except (OSError, ValueError):
+            available = audio = False
+        return dict(language=language_pack.selected(current), spanish_installed=available,
+                    spanish_audio_installed=audio)
+
+    def prepare_spanish_text(self, current):
+        if self.text_catalog:
+            self.text_catalog.install_text(safe_path(self.package, "payload/language/es/language_text.bin"),
+                                           current, self.check_cancel, require_closed)
+
+    def prepare_previews(self, current):
+        """Upgrade the local menu cache without requiring another ISO import."""
+        metadata = read_json(safe_path(current, "install.json"))
+        record = metadata.get("character_preview", {})
+        path = safe_path(current, character_preview.NAME)
+        if (isinstance(record, dict) and record.get("version") == character_preview.VERSION and
+                isinstance(record.get("size"), int) and 16 < record["size"] <= character_preview.MAX_BYTES and
+                isinstance(record.get("sha256"), str) and re.fullmatch("[0-9a-f]{64}", record["sha256"]) and
+                path.is_file() and path.stat().st_size == record["size"] and self.digest(path) == record["sha256"]):
+            return
+        require_closed()
+        self.notify("progress", "Preparing character previews from your disc", percent=98)
+        record = character_preview.prepare(safe_path(current, "assets"), path, self.check_cancel)
+        metadata["character_preview"] = record
+        write_json(safe_path(current, "install.json"), metadata)
+
+    def spanish_valid(self, current):
+        if not self.text_catalog:
+            return bool(self.language_catalog and self.language_catalog.validate(current, self.check_cancel))
+        if not self.text_catalog.validate(current, self.check_cancel):
+            return False
+        # An installed media overlay must be verified before the runtime can open it.
+        return (not safe_path(current, language_pack.DIRECTORY + "/assets").exists() or
+                bool(self.language_catalog and self.language_catalog.validate(current, self.check_cancel, media_only=True)))
+
+    def install_spanish(self, archive):
+        require_closed()
+        current = self.active()
+        if not current or not self.status()["ready"]:
+            raise SetupError("Import or repair your Darkwatch ISO before installing Spanish.")
+        self.verify_package()
+        if not self.language_catalog:
+            raise SetupError("This launcher does not include a Spanish pack catalog.")
+        self.language_catalog.install(archive, current, self.check_cancel, self.notify, require_closed)
+        self.prepare_spanish_text(current)
+        return dict(installed=True, ready=True, install_dir=str(current), **self.language_status(current),
+                    message="Spanish voices installed. Choose Español before starting the game.")
+
+    def set_language(self, value):
+        require_closed()
+        current = self.active()
+        if not current or not self.status()["ready"]:
+            raise SetupError("Import or repair your Darkwatch ISO before choosing a language.")
+        if value == "es":
+            self.verify_package()
+            self.prepare_spanish_text(current)
+            if not self.spanish_valid(current):
+                raise SetupError("The Spanish language pack needs repair. Reinstall it or choose English.")
+        self.check_cancel()
+        require_closed()
+        language_pack.select(current, value)
+        return dict(installed=True, ready=True, install_dir=str(current), **self.language_status(current),
+                    message="Idioma: español. Se aplicará al iniciar el juego." if value == "es" else "Language: English. Applies on the next game launch.")
 
     def hd_status(self, current, full=False):
         self.hd_warning = ""
@@ -336,8 +430,15 @@ class Setup:
             if not path.is_file() or path.stat().st_size != size or self.digest(path) != digest:
                 raise SetupError(f"Missing or damaged installed file: {relative}. Import your ISO again to repair it.")
             done += size
+        # Core files are verified before a missing/outdated private preview is repaired.
+        self.prepare_previews(current)
         if optional:
             self.hd_verified = self.hd_status(current, full=True)
+            if self.text_catalog and not self.text_catalog.validate(current, self.check_cancel):
+                self.hd_warning = "Spanish text needs repair. Select Español to restore the included translation."
+            elif (self.text_catalog or self.language_catalog) and safe_path(current, language_pack.DIRECTORY).exists():
+                if not self.spanish_valid(current):
+                    self.hd_warning = "The optional Spanish voices need repair. Reinstall their download or choose English."
         self.notify("progress", "Installed files verified", percent=100)
         return current
 
@@ -410,6 +511,7 @@ class Setup:
     def prepare_shaders(self, current):
         self.check_cancel()
         require_closed()
+        language = language_pack.selected(current)
         events = queue.Queue(maxsize=64)
         stopped = threading.Event()
         ready, completed, total = False, -1, None
@@ -467,7 +569,7 @@ class Setup:
                             deadline = time.monotonic() + SHADER_PREPARE_TIMEOUT
                         completed, total = done, count
                         self.notify("shader_prepare", "Preparing shaders — %d of %d" % (done, count),
-                                    percent=100 * done / count, completed=done, total=count)
+                                    percent=100 * done / count, completed=done, total=count, language=language)
                     elif state == "shader_ready":
                         if ready or (total is not None and completed != total):
                             raise SetupError("Shader preparation finished before every shader was ready.")
@@ -490,7 +592,7 @@ class Setup:
                     detail = errors.read().decode("utf-8", errors="replace").strip()
                     raise SetupError("Shader preparation failed. Please try again." +
                                      (" " + detail if detail else ""))
-                self.notify("shader_ready", "Shaders are ready", percent=100)
+                self.notify("shader_ready", "Shaders are ready", percent=100, language=language)
             finally:
                 stopped.set()
                 if process.poll() is None:
@@ -527,6 +629,8 @@ class Setup:
                           sum(size for size, _ in character_content.INSTALLED.values()) + 512 * 1024 * 1024)
                 if previous and safe_path(previous, gameplay_hd.DIRECTORY).exists():
                     needed += self.hd_catalog.total
+                if previous and self.language_catalog and safe_path(previous, language_pack.DIRECTORY).exists():
+                    needed += sum(row["size"] for row in self.language_catalog.files.values())
                 if shutil.disk_usage(self.root).free < needed:
                     raise SetupError(f"Not enough free space. Keep at least {needed / (1024 ** 3):.1f} GB free for installation, plus space for your saved data and cache.")
                 total = sum(f["size"] for f in self.assets)
@@ -564,11 +668,22 @@ class Setup:
                         raise SetupError("Runtime file changed during installation.")
             self.notify("progress", "Preparing HD artwork from your disc", percent=87)
             self.build_hd(stage)
+            self.notify("progress", "Preparing character previews from your disc", percent=88)
+            preview = character_preview.prepare(stage / "assets", stage / character_preview.NAME, self.check_cancel)
             self.check_cancel()
             require_closed()
             self.notify("progress", "Preserving saves, controls, and shader cache", percent=97)
             with self.user_data_source(previous) as user_data:
                 self.copy_user_data(user_data, stage)
+                if self.language_catalog:
+                    try:
+                        self.language_catalog.preserve(user_data, stage, self.check_cancel, self.copy_file,
+                                                       media_only=bool(self.text_catalog))
+                    except Cancelled:
+                        raise
+                    except (OSError, ValueError):
+                        gameplay_hd.remove_tree(stage, language_pack.DIRECTORY)
+                        self.notify("progress", "The Spanish pack needs repair. Reinstall its download after importing.", percent=97)
                 try:
                     self.hd_catalog.preserve(user_data, stage, self.check_cancel, self.notify, self.copy_file)
                 except Cancelled:
@@ -577,16 +692,19 @@ class Setup:
                     # Optional damaged artwork must not prevent repairing the base game.
                     gameplay_hd.remove_tree(stage, gameplay_hd.DIRECTORY)
                     self.notify("progress", str(error) + " The previous copy was kept; reinstall the optional pack afterward.", percent=97)
+                self.prepare_spanish_text(stage)
                 self.prepare_shaders(stage)
                 hd = stage / "hd-ui.pack"
                 write_json(stage / "install.json", dict(schema_version=1, disc_sha256=self.files["payload/supported-disc.json"],
                            content_revision=character_content.CONTENT_REVISION, partition_offset=offset,
+                           character_preview=preview,
                            hd_ui=dict(size=hd.stat().st_size, sha256=self.digest(hd))))
                 self.check_cancel()
                 require_closed()
                 write_json(self.root / "active.json", dict(version=version))
                 committed = True
             return dict(installed=True, ready=True, install_dir=str(stage), hd_textures_installed=self.hd_status(stage),
+                        **self.language_status(stage),
                         message="Darkwatch: Darker Edition is installed. Your original ISO was not changed.")
         finally:
             if not committed:
@@ -597,6 +715,10 @@ class Setup:
     def play(self):
         require_closed()
         current = self.verify(optional=False)
+        if language_pack.selected(current) == "es":
+            self.prepare_spanish_text(current)
+            if not self.spanish_valid(current):
+                raise SetupError("The Spanish language pack needs repair. Reinstall it or choose English.")
         self.prepare_shaders(current)
         self.check_cancel()
         require_closed()
@@ -611,7 +733,8 @@ class Setup:
             code = None
         if code:
             raise SetupError(f"Darkwatch could not start (exit 0x{code & 0xffffffff:08X}). Check the system requirements in README.txt and verify your files.")
-        return dict(installed=True, ready=True, pid=process.pid, message="Darkwatch: Darker Edition started.")
+        return dict(installed=True, ready=True, pid=process.pid, **self.language_status(current),
+                    message="Darkwatch: Darker Edition started.")
 
 
 def main(argv=None):
@@ -623,6 +746,8 @@ def main(argv=None):
     action.add_argument("--status", action="store_true")
     action.add_argument("--import-iso", type=Path)
     action.add_argument("--install-hd-textures", type=Path)
+    action.add_argument("--install-spanish", type=Path)
+    action.add_argument("--set-language", choices=("en", "es"))
     action.add_argument("--verify", action="store_true")
     action.add_argument("--play", action="store_true")
     args = parser.parse_args(argv)
@@ -636,17 +761,22 @@ def main(argv=None):
                 result = setup.import_iso(args.import_iso)
             elif args.install_hd_textures:
                 result = setup.install_hd_textures(args.install_hd_textures)
+            elif args.install_spanish:
+                result = setup.install_spanish(args.install_spanish)
+            elif args.set_language:
+                result = setup.set_language(args.set_language)
             elif args.play:
                 result = setup.play()
             else:
                 current = setup.verify()
                 result = dict(installed=True, ready=True, install_dir=str(current), hd_textures_installed=setup.hd_verified,
+                              **setup.language_status(current),
                               message=setup.hd_warning or "All installed files verified.")
             emit("result", **result, percent=100)
         return 0
     except (SetupError, intake.IntakeError, OSError, ValueError, KeyError, TypeError) as error:
         state = dict(ready=False)
-        if args.install_hd_textures and "setup" in locals():
+        if (args.install_hd_textures or args.install_spanish or args.set_language) and "setup" in locals():
             try:
                 # Optional artwork failure must not disable an otherwise playable install.
                 setup.cancel_file = None

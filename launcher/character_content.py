@@ -19,14 +19,15 @@ import character_assets as art
 import character_boss
 import character_boss_effects
 import character_repaint
+import character_roster
 
-CONTENT_REVISION = 'wartrain-splitter-characters-v2'
-CATALOG_SHA256 = 'fc0d0ee90f780cd61d7caa15b4605bcfa46b3dd27dbc82be077d3a97412c6946'
+CONTENT_REVISION = 'wartrain-splitter-characters-v3'
+CATALOG_SHA256 = 'ecbc3771c118224f99d65a8f4868cf8489165bae1b84dc9e57b2e27462f36273'
 CHARACTERS = 'xml/actortemplates_characters.bxml'
 INSTALLED = {
-    'packfile.pck': (120732531, '6a17c34ba180c839350297725248887c17b3b7540870978ee2b3ebb8b7cd778d'),
-    'LvlSingl.pck': (258077411, 'ebf982c749184e05f7ed3342ce108d063e2e1c92611b19245d3c1871fb24c216'),
-    'audio.pck': (137958865, 'f148f43fbaeedbaa3ba6465fd009a802681900dafb24de671dea1c2ffaa67c01'),
+    'packfile.pck': (133411077, '61ecad4b43070941e066c1b69e2ba03b67f0a846c0298472f3111f5f055a1425'),
+    'LvlSingl.pck': (1170739944, '97a1b7d06cc2ee42de3875685cc5d6c561b5a34275de072b0aa5e2463110c64e'),
+    'audio.pck': (145688078, 'c889f14963005bb796e29d84ad06c7ab52fa1d8b138a7107f8fa7355e73970f1'),
 }
 REPAINT = {
     1024: '73ca5d8c1ab1451c8863ee91139678f28af63b992934090acf233433ebabb3a3',
@@ -223,7 +224,9 @@ def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None)
                 raise ValueError(f'Unsupported original character archive: {name}')
             streams[name] = stream
         progress('Preparing selectable characters...')
-        groups, extension, spectral = build_resources(Source(streams, metadata, cancel), payload)
+        source = Source(streams, metadata, cancel)
+        groups, extension, spectral = build_resources(source, payload)
+        roster, _ = character_roster.prepare(source, groups, extension, spectral)
     with tempfile.TemporaryDirectory(prefix='.characters-', dir=assets) as temporary:
         staged = Path(temporary)
         for name in INSTALLED:
@@ -241,6 +244,10 @@ def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None)
             cancel()
             if name in spectral:
                 raw = pck.compose(raw, spectral[name])
+            checked(raw, metadata['spectral_archives'][name], name)
+            cancel()
+            if roster.get(name):
+                raw = pck.compose(raw, roster[name])
             checked(raw, metadata['installed'][name], name)
             (staged / name).write_bytes(raw)
             del raw

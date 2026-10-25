@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows;
@@ -16,9 +17,9 @@ using Microsoft.Win32;
 #if !DIRECT_PLAY
 [assembly: AssemblyTitle("Darkwatch: Darker Edition")]
 [assembly: AssemblyProduct("Darkwatch: Darker Edition")]
-[assembly: AssemblyVersion("0.5.0.0")]
-[assembly: AssemblyFileVersion("0.5.0.0")]
-[assembly: AssemblyInformationalVersion("0.5")]
+[assembly: AssemblyVersion("0.6.0.0")]
+[assembly: AssemblyFileVersion("0.6.0.0")]
+[assembly: AssemblyInformationalVersion("0.6")]
 #endif
 
 namespace DarkwatchDarkerEdition
@@ -27,16 +28,58 @@ namespace DarkwatchDarkerEdition
     {
         public const string DiscImageFilter = "Xbox disc images (*.iso;*.xiso)|*.iso;*.xiso";
         public const string TexturePackFilter = "Darker Edition HD texture pack (*.zip;*.zip.001)|*.zip;*.zip.001";
+        public const string SpanishPackFilter = "Darker Edition Spanish pack (*.zip)|*.zip";
         readonly Window window;
         readonly string package = AppDomain.CurrentDomain.BaseDirectory;
         readonly string installRoot = SetupProcess.InstallRoot(AppDomain.CurrentDomain.BaseDirectory);
         readonly JavaScriptSerializer json = new JavaScriptSerializer();
-        bool busy, installed, ready, closing, cancelRequested, hdTexturesInstalled;
+        bool busy, installed, ready, closing, cancelRequested, hdTexturesInstalled, spanishInstalled, spanishAudioInstalled, updatingLanguage;
+        string language = "en";
         string cancelFile, gameDirectory;
         readonly Action cancelPreparation;
 
         T Get<T>(string name) where T : FrameworkElement { return (T)window.FindName(name); }
+        string Copy(string english, string spanish) { return language == "es" ? spanish : english; }
         public Window Window { get { return window; } }
+
+        internal static string Localize(string message, string selectedLanguage)
+        {
+            if (selectedLanguage != "es" || String.IsNullOrEmpty(message)) return message;
+            switch (message) {
+                case "Import your own supported Darkwatch ISO to begin.": return "Importa tu propia ISO compatible de Darkwatch para empezar.";
+                case "Installed. Files are verified before every launch.": return "Instalado. Los archivos se verifican antes de cada inicio.";
+                case "All installed files verified.": return "Todos los archivos instalados están verificados.";
+                case "Installed files verified": return "Archivos instalados verificados";
+                case "Checking launcher files": return "Comprobando los archivos del lanzador";
+                case "Preparing HD artwork from your disc": return "Preparando la interfaz HD a partir de tu disco";
+                case "Preparing selectable characters...": return "Preparando los personajes seleccionables…";
+                case "Preparing character resources...": return "Preparando los recursos de los personajes…";
+                case "Preserving saves, controls, and shader cache": return "Conservando partidas, controles y caché de shaders";
+                case "Copying prior launcher saves into this portable folder": return "Copiando las partidas anteriores a esta carpeta portátil";
+                case "Shaders are ready": return "Shaders preparados";
+                case "Verifying optional HD textures": return "Verificando las texturas HD opcionales";
+                case "Installing optional HD textures": return "Instalando las texturas HD opcionales";
+                case "Installing Spanish resources": return "Instalando los recursos en español";
+                case "HD gameplay textures installed. Enable HD Textures in Graphics.": return "Texturas HD instaladas. Actívalas en Gráficos.";
+                case "Spanish voices installed. Choose Español before starting the game.": return "Voces en español instaladas. Selecciona Español antes de iniciar el juego.";
+                case "Spanish text needs repair. Select Español to restore the included translation.": return "Hay que reparar los textos. Selecciona Español para restaurar la traducción incluida.";
+                case "The optional Spanish voices need repair. Reinstall their download or choose English.": return "Hay que reparar las voces opcionales. Reinstala su descarga o selecciona English.";
+                case "Darkwatch: Darker Edition is installed. Your original ISO was not changed.": return "Darkwatch: Darker Edition está instalado. Tu ISO original no se ha modificado.";
+                case "Darkwatch: Darker Edition started.": return "Darkwatch: Darker Edition se ha iniciado.";
+                case "Another setup or launch is already in progress.": return "Ya hay otra instalación o inicio en curso.";
+                case "Close Darkwatch before installing, repairing, or starting another copy.": return "Cierra Darkwatch antes de instalar, reparar o iniciar otra copia.";
+                case "Install the matching Spanish language pack first.": return "Instala primero el paquete de español compatible.";
+                case "The Spanish language pack needs repair. Reinstall it or choose English.": return "Hay que reparar el paquete de español. Reinstálalo o selecciona English.";
+                case "The Spanish pack needs repair. Reinstall its download after importing.": return "Hay que reparar el paquete de español. Reinstálalo después de importar.";
+                case "This launcher package is incomplete or incompatible. Extract a fresh complete package.": return "El paquete del lanzador está incompleto o no es compatible. Extrae de nuevo el paquete completo.";
+                case "Shader preparation made no progress for too long. Close other applications and try again.": return "La preparación de shaders lleva demasiado tiempo sin avanzar. Cierra otras aplicaciones e inténtalo de nuevo.";
+                case "Shader preparation failed. Please try again.": return "Falló la preparación de shaders. Inténtalo de nuevo.";
+                case "Shader preparation did not finish. Please try again.": return "No se completó la preparación de shaders. Inténtalo de nuevo.";
+            }
+            if (message.StartsWith("Verifying ", StringComparison.Ordinal)) return "Verificando " + message.Substring(10);
+            if (message.StartsWith("Importing ", StringComparison.Ordinal)) return "Importando " + message.Substring(10);
+            return Regex.Replace(message, @"^Preparing shaders — (\d+) of (\d+)$", "Preparando shaders — $1 de $2");
+        }
 
 #if LAUNCHER_TESTING
         public Launcher(bool preview = false) : this(preview, null)
@@ -63,12 +106,24 @@ namespace DarkwatchDarkerEdition
             Get<Button>("MinimizeButton").Click += delegate { window.WindowState = WindowState.Minimized; };
             Get<Button>("CloseButton").Click += delegate { window.Close(); };
             Get<Button>("ImportButton").Click += async delegate {
-                var dialog = new OpenFileDialog { Title = "Select your original Xbox Darkwatch disc image", Filter = DiscImageFilter, CheckFileExists = true, Multiselect = false };
+                var dialog = new OpenFileDialog { Title = Copy("Select your original Xbox Darkwatch disc image", "Selecciona la imagen de tu disco original de Darkwatch para Xbox"), Filter = DiscImageFilter, CheckFileExists = true, Multiselect = false };
                 if (dialog.ShowDialog(window) == true) await Run("--import-iso", dialog.FileName);
             };
             Get<Button>("TextureButton").Click += async delegate {
-                var dialog = new OpenFileDialog { Title = "Select the HD texture ZIP or its first part (.001)", Filter = TexturePackFilter, CheckFileExists = true, Multiselect = false };
+                var dialog = new OpenFileDialog { Title = Copy("Select the HD texture ZIP or its first part (.001)", "Selecciona el ZIP de texturas HD o su primera parte (.001)"), Filter = TexturePackFilter, CheckFileExists = true, Multiselect = false };
                 if (dialog.ShowDialog(window) == true) await Run("--install-hd-textures", dialog.FileName);
+            };
+            Get<Button>("SpanishButton").Click += async delegate {
+                var dialog = new OpenFileDialog { Title = Copy("Select the optional Spanish voice pack ZIP", "Selecciona el ZIP opcional de voces en español"), Filter = SpanishPackFilter, CheckFileExists = true, Multiselect = false };
+                if (dialog.ShowDialog(window) == true) await Run("--install-spanish", dialog.FileName);
+            };
+            Get<ComboBox>("LanguageChoice").SelectionChanged += async delegate {
+                if (updatingLanguage || busy || !installed) return;
+                var selected = Get<ComboBox>("LanguageChoice").SelectedItem as ComboBoxItem;
+                string choice = selected == null ? null : selected.Tag as string;
+                if (choice == language || (choice != "en" && choice != "es")) return;
+                if (choice == "es" && !spanishInstalled) { SetButtons(); return; }
+                await Run("--set-language", choice);
             };
             Get<Button>("VerifyButton").Click += async delegate { await Run("--verify", null); };
             Get<Button>("PlayButton").Click += async delegate { await Run("--play", null); };
@@ -81,7 +136,7 @@ namespace DarkwatchDarkerEdition
                 if (!busy) return;
                 e.Cancel = true;
                 if (cancelPreparation != null) { Cancel(); return; }
-                if (MessageBox.Show(window, "Cancel the current operation and close the launcher? Your existing installation will be kept.", "Darkwatch: Darker Edition", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes) {
+                if (MessageBox.Show(window, Copy("Cancel the current operation and close the launcher? Your existing installation will be kept.", "¿Cancelar la operación actual y cerrar el lanzador? Se conservará tu instalación."), "Darkwatch: Darker Edition", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes) {
                     closing = true; Cancel();
                 }
             };
@@ -93,6 +148,7 @@ namespace DarkwatchDarkerEdition
                 Get<Grid>("LaunchActions").Visibility = Visibility.Collapsed;
                 Get<Grid>("RepairActions").Visibility = Visibility.Collapsed;
                 Get<StackPanel>("TextureActions").Visibility = Visibility.Collapsed;
+                Get<StackPanel>("LanguageActions").Visibility = Visibility.Collapsed;
             }
             SetButtons();
         }
@@ -126,13 +182,37 @@ namespace DarkwatchDarkerEdition
             Get<Button>("VerifyButton").IsEnabled = !busy && installed;
             Get<Button>("FolderButton").IsEnabled = !busy && installed;
             Get<Button>("TextureButton").IsEnabled = !busy && ready;
-            Get<Button>("TextureButton").Content = hdTexturesInstalled ? "REINSTALL HD TEXTURES" : "INSTALL HD TEXTURES";
+            Get<Button>("TextureButton").Content = hdTexturesInstalled ? Copy("REINSTALL HD TEXTURES", "REINSTALAR TEXTURAS HD") : Copy("INSTALL HD TEXTURES", "INSTALAR TEXTURAS HD");
             Get<TextBlock>("TextureStatus").Text = hdTexturesInstalled
-                ? "Gameplay textures installed · Toggle in Graphics"
-                : "Optional download · Gameplay textures not installed";
+                ? Copy("Gameplay textures installed · Toggle in Graphics", "Texturas instaladas · Actívalas en Gráficos")
+                : Copy("Optional download · Gameplay textures not installed", "Descarga opcional · Texturas del juego no instaladas");
+            Get<Button>("SpanishButton").IsEnabled = !busy && ready;
+            Get<Button>("SpanishButton").Content = spanishAudioInstalled ? Copy("REINSTALL VOICES", "REINSTALAR VOCES") : Copy("SPANISH VOICES", "VOCES EN ESPAÑOL");
+            Get<ComboBox>("LanguageChoice").IsEnabled = !busy && installed;
+            Get<ComboBoxItem>("SpanishChoice").IsEnabled = spanishInstalled;
+            // Backend status refreshes must not start another language-change operation.
+            updatingLanguage = true;
+            try { Get<ComboBox>("LanguageChoice").SelectedIndex = language == "es" ? 1 : 0; }
+            finally { updatingLanguage = false; }
+            Get<TextBlock>("LanguageStatus").Text = spanishInstalled
+                ? Copy("Game language · Text and subtitles included · Next launch", "Idioma del juego · Textos y subtítulos incluidos · Próximo inicio")
+                : Copy("Game language · Import your ISO first", "Idioma del juego · Importa tu ISO primero");
+            System.Windows.Automation.AutomationProperties.SetName(Get<ComboBox>("LanguageChoice"), Copy("Game language", "Idioma del juego"));
+            Get<ComboBox>("LanguageChoice").ToolTip = Copy("Choose English or Español, then start the game. Close the game before changing languages. No extra download is needed for Spanish text and subtitles.", "Elige English o Español e inicia el juego. Cierra el juego antes de cambiar de idioma. Los textos y subtítulos en español no necesitan otra descarga.");
+            Get<Button>("SpanishButton").ToolTip = Copy("Optional voices only. Select a compatible Spanish voice ZIP. Text and subtitles are already included; movies keep their original audio.", "Solo voces opcionales. Selecciona un ZIP de voces en español compatible. Los textos y subtítulos ya están incluidos; los vídeos conservan su audio original.");
             Get<Button>("CancelButton").Visibility = busy && (cancelFile != null || cancelPreparation != null) ? Visibility.Visible : Visibility.Collapsed;
             Get<Button>("CancelButton").IsEnabled = busy && !cancelRequested;
-            Get<Button>("ImportButton").Content = installed ? "IMPORT / REPAIR" : "IMPORT ISO";
+            Get<Button>("CancelButton").Content = Copy("CANCEL", "CANCELAR");
+            Get<Button>("ImportButton").Content = installed ? Copy("IMPORT / REPAIR", "IMPORTAR / REPARAR") : Copy("IMPORT ISO", "IMPORTAR ISO");
+            Get<Button>("PlayButton").Content = Copy("PLAY", "JUGAR");
+            Get<Button>("VerifyButton").Content = Copy("VERIFY FILES", "VERIFICAR ARCHIVOS");
+            Get<Button>("FolderButton").Content = Copy("OPEN GAME FOLDER", "ABRIR CARPETA DEL JUEGO");
+            Get<Button>("MinimizeButton").ToolTip = Copy("Minimize", "Minimizar");
+            Get<Button>("CloseButton").ToolTip = Copy("Close launcher", "Cerrar el lanzador");
+            Get<Button>("TextureButton").ToolTip = Copy("Import your ISO first. Download all HD pack parts into one folder, then select the .001 file. A complete ZIP also works.", "Importa tu ISO primero. Descarga todas las partes HD en una carpeta y selecciona el archivo .001. También puedes usar el ZIP completo.");
+            Get<TextBlock>("DiscTitle").Text = Copy("YOUR DISC, ENHANCED", "TU DISCO, MEJORADO");
+            Get<TextBlock>("DiscFeatures").Text = Copy("Widescreen · HD interface · Mouse & keyboard", "Pantalla panorámica · Interfaz HD · Ratón y teclado");
+            Get<TextBlock>("DiscNotice").Text = Copy("Original game files are not included.", "No se incluyen archivos del juego original.");
             Get<Button>("ImportButton").Background = (Brush)new BrushConverter().ConvertFromString(ready ? "#20232A" : "#701C25");
             Get<Button>("PlayButton").Background = (Brush)new BrushConverter().ConvertFromString(ready ? "#701C25" : "#20232A");
         }
@@ -143,31 +223,34 @@ namespace DarkwatchDarkerEdition
             if (item.TryGetValue("installed", out value)) installed = Convert.ToBoolean(value);
             if (item.TryGetValue("ready", out value)) ready = Convert.ToBoolean(value);
             if (item.TryGetValue("hd_textures_installed", out value)) hdTexturesInstalled = Convert.ToBoolean(value);
-            if (!installed) hdTexturesInstalled = false;
+            if (item.TryGetValue("spanish_installed", out value)) spanishInstalled = Convert.ToBoolean(value);
+            if (item.TryGetValue("spanish_audio_installed", out value)) spanishAudioInstalled = Convert.ToBoolean(value);
+            if (item.TryGetValue("language", out value)) language = Object.Equals(value, "es") ? "es" : "en";
+            if (!installed) { hdTexturesInstalled = false; spanishInstalled = false; spanishAudioInstalled = false; }
             if (item.TryGetValue("install_dir", out value)) gameDirectory = Convert.ToString(value);
-            if (item.TryGetValue("message", out value)) Get<TextBlock>("StatusText").Text = Convert.ToString(value);
+            if (item.TryGetValue("message", out value)) Get<TextBlock>("StatusText").Text = Localize(Convert.ToString(value), language);
             if (item.TryGetValue("percent", out value) && value != null) {
                 Get<ProgressBar>("Progress").IsIndeterminate = false;
                 Get<ProgressBar>("Progress").Value = Math.Max(0, Math.Min(100, Convert.ToDouble(value)));
             }
-            Get<TextBlock>("StateTitle").Text = ready ? "THE NIGHT AWAITS" : "PREPARE YOUR HUNT";
+            Get<TextBlock>("StateTitle").Text = ready ? Copy("THE NIGHT AWAITS", "LA NOCHE TE ESPERA") : Copy("PREPARE YOUR HUNT", "PREPARA TU CACERÍA");
             Get<TextBlock>("StateDescription").Text = ready
-                ? "Your copy is ready. Enter the hunt, or adjust your graphics and controls from the game’s Options menu."
-                : "Bring your own original Xbox Darkwatch ISO. Import it once to prepare Darker Edition on this PC.";
+                ? Copy("Your copy is ready. Enter the hunt, or adjust your graphics and controls from the game’s Options menu.", "Tu copia está lista. Empieza la cacería o ajusta los gráficos y controles en las opciones del juego.")
+                : Copy("Bring your own original Xbox Darkwatch ISO. Import it once to prepare Darker Edition on this PC.", "Necesitas tu propia ISO original de Darkwatch para Xbox. Impórtala para preparar Darker Edition en este PC.");
             object kind;
             if (cancelPreparation != null || (item.TryGetValue("event", out kind) && Object.Equals(kind, "shader_prepare"))) {
-                Get<TextBlock>("StateTitle").Text = "PREPARING SHADERS";
-                Get<TextBlock>("StateDescription").Text = "Preparing Darkwatch’s graphics before the hunt. This only runs when shaders need preparation. Prepared shaders are reused on later launches.";
+                Get<TextBlock>("StateTitle").Text = Copy("PREPARING SHADERS", "PREPARANDO SHADERS");
+                Get<TextBlock>("StateDescription").Text = Copy("Preparing Darkwatch’s graphics before the hunt. This only runs when shaders need preparation. Prepared shaders are reused on later launches.", "Preparando los gráficos de Darkwatch antes de la cacería. Solo se realiza cuando es necesario. Los shaders preparados se reutilizan en las siguientes partidas.");
             }
             if (cancelRequested && item.TryGetValue("event", out kind) &&
                 (Object.Equals(kind, "progress") || Object.Equals(kind, "shader_prepare")))
-                Get<TextBlock>("StatusText").Text = "Canceling safely…";
+                Get<TextBlock>("StatusText").Text = Copy("Canceling safely…", "Cancelando de forma segura…");
             SetButtons();
         }
 
         void Error(string message)
         {
-            Get<TextBlock>("StatusText").Text = message;
+            Get<TextBlock>("StatusText").Text = Localize(message, language);
             Get<TextBlock>("StatusText").Foreground = new SolidColorBrush(Color.FromRgb(229, 153, 139));
         }
 
@@ -177,18 +260,18 @@ namespace DarkwatchDarkerEdition
                 try {
                     cancelPreparation();
                     cancelRequested = true;
-                    Get<TextBlock>("StatusText").Text = "Canceling safely…";
+                    Get<TextBlock>("StatusText").Text = Copy("Canceling safely…", "Cancelando de forma segura…");
                     Get<Button>("CancelButton").IsEnabled = false;
-                } catch (Exception ex) { Error("Could not request cancellation: " + ex.Message); }
+                } catch (Exception ex) { Error(Copy("Could not request cancellation: ", "No se pudo solicitar la cancelación: ") + ex.Message); }
                 return;
             }
             if (cancelFile == null) return;
             try {
                 File.WriteAllText(cancelFile, "cancel");
                 cancelRequested = true;
-                Get<TextBlock>("StatusText").Text = "Canceling safely…";
+                Get<TextBlock>("StatusText").Text = Copy("Canceling safely…", "Cancelando de forma segura…");
                 Get<Button>("CancelButton").IsEnabled = false;
-            } catch (Exception ex) { Error("Could not request cancellation: " + ex.Message); closing = false; }
+            } catch (Exception ex) { Error(Copy("Could not request cancellation: ", "No se pudo solicitar la cancelación: ") + ex.Message); closing = false; }
         }
 
         async Task Run(string action, string argument)
@@ -197,7 +280,12 @@ namespace DarkwatchDarkerEdition
             busy = true; cancelRequested = false;
             bool failed = false;
             Get<TextBlock>("StatusText").Foreground = new SolidColorBrush(Color.FromRgb(184, 183, 181));
-            Get<TextBlock>("StatusText").Text = action == "--play" ? "Verifying your copy before launch…" : action == "--import-iso" ? "Checking your disc image…" : action == "--install-hd-textures" ? "Checking your HD texture pack…" : "Checking installation…";
+            Get<TextBlock>("StatusText").Text = action == "--play" ? Copy("Verifying your copy before launch…", "Verificando tu copia antes de iniciar…")
+                : action == "--import-iso" ? Copy("Checking your disc image…", "Comprobando la imagen del disco…")
+                : action == "--install-hd-textures" ? Copy("Checking your HD texture pack…", "Comprobando el paquete de texturas HD…")
+                : action == "--install-spanish" ? Copy("Checking your Spanish pack…", "Comprobando el paquete de español…")
+                : action == "--set-language" ? Copy("Changing language…", "Cambiando el idioma…")
+                : Copy("Checking installation…", "Comprobando la instalación…");
             Get<ProgressBar>("Progress").Value = 0;
             Get<ProgressBar>("Progress").IsIndeterminate = true;
             try {
@@ -209,7 +297,7 @@ namespace DarkwatchDarkerEdition
                 string errorText = "";
                 int code = await Task.Run(() => {
                     using (var process = new Process { StartInfo = info }) {
-                        if (!process.Start()) throw new IOException("The setup helper could not start.");
+                        if (!process.Start()) throw new IOException(Copy("The setup helper could not start.", "No se pudo iniciar el asistente de instalación."));
                         var errors = process.StandardError.ReadToEndAsync();
                         string line;
                         while ((line = process.StandardOutput.ReadLine()) != null) {
@@ -244,7 +332,9 @@ namespace DarkwatchDarkerEdition
 #if LAUNCHER_TESTING
         public void RenderPreview(string path, string state)
         {
-            if (state == "ready" || state == "hd-installed") ApplyState(new Dictionary<string, object> { { "installed", true }, { "ready", true }, { "hd_textures_installed", state == "hd-installed" }, { "message", "Installation verified. Ready to play." }, { "percent", 100 } });
+            if (state == "spanish-ready") ApplyState(new Dictionary<string, object> { { "installed", true }, { "ready", true }, { "hd_textures_installed", true }, { "spanish_installed", true }, { "language", "es" }, { "message", "Instalación verificada. Todo listo para jugar." }, { "percent", 100 } });
+            else if (state == "spanish-shaders") ApplyState(new Dictionary<string, object> { { "event", "shader_prepare" }, { "language", "es" }, { "message", "Preparando shaders — 2.220 de 4.440" }, { "percent", 50 } });
+            else if (state == "ready" || state == "hd-installed") ApplyState(new Dictionary<string, object> { { "installed", true }, { "ready", true }, { "hd_textures_installed", state == "hd-installed" }, { "message", "Installation verified. Ready to play." }, { "percent", 100 } });
             else if (state == "shaders") ApplyState(new Dictionary<string, object> { { "event", "shader_prepare" }, { "message", "Preparing shaders — 2,220 of 4,440" }, { "percent", 50 } });
             else if (state == "importing") {
                 busy = true; cancelFile = "preview";

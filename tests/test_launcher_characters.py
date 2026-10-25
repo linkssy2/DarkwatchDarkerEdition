@@ -104,11 +104,14 @@ class CharacterConversionTests(unittest.TestCase):
         first = {name: archive.compose(data, groups[name]) for name, data in originals.items()}
         base = {name: archive.compose(data, extension[name]) if name in extension else data for name, data in first.items()}
         spectral = {'packfile.pck': {'fixture/spectral.bin': b'third conversion'}}
-        final = {name: archive.compose(data, spectral[name]) if name in spectral else data for name, data in base.items()}
+        third = {name: archive.compose(data, spectral[name]) if name in spectral else data for name, data in base.items()}
+        roster = {name: {'fixture/roster.bin': b'fourth conversion'} for name in originals}
+        final = {name: archive.compose(data, roster[name]) for name, data in third.items()}
         metadata = dict(schema_version=1, content_revision=content.CONTENT_REVISION,
                         originals={name: pin(data) for name,data in originals.items()},
                         v7_archives={name: pin(data) for name,data in first.items()},
                         base_archives={name: pin(data) for name,data in base.items()},
+                        spectral_archives={name: pin(data) for name,data in third.items()},
                         installed={name: pin(data) for name,data in final.items()})
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -122,6 +125,7 @@ class CharacterConversionTests(unittest.TestCase):
                 return pin(raw)['sha256']
             installed = {name:(len(data),pin(data)['sha256']) for name,data in final.items()}
             with patch.object(content, 'INSTALLED', installed), patch.object(content, 'build_resources', return_value=(groups,extension,spectral)), \
+                    patch.object(content.character_roster, 'prepare', return_value=(roster, {})), \
                     patch.object(content.bonus_content, 'patch_pack', side_effect=lambda data:data):
                 with patch.object(content, 'CATALOG_SHA256', reset()):
                     content.prepare(assets,payload)
@@ -133,6 +137,12 @@ class CharacterConversionTests(unittest.TestCase):
                     content.prepare(assets,payload)
                 self.assertEqual({name:(assets/name).read_bytes() for name in originals},originals)
                 metadata['v7_archives']['audio.pck'] = pin(first['audio.pck'])
+                # Fourth-stage failure also leaves every original intact.
+                roster['audio.pck']['fixture/roster.bin'] = b'wrong roster output'
+                with patch.object(content, 'CATALOG_SHA256', reset()), self.assertRaisesRegex(ValueError, 'verification failed'):
+                    content.prepare(assets, payload)
+                self.assertEqual({name: (assets/name).read_bytes() for name in originals}, originals)
+                roster['audio.pck']['fixture/roster.bin'] = b'fourth conversion'
                 cancel_now = [False]
                 def cancel():
                     if cancel_now[0]: raise InterruptedError('cancelled')

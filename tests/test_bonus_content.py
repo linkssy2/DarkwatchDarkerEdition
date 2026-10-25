@@ -65,7 +65,7 @@ class BonusImportTests(unittest.TestCase):
         for name in ('character_content.py', 'character_animation.py', 'character_assets.py',
                      'character_archive.py', 'character_repaint.py', 'character-catalog.json',
                      'character_boss.py', 'character_boss_effects.py', 'character_spectral_hands.py',
-                     'character_hand_seams.py', 'character_secondary.py',
+                     'character_hand_seams.py', 'character_secondary.py', 'character_preview.py', 'character_roster.py',
                      'character-art/cassidy-hands-1024.dds', 'character-art/cassidy-hands-256.dds'):
             (payload/name).write_bytes(b'synthetic character fixture')
         catalog = dict(schema_version=1, kind="darkwatch-gameplay-hd", version="1", texture_catalog_sha256="1" * 64,
@@ -100,6 +100,15 @@ class BonusImportTests(unittest.TestCase):
                                     INSTALLED={'packfile.pck':(len(EXPECTED),sha(EXPECTED))})
         characters.start()
         self.addCleanup(characters.stop)
+        def fixture_preview(assets, output, cancel):
+            # Preview parsing is tested against real models elsewhere; this ISO is synthetic.
+            cancel()
+            data = b'synthetic private preview cache'
+            output.write_bytes(data)
+            return dict(version=setup.character_preview.VERSION, size=len(data), sha256=sha(data))
+        preview = patch.object(setup.character_preview, 'prepare', side_effect=fixture_preview)
+        preview.start()
+        self.addCleanup(preview.stop)
         for obj, name, replacement in (
             (setup, "require_closed", dict(return_value=None)),
             (setup.subprocess, "Popen", dict(side_effect=AssertionError("No native launch in bonus import tests"))),

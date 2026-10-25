@@ -68,6 +68,26 @@ int main(){
  Wheel(120);Frame();CHECK(Poll(0).buttons==2);Wheel(120);SetMenuMode(true);Frame();CHECK(!Poll(0).buttons);
  PointerWheel(-120);Wheel(-120);SetMenuMode(false);Frame();CHECK(!Poll(0).buttons);
  Wheel(90);SetMenuMode(true);SetMenuMode(false);Wheel(30);Frame();CHECK(!Poll(0).buttons);
+ // The title uses fresh ordinary keyboard edges, independently of gameplay bindings.
+ SetMenuMode(true);SetTitleScreen(true);
+ auto keys=GetPointerSnapshot().key_presses;
+ for(uint32_t key:{8u,9u,13u,27u,32u,0x21u,0x28u,0x2Du,0x2Eu,48u,57u,65u,90u,0x60u,0x6Fu,0x71u,0x73u,0x87u,0xBAu,0xC0u,0xDBu,0xDFu,0xE2u}){
+  Key(key,true);CHECK(GetPointerSnapshot().key_presses==++keys);
+  Key(key,true);Key(key,true,true);CHECK(GetPointerSnapshot().key_presses==keys);Key(key,false);
+ }
+ for(uint32_t modifier:{0x10u,0x11u,0x12u,0x5Bu,0x5Cu,0xA0u,0xA1u,0xA2u,0xA3u,0xA4u,0xA5u}){
+  Key(modifier,true);Tap('P');Frame();CHECK(GetPointerSnapshot().key_presses==keys&&!(Poll(0).buttons&0x10));Key(modifier,false);
+ }
+ for(uint32_t key:{0u,1u,2u,4u,5u,6u,0x13u,0x14u,0x2Cu,0x5Du,0x70u,0x72u,0x90u,0x91u,0xADu,0xB3u,0x100u})Tap(key);
+ CHECK(GetPointerSnapshot().key_presses==keys);
+ Key('P',true);Frame();CHECK(GetPointerSnapshot().key_presses==++keys&&!(Poll(0).buttons&0x10));
+ SetActive(false);SetActive(true);Key('P',true,true);Frame();CHECK(GetPointerSnapshot().key_presses==keys&&!(Poll(0).buttons&0x10));
+ SetMenuMode(false);SetMenuMode(true);Key('P',true);CHECK(GetPointerSnapshot().key_presses==keys);Key('P',false);
+ SetActive(false);Key('Z',true);SetActive(true);Key('Z',true,true);CHECK(GetPointerSnapshot().key_presses==keys);Key('Z',false);Tap('Z');CHECK(GetPointerSnapshot().key_presses==++keys);
+ // Simultaneous physical Start is never removed by the title-only PC suppression.
+ fake_pads[0].buttons[SDL_GAMEPAD_BUTTON_START]=true;Tap('P');Frame();CHECK(Poll(0).buttons&0x10);
+ fake_pads[0].buttons[SDL_GAMEPAD_BUTTON_START]=false;Frame();CHECK(!(Poll(0).buttons&0x10));
+ SetTitleScreen(false);Tap('P');Frame();CHECK(Poll(0).buttons&0x10);
  std::puts("menu input: pointer edges/epochs, gameplay wheel/menu-scroll isolation, contextual consumption, raw-motion isolation, custom pause, controller preservation and last-device activity passed");
 }
 '''

@@ -1,4 +1,6 @@
 #include "native_menu.h"
+#include "coop_characters.h"
+#include "graphics_route.h"
 #include "common/graphics.h"
 #include "common/menu_cursor.h"
 #include "app/app.h"
@@ -42,6 +44,7 @@ struct PointerState {
     input::PointerSnapshot previous;
     Scope scope;
     int64_t wheel = 0;
+    uint32_t title = 0;
 };
 thread_local PointerState pointer;
 
@@ -122,6 +125,33 @@ bool Row(const uint8_t* base, const Hit& hit, bool require_visible = true) {
         Field(base, hit.menu, 0x5C, list) && Read(base, uint64_t(list) + hit.index * 4, row) && row == hit.widget &&
         Field(base, hit.widget, 4, parent) && parent == hit.menu && Field(base, hit.widget, 0, row_type) && row_type == hit.kind &&
         Field(base, hit.widget, 0x54, enabled) && enabled && (!require_visible || Visible(base, hit.widget));
+}
+// A single-value horizontal Menu inside a vertical Menu is a native choice
+// control (co-op preset/character). Its inner value can be the foremost hit.
+bool ChoiceRow(const uint8_t* base, const Hit& hit, Hit& owner) {
+    const auto choice = hit.kind == kMenu ? hit.widget : hit.menu;
+    uint32_t orientation, shown, parent, type, list, selected;
+    uint16_t count, choices;
+    uint8_t navigation;
+    if (!Field(base, choice, 0, type) || type != kMenu ||
+        !Field(base, choice, 0x70, orientation) || orientation != 1 ||
+        !Field(base, choice, 0x64, shown) || shown != 1 ||
+        !Field(base, choice, 0xA1, navigation) || !navigation ||
+        !Field(base, choice, 0x58, choices) || choices < 2 || choices > kLimit ||
+        !Field(base, choice, 0x68, selected) || selected >= choices ||
+        !Field(base, choice, 4, parent) || !Field(base, parent, 0, type) || type != kMenu ||
+        !Field(base, parent, 0x70, orientation) || orientation ||
+        !Field(base, parent, 0x58, count) || count > kLimit ||
+        !Field(base, parent, 0x5C, list) || !Span(base, list, count * 4)) return false;
+    for (unsigned i = 0; i < count; ++i) {
+        uint32_t child;
+        if (!Read(base, uint64_t(list) + i * 4, child)) return false;
+        if (child == choice) {
+            owner = {parent, choice, i, kMenu, hit.rect};
+            return Row(base, owner);
+        }
+    }
+    return false;
 }
 // Traverse only the actual active/visible tree, rejecting cycles or oversized structures.
 bool Collect(const uint8_t* base, const Scope& scope, const std::vector<Hit>& rows, Snapshot& out) {
@@ -231,11 +261,23 @@ bool Point(const input::PointerSnapshot& p, float& x, float& y) {
 
 void DarkwatchInvalidateMenuSnapshot() {
     collecting = {};
+    input::SetTitleScreen(false);
     std::lock_guard lock(snapshot_lock);
     published = {};
 }
 
-void DarkwatchMenuRenderBegin(X86Context& ctx, uint8_t*) {collecting = {}; collecting.manager = ctx.ecx;}
+bool DarkwatchHideReplacedMenuContent(X86Context& ctx, uint8_t* base) {
+    darkwatch::EnsureNativeOptionsEntries(base, ctx.esi);
+    return DarkwatchHideCoopSetupContent(ctx, base) ||
+           darkwatch::HideFrontendSettingsContent(base, ctx.esi);
+}
+
+void DarkwatchMenuRenderBegin(X86Context& ctx, uint8_t* base) {
+    // A page can open after input polling. Publish its host replacement before
+    // the original manager submits that page's first frame.
+    DarkwatchCoopSetupRefresh(base);
+    collecting = {}; collecting.manager = ctx.ecx;
+}
 
 void DarkwatchMenuRow(X86Context& ctx, uint8_t* base) {
     if (!collecting.manager || collecting.rows.size() >= kLimit) return;
@@ -251,6 +293,7 @@ void DarkwatchMenuRenderEnd(X86Context& ctx, uint8_t* base) {
     if (collecting.manager != ctx.esi) return;
     Snapshot value; value.scope = InputScope(base, ctx.esi); value.time = Clock::now();
     if (!value.scope.manager || !Collect(base, value.scope, collecting.rows, value)) value = {};
+    input::SetTitleScreen(std::any_of(value.hits.begin(), value.hits.end(), [](const Hit& hit) {return hit.kind == kPressStart;}));
     collecting = {};
     std::lock_guard lock(snapshot_lock);
     if (diag::Perf()) {
@@ -277,7 +320,7 @@ void DarkwatchMenuInput(X86Context& ctx, uint8_t* base) {
     const auto now = input::GetPointerSnapshot();
     if (!now.active) {
         // Consume inactive edges without copying a snapshot or traversing guest menus.
-        pointer.previous = now; pointer.scope = {}; pointer.wheel = 0;
+        pointer.previous = now; pointer.scope = {}; pointer.wheel = 0; pointer.title = 0;
         return;
     }
     const auto state = Get();
@@ -286,10 +329,26 @@ void DarkwatchMenuInput(X86Context& ctx, uint8_t* base) {
     const bool reset = !now.active || !previous.active || now.epoch != previous.epoch ||
                        !SameScope(scope, pointer.scope) || DarkwatchGraphicsVisible();
     pointer.previous = now; pointer.scope = scope;
-    if (reset || !Fresh(state) || !SameScope(scope, state.scope) || state.hits.empty()) {pointer.wheel = 0; return;}
+    if (!Fresh(state) || !SameScope(scope, state.scope) || state.hits.empty()) {pointer.wheel = 0; pointer.title = 0; return;}
     // Rebuild the membership check at the original input boundary; never trust a previous frame's pointer alone.
     Snapshot checked;
-    if (!Collect(base, scope, state.hits, checked) || checked.hits.empty()) {pointer.wheel = 0; return;}
+    if (!Collect(base, scope, state.hits, checked) || checked.hits.empty()) {pointer.wheel = 0; pointer.title = 0; return;}
+    const auto title = std::find_if(checked.hits.begin(), checked.hits.end(), [](const Hit& hit) {return hit.kind == kPressStart;});
+    const uint32_t previous_title = pointer.title;
+    pointer.title = title != checked.hits.end() ? title->widget : 0;
+    if (reset) {pointer.wheel = 0; return;}
+    if (pointer.title) {
+        // Entering/revealing the title establishes a baseline; loading/attract/focus edges cannot start it.
+        pointer.wheel = 0;
+        if (pointer.title != previous_title) return;
+        if (now.key_presses != previous.key_presses) {ctx.eax |= 0x200; return;}
+        auto click = now;
+        click.x = now.left_x; click.y = now.left_y; click.width = now.left_width; click.height = now.left_height;
+        float x, y;
+        if (now.left_presses != previous.left_presses && click.width == now.width && click.height == now.height && Point(click, x, y))
+            ctx.eax |= 0x200;
+        return;
+    }
     if (now.right_presses != previous.right_presses || now.back_presses != previous.back_presses) {
         ctx.eax |= 0x20; pointer.wheel = 0; return; // Original semantic Back, independent of PC B binding.
     }
@@ -325,9 +384,13 @@ void DarkwatchMenuInput(X86Context& ctx, uint8_t* base) {
         if (click && selected->index < 16) ctx.eax |= 1u << selected->index;
         return;
     }
+    Hit choice;
+    const bool horizontal_choice = ChoiceRow(base, *selected, choice);
+    if (horizontal_choice) selected = &choice;
+    const bool adjustable = horizontal_choice || selected->kind == kInteger || selected->kind == kBool;
     uint32_t current;
     if (!Field(base, selected->menu, 0x68, current)) return;
-    if ((moved || click || (wheel_delta && (selected->kind == kInteger || selected->kind == kBool))) && current != selected->index) {
+    if ((moved || click || (wheel_delta && adjustable)) && current != selected->index) {
         if (ctx.esp < 32 || !Span(base, uint64_t(ctx.esp) - 32, 32) || base != kernel::g_base) return;
         // Preserve the original focus and selection callback contracts, including the caller's x87 state.
         X86Context call = ctx; call.ecx = selected->menu;
@@ -335,12 +398,12 @@ void DarkwatchMenuInput(X86Context& ctx, uint8_t* base) {
         if (!SameScope(scope, InputScope(base, ctx.esi)) || !Row(base, *selected)) return;
     }
     if (click) {
-        unsigned action = selected->kind == kInteger ? (x < selected->rect.x ? 2 : 3) : selected->kind == kBool ? 3 : 4;
+        unsigned action = (horizontal_choice || selected->kind == kInteger) ? (x < selected->rect.x ? 2 : 3) : selected->kind == kBool ? 3 : 4;
         ctx.eax |= 1u << action;
     } else if (pointer.wheel >= 120 || pointer.wheel <= -120) {
         const bool up = pointer.wheel > 0;
         pointer.wheel += up ? -120 : 120;
-        const unsigned action = (selected->kind == kInteger || selected->kind == kBool) ? (up ? 3 : 2) : (up ? 0 : 1);
+        const unsigned action = adjustable ? (up ? 3 : 2) : (up ? 0 : 1);
         ctx.eax |= 1u << action;
     }
 }
@@ -366,6 +429,7 @@ void DarkwatchMenuUi(double) {
     const auto state = Get();
     const bool host = DarkwatchGraphicsVisible();
     const bool menu = Fresh(state) && !state.hits.empty();
+    if (!menu || host) input::SetTitleScreen(false);
     app::SetMenuPointer(host || menu);
     if ((host || menu) && !ImGui::GetIO().AppFocusLost) darkwatch::DrawMenuCursor();
 }

@@ -144,6 +144,65 @@ class GameplayHdSetupTests(unittest.TestCase):
             catalog.install(self.archive([("pack.json", old_content),
                             ("gameplay-hd/example.dwt", self.texture[:-1] + b"X")]), current, cancel, quiet, cancel)
 
+    def test_two_exact_published_generations_and_current_keep_strict_validation(self):
+        current = self.install_disc()
+        old = (self.payload / 'gameplay-hd-catalog.json').read_bytes()
+        receipts = [old]
+        files = list(self.catalog['files'])
+        for revision in (2, 3):
+            files += [dict(files[0], path=f'gameplay-hd/rev{revision}-{i}.dwt') for i in range(2)]
+            receipts.append((json.dumps(dict(self.catalog, files=files,
+                                            previous_catalog=receipts[-1].decode())) + '\n').encode())
+        catalog = setup.gameplay_hd.Catalog(receipts[-1])
+        self.assertEqual([c.content for c in catalog.generations()], list(reversed(receipts)))
+        quiet, cancel = lambda *a, **k: None, lambda: None
+        for generation, receipt in enumerate(receipts):
+            selected = catalog.matching(receipt)
+            entries = [('pack.json', receipt)] + [(name, self.texture) for name in selected.files]
+            catalog.install(self.archive(entries), current, cancel, quiet, cancel)
+            self.assertTrue(catalog.validate(current, cancel, quiet, full=True))
+            stage = self.root / f'preserved-generation-{generation}'
+            stage.mkdir()
+            self.assertTrue(catalog.preserve(current, stage, cancel, quiet, shutil.copyfile))
+            self.assertEqual(self.snapshot(stage / 'gameplay-hd'), self.snapshot(current / 'gameplay-hd'))
+            # Same-size tampering still fails SHA validation for every generation.
+            name = next(iter(selected.files))
+            path = current / name
+            path.write_bytes(self.texture[:-1] + bytes([self.texture[-1] ^ 1]))
+            with self.assertRaises(ValueError):
+                catalog.validate(current, cancel, quiet, full=True)
+            path.unlink()
+            with self.assertRaises(ValueError):
+                catalog.validate(current, cancel, quiet)
+            path.write_bytes(self.texture)
+            (current / 'gameplay-hd/unexpected.dwt').write_bytes(self.texture)
+            with self.assertRaises(ValueError):
+                catalog.validate(current, cancel, quiet)
+            (current / 'gameplay-hd/unexpected.dwt').unlink()
+            # A forged subset receipt and altered whitespace are never trusted.
+            made_up = json.loads(receipt)
+            made_up['files'] = made_up['files'][:-1]
+            with self.assertRaises(ValueError):
+                catalog.matching(json.dumps(made_up).encode())
+            with self.assertRaises(ValueError):
+                catalog.matching(receipt + b' ')
+            bad_entries = [('pack.json', receipt)] + [(n, self.texture[:-1] + b'X') for n in selected.files]
+            before = self.snapshot(current / 'gameplay-hd')
+            with self.assertRaises(ValueError):
+                catalog.install(self.archive(bad_entries), current, cancel, quiet, cancel)
+            self.assertEqual(before, self.snapshot(current / 'gameplay-hd'))
+        fourth = dict(json.loads(receipts[-1]), previous_catalog=receipts[-1].decode(),
+                      files=files + [dict(files[0], path='gameplay-hd/fourth.dwt')])
+        with self.assertRaisesRegex(ValueError, 'Unsupported previous'):
+            setup.gameplay_hd.Catalog(json.dumps(fourth).encode())
+        altered = json.loads(receipts[1])
+        changed_old = json.loads(receipts[0])
+        changed_old['files'][0]['sha256'] = '0' * 64
+        altered['previous_catalog'] = json.dumps(changed_old)
+        invalid = dict(json.loads(receipts[2]), previous_catalog=json.dumps(altered))
+        with self.assertRaisesRegex(ValueError, 'Previous HD textures differ'):
+            setup.gameplay_hd.Catalog(json.dumps(invalid).encode())
+
     def test_zip_paths_duplicates_links_and_expansion_are_rejected(self):
         current = self.install_disc()
         catalog = (self.payload / "gameplay-hd-catalog.json").read_bytes()
