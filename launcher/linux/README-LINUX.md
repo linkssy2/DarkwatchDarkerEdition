@@ -1,4 +1,4 @@
-# Darkwatch: Darker Edition 0.6 — Experimental Linux / Proton
+# Darkwatch: Darker Edition 0.6.1 — Experimental Linux / Proton
 
 This package runs the Windows port through Proton. Darkwatch's Linux graphics,
 audio, movies and controls still need live testing. Co-op remains beta. Supply
@@ -50,8 +50,8 @@ error output. Do not edit manifest hashes or disable verification.
 
 ## English / Español
 
-Spanish text and subtitles are included with this build. After importing your
-disc, close Darkwatch and temporarily set the same Steam shortcut's Launch
+Spanish requires the optional PS2 disc import described below. After installing
+Spanish, close Darkwatch and temporarily set the same Steam shortcut's Launch
 Options to:
 
 ```text
@@ -64,27 +64,32 @@ the saved-language confirmation, restore the `--play` command. The language is
 remembered for future launches; this selector does not appear on every play.
 You can also use `--set-language es` or `--set-language en` instead of `--language`.
 
-Voices remain in their original language unless you install a matching optional
-Spanish voice pack. If one is supplied separately, place its
-ZIP beside this README, then use:
+To install Spanish text, subtitles and voices, first import the Xbox game and
+close it. Use your own European PS2 Darkwatch ISO (SLES-53564). Place the PS2 ISO
+beside this README, then temporarily use this Steam Launch Options command:
 
 ```text
--B "linux/run_backend.py" --interactive --install-spanish "Spanish-Voices.zip"
+-B "linux/run_backend.py" --interactive --install-spanish "Darkwatch-PS2.iso"
 ```
 
-Replace the filename with the pack's actual name. After installation, choose
-Español and restore the play command. The voice pack is optional; it is not
-needed for Spanish text or subtitles. Movies remain unchanged.
+Replace the filename with your disc's name. After installation, choose Español
+and restore the play command. The PS2 import does not replace the required Xbox
+game import. Original game text and Spanish audio are not included in the launcher.
+The source disc, saves and settings are kept. Older Spanish ZIPs are no longer
+supported. Existing Spanish files remain intact until a successful PS2 import
+replaces them atomically and retains a backup. If an old installation asks for
+repair, import the PS2 ISO or choose English; English remains available.
+The disc supplies 1,481 dialogue entries and 14 story/intro movie soundtracks.
+Its 63 missing/silent entries retain Xbox audio; music and untranslated extras
+stay original. Spanish movies use the PS2 stereo mix, while English retains the
+Xbox movie surround mix. Live Windows and Proton playback still need verification
+for this new import path.
 
 ## Optional HD textures
 
-For the expanded character roster, use the updated HD pack accompanying this
-build. Download all its numbered parts together and use its `.zip.001` filename
-in the command below. Older packs remain compatible but lack the new character
-textures.
-
-The existing 0.4 and 0.5 HD downloads remain compatible. For all added character
-textures, download **all five** files
+The existing 0.6 HD pack is reused unchanged; there is no separate 0.6.1 HD download.
+Earlier 0.4 and 0.5 packs remain compatible but have less character coverage.
+For all added character textures, download **all five** files
 `Darkwatch-Darker-Edition-0.6-HD-Textures.zip.001` through `.005`. Keep the names
 unchanged and put all five parts together in the package folder. Close Darkwatch,
 then temporarily change the same Steam shortcut's Launch Options to:
@@ -115,7 +120,7 @@ folder, and copy your existing `GameData/` into it. Point the existing shortcut'
 **Target** to the new `windows/payload/python/python.exe` and **Start In** to the
 new package folder. Use the import command with your own disc to repair the
 installation with the new runtime, then restore the play command. Saves,
-settings, optional HD and Spanish voice packs, and compatible completed game shader caches are
+settings, optional HD and verified PS2 Spanish resources, and compatible completed game shader caches are
 preserved. Keep the old folder until the new installation and saves are checked.
 
 Each successful import creates another extracted installation and keeps the old
@@ -142,7 +147,7 @@ and install its matching **Steam Linux Runtime**. In the extracted folder:
 
 Choose Import, let shader preparation finish, then choose Play. Choose
 **Language / Idioma** to select English or Español before playing. The menu also
-offers HD and optional Spanish voice installation, Verify and Status. Leave the terminal open during play.
+offers HD and PS2 Spanish installation, Verify and Status. Leave the terminal open during play.
 Commands are also available:
 
 ```sh
@@ -150,7 +155,7 @@ Commands are also available:
 ./Darkwatch.sh --install-hd-textures "/home/me/Downloads/Darkwatch-Darker-Edition-0.6-HD-Textures.zip.001"
 ./Darkwatch.sh --set-language es
 ./Darkwatch.sh --set-language en
-./Darkwatch.sh --install-spanish "/home/me/Downloads/Spanish-Voices.zip"
+./Darkwatch.sh --install-spanish "/home/me/Games/Darkwatch-PS2.iso"
 ./Darkwatch.sh --status
 ./Darkwatch.sh --verify
 ./Darkwatch.sh --play

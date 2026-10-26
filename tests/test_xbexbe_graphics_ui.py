@@ -189,6 +189,7 @@ Mode RenderSize(const Settings& s){return {2560*s.render_percent/100,1440*s.rend
 std::filesystem::path ExeDir(){return ".";}
 }
 namespace mem {uint8_t* Base(){return memory;}}
+void darkwatch::SyncAudioDevice(uint8_t*){} // Native XACT speaker mode has its own connected fixture.
 namespace gpu {static uint32_t effective_samples=1;uint32_t MsaaSamples(){return effective_samples;}}
 namespace audio {
 static bool surround=false,surround_available=true;
@@ -1145,6 +1146,106 @@ int main(){
 '''
 
 
+PLAYER_VIEW_UI = r'''
+static bool SameView(view::Settings a, view::Settings b) {
+ return a.fov_percent==b.fov_percent && a.viewmodel_fov_percent==b.viewmodel_fov_percent &&
+        a.reticle_percent==b.reticle_percent;
+}
+static void HiddenViewPage() {
+ route={};Poll();Poll();Frame();Frame();CHECK(!g_open&&!g_confirm);
+}
+static void OpenViewPage(unsigned player, bool paused=true) {
+ HiddenViewPage();
+ route.route=paused?GraphicsMenuRoute::Controls:GraphicsMenuRoute::Visual;
+ route.options=0x453300;route.page=0x453400;route.paused=paused;route.input_port=player;
+ if(paused){darkwatch::native_pause_owner=route.options;darkwatch::native_pause_entry=1;}
+ Poll();Poll();Frame();Frame();
+ CHECK(g_open&&g_view_player==(paused?player:0));
+ CHECK(!paused||g_page_graphics);
+}
+static void SeedPlayerViews() {
+ view::Apply({125,85,false,true,110,false,true},0);
+ view::Apply({170,135,false,true,140,false,true},1);
+}
+int main(){
+ ImGui::CreateContext();auto& io=ImGui::GetIO();io.IniFilename=nullptr;
+ io.ConfigFlags|=ImGuiConfigFlags_NavEnableKeyboard|ImGuiConfigFlags_NavEnableGamepad;
+ ImFontConfig font;font.SizePixels=22;g_body=io.Fonts->AddFontDefault(&font);g_title=g_body;
+ unsigned char* pixels;int w,h;io.Fonts->GetTexDataAsRGBA32(&pixels,&w,&h);
+ g_modes={{1280,720},{1920,1080},{2560,1440}};
+ SeedPlayerViews();
+ for(unsigned player:{0u,1u}) {
+  const auto before=view::Snapshot(player),other=view::Snapshot(1-player);
+  OpenViewPage(player);CHECK(SameView(g_view_draft,before));
+  const auto old_saves=saves,old_displays=displays;
+  ClickField("##fov",player?.2f:.9f);
+  ClickField("##weapon_fov",player?.15f:.85f);
+  ClickField("##reticle",player?.9f:.2f);
+  CHECK(!SameView(g_view_draft,before));
+  CHECK(SameView(view::Snapshot(player),before)&&SameView(view::Snapshot(1-player),other));
+  SelectFps(player==0);ClickField("##brightness",player?.8f:.2f);
+  const auto edited=g_view_draft;const auto brightness=g_draft.brightness_percent;
+  ClickNamed("APPLY");
+  CHECK(!g_confirm&&saves==old_saves+1&&displays==old_displays);
+  CHECK(SameView(view::Snapshot(player),edited)&&SameView(view::Snapshot(1-player),other));
+  CHECK(view::Snapshot(0).show_fps==(player==0)&&view::Snapshot(1).show_fps==(player==0));
+  CHECK(actual.brightness_percent==brightness);
+  // Reset edits only this draft; Back discards it without resetting either player.
+  ClickNamed("RESET VIEW DEFAULTS",true);
+  CHECK(g_view_draft.fov_percent==100&&g_view_draft.viewmodel_fov_percent==100&&g_view_draft.reticle_percent==100);
+  CHECK(SameView(view::Snapshot(player),edited)&&SameView(view::Snapshot(1-player),other));
+  ClickNamed("BACK");CHECK(!g_open&&g_leave&&saves==old_saves+1);
+  OpenViewPage(player);CHECK(SameView(g_view_draft,edited));
+  ClickNamed("RESET VIEW DEFAULTS",true);ClickNamed("APPLY");
+  CHECK(view::Snapshot(player).fov_percent==100&&view::Snapshot(player).viewmodel_fov_percent==100&&view::Snapshot(player).reticle_percent==100);
+  CHECK(SameView(view::Snapshot(1-player),other));
+ }
+ // A reused page pointer with a different pause owner must discard an unapplied draft.
+ HiddenViewPage();SeedPlayerViews();OpenViewPage(1);
+ ClickField("##fov",.1f);const auto p1=view::Snapshot(1),p0=view::Snapshot(0);
+ route.input_port=0;Poll();Frame();Frame();
+ CHECK(g_view_player==0&&SameView(g_view_draft,p0)&&SameView(view::Snapshot(1),p1));
+ route.input_port=1;Poll();Frame();Frame();CHECK(g_view_player==1&&SameView(g_view_draft,p1));
+ // Display confirmation restores the player that owned Apply, even if the next
+ // frame belongs to the other player. Other-player view settings are not rolled back.
+ for(unsigned exit=0;exit<4;++exit) {
+  OpenViewPage(1);const auto retained=view::Snapshot(1);const auto display=actual;
+  ClickField("##fov",.15f);ClickField("##weapon_fov",.15f);ClickField("##reticle",.15f);
+  g_draft.display_mode=actual.display_mode==app::DisplayMode::Windowed?app::DisplayMode::Fullscreen:app::DisplayMode::Windowed;
+  const auto old_saves=saves,old_displays=displays;ClickNamed("APPLY");
+  CHECK(g_confirm&&!SameView(view::Snapshot(1),retained)&&saves==old_saves);
+  Frame();
+  auto independent=view::Snapshot(0);independent.fov_percent=155+exit;view::Apply(independent,0);
+  if(exit==0)ClickNamed("REVERT");
+  else if(exit==1)Frame(16);
+  else if(exit==2)HiddenViewPage();
+  else {route.input_port=0;Poll();Frame();Frame();}
+  CHECK(!g_confirm&&saves==old_saves&&displays==old_displays+2);
+  CHECK(actual.display_mode==display.display_mode&&SameView(view::Snapshot(1),retained));
+  CHECK(SameView(view::Snapshot(0),independent));
+  if(exit==3)CHECK(g_view_player==0&&SameView(g_view_draft,independent));
+ }
+ // Keep commits only P2's view triple alongside the genuinely shared display.
+ OpenViewPage(1);const auto kept_other=view::Snapshot(0);const auto old_saves=saves;
+ ClickField("##fov",.7f);ClickField("##weapon_fov",.6f);ClickField("##reticle",.4f);
+ const auto kept=g_view_draft;
+ g_draft.display_mode=actual.display_mode==app::DisplayMode::Windowed?app::DisplayMode::Fullscreen:app::DisplayMode::Windowed;
+ ClickNamed("APPLY");CHECK(g_confirm&&saves==old_saves);Frame();ClickNamed("KEEP");
+ CHECK(!g_confirm&&saves==old_saves+1&&SameView(view::Snapshot(1),kept)&&SameView(view::Snapshot(0),kept_other));
+ // A disk failure still leaves only the requested player's runtime view changed.
+ save_ok=false;OpenViewPage(1);ClickField("##fov",.4f);const auto unsaved=g_view_draft;ClickNamed("APPLY");
+ CHECK(std::strstr(g_notice,"Could not save")&&SameView(view::Snapshot(1),unsaved)&&SameView(view::Snapshot(0),kept_other));
+ save_ok=true;ClickNamed("BACK");
+ // Frontend/solo use P1 even if a stale input-port field says otherwise.
+ OpenViewPage(1,false);CHECK(g_view_player==0&&SameView(g_view_draft,view::Snapshot(0)));
+ const auto final_two=view::Snapshot(1);ClickField("##fov",.5f);ClickNamed("APPLY");
+ CHECK(SameView(view::Snapshot(1),final_two));
+ std::puts("PASS actual ImGui per-player view sliders: asymmetric P1/P2 draft/apply/reset/cancel, shared flags/display, reused owner, Keep/Revert/timeout/hidden rollback, save failure and frontend default");
+ ImGui::DestroyContext();
+}
+'''
+
+
 class GraphicsUiTests(unittest.TestCase):
     def run_fixture(self, fixture):
         compiler = shutil.which("clang++")
@@ -1166,6 +1267,22 @@ class GraphicsUiTests(unittest.TestCase):
         ran = self.run_fixture(FIXTURE.replace('ImGui::DestroyContext();std::puts(',
                                               CONTROLLER_COVERAGE + PLAYER_TWO_COVERAGE + 'ImGui::DestroyContext();std::puts('))
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+
+    def test_per_player_view_settings_and_confirmation(self):
+        ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + PLAYER_VIEW_UI)
+        self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+
+    def test_per_player_view_negative_controls(self):
+        source = (ROOT / "xbexbe/src/common/graphics.cpp").read_text(encoding="utf-8")
+        old_snapshot = source.replace("view::Snapshot(g_view_player)", "view::Snapshot()")
+        old_reopen = source.replace("g_view_player != view_player || ", "")
+        for broken, assertion in ((old_snapshot, "SameView(g_view_draft,before)"),
+                                  (old_reopen, "g_view_player==0&&SameView(g_view_draft,p0)")):
+            self.assertNotEqual(broken, source)
+            prefix = FIXTURE[:FIXTURE.index("int main(){")].replace('#include "common/graphics.cpp"', broken)
+            ran = self.run_fixture(prefix + PLAYER_VIEW_UI)
+            self.assertEqual(ran.returncode, 90, ran.stdout + ran.stderr)
+            self.assertIn(assertion, ran.stderr)
 
     def test_actual_gamepad_navigation_without_mouse(self):
         ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + GAMEPAD_UI)

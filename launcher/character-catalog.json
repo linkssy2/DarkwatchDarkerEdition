@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "content_revision": "wartrain-splitter-characters-v3",
+  "content_revision": "wartrain-splitter-characters-v4",
   "originals": {
     "audio.pck": {
       "size": 137741272,
@@ -6932,7 +6932,7 @@
   "installed": {
     "packfile.pck": {
       "size": 133411077,
-      "sha256": "61ecad4b43070941e066c1b69e2ba03b67f0a846c0298472f3111f5f055a1425"
+      "sha256": "a9d820cd920db58a276fba4d1069ab9d14061e57b9d78a53d6ae64c1cb8fcd72"
     },
     "LvlSingl.pck": {
       "size": 1170739944,

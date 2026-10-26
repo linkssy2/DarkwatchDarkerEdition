@@ -12,7 +12,7 @@ REFERENCE = REPO.parent / 'Urban Chaos Riot Response Recompiled'
 PYTHON = REFERENCE / '.tools/python'
 VS = Path('C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools')
 CRT = VS / 'VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT'
-VERSION = '0.6'
+VERSION = '0.6.1'
 RELEASE_PROFILE = {'name': 'release-candidate', 'diagnostics': False, 'strict_assets': True}
 LAUNCHER = 'Darkwatch Darker Edition.exe'
 DIRECT_PLAY = 'Play Darkwatch.exe'
@@ -23,16 +23,15 @@ PYTHON_FILES = ('python.exe', 'python312.dll', 'python3.dll', 'python312.zip',
 FORBIDDEN = {'.iso', '.xiso', '.xbe', '.pck', '.xmv', '.wmv', '.wav', '.pdb', '.log', '.dmp', '.pyc', '.dwt', '.pack'}
 GENERATED = {
     'payload/python/python312._pth': 'python312.zip\n.\n..\n',
-    'README.txt': '''Darkwatch: Darker Edition - 0.6
+    'README.txt': '''Darkwatch: Darker Edition - 0.6.1
 
-Version 0.6
-- Eight playable characters with rotating solo previews and two-player co-op selection.
-- Per-player controller rebinding, updated Audio controls and optional surround output.
-- Built-in Spanish text/subtitles with launcher language selection.
-- Separate co-op saves, chapter replay protection and safer profile storage.
-- Fixes for menu transitions, controller-menu crashes, HUD effects and campaign events.
-- Matching Windows and experimental Linux/Proton packages; optional HD pack updated.
-Carries forward the 0.5 features. Local split-screen co-op remains BETA.
+Version 0.6.1 - changes since 0.6
+- Fixed the mounted boss getting stuck at high FPS; accepted in testing at 240 FPS.
+- Fixed directional audio routing and speaker panning; accepted with Windows Sonic.
+- Install Spanish text, subtitles and voices from your European PS2 ISO (SLES-53564).
+  Replaces the older community pack; English and existing saves remain available.
+Matching Windows and experimental Linux/Proton packages. Co-op remains BETA.
+Existing HD packs remain compatible; this update does not require a new HD download.
 
 Extract the entire ZIP into a new folder, then open Darkwatch Darker Edition.exe.
 Keep both EXEs and the payload folder together; do not run them inside the ZIP.
@@ -46,8 +45,8 @@ Gameplay HD textures are a separate optional download. Download all numbered
 texture parts into one folder. Use Install HD Textures in the launcher and select
 the .zip.001 file (or the complete texture ZIP). The Graphics toggle stays
 unavailable until the pack is installed; HD menus, fonts and HUD remain included.
-Earlier HD downloads remain compatible. Install the updated pack to add HD
-coverage for the expanded character roster, including colored trooper hands.
+The existing 0.6 HD pack is reused unchanged; there is no separate 0.6.1 HD download.
+Earlier 0.4 and 0.5 packs remain compatible but have less character coverage.
 Play from this launcher has no ten-minute test timer.
 
 After importing once, open Play Darkwatch.exe to start the game directly without
@@ -110,13 +109,20 @@ Each player's bindings are saved separately. Mouse and keyboard remain Player 1'
 Audio offers Music, Effects and Speech volume plus Stereo or Surround output.
 Surround requires a compatible configured device; otherwise output falls back to stereo.
 The gameplay HD pack is separate from the HD interface and character selection.
-Spanish text and subtitles are built in. Import your ISO first, close the game,
-then choose English or Español in Game Language. No separate translation download
-is needed. The choice applies on the next launch, including Play Darkwatch.exe.
-Import / Repair preserves your choice and refreshes the included translation.
-Spanish Voices is a separate optional ZIP import; it is not needed for translated
-text or subtitles. Without it, speech stays original. Movies and music stay original.
-Spanish localization remains a test candidate and needs in-game verification.
+Install Spanish prepares text, subtitles and voices from your European PS2
+Darkwatch disc (SLES-53564). Import your Xbox disc first, close the game, then
+choose Install Spanish and select the PS2 ISO. Select Español in Game Language
+when the import finishes; the choice applies to the next launch, including
+Play Darkwatch.exe. English is always available and uses the original Xbox audio.
+Original game text and Spanish audio are not bundled with the launcher.
+Older Spanish ZIPs are no longer supported. Existing files stay intact until a
+successful PS2 import replaces them atomically, retaining the previous copy.
+Import / Repair preserves a verified PS2 language installation and your choice;
+older or damaged Spanish files remain in the previous installation folder.
+The disc supplies 1,481 dialogue entries and 14 story/intro movie soundtracks.
+Its 63 silent/missing entries retain Xbox audio; music and untranslated extras
+stay original. Spanish movies use the PS2 stereo mix, while English retains the
+Xbox movie surround mix. Spanish presentation needs broader live verification.
 PS4 and Switch Pro controllers use matching prompts and controller-layout pages.
 Button actions follow physical positions: Switch B confirms and A goes back.
 Native USB and Bluetooth paths are enabled but have not been tested on physical
@@ -138,16 +144,15 @@ The reported controller-menu crash was traced and its original failure reproduce
 in a regression test. This does not establish every controller or machine.
 Cassidy hurt audio remains unresolved. Full campaign/co-op progression, story
 transitions, every character/weapon combination, surround speaker balance and
-Spanish presentation need broader live testing. High-FPS mounted-boss and
-selectable-character tree fixes pass original-path checks; encounter completion
-has not been verified live. Linux gameplay, audio and controllers remain unverified.
-Existing 0.4 and 0.5 HD packs remain compatible; install the new separate pack
-for the added character artwork. No physical PS4/Switch retest was performed.
+Spanish presentation need broader live testing. The mounted-boss fix was accepted
+at 240 FPS, and directional audio was accepted with Windows Sonic. These checks
+do not establish every encounter or audio device. Linux gameplay, audio and
+controllers remain unverified.
+The existing 0.6 HD pack includes the added character artwork; earlier 0.4 and 0.5
+packs remain compatible with less coverage. No physical PS4/Switch retest was performed.
 Original game content and branding belong to their owners.
-Spanish community translation: ZARF, DXEV2BYZARF V2; integration and compatibility
-corrections by Darkwatch: Darker Edition. The bundled translation stores context
-identifiers and Spanish text, not the original English tables. Community media is
-optional and is not included in the base launcher package.
+Spanish text and audio are prepared from the user's supported PS2 disc.
+PC menu translations and compatibility corrections are by Darkwatch: Darker Edition.
 See licenses/ for dependency notices and artwork sources.
 ''',
     'licenses/DEPENDENCIES.txt': '''XboxXBERecomp by TGP482 (MIT): https://github.com/TGP482/Xbox-XBERecomp
@@ -207,9 +212,13 @@ def sources():
         'payload/bonus_content.py': HERE / 'bonus_content.py',
         'payload/gameplay_hd.py': HERE / 'gameplay_hd.py',
         'payload/language_pack.py': HERE / 'language_pack.py',
-        'payload/spanish-catalog.json': HERE / 'spanish-catalog.json',
-        'payload/spanish-text-catalog.json': HERE / 'spanish-text-catalog.json',
-        'payload/language/es/language_text.bin': HERE / 'language/es/language_text.bin',
+        'payload/ps2_spanish.py': HERE / 'ps2_spanish.py',
+        'payload/ps2_text.py': HERE / 'ps2_text.py',
+        'payload/ps2-spanish-corrections.json': HERE / 'ps2-spanish-corrections.json',
+        'payload/ps2_disc.py': HERE / 'ps2_disc.py',
+        'payload/ps2_dialogue.py': HERE / 'ps2_dialogue.py',
+        'payload/ps2_movies.py': HERE / 'ps2_movies.py',
+        'payload/ps2-spanish-catalog.json': HERE / 'ps2-spanish-catalog.json',
         'payload/gameplay-hd-catalog.json': HERE / 'gameplay-hd-catalog.json',
         'payload/intake.py': REPO / 'tools/intake.py',
         'payload/supported-disc.json': HERE / 'supported-disc.json',
@@ -279,7 +288,7 @@ def check_sources(plan):
         check_texture_catalog(plan['payload/gameplay-hd-catalog.json'], build)
     if 'payload/character-catalog.json' in plan:
         check_character_catalog(plan, build)
-    if 'payload/spanish-text-catalog.json' in plan:
+    if 'payload/ps2-spanish-catalog.json' in plan:
         check_spanish_text(plan, build)
     for name, source in plan.items():
         safe_relative(name)
@@ -289,16 +298,24 @@ def check_sources(plan):
 
 
 def check_spanish_text(plan, build):
-    """Require the translation-only format and its compiled runtime reader."""
-    catalog = json.loads(plan['payload/spanish-text-catalog.json'].read_bytes())
+    """Pin the PS2 import identities and the compiled translation-only reader."""
+    catalog = json.loads(plan['payload/ps2-spanish-catalog.json'].read_bytes())
+    files = catalog.get('files', {})
+    expected = {'language_text.bin', 'assets/audioDlg.pck',
+                'assets/Movies2.pck', 'assets/Movies3.pck', 'assets/Movies4.pck'}
     if (catalog.get('schema_version') != 1 or catalog.get('language') != 'es' or
-            set(catalog.get('files', {})) != {'language_text.bin'}):
-        raise ValueError('Expected the built-in Spanish text catalog.')
-    text = plan['payload/language/es/language_text.bin']
-    row = catalog['files']['language_text.bin']
-    if (text.stat().st_size != row['size'] or
-            sha(text) != row['sha256'] or text.read_bytes()[:8] != b'DWES0003'):
-        raise ValueError('Built-in Spanish text must match its translation-only catalog.')
+            not isinstance(files, dict) or set(files) != expected):
+        raise ValueError('Expected a complete PS2 Spanish catalog.')
+    for row in files.values():
+        if (not isinstance(row, dict) or type(row.get('size')) is not int or not 0 < row['size'] <= 2 * 1024 ** 3 or
+                not isinstance(row.get('sha256'), str) or len(row['sha256']) != 64 or
+                any(c not in '0123456789abcdef' for c in row['sha256'])):
+            raise ValueError('Invalid PS2 Spanish resource identity.')
+    if sum(row['size'] for row in files.values()) > 2 * 1024 ** 3 or files['language_text.bin']['size'] > 8 * 1024 ** 2:
+        raise ValueError('PS2 Spanish resources exceed the size limit.')
+    if any(name in plan for name in ('payload/spanish-catalog.json', 'payload/spanish-text-catalog.json',
+                                    'payload/language/es/language_text.bin')):
+        raise ValueError('Bundled game translations and older Spanish catalogs are not allowed.')
     source = 'xbexbe/src/common/language.cpp'
     recorded = {row['path']: row['sha256'] for row in build.get('host_sources', {}).get('files', [])}
     if recorded.get(source) != sha(REPO / source):

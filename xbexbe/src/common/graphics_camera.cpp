@@ -12,12 +12,25 @@
 extern "C" void sub_00216B7C(X86Context& ctx, uint8_t* base);
 
 namespace {
-constexpr uint32_t kPlayerCamera = 0x00491668;
-constexpr std::array<uint32_t, 7> kConfiguration = {
-    0x3F800000, 0x3FAAAAAB, 0, 0, 0x3F800000, 0x3F800000, 0};
-struct PlayerCamera {uint32_t owner = 0, camera = 0, raster = 0; float aspect_scale = 1;};
+struct Configuration {uint32_t address; std::array<uint32_t, 7> words;};
+// FA277 selects these original layouts by active player count and co-op mode.
+// The final word is the viewport/player index; the two split layouts have
+// different authored FOV scales, which remain unchanged at 100%.
+constexpr std::array<Configuration, 5> kConfigurations{{
+    {0x491668, {0x3F800000, 0x3FAAAAAB, 0, 0, 0x3F800000, 0x3F800000, 0}},
+    {0x4915F8, {0x3FB33333, 0x402AAAAB, 0, 0, 0x3F800000, 0x3EFEB852, 0}},
+    {0x491614, {0x3FB33333, 0x402AAAAB, 0, 0x3F00A3D7, 0x3F800000, 0x3EFEB852, 1}},
+    {0x4916D8, {0x40000000, 0x402AAAAB, 0, 0, 0x3F800000, 0x3EFEB852, 0}},
+    {0x4916F4, {0x40000000, 0x402AAAAB, 0, 0x3F00A3D7, 0x3F800000, 0x3EFEB852, 1}},
+}};
+struct PlayerCamera {
+    uint8_t* base = nullptr;
+    uint32_t owner = 0, camera = 0, raster = 0, player = 0;
+    float aspect_scale = 1;
+    std::array<uint32_t, 4> viewport{};
+};
 std::mutex g_camera_lock;
-PlayerCamera g_player_camera;
+std::array<PlayerCamera, 2> g_player_cameras;
 struct WeaponView {uint32_t frame = 0, renderer = 0, camera = 0, raster = 0; float scale = 1;};
 thread_local WeaponView g_weapon_view;
 struct PowerView {uint32_t frame = 0, node = 0, raster = 0; float scale = 1;};
@@ -38,6 +51,18 @@ uint32_t Read(const uint8_t* base, uint32_t address) {
 bool CameraValid(const uint8_t* base, uint32_t camera, uint32_t raster) {
     return Span(base, camera, 0x68) && Read(base, camera) == 0x43F97C &&
         Read(base, camera + 0x34) == raster && Span(base, raster, 0x78);
+}
+bool PlayerValid(const uint8_t* base, const PlayerCamera& player) {
+    return base == player.base && player.owner && Span(base, player.owner, 0x14) &&
+        Read(base, player.owner + 0xC) == player.camera &&
+        CameraValid(base, player.camera, player.raster) &&
+        !std::memcmp(base + player.camera + 0x58, player.viewport.data(), sizeof(player.viewport));
+}
+PlayerCamera FindPlayer(uint32_t address, bool owner) {
+    std::lock_guard lock(g_camera_lock);
+    for (const auto& player : g_player_cameras)
+        if (address && address == (owner ? player.owner : player.camera)) return player;
+    return {};
 }
 bool ScaleValid(const uint8_t* base, uint32_t camera, float& previous) {
     float nominal;
@@ -65,42 +90,50 @@ void SetScale(const X86Context& ctx, uint8_t* base, uint32_t camera, float scale
 
 void DarkwatchConfigurePlayerCamera(X86Context& ctx, uint8_t* base) {
     // F9B1D owns this component; F9B78 passes aspect then scale to the original setter.
-    // Other view layouts and temporary cameras keep their authored settings.
-    if (ctx.esi != kPlayerCamera || !Span(base, kPlayerCamera, sizeof(kConfiguration)) ||
-        std::memcmp(base + kPlayerCamera, kConfiguration.data(), sizeof(kConfiguration)) ||
-        !Span(base, ctx.esp, 8) || Read(base, ctx.esp) != kConfiguration[1] ||
-        Read(base, ctx.esp + 4) != kConfiguration[0] || !Span(base, ctx.edi, 0x14) ||
+    const Configuration* configuration = nullptr;
+    for (const auto& candidate : kConfigurations)
+        if (ctx.esi == candidate.address) {configuration = &candidate; break;}
+    if (!configuration || !Span(base, ctx.esi, sizeof(configuration->words)) ||
+        std::memcmp(base + ctx.esi, configuration->words.data(), sizeof(configuration->words)) ||
+        !Span(base, ctx.esp, 8) || Read(base, ctx.esp) != configuration->words[1] ||
+        Read(base, ctx.esp + 4) != configuration->words[0] || !Span(base, ctx.edi, 0x14) ||
         Read(base, ctx.edi + 0xC) != ctx.ecx || !Span(base, ctx.ecx, 0x68) ||
-        Read(base, ctx.ecx) != 0x0043F97C) return;
+        Read(base, ctx.ecx) != 0x0043F97C ||
+        std::memcmp(base + ctx.ecx + 0x58, configuration->words.data() + 2, 16)) return;
 
-    const bool wide = app::Widescreen();
-    const float aspect = wide ? 16.0f / 9.0f : 4.0f / 3.0f;
-    const float aspect_scale = wide ? aspect / (4.0f / 3.0f) : 1.0f;
-    const float scale = aspect_scale * (float(darkwatch::view::Snapshot().fov_percent) / 100.0f);
-    if (wide || scale != 1.0f) {
+    const bool full = ctx.esi == 0x491668, wide = full && app::Widescreen();
+    float aspect, aspect_scale;
+    std::memcpy(&aspect, base + ctx.esi + 4, 4);
+    std::memcpy(&aspect_scale, base + ctx.esi, 4);
+    if (wide) {aspect = 16.0f / 9.0f; aspect_scale = aspect / (4.0f / 3.0f);}
+    const uint32_t index = configuration->words[6];
+    const float scale = aspect_scale * (float(darkwatch::view::Snapshot(index).fov_percent) / 100.0f);
+    if (wide || scale != aspect_scale) {
         // Original FOV updates use tan(FOV/2)*scale, then divide by aspect for Y.
-        // Scaling both preserves vertical framing and widens X, including later zooms.
+        // Widescreen adjusts both; the preference changes scale only and retains zoom.
         std::memcpy(base + ctx.esp, &aspect, sizeof(aspect));
         std::memcpy(base + ctx.esp + 4, &scale, sizeof(scale));
     }
     {
         std::lock_guard lock(g_camera_lock);
-        g_player_camera = {ctx.edi, ctx.ecx, Read(base, ctx.ecx + 0x34), aspect_scale};
+        if (full) g_player_cameras = {};
+        // A recycled component/camera cannot keep another player's old binding.
+        for (auto& player : g_player_cameras)
+            if (player.owner == ctx.edi || player.camera == ctx.ecx) player = {};
+        auto& player = g_player_cameras[index];
+        player = {base, ctx.edi, ctx.ecx, Read(base, ctx.ecx + 0x34), index, aspect_scale, {}};
+        std::memcpy(player.viewport.data(), configuration->words.data() + 2, 16);
     }
-    LOG_FIRST(4, "Player camera %08X: %s projection (authored zoom retained)",
-              ctx.ecx, wide ? "16:9" : "4:3");
+    LOG_FIRST(4, "Player %u camera %08X: %s projection (authored zoom retained)",
+              index + 1, ctx.ecx, full ? (wide ? "16:9" : "4:3") : "split");
 }
 
 void DarkwatchUpdatePlayerView(X86Context& ctx, uint8_t* base) {
-    PlayerCamera player;
-    {std::lock_guard lock(g_camera_lock); player = g_player_camera;}
+    const PlayerCamera player = FindPlayer(ctx.esi, true);
     // At 21606D the original active-camera update has finished; ESI is its owning
     // component. Never apply this preference to a separate weapon/render camera.
-    if (!player.owner || ctx.esi != player.owner || !Span(base, player.owner, 0x14) ||
-        Read(base, player.owner + 0xC) != player.camera || !Span(base, player.camera, 0x68) ||
-        Read(base, player.camera) != 0x43F97C || Read(base, player.camera + 0x34) != player.raster ||
-        !Span(base, player.raster, 0x78)) return;
-    const float scale = player.aspect_scale * (float(darkwatch::view::Snapshot().fov_percent) / 100.0f);
+    if (!PlayerValid(base, player)) return;
+    const float scale = player.aspect_scale * (float(darkwatch::view::Snapshot(player.player).fov_percent) / 100.0f);
     float previous, nominal;
     std::memcpy(&previous, base + player.camera + 0x48, 4);
     std::memcpy(&nominal, base + player.camera + 0x44, 4);
@@ -117,18 +150,13 @@ void DarkwatchBeginWeaponView(X86Context& ctx, uint8_t* base) {
     // DEDD0 draws the registered first-person actor through message DB, between
     // its original camera BeginUpdate/EndUpdate. The world camera is only borrowed.
     if (g_weapon_view.frame) return;
-    PlayerCamera player;
-    {std::lock_guard lock(g_camera_lock); player = g_player_camera;}
-    if (!player.owner || ctx.edi != player.camera || ctx.ecx != player.camera ||
-        !Span(base, player.owner, 0x14) || Read(base, player.owner + 0xC) != player.camera ||
-        !CameraValid(base, player.camera, player.raster) ||
-        Read(base, player.camera + 0x58) || Read(base, player.camera + 0x5C) ||
-        Read(base, player.camera + 0x60) != 0x3F800000 || Read(base, player.camera + 0x64) != 0x3F800000 ||
+    const PlayerCamera player = FindPlayer(ctx.edi, false);
+    if (!PlayerValid(base, player) || ctx.ecx != player.camera ||
         !Span(base, ctx.esi, 0x20) || Read(base, ctx.esi) != 0x428338 ||
         !Read(base, ctx.esi + 4) || !Span(base, ctx.ebp, 12) ||
         Read(base, ctx.ebp + 8) != player.camera ||
         ctx.esp < 256 || !Span(base, uint64_t(ctx.esp) - 256, 256)) return;
-    const uint32_t percent = darkwatch::view::Snapshot().viewmodel_fov_percent;
+    const uint32_t percent = darkwatch::view::Snapshot(player.player).viewmodel_fov_percent;
     if (percent < 50 || percent > 150) return;
     float previous;
     if (!ScaleValid(base, player.camera, previous)) return;
@@ -160,12 +188,9 @@ void DarkwatchBeginPowerView(X86Context& ctx, uint8_t* base) {
         Read(base, ctx.ecx + 0x50) != 0x9EA613DE || !base[ctx.ecx + 0x62] ||
         Read(base, ctx.ecx + 0x54) != 1 || !Span(base, ctx.ebp, 12) ||
         !Span(base, ctx.esi, 4) || Read(base, ctx.esi) != ctx.ecx) return;
-    PlayerCamera player;
-    {std::lock_guard lock(g_camera_lock); player = g_player_camera;}
+    const PlayerCamera player = FindPlayer(Read(base, ctx.ebp + 8), false);
     float scale;
-    if (!player.owner || Read(base, ctx.ebp + 8) != player.camera ||
-        !Span(base, player.owner, 0x14) || Read(base, player.owner + 0xC) != player.camera ||
-        !CameraValid(base, player.camera, player.raster) ||
+    if (!PlayerValid(base, player) ||
         Read(base, ctx.ecx + 0x68) != player.raster ||
         !ScaleValid(base, player.camera, scale) ||
         !std::isfinite(player.aspect_scale) || player.aspect_scale <= 0) return;

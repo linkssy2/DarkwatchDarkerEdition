@@ -277,7 +277,7 @@ def main(argv=None):
         choices = {"1": "--play", "2": "--import-iso", "3": "--install-hd-textures", "4": "--verify", "5": "--status",
                    "6": "--install-spanish", "7": "--set-language"}
         while True:
-            print("\nDarkwatch: Darker Edition\n1 Play\n2 Import ISO / XISO\n3 Install HD texture pack\n4 Verify files\n5 Status\n6 Install optional Spanish voices\n7 Language / Idioma\n0 Quit")
+            print("\nDarkwatch: Darker Edition\n1 Play\n2 Import Xbox ISO / XISO\n3 Install HD texture pack\n4 Verify files\n5 Status\n6 Install Spanish from PS2 ISO\n7 Language / Idioma\n0 Quit")
             choice = input("> ").strip()
             if choice == "0":
                 return 0

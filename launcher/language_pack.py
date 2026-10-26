@@ -96,20 +96,16 @@ class Catalog:
         if sum(row["size"] for row in self.files.values()) > LIMIT or self.files["language_text.bin"]["size"] > 8 * 1024 ** 2:
             raise ValueError("Spanish resources exceed the size limit.")
 
-    def validate(self, current, cancel=lambda: None, full=True, media_only=False):
+    def validate(self, current, cancel=lambda: None, full=True):
         folder = checked(current, DIRECTORY)
         if not folder.exists():
             return False
         media = {name.removeprefix("assets/") for name in self.files if name.startswith("assets/")}
-        if media_only and not media:
-            return False
         if media:
             assets = checked(folder, "assets")
             if not assets.is_dir() or {path.name for path in assets.iterdir()} != media:
                 return False
         for name, row in self.files.items():
-            if media_only and name == "language_text.bin":
-                continue
             cancel()
             path = checked(folder, name)
             if not path.is_file() or path.stat().st_size != row["size"]:
@@ -123,37 +119,6 @@ class Catalog:
                 if digest.hexdigest() != row["sha256"]:
                     return False
         return True
-
-    def install_text(self, source, current, cancel, require_closed):
-        """Refresh the bundled text atomically without changing optional voices."""
-        if set(self.files) != {"language_text.bin"}:
-            raise ValueError("Expected the built-in Spanish text catalog.")
-        if self.validate(current, cancel):
-            return
-        folder = checked(current, DIRECTORY)
-        folder.mkdir(parents=True, exist_ok=True)
-        target = checked(folder, "language_text.bin")
-        temporary = checked(folder, ".language-text-" + uuid.uuid4().hex + ".tmp")
-        row = self.files["language_text.bin"]
-        try:
-            digest, total = hashlib.sha256(), 0
-            with source.open("rb") as src, temporary.open("xb") as out:
-                while block := src.read(8 * 1024 ** 2):
-                    cancel()
-                    total += len(block)
-                    if total > row["size"]:
-                        raise ValueError("Built-in Spanish text exceeds its declared size.")
-                    digest.update(block)
-                    out.write(block)
-                out.flush()
-                os.fsync(out.fileno())
-            if total != row["size"] or digest.hexdigest() != row["sha256"]:
-                raise ValueError("Built-in Spanish text is damaged. Extract a fresh launcher package.")
-            cancel()
-            require_closed()
-            os.replace(temporary, target)
-        finally:
-            temporary.unlink(missing_ok=True)
 
     def install(self, archive, current, cancel, notify, require_closed):
         parent = checked(current, "language")
@@ -210,15 +175,13 @@ class Catalog:
             if not committed:
                 remove_tree(parent, stage_name)
 
-    def preserve(self, previous, stage, cancel, copy, media_only=False):
-        if not previous or not self.validate(previous, cancel, media_only=media_only):
+    def preserve(self, previous, stage, cancel, copy):
+        if not previous or not self.validate(previous, cancel):
             return False
         for name in self.files:
-            if media_only and name == "language_text.bin":
-                continue
             target = checked(stage, DIRECTORY + "/" + name)
             target.parent.mkdir(parents=True, exist_ok=True)
             copy(checked(previous, DIRECTORY + "/" + name), target)
-        if not self.validate(stage, cancel, media_only=media_only):
+        if not self.validate(stage, cancel):
             raise ValueError("Could not preserve the Spanish language pack.")
         return True

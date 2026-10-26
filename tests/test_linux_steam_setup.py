@@ -98,6 +98,17 @@ class SteamSetupTests(unittest.TestCase):
         self.assertEqual(dialogs, [])
         self.assertFalse((self.root / adapter.ERROR_FILE).exists())
 
+    def test_ps2_spanish_iso_uses_shared_backend_without_game_launch(self):
+        backend = self.worker([dict(event="result", message="Spanish voices installed", ready=True)])
+        path = "Z:\\Games\\PS2 Español's disc.iso"
+        code, output, _, dialogs = self.command(backend, "--interactive", "--install-spanish", path)
+        self.assertEqual(code, 0)
+        self.assertEqual(backend.main.call_args.args[0][-2:], ["--install-spanish", path])
+        self.assertEqual(json.loads(output.getvalue())["message"], "Spanish voices installed")
+        self.assertEqual(len(dialogs), 2)
+        backend.game_running.assert_not_called()
+        self.assertFalse((self.root / "GameData").exists())
+
     def test_failure_retains_backend_error_and_does_not_wait_or_create_data(self):
         backend = self.worker([dict(event="error", message="Unsupported disc", ready=False)], code=1)
         original = backend.emit

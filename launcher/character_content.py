@@ -21,11 +21,11 @@ import character_boss_effects
 import character_repaint
 import character_roster
 
-CONTENT_REVISION = 'wartrain-splitter-characters-v3'
-CATALOG_SHA256 = 'ecbc3771c118224f99d65a8f4868cf8489165bae1b84dc9e57b2e27462f36273'
+CONTENT_REVISION = 'wartrain-splitter-characters-v4'
+CATALOG_SHA256 = 'd65d53e69542ac87772614b77e2466c8decdd83968c3a749802ed0dc8ae55e46'
 CHARACTERS = 'xml/actortemplates_characters.bxml'
 INSTALLED = {
-    'packfile.pck': (133411077, '61ecad4b43070941e066c1b69e2ba03b67f0a846c0298472f3111f5f055a1425'),
+    'packfile.pck': (133411077, 'a9d820cd920db58a276fba4d1069ab9d14061e57b9d78a53d6ae64c1cb8fcd72'),
     'LvlSingl.pck': (1170739944, '97a1b7d06cc2ee42de3875685cc5d6c561b5a34275de072b0aa5e2463110c64e'),
     'audio.pck': (145688078, 'c889f14963005bb796e29d84ad06c7ab52fa1d8b138a7107f8fa7355e73970f1'),
 }
@@ -58,8 +58,14 @@ def catalog(payload):
 
 class Source:
     """Bounded seeks; every resource read must match its original-disc identity."""
-    def __init__(self, streams, metadata, cancel):
+    def __init__(self, streams, metadata, cancel, progress=lambda message: None):
         self.streams, self.metadata, self.cancel = streams, metadata, cancel
+        self.progress = progress
+
+    def report(self, message):
+        self.cancel()
+        self.progress(message)
+        self.cancel()
 
     def read(self, path):
         self.cancel()
@@ -85,7 +91,10 @@ def variant(path, suffix='cassidy'):
 def build_resources(source, payload):
     """Produce the accepted presentation-only resources, checking every output."""
     read, metadata = source.read, source.metadata
-    outputs, tables, solo_clips = character_animation.prepare(read, art.decode, art.encode)
+    outputs, tables, solo_clips = character_animation.prepare(
+        read, art.decode, art.encode, cancel=source.cancel,
+        progress=lambda message: source.report('Preparing Cassidy ' + message))
+    source.report('Preparing Cassidy character and hands...')
     original = art.decode(read(CHARACTERS))
     bank = art.decode(read('audio/cassidy/cassidy.babf'))
     cues = {art.named(row, 'id')['value'] for row in art.named(bank, 'prototypes')['children']}
@@ -112,7 +121,7 @@ def build_resources(source, payload):
     if len(resources) != 102:
         raise ValueError('Incomplete character hub coverage')
     dependencies = {solo: art.mode_dependencies(tables, solo, solo_clips) for solo in (False, True)}
-    for path in resources:
+    for completed, path in enumerate(resources, 1):
         solo = not path.endswith('_coop.bxml')
         tree, _ = art.append_resources(art.decode(read(path)), dependencies[solo])
         outputs[path] = art.encode(tree)
@@ -120,6 +129,8 @@ def build_resources(source, payload):
         old = read(bank_path)
         tree, changed = (art.solo_bank if solo else art.append_voice_bank)(art.decode(old))
         outputs[bank_path] = art.encode(tree) if changed else old
+        if completed % 10 == 0 or completed == len(resources):
+            source.report(f'Preparing Cassidy campaign areas: {completed}/{len(resources)}')
     if set(outputs) != set(metadata['v7_outputs']):
         raise ValueError('Character conversion resource set differs')
     for name, data in outputs.items():
@@ -131,6 +142,7 @@ def build_resources(source, payload):
         groups[owner][target] = data
 
     # Preserve the original CoOpChaz mechanics while offering original Jericho art.
+    source.report('Preparing Jericho co-op character...')
     clone = art.jericho_actor(original)
     actors['children'].append(clone)
     joints = set(read('characters/player_third/base_chaz.jlist').decode('ascii').split())
@@ -189,10 +201,21 @@ def spectral_dependencies(read, references, solo):
 def build_spectral(source, groups, extension):
     """Add boss presentation without changing the verified living-player resources."""
     read = source.read
-    outputs, references = character_boss.prepare(read)
+    read_count = 0
+    def spectral_read(path):
+        nonlocal read_count
+        data = read(path)
+        read_count += 1
+        if read_count % 25 == 0:
+            source.report(f'Preparing Spectral Cassidy: {read_count} resources processed')
+        return data
+    source.report('Preparing Spectral Cassidy model and animations...')
+    outputs, references = character_boss.prepare(spectral_read)
     prepared = art.decode(extension['packfile.pck'][CHARACTERS])
     outputs[CHARACTERS] = art.encode(character_boss_effects.augment(prepared, art.decode(read(CHARACTERS)), references))
+    source.report('Preparing Spectral Cassidy hands and effects...')
     effects = character_boss_effects.prepare(read)
+    source.cancel()
     if outputs.keys() & effects.keys():
         raise ValueError('Duplicate spectral presentation resource')
     outputs.update(effects)
@@ -202,11 +225,14 @@ def build_spectral(source, groups, extension):
                        and path.endswith(('_resources.bxml', '_resources_coop.bxml')))
     if len(resources) != 102:
         raise ValueError('Incomplete spectral hub coverage')
-    for path in resources:
+    for completed, path in enumerate(resources, 1):
+        source.cancel()
         target = variant(path)
         raw = extension['LvlSingl.pck'].get(target, groups['LvlSingl.pck'][target])
         tree, _ = art.append_resources(art.decode(raw), dependencies[not path.endswith('_coop.bxml')])
         result['LvlSingl.pck'][variant(path, 'cassidy_spectral')] = art.encode(tree)
+        if completed % 10 == 0 or completed == len(resources):
+            source.report(f'Preparing Spectral Cassidy campaign areas: {completed}/{len(resources)}')
     # The complete composed archives are checked before the installation is committed.
     return result
 
@@ -224,7 +250,7 @@ def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None)
                 raise ValueError(f'Unsupported original character archive: {name}')
             streams[name] = stream
         progress('Preparing selectable characters...')
-        source = Source(streams, metadata, cancel)
+        source = Source(streams, metadata, cancel, progress)
         groups, extension, spectral = build_resources(source, payload)
         roster, _ = character_roster.prepare(source, groups, extension, spectral)
     with tempfile.TemporaryDirectory(prefix='.characters-', dir=assets) as temporary:
@@ -232,6 +258,7 @@ def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None)
         for name in INSTALLED:
             cancel()
             progress('Preparing character resources...')
+            cancel()
             raw = checked((assets / name).read_bytes(), metadata['originals'][name], name)
             if name == 'packfile.pck':
                 raw = bonus_content.patch_pack(raw)

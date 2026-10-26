@@ -51,7 +51,7 @@ XBE, and builds the development runtime. The release build uses a separate
 object/output directory and reuses those dependency source checkouts. Running
 `-Release` before the first build currently fails because those checkouts do not
 exist. `dependencies.lock.json` records the revisions retained from version 0.1
-for version 0.6; dependency tags in the SDK should resolve to those commits.
+for version 0.6.1; dependency tags in the SDK should resolve to those commits.
 
 `-Stage Recompile` regenerates title code without rebuilding the runtime.
 `-Stage Symbols` records a signature-scan comparison without replacing the
@@ -85,7 +85,7 @@ The public source is therefore not yet a one-command clean-machine packager.
 After provisioning and a successful release runtime build:
 
 ```powershell
-./scripts/build-launcher.ps1 -Output 'C:/build-output/Darkwatch-0.6'
+./scripts/build-launcher.ps1 -Output 'C:/build-output/Darkwatch-0.6.1'
 ```
 
 The output directory must not already exist. The script builds both launcher
@@ -94,7 +94,7 @@ enhancement PNGs, authored Cassidy hand repaints and edited branding, while
 original disc files, character archives and assembled packs are excluded. Import and shader preparation happen locally
 when the player supplies their disc. Keep all package files together.
 
-## Linux 0.6 compatibility package
+## Linux 0.6.1 compatibility package
 
 `launcher/linux/` provides the experimental Linux launcher for an already built
 Windows package. It runs the packaged import backend and game through the
@@ -106,7 +106,7 @@ After producing a verified Windows release directory, make the experimental
 archive without adding installed game data:
 
 ```powershell
-.venv/Scripts/python.exe tools/package_linux.py --windows-package 'C:/build-output/Darkwatch-0.6' --output 'C:/build-output/Darkwatch-0.6-Linux-Proton-Experimental.tar.gz' --audit 'C:/build-output/linux-package-audit.json'
+.venv/Scripts/python.exe tools/package_linux.py --windows-package 'C:/build-output/Darkwatch-0.6.1' --output 'C:/build-output/Darkwatch-0.6.1-Linux-Proton-Experimental.tar.gz' --audit 'C:/build-output/linux-package-audit.json'
 ```
 
 The packager copies the verified Windows allowlist under `windows/`, adds only
@@ -158,12 +158,19 @@ The maintained native address-key headers are included as metadata. Original
 native body/byte regression fixtures and private acceptance recordings remain
 excluded. Synthetic source tests do not establish live gameplay acceptance.
 
-Version 0.5 retains the pinned SDK revision with an updated maintained patch.
+Version 0.6.1 retains the pinned SDK revision with an updated maintained patch.
 Source checks cover the exported synthetic suite and native host fixtures; they
 do not replace a clean-machine full rebuild or full-campaign testing. Local co-op
 remains beta, and Cassidy hurt-voice work remains paused.
 
-Spanish text uses a pinned translation-only resource. It contains no original
-archives, glyph atlases, audio or movies. Its community authorship is credited;
-credit alone is not a redistribution license. Review translation distribution
-permission before publishing a derivative source or player package.
+Spanish text, dialogue and compatible movie audio are generated locally from the
+player's supported PAL PS2 SLES-53564 disc. The Xbox game import remains required.
+`launcher/ps2_disc.py`, `ps2_text.py`, `ps2_dialogue.py`, `ps2_movies.py` and
+`ps2_spanish.py` implement the bounded parsers and conversion. The catalog stores
+sizes and hashes only. The corrections file stores project-authored Spanish
+corrections keyed by hashed context; it does not contain an original text table.
+No PS2 ISO, executable, resource archive, speech, movie or prepared translation
+binary is in this source snapshot. The old community-pack setup is retired.
+
+The five-part 0.6 optional HD download is unchanged and remains compatible with
+0.6.1. Do not rebuild or redownload it merely for this runtime update.

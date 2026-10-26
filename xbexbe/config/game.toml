@@ -300,10 +300,10 @@ XPP_MemoryUnitType          = 0x40D300
 at = 0x0002A35E
 call = "DarkwatchActorScriptTick"
 
-# First horseback boss: close the authored spawn/AI-disable race before sequence updates.
-# Original event/order evidence and negative control: missing-boss-20261024/.
+# First horseback boss: both standalone and cinematic starts share this reset.
+# Event/order and wrapper-path evidence: missing-boss-20261024/ and horse-loop-20261025/.
 [[hook]]
-at = 0x0022FADC
+at = 0x0022F61A
 call = "DarkwatchBossIntroStart"
 
 # Direct mouse plus optional XBE_PERF witnesses; original evidence: direct-mouse-integration-plan.json.
@@ -784,6 +784,11 @@ call = "DarkwatchCharacterInitialize"
 [[hook]]
 at = 0x001BD70E
 call = "DarkwatchCharacterResourceHeap"
+
+# Keep the native interned-string allocator and teardown, with room for table rehash.
+[[hook]]
+at = 0x00217BFA
+call = "DarkwatchStringHeap"
 
 # Snapshot choices before the original single-player/co-op resource selection.
 [[hook]]

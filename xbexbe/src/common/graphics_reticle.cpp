@@ -21,13 +21,23 @@ uint32_t Read(const uint8_t* base, uint32_t address) {
 }
 
 void DarkwatchScaleReticle(X86Context& ctx, uint8_t* base) {
-    const float scale = darkwatch::view::ReticleScale();
-    if (scale == 1 || !std::isfinite(scale) || scale < 0.5f || scale > 2 ||
-        ctx.ebx < 0x4C || !Span(base, ctx.ebp, 0x20) ||
-        !Span(base, uint64_t(ctx.ebx) - 0x4C, 4)) return;
+    if (ctx.ebx < 0x4C || !Span(base, ctx.ebp, 0x20) ||
+        !Span(base, uint64_t(ctx.ebx) - 0x4C, 0x70)) return;
     const uint32_t owner = ctx.ebx - 0x4C;
     if (Read(base, owner) != 0x00428378 || Read(base, ctx.ebp + 4) != 0x000DCD20 ||
         Read(base, ctx.ebp + 8) != ctx.ebx || Read(base, ctx.ebp + 0xC) != owner + 0x34) return;
+
+    // D835C copies this player's viewport into the HUD camera. D6F21 obtains
+    // that same camera from the reticle draw, independently of pause-menu owner.
+    const uint32_t camera = Read(base, ctx.ebx + 0x20);
+    if (!Span(base, camera, 0x68) || Read(base, camera) != 0x43F97C ||
+        Read(base, camera + 0x58) || Read(base, camera + 0x60) != 0x3F800000) return;
+    const uint32_t top = Read(base, camera + 0x5C), height = Read(base, camera + 0x64);
+    uint32_t player = 0;
+    if (height == 0x3EFEB852 && (top == 0 || top == 0x3F00A3D7)) player = top ? 1 : 0;
+    else if (top || height != 0x3F800000) return;
+    const float scale = darkwatch::view::ReticleScale(player);
+    if (scale == 1 || !std::isfinite(scale) || scale < 0.5f || scale > 2) return;
 
     // D6F51: the original reticle path has calculated pixel half-extents.
     // Its vertex consumer uses center +/- half-extents; center, UV and animation stay original.

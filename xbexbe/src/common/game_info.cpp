@@ -16,7 +16,7 @@
 
 namespace {
 void InitDirectMouse();
-void LoadFrontendAssets() { darkwatch::InitializeMenuCursor(); darkwatch::skin::Finalize(); darkwatch::preview::Finalize(); darkwatch::InitializeHdUi(); }
+void LoadFrontendAssets() { darkwatch::SyncAudioDevice(kernel::g_base); darkwatch::InitializeMenuCursor(); darkwatch::skin::Finalize(); darkwatch::preview::Finalize(); darkwatch::InitializeHdUi(); }
 void DrawUi(double fps) { DarkwatchGraphicsUi(fps); DarkwatchMenuUi(fps); }
 }
 

@@ -21,6 +21,7 @@ Character adaptations and optional texture matching are prepared locally from
 the supported disc. Original models, animations and voices remain the property
 of their creators and are excluded from this source and the launcher download.
 
-- **ZARF (DXEV2BYZARF V2):** Spanish community translation, integrated with
-  text-layout and compatibility corrections. Original voices and movie files
-  are not bundled; optional compatible voice content is supplied separately.
+Spanish language data is now imported locally from the player's supported PAL
+PS2 disc, with project-authored compatibility and presentation corrections.
+No original Spanish text table, audio, movie or community translation package
+is distributed. The former community-pack integration is retired.

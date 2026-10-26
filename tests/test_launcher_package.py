@@ -1,7 +1,9 @@
 """Package boundary checks use synthetic disc bytes and never launch the game."""
 from pathlib import Path
+import ast
 import importlib.util
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -16,12 +18,36 @@ SPEC.loader.exec_module(package)
 
 
 class LauncherPackageTests(unittest.TestCase):
-    def test_spanish_resource_is_bundled_without_media_and_requires_compatible_reader(self):
+    def test_release_version_agrees_across_both_exes_backend_and_platform_labels(self):
+        version = package.VERSION
+        backend = ast.parse((ROOT / 'launcher/setup_backend.py').read_text(encoding='utf-8'))
+        value = next(ast.literal_eval(node.value) for node in backend.body
+                     if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and
+                     target.id == 'PACKAGE_VERSION' for target in node.targets))
+        self.assertEqual(value, version)
+        for name in ('Launcher.cs', 'DirectPlay.cs'):
+            source = (ROOT / 'launcher' / name).read_text(encoding='utf-8')
+            for attribute in ('AssemblyVersion', 'AssemblyFileVersion', 'AssemblyInformationalVersion'):
+                found = re.findall(attribute + r'\("([^"]+)"\)', source)
+                self.assertEqual(found, [version if attribute == 'AssemblyInformationalVersion' else version + '.0'])
+        self.assertIn('assemblyIdentity version="' + version + '.0"',
+                      (ROOT / 'launcher/app.manifest').read_text(encoding='utf-8'))
+        self.assertIn('DARKER EDITION   /   ' + version + '"',
+                      (ROOT / 'launcher/MainWindow.xaml').read_text(encoding='utf-8'))
+        self.assertIn('Darkwatch: Darker Edition - ' + version + '\n', package.GENERATED['README.txt'])
+        self.assertTrue((ROOT / 'launcher/linux/README-LINUX.md').read_text(encoding='utf-8').startswith(
+            '# Darkwatch: Darker Edition ' + version + ' —'))
+
+    def test_spanish_is_generated_from_own_disc_without_bundled_game_text(self):
         with patch.object(package, 'hd_sources', return_value={}):
             plan = package.sources()
-        self.assertIn('payload/language/es/language_text.bin', plan)
-        self.assertIn('payload/spanish-text-catalog.json', plan)
-        self.assertFalse(any(Path(name).suffix.lower() in ('.pck', '.xmv', '.wav') for name in plan))
+        for name in ('payload/language/es/language_text.bin', 'payload/spanish-text-catalog.json', 'payload/spanish-catalog.json'):
+            self.assertNotIn(name, plan)
+        for module in ('ps2_spanish.py', 'ps2_disc.py', 'ps2_text.py', 'ps2_dialogue.py', 'ps2_movies.py'):
+            self.assertIn('payload/' + module, plan)
+        self.assertIn('payload/ps2-spanish-catalog.json', plan)
+        self.assertIn('payload/ps2-spanish-corrections.json', plan)
+        self.assertFalse(any(Path(name).suffix.lower() in ('.pck', '.xmv', '.wav', '.bin') for name in plan))
         with tempfile.TemporaryDirectory() as folder, patch.object(package, 'REPO', Path(folder)):
             root = Path(folder)
             source_name = 'xbexbe/src/common/language.cpp'
@@ -29,21 +55,20 @@ class LauncherPackageTests(unittest.TestCase):
             source.parent.mkdir(parents=True)
             source.write_bytes(b'fixture v3 reader')
             build = {'host_sources': {'files': [{'path': source_name, 'sha256': package.sha(source)}]}}
-            resource, catalog = root / 'text.bin', root / 'catalog.json'
-            plan = {'payload/language/es/language_text.bin': resource, 'payload/spanish-text-catalog.json': catalog}
-            def pin():
-                catalog.write_text(json.dumps(dict(schema_version=1, language='es', files={
-                    'language_text.bin': dict(size=resource.stat().st_size, sha256=package.sha(resource))})))
-            resource.write_bytes(b'DWES0003translated fixture')
-            pin()
+            catalog = root / 'catalog.json'
+            row = dict(size=32, sha256='a' * 64)
+            data = dict(schema_version=1, language='es', files={name: row for name in
+                ('language_text.bin', 'assets/audioDlg.pck', 'assets/Movies2.pck', 'assets/Movies3.pck', 'assets/Movies4.pck')})
+            catalog.write_text(json.dumps(data))
+            plan = {'payload/ps2-spanish-catalog.json': catalog}
             package.check_spanish_text(plan, build)
-            for old_format in (b'DWES0001original English context', b'DWES0002old fingerprint'):
-                resource.write_bytes(old_format)
-                pin()
-                with self.assertRaisesRegex(ValueError, 'translation-only'):
-                    package.check_spanish_text(plan, build)
-            resource.write_bytes(b'DWES0003translated fixture')
-            pin()
+            for name in ('payload/spanish-catalog.json', 'payload/spanish-text-catalog.json', 'payload/language/es/language_text.bin'):
+                with self.assertRaisesRegex(ValueError, 'Bundled game translations'):
+                    package.check_spanish_text(dict(plan, **{name: root / 'old.bin'}), build)
+            catalog.write_text(json.dumps(dict(data, files={'language_text.bin': row})))
+            with self.assertRaisesRegex(ValueError, 'complete PS2 Spanish'):
+                package.check_spanish_text(plan, build)
+            catalog.write_text(json.dumps(data))
             source.write_bytes(b'different reader')
             with self.assertRaisesRegex(ValueError, 'reader differs'):
                 package.check_spanish_text(plan, build)

@@ -61,10 +61,8 @@ class SpanishInstallTests(unittest.TestCase):
         text = pack.Catalog(json.dumps(dict(schema_version=1, language="es", files={
             "language_text.bin": self.catalog.files["language_text.bin"]})).encode())
         self.assertTrue(text.validate(self.current))
-        self.assertFalse(text.validate(self.current, media_only=True))
         extra = self.current / pack.DIRECTORY / "assets/Movies1.pck"
         extra.write_bytes(b"unverified movie")
-        self.assertFalse(self.catalog.validate(self.current, media_only=True))
         self.assertFalse(self.catalog.validate(self.current))
         self.assertEqual(extra.read_bytes(), b"unverified movie")
 
@@ -122,45 +120,6 @@ class SpanishInstallTests(unittest.TestCase):
             pack.select(self.current, "es")
         self.assertEqual(settings.read_bytes(), before)
 
-    def test_bundled_text_refresh_keeps_optional_voices_and_original_assets(self):
-        self.install()
-        source = self.root / "bundled.bin"
-        data = b"DWES0003 translated fixture"
-        source.write_bytes(data)
-        catalog = pack.Catalog(json.dumps(dict(schema_version=1, language="es", files={
-            "language_text.bin": dict(size=len(data), sha256=hashlib.sha256(data).hexdigest())})).encode())
-        catalog.install_text(source, self.current, lambda: None, lambda: None)
-        self.assertTrue(catalog.validate(self.current))
-        self.assertTrue(self.catalog.validate(self.current, media_only=True))
-        self.assertFalse(self.catalog.validate(self.current))  # Old pack's text identity changed.
-        target = self.root / "repair"
-        target.mkdir()
-        self.assertTrue(self.catalog.preserve(self.current, target, lambda: None, shutil.copyfile, media_only=True))
-        self.assertFalse((target / pack.DIRECTORY / "language_text.bin").exists())
-        self.assertEqual((target / pack.DIRECTORY / "assets/audioDlg.pck").read_bytes(), self.files["assets/audioDlg.pck"])
-        self.assertEqual((self.current / "assets/audioDlg.pck").read_bytes(), b"English disc audio")
-
-    def test_bad_or_interrupted_bundled_text_keeps_old_file(self):
-        self.install()
-        target = self.current / pack.DIRECTORY / "language_text.bin"
-        old = target.read_bytes()
-        source = self.root / "bundled.bin"
-        data = b"new text"
-        catalog = pack.Catalog(json.dumps(dict(schema_version=1, language="es", files={
-            "language_text.bin": dict(size=len(data), sha256=hashlib.sha256(data).hexdigest())})).encode())
-        source.write_bytes(b"bad text")
-        with self.assertRaises(ValueError):
-            catalog.install_text(source, self.current, lambda: None, lambda: None)
-        source.write_bytes(data)
-        def stop():
-            raise RuntimeError("cancelled or running")
-        for cancel, closed in ((stop, lambda: None), (lambda: None, stop)):
-            with self.assertRaises(RuntimeError):
-                catalog.install_text(source, self.current, cancel, closed)
-        with patch.object(pack.os, "replace", side_effect=OSError("locked")), self.assertRaises(OSError):
-            catalog.install_text(source, self.current, lambda: None, lambda: None)
-        self.assertEqual(target.read_bytes(), old)
-        self.assertFalse(list(target.parent.glob(".language-text-*.tmp")))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "language": "es",
+  "files": {
+    "language_text.bin": {
+      "size": 143128,
+      "sha256": "82a11cd62e8d95ac0ff969cc3c1369160b30ce4f8be8fd4ec53c60c24de0b6b0"
+    },
+    "assets/audioDlg.pck": {
+      "size": 266697240,
+      "sha256": "8af416b9fb1e706490a4f66e4d71a35ddf1c0f4c19ae01538fa568943d52c1cd"
+    },
+    "assets/Movies2.pck": {
+      "size": 292771016,
+      "sha256": "d7e5f46f882788da2365dde109738e10332967961480b611472ee7d79ee08515"
+    },
+    "assets/Movies3.pck": {
+      "size": 213652752,
+      "sha256": "b98b70a1024808fbb91cad8ab80e97a4402d4761ff4e6732fc30f04ddc167cdb"
+    },
+    "assets/Movies4.pck": {
+      "size": 207535376,
+      "sha256": "95ed23fa9246be384340f945e02260c7a0abddfa79ffbb9bbb138e2ed21cd267"
+    }
+  }
+}

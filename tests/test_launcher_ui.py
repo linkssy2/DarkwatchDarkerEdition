@@ -47,9 +47,10 @@ class ProtocolFixture {
             Console.WriteLine("{\"event\":\"result\",\"message\":\"HD fixture installed\",\"percent\":100,\"installed\":true,\"ready\":true,\"hd_textures_installed\":true}");
             return 0;
         }
-        if(mode=="spanish") {
+        if(mode=="spanish-iso") {
             int at=Array.IndexOf(args,"--install-spanish");
-            if(at<0||at+1>=args.Length||args[at+1]!=@"C:\Downloads\Español 🦇.zip") return 12;
+            string path=@"C:\My Games\PS2 Español 🦇.iso";
+            if(at<0||at+1>=args.Length||args[at+1]!=path) return 12;
             Console.WriteLine("{\"event\":\"result\",\"message\":\"Spanish fixture installed\",\"installed\":true,\"ready\":true,\"spanish_installed\":true,\"language\":\"en\"}");
             return 0;
         }
@@ -227,25 +228,25 @@ class LauncherUiHarness {
     }
 
     static void Language() {
-        Check(Launcher.SpanishPackFilter=="Darker Edition Spanish pack (*.zip)|*.zip","Spanish picker accepts unexpected formats");
+        Check(Launcher.SpanishPackFilter=="PS2 Darkwatch disc image (*.iso)|*.iso","Spanish picker accepts unexpected formats");
         var l=new Launcher(true);
         State(l,new Dictionary<string,object>{{"installed",true},{"ready",true},{"language","en"},{"spanish_installed",false}});
         Check(Element<Button>(l,"SpanishButton").IsEnabled,"Ready game cannot install Spanish");
         Check(Element<ComboBox>(l,"LanguageChoice").IsEnabled&&!Element<ComboBoxItem>(l,"SpanishChoice").IsEnabled,"Missing pack must disable Spanish only");
         Element<ComboBox>(l,"LanguageChoice").SelectedIndex=1;
         Check(Element<ComboBox>(l,"LanguageChoice").SelectedIndex==0&&!(bool)Field(l,"busy"),"Missing pack selection reached backend");
-        State(l,new Dictionary<string,object>{{"spanish_installed",true},{"spanish_audio_installed",false}});
-        Check(Element<ComboBoxItem>(l,"SpanishChoice").IsEnabled,"Bundled Spanish requires an optional download");
-        Check((string)Element<Button>(l,"SpanishButton").Content=="SPANISH VOICES","Text availability incorrectly implies voices installed");
-        Check(Element<TextBlock>(l,"LanguageStatus").Text.Contains("Text and subtitles included"),"Included translation is not explained");
+        Check((string)Element<Button>(l,"SpanishButton").Content=="INSTALL SPANISH","Spanish install action missing");
+        Check(((string)Element<Button>(l,"SpanishButton").ToolTip).Contains("PS2 Darkwatch ISO (SLES-53564)"),"Supported own-disc import is not explained");
+        Check(Element<TextBlock>(l,"LanguageStatus").Text.Contains("requires your PS2 ISO"),"Missing import is not explained");
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","spanish-iso");
+        Finish((Task)Call(l,"Run","--install-spanish",@"C:\My Games\PS2 Español 🦇.iso")); Idle(l);
+        Check(Element<ComboBoxItem>(l,"SpanishChoice").IsEnabled,"Installed Spanish still disabled");
+        Check(Element<TextBlock>(l,"LanguageStatus").Text.Contains("Spanish installed"),"Installed translation is not explained");
         Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","language-es");
         Element<ComboBox>(l,"LanguageChoice").SelectedIndex=1;
         Pump(()=>!(bool)Field(l,"busy")); Idle(l);
-        Check((string)Field(l,"language")=="es","Bundled Spanish could not be selected before voice import");
-        Evidence["builtin_spanish_without_voice_download"]=true;
-        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","spanish");
-        Finish((Task)Call(l,"Run","--install-spanish",@"C:\Downloads\Español 🦇.zip")); Idle(l);
-        Check(Element<ComboBoxItem>(l,"SpanishChoice").IsEnabled,"Installed Spanish still disabled");
+        Check((string)Field(l,"language")=="es","Imported Spanish could not be selected");
+        Evidence["ps2_iso_required_for_spanish_and_unicode_arguments"]=true;
         State(l,new Dictionary<string,object>{{"language","es"},{"spanish_installed",true}});
         Check(!(bool)Field(l,"busy")&&Element<ComboBox>(l,"LanguageChoice").SelectedIndex==1,"Programmatic language refresh started an operation");
         Check((string)Element<Button>(l,"PlayButton").Content=="JUGAR","Spanish action missing");
@@ -302,7 +303,11 @@ class LauncherUiHarness {
         }
     }
 
-    static void ReleaseAndSmallDesktop(string release) {
+    static void ReleaseAndSmallDesktop(string release, string version) {
+        var file=FileVersionInfo.GetVersionInfo(release);
+        Check(AssemblyName.GetAssemblyName(release).Version.ToString()==version+".0","Compiled launcher assembly version differs from package");
+        Check(file.FileVersion==version+".0"&&file.ProductVersion==version,"Compiled launcher version labels differ from package");
+        Evidence["release_version"]=version;
         var type=Assembly.LoadFile(release).GetType("DarkwatchDarkerEdition.Launcher");
         Check(type.GetMethod("RenderPreview")==null,"Release launcher exposes preview diagnostics");
         Check(type.GetConstructors().All(c=>c.GetParameters().Length==0),"Release launcher accepts testing mode");
@@ -333,7 +338,7 @@ class LauncherUiHarness {
         try {
             var app=new Application {ShutdownMode=ShutdownMode.OnExplicitShutdown};
             SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext());
-            Quote(); ResourcesAndState(); ProcessEvents(); Cancellation(); Language(); Preview(args[0]); ReleaseAndSmallDesktop(args[1]);
+            Quote(); ResourcesAndState(); ProcessEvents(); Cancellation(); Language(); Preview(args[0]); ReleaseAndSmallDesktop(args[1],args[2]);
             Evidence["shown_windows"]=0; Evidence["real_backend_or_game_started"]=false;
             Console.WriteLine(Json.Serialize(Evidence)); return 0;
         } catch(Exception ex) {Console.Error.WriteLine(ex);return 1;}
@@ -368,7 +373,11 @@ class LauncherUiTests(unittest.TestCase):
             sources = [str(ROOT / "launcher" / name) for name in ["Launcher.cs", "SetupProcess.cs"]]
             compile_cs([*references, *resources, f"/out:{production}", *sources])
             compile_cs([*references, *resources, "/define:LAUNCHER_TESTING", "/main:LauncherUiHarness", f"/out:{executable}", *sources, str(build / "Harness.cs")])
-            result = subprocess.run([str(executable), str(evidence), str(production)], capture_output=True, encoding="utf-8-sig", timeout=35)
+            import ast
+            tree = ast.parse((ROOT / "launcher/package.py").read_text(encoding="utf-8"))
+            version = next(ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)
+                           and any(isinstance(target, ast.Name) and target.id == "VERSION" for target in node.targets))
+            result = subprocess.run([str(executable), str(evidence), str(production), version], capture_output=True, encoding="utf-8-sig", timeout=35)
             (evidence / "harness.log").write_text(result.stdout + result.stderr, encoding="utf-8")
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             report = json.loads(result.stdout)
@@ -377,6 +386,7 @@ class LauncherUiTests(unittest.TestCase):
             self.assertTrue(report["cancel_event_and_locked_token_recovery"])
             self.assertEqual(report["shown_windows"], 0)
             self.assertFalse(report["real_backend_or_game_started"])
+            self.assertEqual(report["release_version"], version)
             self.assertTrue(report["release_preview_api_absent"])
             self.assertEqual(report["scaled_workareas_checked"], 3)
 

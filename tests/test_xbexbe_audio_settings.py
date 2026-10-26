@@ -12,9 +12,12 @@ FIXTURE = r'''
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <cstring>
+#include <vector>
 #include <toml++/toml.hpp>
 #include "app/app.h"
 #include "audio/audio.h"
+#include "kernel/memory.h"
 #include "common/audio_settings.h"
 #include "core/log.h"
 #define CHECK(x) do{if(!(x)){std::fprintf(stderr,"line %d: %s\n",__LINE__,#x);std::exit(90);}}while(0)
@@ -24,10 +27,23 @@ void* app::Window(){return nullptr;}
 void logx::Write(Level,const char*,...){}
 // Device/mixer behavior has its own native fixture; this boundary observes persistence only.
 static bool enabled;
+static bool available=false, committed=true;
+bool mem::IsCommitted(uint32_t address){CHECK(address==0x3C5C14);return committed;}
 void audio::SetSurroundEnabled(bool value){enabled=value;}
 bool audio::SurroundEnabled(){return enabled;}
+bool audio::SurroundAvailable(){return available;}
 static void Write(const char* text){std::ofstream f("settings.toml");f<<text;CHECK(bool(f));}
 int main(){
+ // Only a configured surround device enables native rear calculations; writes stay on the guest thread.
+ std::vector<uint8_t> guest(0x400000,0xA5);
+ for(bool choice:{false,true})for(bool device:{false,true}){
+  enabled=choice;available=device;darkwatch::SyncAudioDevice(guest.data());
+  uint32_t mode;std::memcpy(&mode,guest.data()+0x3C5C14,4);CHECK(mode==(choice&&device?2u:0u));
+  auto snapshot=guest;darkwatch::SyncAudioDevice(guest.data());CHECK(snapshot==guest);
+ }
+ for(size_t i=0;i<guest.size();++i)if(i<0x3C5C14||i>=0x3C5C18)CHECK(guest[i]==0xA5);
+ auto snapshot=guest;committed=false;enabled=false;darkwatch::SyncAudioDevice(guest.data());
+ CHECK(snapshot==guest);darkwatch::SyncAudioDevice(nullptr);committed=true;
  // A first run or old settings file must reset a stale preference to the stereo default.
  audio::SetSurroundEnabled(true);app::Load();CHECK(!audio::SurroundEnabled());
  Write("fps_cap=80\nbrightness=90\n");audio::SetSurroundEnabled(true);app::Load();

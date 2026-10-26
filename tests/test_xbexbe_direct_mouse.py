@@ -31,6 +31,7 @@ void darkwatch::ControlsLoad(const void* t){controls_load_table=t;}
 void darkwatch::ControlsSave(void* t){controls_save_table=t;}
 void darkwatch::AudioLoad(const void* t){audio_load_table=t;}
 void darkwatch::AudioSave(void* t){audio_save_table=t;}
+void darkwatch::SyncAudioDevice(uint8_t*){}
 void darkwatch::view::Load(const void* t){view_load_table=t;}
 void darkwatch::view::Save(void* t){view_save_table=t;}
 void darkwatch::settings::LoadCharacters(const void*){}

@@ -63,6 +63,10 @@ class LinuxPackageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Missing'):
             pack.package(self.windows, self.wrapper, self.output)
 
+    def test_shipped_wrapper_files_pass_actual_package_checks(self):
+        result = pack.package(self.windows, ROOT / 'launcher/linux', self.output)
+        self.assertEqual(result['status'], 'pass')
+
 
 if __name__ == '__main__':
     unittest.main()

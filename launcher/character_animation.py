@@ -336,16 +336,22 @@ def _witness(tree):
     return result
 
 
-def prepare(read, decode, encode, model=CASSIDY, character="cassidy"):
+def prepare(read, decode, encode, model=CASSIDY, character="cassidy",
+            cancel=lambda: None, progress=lambda message: None):
     """Return 619 adapted clips, five maps and their preload references.
 
     The importer supplies a source-hash-verifying read(path) function. BXML
     decode/encode are supplied to share the importer's validated format parser.
     """
+    cancel()
     models = {path: frames(read(path)) for path in (STORM, CHAZ, model)}
     params = {path: parameters(models[path], models[model]) for path in (STORM, CHAZ)}
     outputs, tables, reusable = {}, [], {}
     for alias, source, destination, basis, witness, count in TABLES:
+        cancel()
+        label = {'Multi': 'co-op', 'NotMulti': 'on-foot',
+                 'Horse': 'horse-riding', 'Vehicle': 'vehicle'}[alias]
+        progress(f'{label} animations: 0/{count}')
         destination = destination.replace('cassidy', character)
         table = decode(read(source))
         witnessed = _witness(decode(read(witness)))
@@ -359,6 +365,7 @@ def prepare(read, decode, encode, model=CASSIDY, character="cassidy"):
             if not original.startswith('characters/'):
                 raise ValueError('Unsupported animation resource path')
             if original not in mapping:
+                cancel()
                 if not all((original[:-5], kind) in witnessed for kind in KINDS):
                     raise ValueError('Animation clip resource-type witness missing')
                 raw = read(original)
@@ -375,6 +382,9 @@ def prepare(read, decode, encode, model=CASSIDY, character="cassidy"):
                     reusable[key] = target
                 mapping[original] = target
                 refs.append(dict(source=original, output=target, source_basis=basis))
+                if len(mapping) % 25 == 0 or len(mapping) == count:
+                    progress(f'{label} animations: {len(mapping)}/{count}')
+                cancel()
             node['attributes']['Name'] = mapping[original][:-5]
         if len(mapping) != count:
             raise ValueError('Unexpected animation-table coverage')
@@ -391,7 +401,9 @@ def prepare(read, decode, encode, model=CASSIDY, character="cassidy"):
     if len(clips) != 291:
         raise ValueError('Unexpected solo animation-table coverage')
     mapping, solo_clips = {}, []
-    for original in clips:
+    progress(f'single-player animations: 0/{len(clips)}')
+    for completed, original in enumerate(clips, 1):
+        cancel()
         if not original.startswith('characters/'):
             raise ValueError('Unsupported solo animation resource path')
         raw = read(original)
@@ -405,6 +417,9 @@ def prepare(read, decode, encode, model=CASSIDY, character="cassidy"):
         outputs[target] = data
         mapping[original] = target
         solo_clips.append(dict(source=original, output=target, sha256=sha, source_basis=CHAZ, pose_keys=changed))
+        if completed % 25 == 0 or completed == len(clips):
+            progress(f'single-player animations: {completed}/{len(clips)}')
+        cancel()
     for node in _walk(table):
         if node['name'] == 'KeyframeAnimation':
             node['attributes']['Name'] = mapping[_norm(node['attributes']['Name']) + '.sanm'][:-5]
@@ -414,4 +429,5 @@ def prepare(read, decode, encode, model=CASSIDY, character="cassidy"):
     outputs['characters/player_two/' + character + 'solomultiplayeranimation.bxml'] = data
     if len(outputs) != 624:
         raise ValueError('Incomplete character animation output')
+    cancel()
     return outputs, tables, solo_clips

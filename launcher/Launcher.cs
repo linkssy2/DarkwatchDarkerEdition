@@ -17,9 +17,9 @@ using Microsoft.Win32;
 #if !DIRECT_PLAY
 [assembly: AssemblyTitle("Darkwatch: Darker Edition")]
 [assembly: AssemblyProduct("Darkwatch: Darker Edition")]
-[assembly: AssemblyVersion("0.6.0.0")]
-[assembly: AssemblyFileVersion("0.6.0.0")]
-[assembly: AssemblyInformationalVersion("0.6")]
+[assembly: AssemblyVersion("0.6.1.0")]
+[assembly: AssemblyFileVersion("0.6.1.0")]
+[assembly: AssemblyInformationalVersion("0.6.1")]
 #endif
 
 namespace DarkwatchDarkerEdition
@@ -28,7 +28,7 @@ namespace DarkwatchDarkerEdition
     {
         public const string DiscImageFilter = "Xbox disc images (*.iso;*.xiso)|*.iso;*.xiso";
         public const string TexturePackFilter = "Darker Edition HD texture pack (*.zip;*.zip.001)|*.zip;*.zip.001";
-        public const string SpanishPackFilter = "Darker Edition Spanish pack (*.zip)|*.zip";
+        public const string SpanishPackFilter = "PS2 Darkwatch disc image (*.iso)|*.iso";
         readonly Window window;
         readonly string package = AppDomain.CurrentDomain.BaseDirectory;
         readonly string installRoot = SetupProcess.InstallRoot(AppDomain.CurrentDomain.BaseDirectory);
@@ -61,16 +61,13 @@ namespace DarkwatchDarkerEdition
                 case "Installing optional HD textures": return "Instalando las texturas HD opcionales";
                 case "Installing Spanish resources": return "Instalando los recursos en español";
                 case "HD gameplay textures installed. Enable HD Textures in Graphics.": return "Texturas HD instaladas. Actívalas en Gráficos.";
-                case "Spanish voices installed. Choose Español before starting the game.": return "Voces en español instaladas. Selecciona Español antes de iniciar el juego.";
-                case "Spanish text needs repair. Select Español to restore the included translation.": return "Hay que reparar los textos. Selecciona Español para restaurar la traducción incluida.";
-                case "The optional Spanish voices need repair. Reinstall their download or choose English.": return "Hay que reparar las voces opcionales. Reinstala su descarga o selecciona English.";
+                case "Spanish installed. Choose Español before starting the game.": return "Español instalado. Selecciona Español antes de iniciar el juego.";
+                case "Spanish needs a supported PS2 ISO import. Import Spanish again or choose English; previous files are kept.": return "Importa de nuevo tu ISO compatible de PS2 o elige English. Se conservan los archivos anteriores.";
+                case "Previous Spanish files were kept in the old installation. Import your PS2 ISO or choose English.": return "Se conserva el español anterior en la instalación antigua. Importa tu ISO de PS2 o elige English.";
                 case "Darkwatch: Darker Edition is installed. Your original ISO was not changed.": return "Darkwatch: Darker Edition está instalado. Tu ISO original no se ha modificado.";
                 case "Darkwatch: Darker Edition started.": return "Darkwatch: Darker Edition se ha iniciado.";
                 case "Another setup or launch is already in progress.": return "Ya hay otra instalación o inicio en curso.";
                 case "Close Darkwatch before installing, repairing, or starting another copy.": return "Cierra Darkwatch antes de instalar, reparar o iniciar otra copia.";
-                case "Install the matching Spanish language pack first.": return "Instala primero el paquete de español compatible.";
-                case "The Spanish language pack needs repair. Reinstall it or choose English.": return "Hay que reparar el paquete de español. Reinstálalo o selecciona English.";
-                case "The Spanish pack needs repair. Reinstall its download after importing.": return "Hay que reparar el paquete de español. Reinstálalo después de importar.";
                 case "This launcher package is incomplete or incompatible. Extract a fresh complete package.": return "El paquete del lanzador está incompleto o no es compatible. Extrae de nuevo el paquete completo.";
                 case "Shader preparation made no progress for too long. Close other applications and try again.": return "La preparación de shaders lleva demasiado tiempo sin avanzar. Cierra otras aplicaciones e inténtalo de nuevo.";
                 case "Shader preparation failed. Please try again.": return "Falló la preparación de shaders. Inténtalo de nuevo.";
@@ -114,7 +111,7 @@ namespace DarkwatchDarkerEdition
                 if (dialog.ShowDialog(window) == true) await Run("--install-hd-textures", dialog.FileName);
             };
             Get<Button>("SpanishButton").Click += async delegate {
-                var dialog = new OpenFileDialog { Title = Copy("Select the optional Spanish voice pack ZIP", "Selecciona el ZIP opcional de voces en español"), Filter = SpanishPackFilter, CheckFileExists = true, Multiselect = false };
+                var dialog = new OpenFileDialog { Title = Copy("Select your PS2 Darkwatch ISO (SLES-53564)", "Selecciona tu ISO de Darkwatch para PS2 (SLES-53564)"), Filter = SpanishPackFilter, CheckFileExists = true, Multiselect = false };
                 if (dialog.ShowDialog(window) == true) await Run("--install-spanish", dialog.FileName);
             };
             Get<ComboBox>("LanguageChoice").SelectionChanged += async delegate {
@@ -187,7 +184,7 @@ namespace DarkwatchDarkerEdition
                 ? Copy("Gameplay textures installed · Toggle in Graphics", "Texturas instaladas · Actívalas en Gráficos")
                 : Copy("Optional download · Gameplay textures not installed", "Descarga opcional · Texturas del juego no instaladas");
             Get<Button>("SpanishButton").IsEnabled = !busy && ready;
-            Get<Button>("SpanishButton").Content = spanishAudioInstalled ? Copy("REINSTALL VOICES", "REINSTALAR VOCES") : Copy("SPANISH VOICES", "VOCES EN ESPAÑOL");
+            Get<Button>("SpanishButton").Content = Copy("INSTALL SPANISH", "INSTALAR ESPAÑOL");
             Get<ComboBox>("LanguageChoice").IsEnabled = !busy && installed;
             Get<ComboBoxItem>("SpanishChoice").IsEnabled = spanishInstalled;
             // Backend status refreshes must not start another language-change operation.
@@ -195,11 +192,11 @@ namespace DarkwatchDarkerEdition
             try { Get<ComboBox>("LanguageChoice").SelectedIndex = language == "es" ? 1 : 0; }
             finally { updatingLanguage = false; }
             Get<TextBlock>("LanguageStatus").Text = spanishInstalled
-                ? Copy("Game language · Text and subtitles included · Next launch", "Idioma del juego · Textos y subtítulos incluidos · Próximo inicio")
-                : Copy("Game language · Import your ISO first", "Idioma del juego · Importa tu ISO primero");
+                ? Copy("Game language · Spanish installed · Next launch", "Idioma del juego · Español instalado · Próximo inicio")
+                : Copy("Game language · Spanish requires your PS2 ISO", "Idioma del juego · Español requiere tu ISO de PS2");
             System.Windows.Automation.AutomationProperties.SetName(Get<ComboBox>("LanguageChoice"), Copy("Game language", "Idioma del juego"));
-            Get<ComboBox>("LanguageChoice").ToolTip = Copy("Choose English or Español, then start the game. Close the game before changing languages. No extra download is needed for Spanish text and subtitles.", "Elige English o Español e inicia el juego. Cierra el juego antes de cambiar de idioma. Los textos y subtítulos en español no necesitan otra descarga.");
-            Get<Button>("SpanishButton").ToolTip = Copy("Optional voices only. Select a compatible Spanish voice ZIP. Text and subtitles are already included; movies keep their original audio.", "Solo voces opcionales. Selecciona un ZIP de voces en español compatible. Los textos y subtítulos ya están incluidos; los vídeos conservan su audio original.");
+            Get<ComboBox>("LanguageChoice").ToolTip = Copy("Choose English or installed Español, then start the game. Close the game before changing languages.", "Elige English o Español instalado e inicia el juego. Cierra el juego antes de cambiar de idioma.");
+            Get<Button>("SpanishButton").ToolTip = Copy("Install Spanish text, subtitles and voices from your European PS2 Darkwatch ISO (SLES-53564). Import the Xbox game first. Your disc, saves and settings are kept.", "Instala textos, subtítulos y voces de tu ISO europea de Darkwatch para PS2 (SLES-53564). Importa primero el juego de Xbox. Se conservan tu disco, partidas y ajustes.");
             Get<Button>("CancelButton").Visibility = busy && (cancelFile != null || cancelPreparation != null) ? Visibility.Visible : Visibility.Collapsed;
             Get<Button>("CancelButton").IsEnabled = busy && !cancelRequested;
             Get<Button>("CancelButton").Content = Copy("CANCEL", "CANCELAR");
@@ -283,7 +280,7 @@ namespace DarkwatchDarkerEdition
             Get<TextBlock>("StatusText").Text = action == "--play" ? Copy("Verifying your copy before launch…", "Verificando tu copia antes de iniciar…")
                 : action == "--import-iso" ? Copy("Checking your disc image…", "Comprobando la imagen del disco…")
                 : action == "--install-hd-textures" ? Copy("Checking your HD texture pack…", "Comprobando el paquete de texturas HD…")
-                : action == "--install-spanish" ? Copy("Checking your Spanish pack…", "Comprobando el paquete de español…")
+                : action == "--install-spanish" ? Copy("Checking your PS2 disc…", "Comprobando tu disco de PS2…")
                 : action == "--set-language" ? Copy("Changing language…", "Cambiando el idioma…")
                 : Copy("Checking installation…", "Comprobando la instalación…");
             Get<ProgressBar>("Progress").Value = 0;

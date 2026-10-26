@@ -21,7 +21,7 @@ static unsigned cases, reads;
 static uint8_t memory[0x500000], saved[sizeof(memory)];
 static std::set<uint32_t> blocked;
 static darkwatch::view::Settings settings;
-namespace darkwatch::view { Settings Snapshot() { return settings; } }
+namespace darkwatch::view { Settings Snapshot(uint32_t) { return settings; } }
 namespace mem { bool IsCommitted(uint32_t p) { ++reads; return p < sizeof(memory) && !blocked.contains(p); } }
 static void W(uint32_t p, uint32_t v) { std::memcpy(memory+p,&v,4); }
 static constexpr uint32_t effect=0x10FF0;

@@ -10,6 +10,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 import zipfile
 from unittest.mock import patch
@@ -255,30 +256,66 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
             time.sleep(.02)
         self.assertEqual((current / "worker-ran.txt").read_text(), "harmless launcher fixture")
 
-    def test_optional_spanish_install_selection_repair_and_invalid_media(self):
-        text = b"synthetic Spanish catalogue"
-        files = {"language_text.bin": text, "assets/audioDlg.pck": b"synthetic Spanish dialogue"}
-        catalog = dict(schema_version=1, language="es", files={name: dict(size=len(data), sha256=sha(data)) for name, data in files.items()})
-        (self.payload / "spanish-catalog.json").write_text(json.dumps(catalog))
+    def test_old_spanish_is_preserved_but_requires_ps2_import(self):
+        current, legacy, ps2, iso = self.spanish_variants()
+        self.install_old_spanish(current, legacy)
+        language_pack.select(current, "es")
+        before = self.snapshot(current)
+        self.assertFalse(self.backend.status()["spanish_installed"])
+        with self.assertRaisesRegex(setup.SetupError, "PS2 ISO import"):
+            self.backend.play()
+        self.assertEqual(self.snapshot(current), before)
+        with patch.object(setup, "game_running", return_value=True), self.assertRaises(setup.SetupError):
+            self.backend.set_language("en")
+        self.assertEqual(self.snapshot(current), before)
+        self.backend.verify()
+        self.assertIn("PS2 ISO", self.backend.hd_warning)
+        archive = self.root / "old Spanish.zip"
+        self.voice_bundle(archive, legacy)
+        with self.assertRaisesRegex(setup.SetupError, "Older language ZIPs"):
+            self.backend.install_spanish(archive)
+        self.assertEqual(self.snapshot(current), before)
+        # An Xbox repair keeps the original version untouched and never activates
+        # unrecognized old Spanish content in the new version.
+        repaired = self.install_disc()
+        self.assertEqual(self.snapshot(current), before)
+        self.assertFalse((repaired / "language/es").exists())
+        self.assertEqual(language_pack.selected(repaired), "es")
+        with self.assertRaisesRegex(setup.SetupError, "PS2 ISO import"):
+            self.backend.play()
+        self.backend.set_language("en")
+        with patch.object(self.backend, "prepare_shaders"), patch.object(setup.subprocess, "Popen") as launch:
+            launch.return_value.wait.return_value = 0
+            self.backend.play()
+            launch.assert_called_once()
+
+    def test_no_bundled_spanish_and_old_text_only_is_not_admitted(self):
+        current, legacy, ps2, iso = self.spanish_variants()
+        # Stale files accidentally left beside a newer launcher cannot restore
+        # the discontinued built-in or ZIP-import paths.
+        folder = self.payload / "language/es"
+        folder.mkdir(parents=True)
+        (folder / "language_text.bin").write_bytes(legacy["language_text.bin"])
+        for name in ("spanish-catalog.json", "spanish-text-catalog.json"):
+            (self.payload / name).write_text(json.dumps(dict(schema_version=1, language="es", files={
+                "language_text.bin": dict(size=len(legacy["language_text.bin"]), sha256=sha(legacy["language_text.bin"]))})))
         self.repin()
         self.backend = setup.Setup(self.package, self.install, notify=lambda *a, **k: None)
-        first = self.install_disc()
-        before = (first / "assets/packfile.pck").read_bytes()
-        self.assertEqual(self.backend.status()["language"], "en")
-        with self.assertRaisesRegex(setup.SetupError, "Spanish language pack needs repair"):
+        fresh = self.install_disc()
+        self.assertFalse((fresh / "language/es").exists())
+        self.assertFalse(self.backend.status()["spanish_installed"])
+        self.install_old_spanish(fresh, {"language_text.bin": legacy["language_text.bin"]})
+        before = self.snapshot(fresh)
+        with self.assertRaisesRegex(setup.SetupError, "PS2 ISO import"):
             self.backend.set_language("es")
-        archive = self.root / "spanish.zip"
-        with zipfile.ZipFile(archive, "w") as stream:
-            for name, data in files.items():
-                stream.writestr(name, data)
-        self.assertTrue(self.backend.install_spanish(archive)["spanish_installed"])
-        self.assertEqual(self.backend.set_language("es")["language"], "es")
-        self.assertEqual((first / "assets/packfile.pck").read_bytes(), before)
-        second = self.install_disc()
-        self.assertNotEqual(first, second)
-        self.assertTrue(self.backend.status()["spanish_installed"])
-        self.assertEqual(self.backend.status()["language"], "es")
-        saved = self.snapshot(second)
+        self.assertEqual(self.snapshot(fresh), before)
+        self.assertEqual(self.backend.set_language("en")["language"], "en")
+
+    def test_ps2_spanish_reimport_copy_failure_preserves_previous_version(self):
+        current, legacy, ps2, iso = self.spanish_variants()
+        self.install_old_spanish(current, ps2)
+        language_pack.select(current, "es")
+        before = self.snapshot(current)
         real_copy = self.backend.copy_file
         def fail_media(source, destination):
             if str(destination).replace("\\", "/").endswith("language/es/assets/audioDlg.pck"):
@@ -287,94 +324,152 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
             return real_copy(source, destination)
         with patch.object(self.backend, "copy_file", side_effect=fail_media):
             repaired = self.install_disc()
+        self.assertEqual(self.snapshot(current), before)
         self.assertFalse((repaired / "language/es").exists())
-        self.assertEqual(self.snapshot(second), saved)
         self.assertTrue(self.backend.status()["ready"])
         self.assertFalse(self.backend.status()["spanish_installed"])
-        self.backend.install_spanish(archive)
-        second = repaired
-        (second / "language/es/language_text.bin").write_bytes(b"x" * len(text))
-        with self.assertRaisesRegex(setup.SetupError, "Spanish language pack needs repair"):
-            self.backend.play()
-        self.backend.verify()
-        self.assertIn("Spanish", self.backend.hd_warning)
-        self.assertTrue(self.backend.status()["ready"])
         self.backend.set_language("en")
-        self.assertEqual(language_pack.selected(second), "en")
 
-    def test_builtin_spanish_clean_import_upgrade_optional_voices_and_repair(self):
-        # Start with an older English installation, then add the new launcher payload.
-        old = self.install_disc()
-        settings = old / setup.SETTINGS
-        settings.write_text('[controls]\nsensitivity=1.7\n', encoding="utf-8")
-        (old / "hdd").mkdir()
-        (old / "hdd/save.bin").write_bytes(b"user progress")
-        text = b"DWES0003 translated fixture"
-        location = self.payload / "language/es/language_text.bin"
-        location.parent.mkdir(parents=True)
-        location.write_bytes(text)
-        text_catalog = dict(schema_version=1, language="es", files={
-            "language_text.bin": dict(size=len(text), sha256=sha(text))})
-        (self.payload / "spanish-text-catalog.json").write_text(json.dumps(text_catalog))
-        voices = {"language_text.bin": b"older private text", "assets/audioDlg.pck": b"optional voice fixture"}
-        (self.payload / "spanish-catalog.json").write_text(json.dumps(dict(schema_version=1, language="es", files={
-            name: dict(size=len(data), sha256=sha(data)) for name, data in voices.items()})))
+    @staticmethod
+    def install_old_spanish(current, files):
+        for name, data in files.items():
+            target = current / "language/es" / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+
+    def spanish_variants(self):
+        current = self.install_disc()
+        text = b"DWES0003 generated PS2 fixture"
+        legacy = {"language_text.bin": b"older text", "assets/audioDlg.pck": b"older compatible voices"}
+        ps2 = {"language_text.bin": text, "assets/audioDlg.pck": b"verified PS2 converted voice fixture",
+               "assets/Movies1.pck": b"verified compatible movie fixture"}
+        (self.payload / "ps2-spanish-catalog.json").write_text(json.dumps(dict(schema_version=1, language="es", files={
+            key: dict(size=len(data), sha256=sha(data)) for key, data in ps2.items()})))
+        (self.payload / "ps2_spanish.py").write_text("# Converter boundary is controlled in these transaction tests.\n")
         self.repin()
         self.backend = setup.Setup(self.package, self.install, notify=lambda *a, **k: None)
-        state = self.backend.status()
-        self.assertTrue(state["spanish_installed"])
-        self.assertFalse(state["spanish_audio_installed"])
-        self.assertFalse((old / "language/es/language_text.bin").exists())
-        self.assertEqual(self.backend.set_language("es")["language"], "es")
-        self.assertEqual((old / "language/es/language_text.bin").read_bytes(), text)
-        self.assertIn("sensitivity=1.7", settings.read_text())
-        before = settings.read_bytes()
-        with patch.object(setup, "game_running", return_value=True), self.assertRaises(setup.SetupError):
-            self.backend.set_language("en")
-        self.assertEqual(settings.read_bytes(), before)
-        archive = self.root / "voices.zip"
-        with zipfile.ZipFile(archive, "w") as stream:
-            for name, data in voices.items():
-                stream.writestr(name, data)
-        self.assertTrue(self.backend.install_spanish(archive)["spanish_audio_installed"])
-        self.assertEqual((old / "language/es/language_text.bin").read_bytes(), text)
-        self.assertTrue(self.backend.spanish_valid(old))
+        iso = self.root / "PS2 Español 🦇.ISO"
+        iso.write_bytes(b"synthetic PS2 source; converter tested separately")
+        return current, legacy, ps2, iso
+
+    @staticmethod
+    def voice_bundle(path, files):
+        with zipfile.ZipFile(path, "w") as bundle:
+            for name, data in files.items():
+                bundle.writestr(name, data)
+
+    def test_ps2_spanish_atomic_replacement_preserves_text_settings_and_saves(self):
+        current, legacy, ps2, iso = self.spanish_variants()
+        old_zip = self.root / "legacy voices.zip"
+        self.voice_bundle(old_zip, legacy)
+        self.install_old_spanish(current, legacy)
+        settings = current / setup.SETTINGS
+        settings.write_text('[controls]\nsensitivity=1.7\n[language]\ntext="en"\n')
+        (current / "hdd").mkdir()
+        (current / "hdd/save.bin").write_bytes(b"solo progress")
+        (current / "hdd2").mkdir()
+        (current / "hdd2/save.bin").write_bytes(b"coop progress")
+        original_assets, original_settings = self.snapshot(current / "assets"), settings.read_bytes()
+        calls = []
+        def prepare(source, assets, output, cancel, notify):
+            calls.append((source, assets, output))
+            cancel()
+            self.assertEqual(source, iso)
+            self.assertEqual(assets, current / "assets")
+            self.assertEqual(output.parent.parent, self.install)
+            self.voice_bundle(output, ps2)
+        with patch.dict(sys.modules, {"ps2_spanish": SimpleNamespace(prepare=prepare)}):
+            result = self.backend.install_spanish(iso)
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(calls[0][2].parent.exists())
+        self.assertTrue(result["spanish_audio_installed"])
+        self.assertEqual(result["language"], "en")
+        self.assertTrue(self.backend.spanish_valid(current))
+        self.assertEqual(settings.read_bytes(), original_settings)
+        self.assertEqual(self.snapshot(current / "assets"), original_assets)
+        self.assertEqual(iso.read_bytes(), b"synthetic PS2 source; converter tested separately")
+        self.backend.set_language("es")
+        self.assertEqual(self.backend.verify(), current)
         repaired = self.install_disc()
         self.assertTrue(self.backend.spanish_valid(repaired))
-        self.assertEqual(language_pack.selected(repaired), "es")
-        self.assertEqual((repaired / "hdd/save.bin").read_bytes(), b"user progress")
-        self.assertEqual((repaired / "language/es/assets/audioDlg.pck").read_bytes(), voices["assets/audioDlg.pck"])
-        self.assertEqual(settings.read_bytes(), before)
-        # A saved Spanish preference with the old, incompatible V2 resource is
-        # repaired before Play without resetting saves, controls, or voices.
-        translated = repaired / "language/es/language_text.bin"
-        translated.write_bytes(b"DWES0002 older translated fixture")
-        saved_settings = (repaired / setup.SETTINGS).read_bytes()
-        self.assertFalse(self.backend.text_catalog.validate(repaired))
-        with patch.object(self.backend, "prepare_shaders"), patch.object(setup.subprocess, "Popen") as launch:
-            launch.return_value.wait.return_value = 0
-            self.backend.play()
-            launch.assert_called_once()
-        self.assertEqual(translated.read_bytes(), text)
-        self.assertEqual((repaired / setup.SETTINGS).read_bytes(), saved_settings)
-        self.assertEqual((repaired / "hdd/save.bin").read_bytes(), b"user progress")
-        self.assertEqual((repaired / "language/es/assets/audioDlg.pck").read_bytes(), voices["assets/audioDlg.pck"])
-        # Corrupt media cannot be admitted just because the built-in text is valid.
-        media = repaired / "language/es/assets/audioDlg.pck"
-        media.write_bytes(b"x" * len(voices["assets/audioDlg.pck"]))
-        with self.assertRaisesRegex(setup.SetupError, "Spanish language pack needs repair"):
-            self.backend.play()
+        self.assertEqual(self.backend.status()["language"], "es")
+        self.assertEqual((repaired / "language/es/assets/audioDlg.pck").read_bytes(), ps2["assets/audioDlg.pck"])
+        self.assertEqual((repaired / "language/es/assets/Movies1.pck").read_bytes(), ps2["assets/Movies1.pck"])
+        self.assertEqual((repaired / "hdd/save.bin").read_bytes(), b"solo progress")
+        self.assertEqual((repaired / "hdd2/save.bin").read_bytes(), b"coop progress")
+        self.assertEqual(self.snapshot(repaired / "assets"), original_assets)
         self.backend.set_language("en")
+        movie = repaired / "language/es/assets/Movies1.pck"
+        movie.write_bytes(b"x" * len(ps2["assets/Movies1.pck"]))
+        self.assertFalse(self.backend.spanish_valid(repaired))
+        with self.assertRaisesRegex(setup.SetupError, "PS2 ISO import"):
+            self.backend.set_language("es")
         self.assertEqual(language_pack.selected(repaired), "en")
-        # A fresh import also includes text without importing an optional archive.
-        fresh = setup.Setup(self.package, self.root / "fresh", notify=lambda *a, **k: None)
-        installed = Path(fresh.import_iso(self.iso)["install_dir"])
-        self.assertTrue(fresh.spanish_valid(installed))
-        self.assertTrue(fresh.status()["spanish_installed"])
-        self.assertFalse(fresh.status()["spanish_audio_installed"])
-        location.write_bytes(b"x" * len(text))
-        with self.assertRaisesRegex(setup.SetupError, "Built-in Spanish text is damaged"):
+        # The replaced community files remain in an inactive backup.
+        backups = list((current / "language").glob(".spanish-stage-*-previous"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(self.snapshot(backups[0]), legacy)
+        with self.assertRaisesRegex(setup.SetupError, "Older language ZIPs"):
+            self.backend.install_spanish(old_zip)
+
+    def test_ps2_spanish_failures_do_not_replace_previous_media(self):
+        current, legacy, ps2, iso = self.spanish_variants()
+        archive = self.root / "legacy.zip"
+        self.voice_bundle(archive, legacy)
+        self.install_old_spanish(current, legacy)
+        language_pack.select(current, "es")
+        before = self.snapshot(current)
+        def malformed(source, assets, output, cancel, notify):
+            self.voice_bundle(output, dict(ps2, **{"assets/audioDlg.pck": b"x" * len(ps2["assets/audioDlg.pck"])}))
+        def unlisted(source, assets, output, cancel, notify):
+            self.voice_bundle(output, dict(ps2, **{"assets/Movies4.pck": b"unverified extra movie"}))
+        def old_text(source, assets, output, cancel, notify):
+            self.voice_bundle(output, dict(ps2, **{"language_text.bin": b"x" * len(ps2["language_text.bin"])}))
+        def unsupported(*args):
+            raise ValueError("Unsupported PS2 disc revision")
+        def cancelled(source, assets, output, cancel, notify):
+            self.voice_bundle(output, ps2)
+            raise setup.Cancelled("Cancelled")
+        for prepare in (malformed, unlisted, old_text, unsupported, cancelled):
+            with self.subTest(prepare=prepare.__name__), patch.dict(sys.modules, {"ps2_spanish": SimpleNamespace(prepare=prepare)}):
+                with self.assertRaises(ValueError):
+                    self.backend.install_spanish(iso)
+            self.assertEqual(self.snapshot(current), before)
+            self.assertFalse(list(self.install.glob(".spanish-ps2-*")))
+        def valid(source, assets, output, cancel, notify):
+            self.voice_bundle(output, ps2)
+        with patch.dict(sys.modules, {"ps2_spanish": SimpleNamespace(prepare=valid)}), \
+             patch.object(setup, "require_closed", side_effect=(None, setup.SetupError("Close Darkwatch"))):
+            with self.assertRaisesRegex(setup.SetupError, "Close Darkwatch"):
+                self.backend.install_spanish(iso)
+        self.assertEqual(self.snapshot(current), before)
+        self.assertFalse(list(self.install.glob(".spanish-ps2-*")))
+        with patch.object(self.backend, "ps2_language_catalog", None), self.assertRaisesRegex(setup.SetupError, "does not support"):
+            self.backend.install_spanish(iso)
+        self.assertEqual(self.snapshot(current), before)
+
+    def test_ps2_spanish_pins_and_space_gate_conversion_and_reimport(self):
+        current, legacy, ps2, iso = self.spanish_variants()
+        before = self.snapshot(current)
+        usage = shutil._ntuple_diskusage(total=128 * 1024 ** 2, used=0, free=128 * 1024 ** 2)
+        with patch.object(shutil, "disk_usage", return_value=usage), self.assertRaisesRegex(setup.SetupError, "free space"):
+            self.backend.install_spanish(iso)
+        self.assertEqual(self.snapshot(current), before)
+        base = sum(f["size"] for f in self.backend.assets) + sum(size for size, _ in characters.INSTALLED.values()) + 512 * 1024 ** 2
+        self.install_old_spanish(current, legacy)
+        before = self.snapshot(current)
+        ps2_size = sum(row["size"] for row in self.backend.ps2_language_catalog.files.values())
+        usage = shutil._ntuple_diskusage(total=base + ps2_size - 1, used=0, free=base + ps2_size - 1)
+        with patch.object(shutil, "disk_usage", return_value=usage), self.assertRaisesRegex(setup.SetupError, "free space"):
+            self.install_disc()
+        self.assertEqual(self.backend.active(), current)
+        catalog = self.payload / "ps2-spanish-catalog.json"
+        catalog.write_bytes(catalog.read_bytes() + b" ")
+        with self.assertRaisesRegex(setup.SetupError, "PS2 Spanish catalog is damaged"):
             setup.Setup(self.package, self.install)
+        with self.assertRaisesRegex(setup.SetupError, "Launcher file is damaged"):
+            self.backend.install_spanish(iso)
+        self.assertEqual(self.snapshot(current), before)
 
     def test_portable_package_moves_with_saves_and_launches_only_from_new_folder(self):
         current = self.install_disc()

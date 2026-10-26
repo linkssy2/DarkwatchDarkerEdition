@@ -34,6 +34,20 @@ def _unique(dependencies):
     return [rows[key] for key in sorted(rows)]
 
 
+def _trooper_locators(player, multiplayer, coop):
+    """Keep the grip authored for the Trooper body used by our player clips."""
+    result = copy.deepcopy(player)
+    lookup = {row['attributes']['name']: row for row in multiplayer['children']}
+    # The generic multiplayer grip is turned sideways relative to this rig's
+    # co-op animations. Solo animations are also retargeted to this same rig.
+    lookup['loc_RightHand'] = art.child(coop, 'loc_RightHand')
+    for index, row in enumerate(result['children']):
+        replacement = lookup.get(row['attributes']['name'])
+        if replacement is not None:
+            result['children'][index] = copy.deepcopy(replacement)
+    return result
+
+
 def _hands(original, tala):
     """Transfer Tala's original arms/UVs onto the existing articulated POV rig."""
     source, target = skin._geometry(tala, 0), skin._geometry(original, 0)
@@ -228,9 +242,15 @@ def prepare(source, groups, extension, spectral):
         ('tala', TALA + '.rx1'),
     )
     for character, model in targets:
-        added, _, _ = animation.prepare(read, art.decode, art.encode, model, character)
+        label = {'civilianjericho': 'Civilian Jericho', 'trooper': 'Trooper',
+                 'colortrooper': 'Blue and Red Troopers', 'tala': 'Tala'}[character]
+        added, _, _ = animation.prepare(
+            read, art.decode, art.encode, model, character, cancel=source.cancel,
+            progress=lambda message, label=label: source.report(f'Preparing {label} {message}'))
         outputs.update(added)
+    source.report('Preparing Tala first-person hands...')
     outputs[TALA_HANDS + '.rx1'] = _hands(read(rw.SOURCE), read(TALA + '.rx1'))
+    source.cancel()
     for ext in ('jlist', 'llist', 'bllist'):
         outputs[TALA_HANDS + '.' + ext] = read('characters/player_first/base_pov_chaz.' + ext)
     # Blue/red share their own bind basis; the standard trooper differs.
@@ -246,6 +266,7 @@ def prepare(source, groups, extension, spectral):
     for identity in (5, 6):
         outputs[ROSTER[identity][1] + '.jlist'] = read('characters/multiplayer/base_dwstormtrooper.jlist')
     for identity, (prefix, model, hand_model) in ROSTER.items():
+        source.report(f'Preparing player equipment: {identity - 2}/{len(ROSTER)}')
         joints = set(resource(model + '.jlist').decode('ascii').split())
         chaz = art.decode(read('characters/player_third/base_chaz.bllist'))
         coop = art.decode(read('characters/multiplayer/base_dwstormtrooper_coop.bllist'))
@@ -254,17 +275,14 @@ def prepare(source, groups, extension, spectral):
         elif identity in (4, 5, 6):
             npc = art.decode(read('characters/multiplayer/base_dwstormtrooper.bllist'))
         for solo in (True, False):
+            source.cancel()
             player, hand_name, locator = _actor(original, identity, solo)
             if identity == 7:
                 loc = art.solo_locators(chaz, npc) if solo else art.adapt_locators(coop, npc)
             elif identity == 3:
                 loc = chaz if solo else art.jericho_locators(chaz, coop, joints)
             else:
-                loc = copy.deepcopy(chaz if solo else coop)
-                lookup = {row['attributes']['name']: row for row in npc['children']}
-                for i, row in enumerate(loc['children']):
-                    if row['attributes']['name'] in lookup:
-                        loc['children'][i] = copy.deepcopy(lookup[row['attributes']['name']])
+                loc = _trooper_locators(chaz if solo else coop, npc, coop)
             if any((row['attributes']['parent'] not in joints | {'ORIGIN'} for row in loc['children'])):
                 raise ValueError('Missing character attachment bone')
             outputs[locator + '.bllist'] = art.encode(loc)
@@ -301,11 +319,14 @@ def prepare(source, groups, extension, spectral):
     choices = [(identity,) for identity in ROSTER]
     choices += [pair for pair in itertools.combinations_with_replacement(range(8), 2)
                 if max(pair) >= 3]
-    for path in resources:
+    source.report(f'Preparing campaign character combinations: 0/{len(resources)} areas')
+    for completed, path in enumerate(resources, 1):
+        source.cancel()
         tree = art.decode(read(path))
         audio_path = path.replace('/streaming/', '/resources/audio/').replace('_resources', '')[:-5] + '.bblf'
         audio = art.decode(read(audio_path))
         for pair in choices:
+            source.cancel()
             tag = suffix(pair)
             # Two-player sessions can resolve either native player-template alias.
             modes = (True,) if len(pair) == 1 else (True, False)
@@ -317,4 +338,5 @@ def prepare(source, groups, extension, spectral):
             owner = source.metadata['sources'][audio_path]['archive']
             result.setdefault(owner, {})[audio_path[:-5] + '_' + tag + '.bblf'] = (
                 art.encode(_voice_banks(audio, pair)))
+        source.report(f'Preparing campaign character combinations: {completed}/{len(resources)} areas')
     return result, families

@@ -245,6 +245,17 @@ void DarkwatchCharacterResourceHeap(X86Context& ctx, uint8_t* base) {
     Write(base, ctx.esp, uint32_t(1024 * 1024));
 }
 
+void DarkwatchStringHeap(X86Context& ctx, uint8_t* base) {
+    uint32_t bytes, caller, initial[3];
+    if (base != kernel::g_base || ctx.ecx != 0x4B79F8 || ctx.esi != ctx.ecx || ctx.eax ||
+        !Read(base, ctx.esp, bytes) || bytes != 0xC8000 ||
+        !Read(base, uint64_t(ctx.esp) + 8, caller) || caller != 0x217D03 ||
+        !Read(base, ctx.esi, initial) ||
+        std::any_of(std::begin(initial), std::end(initial), [](uint32_t v) { return v != 0; })) return;
+    // Expanded content exceeds the original string pool during native table rehash.
+    Write(base, ctx.esp, uint32_t(2 * 1024 * 1024));
+}
+
 void DarkwatchCharacterMissionEnd(X86Context& ctx, uint8_t* base) {
     if (ctx.ecx == owner) Reset(ctx, base);
 }

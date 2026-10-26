@@ -89,11 +89,12 @@ class LinuxLauncherTests(unittest.TestCase):
         self.assertEqual(linux.steam_tools(self.steam), tuple(p.resolve() for p in self.tools))
 
     def test_spanish_install_and_language_value_are_forwarded(self):
-        archive = self.root / "Español.zip"
-        archive.write_bytes(b"fixture")
         popen, _ = self.action_patches(Process([dict(event="result", ready=True, language="es")]))
-        self.assertEqual(linux.run_action(self.root, self.tools, "--install-spanish", archive, lambda _: None), 0)
-        self.assertEqual(popen.call_args.args[0][-2:], ["--install-spanish", WINE_PATH(linux_spelling(archive))])
+        disc = self.root / "PS2 Español's disc.iso"
+        disc.write_bytes(b"fixture")
+        popen.return_value = Process([dict(event="result", ready=True, language="es")])
+        self.assertEqual(linux.run_action(self.root, self.tools, "--install-spanish", disc, lambda _: None), 0)
+        self.assertEqual(popen.call_args.args[0][-2:], ["--install-spanish", WINE_PATH(linux_spelling(disc))])
         popen.return_value = Process([dict(event="result", ready=True, language="es")])
         self.assertEqual(linux.run_action(self.root, self.tools, "--set-language", "es", lambda _: None), 0)
         self.assertEqual(popen.call_args.args[0][-2:], ["--set-language", "es"])
@@ -189,12 +190,12 @@ class LinuxLauncherTests(unittest.TestCase):
                 popen.assert_called_once()
                 self.assertEqual(popen.call_args.args[0][-1], action)
 
-    def test_status_distinguishes_included_spanish_text_from_optional_voices(self):
+    def test_status_reports_installed_spanish_resources(self):
         self.action_patches(Process([dict(event="status", message="Ready", ready=True,
-                                         language="es", spanish_installed=True, spanish_audio_installed=False)]))
+                                         language="es", spanish_installed=True, spanish_audio_installed=True)]))
         messages = []
         self.assertEqual(linux.run_action(self.root, self.tools, "--status", output=messages.append), 0)
-        self.assertIn("Language: es. Spanish text: available. Spanish voices: not installed.", messages[-1])
+        self.assertIn("Language: es. Spanish text: available. Spanish voices: installed.", messages[-1])
 
     def test_process_failure_and_missing_terminal_event_fail(self):
         for process in (Process([], 0), Process([{"event": "progress", "message": "Wait"}], 0),

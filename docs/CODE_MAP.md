@@ -77,8 +77,7 @@ release profile compiles out their recording paths; bounded fatal reports remain
 
 Player 2 pause navigation and Apply follow the pausing player's controller/profile.
 The five original layouts remain presets; per-player controller rebinding adds editable physical-button mappings.
-HUD spacing and Player 2 ownership were accepted in tested co-op scenes; profile
-persistence after a complete process restart still needs an independent check.
+HUD spacing and Player 2 ownership were accepted in tested co-op scenes; selected co-op settings and separate solo/co-op storage were verified through a cold restart. Full-campaign progression remains unverified.
 
 ## Version 0.6 additions
 
@@ -90,4 +89,16 @@ persistence after a complete process restart still needs an independent check.
 | `save_profile_io.*`, `save_storage.*` | Read-only profile lookup, atomic writes and backup recovery. |
 | `coop_characters.*`, `character_preview.*`, `launcher/character_roster.py` | Two-player selection, local rotating previews and roster identities. |
 | `graphics_presentation.*`, `language.*`, `prompt_owner.*` | Final UI presentation, language selection and input ownership. |
-| `launcher/spanish_*.py`, `launcher/language/` | Pinned translation-only text, optional voice import and integrity checks. |
+| `launcher/ps2_*.py`, `ps2-spanish-catalog.json`, `ps2-spanish-corrections.json` | Reads the player’s supported PAL PS2 ISO and prepares Spanish text, dialogue and compatible movie audio locally; metadata and project-authored corrections only. |
+
+## Version 0.6.1
+
+Mounted-boss intro preparation covers both native sequence-start paths.
+The SDK audio mixer retains output-parent ownership, applies the native direction
+payload to discrete-speaker balance, and keeps explicit speaker sends separate.
+The public PCM tests cover these paths with synthetic data and negative controls.
+Original instruction-based witnesses remain private.
+
+Spanish conversion retains Xbox movie video and timestamps. Only matched audio
+slots are replaced; complete campaign synchronization still needs live review.
+No captured game media or generated original functions are exported.

@@ -12,6 +12,7 @@
 #include <vector>
 #include "app/app.h"
 #include "audio/audio.h"
+#include "common/audio_settings.h"
 #include "core/input.h"
 #include "core/log.h"
 #include "gpu/backend.h"
@@ -87,6 +88,7 @@ uint32_t g_open_options = 0, g_open_page = 0, g_open_pause_entry = 0;
 bool g_subtitles_draft = false;
 app::Settings g_draft, g_previous;
 view::Settings g_view_draft, g_view_previous;
+uint32_t g_view_player = 0;
 double g_confirm_until = 0;
 const char* g_notice = "";
 ImFont *g_body = nullptr, *g_title = nullptr;
@@ -179,7 +181,7 @@ const char* ActionDescription(unsigned action) {
 
 void Revert() {
     app::Apply(g_previous);
-    view::Apply(g_view_previous);
+    view::Apply(g_view_previous, g_view_player);
     app::ApplyDisplay();
     g_draft = g_previous;
     g_view_draft = g_view_previous;
@@ -272,14 +274,14 @@ void ReplaceBinding() {
 
 void ApplyChanges() {
     g_previous = app::Snapshot();
-    g_view_previous = view::Snapshot();
+    g_view_previous = view::Snapshot(g_view_player);
     g_draft = app::Normalize(g_draft);
     g_view_draft = view::Normalize(g_view_draft);
     bool display = g_previous.display_mode != g_draft.display_mode ||
         g_previous.width != g_draft.width || g_previous.height != g_draft.height ||
         g_previous.aspect_ratio != g_draft.aspect_ratio;
     app::Apply(g_draft);
-    view::Apply(g_view_draft);
+    view::Apply(g_view_draft, g_view_player);
     if (display) {
         app::ApplyDisplay();
         g_confirm = true;
@@ -997,6 +999,7 @@ void DarkwatchCoopSetupRefresh(uint8_t* base) {
 
 void DarkwatchGraphicsPad(int port, input::Pad& pad) {
     if (port == 0) {
+        darkwatch::SyncAudioDevice(mem::Base());
         darkwatch::EnsureDesktopQuitEntry(mem::Base());
         auto coop = darkwatch::QueryCoopSetup(mem::Base());
         std::array<CoopRequest, 2> coop_requests;
@@ -1173,7 +1176,8 @@ void DarkwatchGraphicsUi(double fps) {
         ImGui::GetIO().FontGlobalScale = 1 / g_font_scale;
         return;
     }
-    bool just_opened = !g_open || g_open_coop != g_coop || g_open_quit != g_quit || g_open_controls != g_controls || g_open_audio != g_audio || g_open_characters != g_characters || g_open_options != g_options ||
+    const uint32_t view_player = state.paused && state.input_port == 1 ? 1 : 0;
+    bool just_opened = !g_open || g_view_player != view_player || g_open_coop != g_coop || g_open_quit != g_quit || g_open_controls != g_controls || g_open_audio != g_audio || g_open_characters != g_characters || g_open_options != g_options ||
                        g_open_page != state.page || g_open_pause_entry != pause_entry;
     if (just_opened) {
         g_controller_layout = false;
@@ -1193,7 +1197,9 @@ void DarkwatchGraphicsUi(double fps) {
             g_character_preview_started = ImGui::GetTime();
             g_character_ready = false;
         }
-        g_view_draft = view::Snapshot();
+        // Roll back the previous page before freezing this pause owner's view.
+        g_view_player = view_player;
+        g_view_draft = view::Snapshot(g_view_player);
         const bool returning = g_return_controls_options && g_return_controls_options == g_options &&
                                g_return_controls_page == state.page;
         g_page_graphics = pause_entry == 1;
