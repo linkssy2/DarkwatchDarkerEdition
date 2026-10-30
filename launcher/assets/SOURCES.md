@@ -25,8 +25,8 @@ and encoded at standard Windows icon sizes for the launcher EXE.
 Darkwatch artwork and marks belong to their respective rights holders. Inclusion
 in this release does not mean these artworks are freely licensed.
 Original disc files, audio and movies are excluded from the launcher payload.
-The HD interface is prepared locally from the user's ISO. The optional HD gameplay
-texture pack is a separate download, installed through the launcher.
+Setup prepares the included HD interface using the user's verified disc. The
+optional gameplay HD texture pack is a separate download installed through the launcher.
 
 An additional clear-logo download was inspected but rejected for visible edge
 artifacts; it is not used or included in the launcher package.
@@ -47,3 +47,18 @@ The launcher combines these pixels with the importing player's original model;
 the original geometry, animation, audio, and modified game archives are not
 shipped. Character animation and archive conversion are performed locally from
 the verified disc, using the hash-only `character-catalog.json` manifest.
+
+## Regular Tala first-person repaint
+
+`tala-hands-1024.dds` and `tala-hands-256.dds` are a dedicated black-leather
+repaint fitted to the original first-person UV layout. The built-in image
+generator edited the project's authored Cassidy atlas using regular Tala's
+outfit as a style reference. The full prompt and image provenance are retained in the project records.
+The authored source PNG SHA256 is
+`3652d0615bea8f46f592f231324d3b9a663413c03a73f186d09a65c50a49b879`.
+Lanczos resizing and box-filtered DXT1 mip chains use the same encoding method
+as the Cassidy repaint. DDS SHA256 values are
+`0a129bc58ffe9639b0b9ff62c670380c36951d203f697aa7505a383fcb9b02b2`
+and `2036c65069474ce6cab9bcba9db9396e59a3146416f90b1df5d629c0e75d479d`.
+The user's disc supplies the unchanged first-person geometry, UVs, rig and
+animations during setup; no original model or converted archive is bundled.

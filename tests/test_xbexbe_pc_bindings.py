@@ -40,7 +40,7 @@ static unsigned HIWORD(uintptr_t p){return unsigned((p>>16)&0xFFFF);}
 static void NativeMouse(unsigned msg,uintptr_t wp){ NATIVE_MOUSE_BRIDGE }
 int main(){
  Init();SetActive(true);Frame();
- auto defaults=DefaultPcBindings();CHECK(defaults.size()==20&&Same(defaults,GetPcBindings()));
+ auto defaults=DefaultPcBindings();CHECK(defaults.size()==22&&Same(defaults,GetPcBindings()));
  CHECK(At(defaults,PcAction::A).keys[0]==0x20&&At(defaults,PcAction::A).keys[1]=='E');
  auto copy=GetPcBindings();At(copy,PcAction::A).keys[0]='Z';CHECK(Same(GetPcBindings(),defaults));
  Tap(0x20);Frame();CHECK(Poll(0).analog[0]==255);Frame();Tap('E');Frame();CHECK(Poll(0).analog[0]==255);
@@ -58,7 +58,7 @@ int main(){
  Key('V',true);Frame();Frame();CHECK(Poll(0).analog[0]==255);Key('V',false);Frame();CHECK(!Poll(0).analog[0]);
  // Invalid maps do not clamp, partially apply, clear held keys, or change mouse epochs.
  Key('Z',true);Frame();const auto epoch=GetMouseSnapshot().active_epoch;
- for(uint32_t bad:{257u,UINT32_MAX,0x70u,0x72u}){
+ for(uint32_t bad:{259u,UINT32_MAX,0x70u,0x72u}){
   auto invalid=changed;At(invalid,PcAction::A).keys[0]='N';At(invalid,PcAction::MoveRight).keys[0]=bad;
   CHECK(!SetPcBindings(invalid));CHECK(Same(GetPcBindings(),changed));
   CHECK(GetMouseSnapshot().active_epoch==epoch&&Poll(0).analog[0]==255);
@@ -124,6 +124,13 @@ int main(){
  auto wheel_y=defaults;At(wheel_y,PcAction::Y).keys[1]=kMouseWheel;CHECK(SetPcBindings(wheel_y));
  Wheel(-120);Frame();CHECK(!Poll(0).buttons&&Poll(0).analog[3]==255);
  Frame(150000);CHECK(!Poll(0).analog[3]); // Chieftain uses the same wheel pulse through its Y action.
+ // Direction-specific wheel bindings must still satisfy original held-action gates.
+ for(uint32_t wheel_key:{kMouseWheelUp,kMouseWheelDown}){
+  auto directional=defaults;At(directional,PcAction::DpadDown).keys[1]=wheel_key;CHECK(SetPcBindings(directional));
+  Wheel(wheel_key==kMouseWheelUp?120:-120);Frame();CHECK(Poll(0).buttons==2);
+  Frame(100001);CHECK(Poll(0).buttons==2);Frame(49999);CHECK(!Poll(0).buttons);
+  Wheel(wheel_key==kMouseWheelUp?-120:120);Frame();CHECK(!Poll(0).buttons);
+ }
  CHECK(SetPcBindings(defaults));
  // No PC action preserves the physical pad exactly; mapped actions merge on port0 only.
  fake_init=true;fake_count=2;fake_pads[0].buttons[SDL_GAMEPAD_BUTTON_BACK]=true;

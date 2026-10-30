@@ -31,6 +31,7 @@ static std::map<std::string,std::pair<int,int>> slider_ranges;
 static std::vector<std::string> rendered_text;
 static std::map<std::string,ImVec4> text_bounds;
 static std::map<std::string,ImVec4> text_clip_bounds;
+static std::map<std::string,float> text_font_sizes;
 static std::map<std::string,std::pair<float,float>> header_widths;
 static std::vector<std::pair<ImGuiID,ImVec4>> layout_rows;
 static std::map<std::string,std::vector<ImVec2>> repeated_buttons;
@@ -75,6 +76,7 @@ void ObservedEndChild(){
 void ObservedTextUnformatted(const char* text,const char* end=nullptr){
  rendered_text.emplace_back(text,end?size_t(end-text):std::strlen(text));TextUnformatted(text,end);
  auto a=GetItemRectMin(),b=GetItemRectMax();text_bounds[rendered_text.back()]={a.x,a.y,b.x,b.y};
+ text_font_sizes[rendered_text.back()]=GetFontSize();
 }
 void ObservedTextDisabled(const char* format,...){
  va_list args;va_start(args,format);va_list copy;va_copy(copy,args);
@@ -83,6 +85,7 @@ void ObservedTextDisabled(const char* format,...){
  if(std::string(text).starts_with("Active: "))active_msaa_text=text;
  TextDisabledV(format,args);va_end(args);
  auto a=GetItemRectMin(),b=GetItemRectMax();text_bounds[text]={a.x,a.y,b.x,b.y};
+ text_font_sizes[text]=GetFontSize();
  auto clip=GetCurrentWindow()->InnerClipRect;text_clip_bounds[text]={clip.Min.x,clip.Min.y,clip.Max.x,clip.Max.y};
 }
 void ObservedTableHeadersRow(){
@@ -97,7 +100,7 @@ bool ObservedCombo(const char* label,int* current,const char* items,int maximum=
  combo_disabled[label]=(GImGui->CurrentItemFlags&ImGuiItemFlags_Disabled)!=0;
  WidgetHighlightProbe highlight(label);
  auto p=GetCursorScreenPos();float width=CalcItemWidth(),height=GetFrameHeight();
- bool observe=record_combo_text&&(std::string(label)=="##fps"||std::string(label)=="##vsync"||std::string(label)=="##msaa"||std::string(label)=="##aniso"||std::string(label)=="##hd_ui"||std::string(label)=="##subtitles"||std::string(label)=="##cutscene_borders"||std::string(label)=="##hd_textures"||std::string(label)=="##player one character"||std::string(label)=="##player two character"||std::string(label)=="##sound output");
+ bool observe=record_combo_text&&(std::string(label)=="##carry all weapons"||std::string(label)=="##fps"||std::string(label)=="##vsync"||std::string(label)=="##msaa"||std::string(label)=="##aniso"||std::string(label)=="##hd_ui"||std::string(label)=="##subtitles"||std::string(label)=="##cutscene_borders"||std::string(label)=="##hd_textures"||std::string(label)=="##player one character"||std::string(label)=="##player two character"||std::string(label)=="##sound output");
  // A combo popup ends ImGui logging when it closes its window. Use the real
  // rendered-text file sink so that EndCombo cannot clear the observed options.
  if(observe){std::ofstream("fps-widget.log",std::ios::trunc).close();LogToFile(-1,"fps-widget.log");}
@@ -215,6 +218,10 @@ uint32_t TakePadCapture(){auto result=pad_capture_result;pad_capture_result=0;if
 DeviceSnapshot GetLastDevice(){return device;}
 ControllerFamily GetControllerFamily(int port){return port==0?connected_family:player_two_family;}
 void SetActive(bool value){active=value;}
+bool BindingKeysOverlap(uint32_t a,uint32_t b){
+ return a&&b&&(a==b||(a==kMouseWheel&&b>=kMouseWheel&&b<=kMouseWheelDown)||
+               (b==kMouseWheel&&a>=kMouseWheel&&a<=kMouseWheelDown));
+}
 }
 namespace darkwatch {
 static CoopSetupState coop_setup;
@@ -241,14 +248,14 @@ static ControlsSettings controls;
 static uint32_t capture_result=0;
 static bool capture_active=false;
 static unsigned controls_applies=0,original_applies=0,configure_calls=0,preset_applies=0;
-ControlsSettings ControlsDefaults(){ControlsSettings s;s.bindings[1].keys[0]='J';s.bindings[1].keys[1]='K';s.bindings[16].keys[0]='W';s.bindings[17].keys[0]='S';return s;}
+ControlsSettings ControlsDefaults(){ControlsSettings s;s.bindings[1].keys[0]='J';s.bindings[1].keys[1]='K';s.bindings[16].keys[0]='W';s.bindings[17].keys[0]='S';s.bindings[20].keys[0]=']';s.bindings[21].keys[0]='[';return s;}
 ControlsSettings ControlsSnapshot(){return controls;}
 bool ControlsApply(const ControlsSettings& s){controls=s;++controls_applies;return true;}
 void ControlsBeginCapture(){capture_active=true;capture_result=0;}
 void ControlsCancelCapture(){capture_active=false;capture_result=0;input::CancelPadCapture();}
 bool ControlsCapturing(){return capture_active;}
 uint32_t ControlsTakeCapture(){auto result=capture_result;capture_result=0;return result;}
-std::string ControlsKeyName(uint32_t key){return key==input::kMouseWheel?"Mouse Wheel":key?std::string(1,char(key)):"Unbound";}
+std::string ControlsKeyName(uint32_t key){return key==input::kMouseWheel?"Mouse Wheel":key==input::kMouseWheelUp?"Wheel Up":key==input::kMouseWheelDown?"Wheel Down":key?std::string(1,char(key)):"Unbound";}
 GraphicsRouteState QueryGraphicsMenuRoute(const uint8_t*){return route;}
 bool SetGraphicsSubtitles(uint8_t*,uint32_t expected,bool enabled){
  CHECK(expected==route.options);++subtitle_calls;route.subtitles=enabled;return true;
@@ -288,9 +295,10 @@ uint32_t TakeNativePauseEntry(uint8_t*,uint32_t expected){
 }
 }
 static double fixture_fps=60;
+static ImVec2 fixture_display={1280,720};
 static void Frame(float elapsed=1.f/60){
  rendered_text.clear();layout_rows.clear();repeated_buttons.clear();darkwatch::preview::frame_characters.clear();
- auto& io=ImGui::GetIO();io.DeltaTime=elapsed;io.DisplaySize={1280,720};
+ auto& io=ImGui::GetIO();io.DeltaTime=elapsed;io.DisplaySize=fixture_display;
  ImGui::NewFrame();DarkwatchGraphicsUi(fixture_fps);ImGui::Render();
 }
 static void CheckNavigationOutline(const char* context){
@@ -334,7 +342,7 @@ static void ClickLayoutRow(unsigned row){
  Click((r.x+r.z)/2,(r.y+r.w)/2);Frame();
 }
 static void SelectFps(bool enabled){
- CHECK(field_bounds.count("##fps")&&field_bounds["##fps"].z-field_bounds["##fps"].x>400);
+ CHECK(field_bounds.count("##fps")&&field_bounds["##fps"].z-field_bounds["##fps"].x>400*ImGui::GetIO().FontGlobalScale*g_font_scale);
  ClickField("##fps",.9f);Frame();
  CHECK(combo_text["##fps"].find("Off")!=std::string::npos&&combo_text["##fps"].find("On")!=std::string::npos);
  auto* popup=ImGui::FindWindowByName("##Combo_00");CHECK(popup&&popup->Active);
@@ -345,7 +353,7 @@ static void SelectFps(bool enabled){
  CHECK(!ImGui::IsPopupOpen(nullptr,ImGuiPopupFlags_AnyPopupId|ImGuiPopupFlags_AnyPopupLevel));
 }
 static void SelectQuality(const char* label,int index,const char* visible){
- CHECK(field_bounds.count(label)&&field_bounds[label].z-field_bounds[label].x>400);
+ CHECK(field_bounds.count(label)&&field_bounds[label].z-field_bounds[label].x>400*ImGui::GetIO().FontGlobalScale*g_font_scale);
  ClickField(label,.9f);Frame();
  if(std::string(label)!="##cap")CHECK(combo_text[label].find(visible)!=std::string::npos);
  auto* popup=ImGui::FindWindowByName("##Combo_00");CHECK(popup&&popup->Active);
@@ -492,21 +500,26 @@ int main(){
 
  // Labels follow the actual original preset; Lefty maps the left stick to looking.
  CHECK(!std::strcmp(ActionName(8),"INTERACT")&&!std::strcmp(ActionName(7),"SIGHT MODE"));
- CHECK(!std::strcmp(ActionName(0),"D-PAD UP")&&!std::strcmp(ActionName(1),"SWITCH WEAPONS"));
+ CHECK(!std::strcmp(ActionName(0),"SWITCH GRENADES")&&!std::strcmp(ActionName(1),"SWITCH WEAPONS"));
  constexpr const char* face[][4]={{"INTERACT","RELOAD","MELEE","JUMP"},{"JUMP","MELEE","RELOAD","SWITCH WEAPONS"},
   {"INTERACT","MELEE","RELOAD","THROW"},{"INTERACT","MELEE","RELOAD","THROW"},{"INTERACT","JUMP","THROW","RELOAD"}};
  for(int preset=0;preset<5;++preset){g_original_draft.controller_preset=preset;
   for(unsigned action=8;action<12;++action)CHECK(!std::strcmp(ActionName(action),face[preset][action-8]));
   CHECK(!std::strcmp(ActionName(16),preset==2?"LOOK UP":"MOVE FORWARD"));
   CHECK(std::strlen(ActionDescription(16))>10);
+  const auto grenades=preset==1?1u:0u;
+  CHECK(!std::strcmp(ActionName(grenades),"SWITCH GRENADES"));
+  CHECK(!std::strcmp(ActionDescription(grenades),"Switch between Dynamite and Splitter Grenades."));
+  if(preset==1)CHECK(!std::strcmp(ActionName(0),"POWER SELECTION"));
   auto cycle=preset==1?11u:1u;
   CHECK(!std::strcmp(ActionName(cycle),"SWITCH WEAPONS"));
   CHECK(!std::strcmp(ActionDescription(cycle),"Swap between your carried weapons."));
   Frame();CHECK(std::count(rendered_text.begin(),rendered_text.end(),"SWITCH WEAPONS")==1);
+  CHECK(std::count(rendered_text.begin(),rendered_text.end(),"SWITCH GRENADES")==1);
   CHECK(std::find(rendered_text.begin(),rendered_text.end(),ActionDescription(cycle))!=rendered_text.end());}
  g_original_draft.controller_preset=2;CHECK(!std::strcmp(ActionName(6),"SIGHT MODE")&&!std::strcmp(ActionName(7),"CROUCH"));
  g_original_draft.controller_preset=-1;CHECK(!std::strcmp(ActionName(16),"LEFT STICK UP")&&!std::strcmp(ActionName(8),"A BUTTON"));
- CHECK(!std::strcmp(ActionName(1),"D-PAD DOWN"));
+ CHECK(!std::strcmp(ActionName(0),"D-PAD UP")&&!std::strcmp(ActionName(1),"D-PAD DOWN"));
  Frame();CHECK(std::find(rendered_text.begin(),rendered_text.end(),"SWITCH WEAPONS")==rendered_text.end());
  CHECK(button_centers["J"].y==button_centers["K"].y&&button_centers["J"].x<button_centers["K"].x);
  // Chieftain's cycle action is Y, so both binding widgets must address physical slot 11.
@@ -793,7 +806,7 @@ PLAYER_TWO_COVERAGE = r'''
   ClickNamed("APPLY");Poll();PollTwo();Frame();
   CHECK(route.invert&&!route.vibration&&route.sensitivity==8&&route.controller_preset==2);
   CHECK(darkwatch::original_applies==original_before+1&&darkwatch::preset_applies==presets_before+1);
-  CHECK(darkwatch::controls_applies==applies_before&&saves==saves_before+1);
+  CHECK(darkwatch::controls_applies==applies_before+1&&saves==saves_before+1);
   CHECK(!std::memcmp(&darkwatch::controls,&pc_before,sizeof(pc_before)));
   // Cancel a fresh edit: no native setter, no PC settings write, Back on P2 only.
   g_original_draft.sensitivity=2;g_original_draft.controller_preset=4;
@@ -801,7 +814,7 @@ PLAYER_TWO_COVERAGE = r'''
   two=PollTwo(0,0,255);CHECK(two.analog[1]==255);
   route.route=darkwatch::GraphicsMenuRoute::OptionsMain;Poll();PollTwo();Poll();PollTwo();Frame();Frame();
   CHECK(!g_open&&!g_leave&&!g_block_release&&route.sensitivity==8&&route.controller_preset==2);
-  CHECK(darkwatch::original_applies==original_before+1&&darkwatch::controls_applies==applies_before);
+  CHECK(darkwatch::original_applies==original_before+1&&darkwatch::controls_applies==applies_before+1);
  }
  // Main-menu Options returns to player-one navigation and PC binding controls.
  route={};route.route=darkwatch::GraphicsMenuRoute::Controls;route.options=0x422200;route.page=0x422300;
@@ -836,7 +849,7 @@ int main(){
   const auto other=input::maps[1-port];const auto pc=darkwatch::controls;
   const auto applied=input::pad_applies,saved=saves;
   ClickNamed("CONTROLLER LAYOUT...",port==0);Frame();CHECK(g_controller_layout&&g_layout_family==family);
-  CHECK(layout_rows.size()==18);
+  CHECK(layout_rows.size()==20);
   ClickLayoutRow(0);CHECK(g_pad_capture_action==8&&input::pad_capture&&input::pad_owner==int(port));
   // B is a valid gameplay binding and must not also close the layout.
   input::pad_capture_result=10;io.AddKeyEvent(ImGuiKey_GamepadFaceRight,true);Frame();
@@ -892,14 +905,26 @@ int main(){
  // The Audio page remains usable on stereo hardware, with an explicit capability hint.
  audio::surround_available=false;Frame();
  CHECK(std::find(rendered_text.begin(),rendered_text.end(),"Surround unavailable. Set up 5.1 or 7.1 speakers, then restart.")!=rendered_text.end());
- // Pause's nested Audio page keeps the outer Graphics draft and returns without a native page pop.
- hidden();route.route=darkwatch::GraphicsMenuRoute::Controls;route.paused=true;route.options=0x622200;route.page=0x622300;
- route.controls_available=true;route.audio_available=true;route.audio={60,50,40};
- darkwatch::native_pause_owner=route.options;darkwatch::native_pause_entry=1;Poll();Frame();Frame();CHECK(g_page_graphics);
- g_draft.render_percent=125;ClickNamed("AUDIO...",true);Frame();CHECK(g_pause_audio&&g_open&&!g_leave);
- ClickField("##music",.3f);ClickNamed("APPLY");Poll();Frame();CHECK(route.audio.music>20&&route.audio.music<40);
- ClickNamed("BACK");Frame();CHECK(g_open&&!g_pause_audio&&!g_leave&&g_page_graphics&&g_draft.render_percent==125);
- std::puts("PASS real ImGui Audio: mouse sliders/output, deferred Apply, defaults/discard, save/native failures, stale owner, stereo fallback, nested Pause return");
+ // Audio is a separate native pause entry, for either owner, with a normal page pop on Back.
+ for(unsigned port:{0u,1u}){
+  hidden();route.route=darkwatch::GraphicsMenuRoute::Controls;route.paused=true;route.options=0x622200+port*0x1000;route.page=route.options+0x100;
+  route.input_port=port;route.controls_available=true;route.audio_available=true;route.audio={60,50,40};
+  button_centers.clear();darkwatch::native_pause_owner=route.options;darkwatch::native_pause_entry=1;
+  Poll();Frame();Frame();CHECK(g_page_graphics&&!g_audio&&!button_centers.count("AUDIO..."));
+  hidden();route.route=darkwatch::GraphicsMenuRoute::Controls;route.paused=true;route.options=0x622200+port*0x1000;route.page=route.options+0x100;
+  route.input_port=port;route.controls_available=true;route.audio_available=true;route.audio={60,50,40};
+  darkwatch::native_pause_owner=route.options;darkwatch::native_pause_entry=3;Poll();Frame();Frame();
+  CHECK(g_open&&g_audio&&!g_page_graphics&&g_open_pause_entry==3&&g_navigation_port==port);
+  CHECK(std::find(rendered_text.begin(),rendered_text.end(),"AUDIO")!=rendered_text.end());
+  CHECK(std::find(rendered_text.begin(),rendered_text.end(),"KEYBOARD AND MOUSE BINDINGS")==rendered_text.end());
+  ClickField("##music",.3f);ClickNamed("APPLY");Poll();Frame();CHECK(route.audio.music>20&&route.audio.music<40);
+  ClickNamed("BACK");CHECK(!g_open&&g_leave);
+  input::Pad other{};other.connected=true;other.analog[1]=255;DarkwatchGraphicsPad(int(1-port),other);CHECK(!other.analog[1]);
+  input::Pad owner{};owner.connected=true;DarkwatchGraphicsPad(int(port),owner);CHECK(owner.analog[1]==255);
+ }
+ hidden();route.route=darkwatch::GraphicsMenuRoute::Controls;route.paused=true;route.options=0x633300;route.page=0x633400;
+ darkwatch::native_pause_owner=route.options+4;darkwatch::native_pause_entry=3;Poll();Frame();Frame();CHECK(!g_audio);
+ std::puts("PASS real ImGui Audio: mouse sliders/output, deferred Apply, defaults/discard, save/native failures, stale owner, stereo fallback, separate Pause Audio and owner Back for both players");
  ImGui::DestroyContext();
 }
 '''
@@ -985,7 +1010,7 @@ int main(){
  CHECK(ImGui::FindWindowByName("Controls")->DC.ChildWindows[0]->Scroll.y>0);
  PadTap(1,32);CHECK(g_open&&g_controller_layout==false&&!g_leave);
  Navigate(1,2,button_ids["APPLY"]);const auto pc_applies=darkwatch::controls_applies;PadTap(1,16);
- CHECK(route.controller_preset==1&&darkwatch::controls_applies==pc_applies&&input::maps[1][8]==9&&input::maps[0][8]==8);
+ CHECK(route.controller_preset==1&&darkwatch::controls_applies==pc_applies+1&&input::maps[1][8]==9&&input::maps[0][8]==8);
  PadTap(1,32);CHECK(!g_open&&g_leave);
  std::puts("PASS gamepad P2 layout: owner isolation, preset selection, scrolling, Apply and Back");
  HidePage();route.route=darkwatch::GraphicsMenuRoute::Audio;route.options=0x544400;route.page=0x544500;route.audio_available=true;
@@ -1012,6 +1037,103 @@ int main(){
  DarkwatchDesktopQuitOpen(darkwatch::character_owner);PadFrames(0,0,5);
  PadTap(0,8);CHECK(GImGui->NavId==button_ids["QUIT"]);PadTap(0,16);CHECK(quit_confirmations==1);
  std::puts("PASS gamepad characters/quit: release gating, carousel, native Continue, safe Cancel and Quit");
+ ImGui::DestroyContext();
+}
+'''
+
+
+WEAPON_CONTROLS_UI = r'''
+int main(){
+ ImGui::CreateContext();auto& io=ImGui::GetIO();io.IniFilename=nullptr;
+ io.ConfigFlags|=ImGuiConfigFlags_NavEnableKeyboard|ImGuiConfigFlags_NavEnableGamepad;
+ ImFontConfig font;font.SizePixels=22;g_body=io.Fonts->AddFontDefault(&font);g_title=g_body;
+ unsigned char* pixels;int w,h;io.Fonts->GetTexDataAsRGBA32(&pixels,&w,&h);
+ g_modes={{1280,720},{1920,1080},{2560,1440}};
+ for(unsigned port:{0u,1u})for(auto family:{input::ControllerFamily::Xbox,input::ControllerFamily::PlayStation,input::ControllerFamily::Switch}){
+  darkwatch::controls=darkwatch::ControlsDefaults();darkwatch::controls.mouse_millidegrees=123;
+  input::maps[0]=input::maps[1]=input::DefaultPadBindings();
+  input::connected_family=input::player_two_family=family;input::device={1,true,family};
+  OpenControls(port);CHECK(!g_controls_draft.carry_all_weapons);
+  g_controls_draft.weapon_buttons[port]={6,7};
+  ClickNamed("CONTROLLER LAYOUT...",true);Frame();
+  for(unsigned row:{18u,19u}){ClickLayoutRow(row);CHECK(g_pad_capture_action<0&&!input::pad_capture);}
+  auto disabled_unbind=repeated_buttons["UNBIND"][1];Click(disabled_unbind.x,disabled_unbind.y);Frame();
+  CHECK(g_controls_draft.weapon_buttons[port][0]==6&&g_controls_draft.weapon_buttons[port][1]==7);
+  ClickNamed("BACK");Frame();g_controls_draft.weapon_buttons[port]={-1,-1};
+  SelectQuality("##carry all weapons",1,"On");CHECK(g_controls_draft.carry_all_weapons&&!darkwatch::controls.carry_all_weapons);
+  for(int preset:{-1,0,1,2,3,4}){
+   g_original_draft.controller_preset=preset;
+   CHECK(!std::strcmp(ActionName(20),"NEXT WEAPON")&&!std::strcmp(ActionName(21),"PREVIOUS WEAPON"));
+   CHECK(!std::strcmp(ActionDescription(21),"Equip the previous carried weapon."));
+  }
+  g_original_draft.controller_preset=0;
+  ClickNamed("CONTROLLER LAYOUT...",true);Frame();CHECK(layout_rows.size()==20);
+  const auto normal=g_pad_draft;
+  ClickLayoutRow(18);CHECK(g_pad_capture_action==20&&input::pad_owner==int(port));
+  for(unsigned reserved:{5u,6u}){
+   input::pad_capture_result=reserved;Frame();Frame();
+   CHECK(input::pad_capture&&g_pad_capture_action==20&&g_controls_draft.weapon_buttons[port][0]==-1);
+  }
+  input::pad_capture_result=7;Frame();Frame();CHECK(g_controls_draft.weapon_buttons[port][0]==6&&g_pad_draft==normal);
+  ClickLayoutRow(19);input::pad_capture_result=7;Frame();Frame();
+  CHECK(g_controls_draft.weapon_buttons[port][0]==-1&&g_controls_draft.weapon_buttons[port][1]==6);
+  ClickLayoutRow(18);input::pad_capture_result=9;Frame();Frame();
+  CHECK(g_controls_draft.weapon_buttons[port][0]==8&&g_pad_draft==normal);
+  ClickLayoutRow(19);ClickNamed("CANCEL");Frame();CHECK(g_controls_draft.weapon_buttons[port][1]==6&&!input::pad_capture);
+  // Unbind is an actual separate, reachable button beside the selected action.
+  Frame();auto r=layout_rows[18].second;auto* child=ImGui::FindWindowByName("Controls")->DC.ChildWindows[0];
+  ImGui::SetScrollY(child,child->Scroll.y+(r.y+r.w)/2-(child->InnerRect.Min.y+child->InnerRect.Max.y)/2);Frame();Frame();
+  CHECK(repeated_buttons["UNBIND"].size()==2);auto point=repeated_buttons["UNBIND"][0];Click(point.x,point.y);Frame();
+  CHECK(g_controls_draft.weapon_buttons[port][0]==-1&&g_controls_draft.weapon_buttons[port][1]==6);
+  ClickLayoutRow(18);input::pad_capture_result=9;Frame();Frame();
+  ClickNamed("BACK");Frame();
+  // A separate player's later edit survives this open page's stale snapshot.
+  darkwatch::controls.weapon_buttons[1-port]={10,11};
+  darkwatch::controls.zoom_sensitivity_percent=77;
+  if(port)g_controls_draft.mouse_millidegrees=999; // P2 cannot publish stale PC fields.
+  const auto keyboard=darkwatch::controls.bindings;ClickNamed("APPLY");Poll();Frame();
+  CHECK(darkwatch::controls.carry_all_weapons&&darkwatch::controls.weapon_buttons[port][0]==8&&darkwatch::controls.weapon_buttons[port][1]==6);
+  CHECK(darkwatch::controls.weapon_buttons[1-port][0]==10&&darkwatch::controls.weapon_buttons[1-port][1]==11);
+  CHECK(input::maps[port]==normal&&darkwatch::controls.mouse_millidegrees==123);
+  CHECK(!std::memcmp(&keyboard,&darkwatch::controls.bindings,sizeof(keyboard)));
+  if(port)CHECK(darkwatch::controls.zoom_sensitivity_percent==77);
+  ClickNamed("CONTROLLER LAYOUT...",true);Frame();ClickNamed("RESET BUTTONS");Frame();
+  CHECK(g_controls_draft.weapon_buttons[port][0]==-1&&g_controls_draft.weapon_buttons[port][1]==-1);
+  CHECK(g_controls_draft.weapon_buttons[1-port][0]==10&&g_controls_draft.weapon_buttons[1-port][1]==11);
+  ClickNamed("BACK");Frame();SelectQuality("##carry all weapons",0,"Off");ClickNamed("APPLY");
+  CHECK(!darkwatch::controls.carry_all_weapons&&darkwatch::controls.weapon_buttons[port][0]==-1);
+  CHECK(darkwatch::controls.weapon_buttons[1-port][0]==10);
+ }
+ // Keyboard rows use the new semantic action IDs, including directional wheel conflicts.
+ darkwatch::controls=darkwatch::ControlsDefaults();OpenControls(0);
+ for(const char* key:{"]","["}){ClickNamed(key,true);CHECK(g_capture_action<0&&!darkwatch::capture_active);}
+ CHECK(g_controls_draft.bindings[20].keys[0]==']'&&g_controls_draft.bindings[21].keys[0]=='[');
+ SelectQuality("##carry all weapons",1,"On");
+ ClickNamed("]",true);CHECK(g_capture_action==20);darkwatch::capture_result=input::kMouseWheelUp;darkwatch::capture_active=false;Frame();Frame();
+ CHECK(g_controls_draft.bindings[20].keys[0]==input::kMouseWheelUp);
+ ClickNamed("[",true);CHECK(g_capture_action==21);darkwatch::capture_result=input::kMouseWheelDown;darkwatch::capture_active=false;Frame();Frame();
+ CHECK(g_controls_draft.bindings[21].keys[0]==input::kMouseWheelDown&&g_conflict_action<0);
+ ClickNamed("J",true);darkwatch::capture_result=input::kMouseWheel;darkwatch::capture_active=false;Frame();Frame();CHECK(g_conflict_action>=20);
+ ClickNamed("REPLACE");Frame();CHECK(g_controls_draft.bindings[1].keys[0]==input::kMouseWheel);
+ CHECK(!g_controls_draft.bindings[20].keys[0]&&!g_controls_draft.bindings[21].keys[0]);
+ // Assign a directional wheel over an existing legacy all-directions wheel binding.
+ g_controls_draft.bindings[20].keys[0]=']';Frame();ClickNamed("]",true);
+ darkwatch::capture_result=input::kMouseWheelUp;darkwatch::capture_active=false;Frame();Frame();CHECK(g_conflict_action==1);
+ ClickNamed("REPLACE");Frame();CHECK(!g_controls_draft.bindings[1].keys[0]&&g_controls_draft.bindings[20].keys[0]==input::kMouseWheelUp);
+ g_controls_draft.weapon_buttons[1]={12,13};SelectQuality("##carry all weapons",1,"On");ClickNamed("RESET DEFAULTS");
+ CHECK(!g_controls_draft.carry_all_weapons&&g_controls_draft.bindings[20].keys[0]==']'&&g_controls_draft.bindings[21].keys[0]=='[');
+ CHECK(g_controls_draft.weapon_buttons[1][0]==12&&g_controls_draft.weapon_buttons[1][1]==13);
+ const auto previous_capture=g_capture_action;
+ ClickNamed("]",true);CHECK(g_capture_action==previous_capture&&!darkwatch::capture_active&&g_controls_draft.bindings[20].keys[0]==']');
+ // Controller navigation reaches the optional actions and cancels capture normally.
+ darkwatch::controls=darkwatch::ControlsDefaults();OpenControls(1);io.AddMousePosEvent(-100,-100);PadFrames(1);
+ Navigate(1,2,field_ids["##carry all weapons"]);PadTap(1,16);PadTap(1,2);PadTap(1,16);CHECK(g_controls_draft.carry_all_weapons);
+ Navigate(1,1,button_ids["CONTROLLER LAYOUT..."]);PadTap(1,16);PadFrames(1);
+ Navigate(1,2,layout_rows[18].first);PadTap(1,16);CHECK(g_pad_capture_action==20&&input::pad_capture);
+ input::pad_capture_result=13;PadFrames(1);CHECK(g_controls_draft.weapon_buttons[1][0]==12);
+ Navigate(1,2,layout_rows[19].first);PadTap(1,16);CHECK(g_pad_capture_action==21);
+ input::pad_capture_result=input::kPadCaptureCancelled;PadFrames(1);CHECK(g_controller_layout&&g_pad_capture_action<0);
+ std::puts("PASS new weapon Controls: shared default-off cheat, 22 keyboard actions, wheel conflict replacement, per-player optional controller bindings/Unbind/reserved buttons/reset/merge and gamepad navigation");
  ImGui::DestroyContext();
 }
 '''
@@ -1263,9 +1385,71 @@ class GraphicsUiTests(unittest.TestCase):
             print(ran.stdout.strip())
             return ran
 
+
     def test_real_imgui_page_and_input_lifetime(self):
         ran = self.run_fixture(FIXTURE.replace('ImGui::DestroyContext();std::puts(',
                                               CONTROLLER_COVERAGE + PLAYER_TWO_COVERAGE + 'ImGui::DestroyContext();std::puts('))
+        self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+
+    def test_subtitle_toggle_main_and_pause_owners(self):
+        driver = r'''
+static void SubtitleChoice(unsigned port,bool controller,bool enabled){
+ if(controller){
+  Navigate(port,2,field_ids.at("##subtitles"));PadTap(port,16);
+  PadTap(port,enabled?2:1);PadTap(port,16);
+ }else SelectQuality("##subtitles",enabled?1:0,language::Text(enabled?"On":"Off"));
+ CHECK(g_subtitles_draft==enabled);
+}
+int main(){
+ ImGui::CreateContext();auto& io=ImGui::GetIO();io.IniFilename=nullptr;
+ io.ConfigFlags|=ImGuiConfigFlags_NavEnableKeyboard|ImGuiConfigFlags_NavEnableGamepad;
+ // REAL_GAME_FONTS
+ unsigned char* pixels;int w,h;io.Fonts->GetTexDataAsRGBA32(&pixels,&w,&h);
+ g_modes={{1280,720},{1920,1080},{2560,1440}};darkwatch::controls=darkwatch::ControlsDefaults();
+ std::filesystem::create_directories("language/es");
+ {std::ofstream file("language/es/language_text.bin",std::ios::binary);file.write("DWES0001",8);
+  uint32_t fields[]{1,1,1,1};file.write((char*)fields,sizeof(fields));file.write("abc",3);}
+ unsigned cases=0;
+ for(bool spanish:{false,true}){
+  toml::table lang{{"language",toml::table{{"text",spanish?"es":"en"}}}};
+  language::Load(&lang);CHECK(language::Initialize(".")&&language::Spanish()==spanish);
+  for(unsigned owner=0;owner<3;++owner)for(bool controller:{false,true}){
+   const bool paused=owner!=0;const unsigned port=owner==2?1:0;
+   auto open=[&](bool enabled){
+    HidePage();route.route=paused?darkwatch::GraphicsMenuRoute::Controls:darkwatch::GraphicsMenuRoute::Visual;
+    route.options=0x433300+owner*0x1000;route.page=route.options+0x100;
+    route.paused=paused;route.input_port=port;route.controls_available=true;
+    route.subtitles_available=true;route.subtitles=enabled;
+    if(paused){darkwatch::native_pause_owner=route.options;darkwatch::native_pause_entry=1;}
+    record_combo_text=!controller;input::device={1,controller,input::ControllerFamily::Xbox};
+    io.AddMousePosEvent(-100,-100);PadFrames(port,0,5);
+    CHECK(g_open&&(!paused||g_page_graphics)&&g_navigation_port==port);
+    CHECK(g_subtitles_available&&g_subtitles_draft==enabled&&!combo_disabled.at("##subtitles"));
+   };
+   open(false);
+   for(bool enabled:{true,false}){
+    const auto before=subtitle_calls;
+    SubtitleChoice(port,controller,enabled);CHECK(subtitle_calls==before&&route.subtitles!=enabled);
+    if(controller){Navigate(port,2,button_ids.at("APPLY"));PadTap(port,16);}
+    else ClickNamed("APPLY");
+    Poll();Frame();CHECK(subtitle_calls==before+1&&route.subtitles==enabled);
+    if(controller)PadTap(port,32);else ClickNamed("BACK");
+    CHECK(!g_open);open(route.subtitles);
+   }
+   // Leaving an unapplied draft must not alter the native setting on reopen.
+   const auto before=subtitle_calls;SubtitleChoice(port,controller,true);
+   if(controller)PadTap(port,32);else ClickNamed("BACK");
+   CHECK(!g_open&&!route.subtitles&&subtitle_calls==before);open(route.subtitles);
+   CHECK(!g_subtitles_draft);++cases;
+  }
+ }
+ CHECK(cases==12);std::puts("PASS 12 subtitle workflows: main Graphics and both Pause owners, English/Spanish, mouse/controller, On/Off Apply, Back discard and reopen");
+ ImGui::DestroyContext();
+}
+'''
+        driver = driver.replace("// REAL_GAME_FONTS", "g_body=g_title=io.Fonts->AddFontDefault();")
+        ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] +
+                               GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")] + driver)
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
 
     def test_per_player_view_settings_and_confirmation(self):
@@ -1290,6 +1474,11 @@ class GraphicsUiTests(unittest.TestCase):
 
     def test_controller_rebinding_and_audio_mouse_workflow(self):
         ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + CONTROLLER_AUDIO_UI)
+        self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+
+    def test_weapon_cycle_controls_and_carry_all(self):
+        helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")]
+        ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + WEAPON_CONTROLS_UI)
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
 
     def test_coop_preview_and_independent_player_controls(self):

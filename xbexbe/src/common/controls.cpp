@@ -16,7 +16,7 @@ uint32_t g_captured = 0;
 constexpr const char* kBindingKeys[] = {
     "dpad_up", "dpad_down", "dpad_left", "dpad_right", "start", "back", "left_thumb", "right_thumb",
     "a", "b", "x", "y", "black", "white", "left_trigger", "right_trigger",
-    "move_forward", "move_backward", "move_left", "move_right"
+    "move_forward", "move_backward", "move_left", "move_right", "next_weapon", "previous_weapon"
 };
 static_assert(std::size(kBindingKeys) == size_t(input::PcAction::Count));
 
@@ -38,8 +38,14 @@ ControlsSettings ControlsSnapshot() {
     return Settings();
 }
 
+bool GetCarryAllWeapons() { return ControlsSnapshot().carry_all_weapons; }
+
 bool ControlsApply(const ControlsSettings& settings) {
     auto next = settings;
+    for (const auto& buttons : next.weapon_buttons) {
+        for (int button : buttons) if (button < -1 || button >= 16 || button == 4 || button == 5) return false;
+        if (buttons[0] >= 0 && buttons[0] == buttons[1]) return false;
+    }
     next.mouse_millidegrees = std::clamp(next.mouse_millidegrees, 1u, 1000u);
     next.zoom_sensitivity_percent = std::clamp(next.zoom_sensitivity_percent, 10u, 200u);
     std::lock_guard lock(g_controls_lock);
@@ -61,6 +67,21 @@ void ControlsLoad(const void* table) {
     if (zoom) next.zoom_sensitivity_percent = uint32_t(std::clamp(*zoom, int64_t(10), int64_t(200)));
     next.aim_assistance = t["aim_assistance"].value_or(next.aim_assistance);
     next.aim_centering = t["aim_centering"].value_or(next.aim_centering);
+    next.carry_all_weapons = t["carry_all_weapons"].value_or(false);
+    if (const auto* buttons = t["weapon_cycle_buttons"].as_table()) {
+        for (unsigned port = 0; port < 2; ++port) {
+            const auto* row = (*buttons)[port ? "player_2" : "player_1"].as_array();
+            if (!row || row->size() != 2) continue;
+            std::array<int, 2> values{-1, -1};
+            bool valid = true;
+            for (unsigned i = 0; i < 2; ++i) {
+                const auto value = (*row)[i].value<int64_t>();
+                if (!value || *value < -1 || *value >= 16 || *value == 4 || *value == 5) {valid = false; break;}
+                values[i] = int(*value);
+            }
+            if (valid && (values[0] == -1 || values[0] != values[1])) next.weapon_buttons[port] = values;
+        }
+    }
     bool malformed = false;
     if (auto* bindings = t["key_bindings"].as_table()) {
         for (size_t i = 0; i < next.bindings.size(); ++i) {
@@ -70,11 +91,20 @@ void ControlsLoad(const void* table) {
             if (!row || row->size() != 2) { malformed = true; continue; }
             for (size_t slot = 0; slot < 2; ++slot) {
                 auto key = (*row)[slot].value<int64_t>();
-                if (!key || *key < 0 || *key > input::kMouseWheel) { malformed = true; break; }
+                if (!key || *key < 0 || *key > input::kMouseWheelDown) { malformed = true; break; }
                 next.bindings[i].keys[slot] = uint32_t(*key);
             }
         }
     } else if (t.contains("key_bindings")) malformed = true;
+    if (auto* bindings = t["key_bindings"].as_table()) {
+        for (size_t action = size_t(input::PcAction::NextWeapon); action < next.bindings.size(); ++action) {
+            if ((*bindings)[kBindingKeys[action]]) continue;
+            for (auto& key : next.bindings[action].keys)
+                for (size_t old = 0; old < action; ++old)
+                    for (auto assigned : next.bindings[old].keys)
+                        if (input::BindingKeysOverlap(key, assigned)) key = 0;
+        }
+    }
     if (malformed || !ControlsApply(next)) {
         LOGW("controls: invalid or conflicting bindings; default bindings restored");
         next.bindings = ControlsDefaults().bindings;
@@ -102,6 +132,11 @@ void ControlsSave(void* table) {
     t.insert_or_assign("zoom_sensitivity_percent", int64_t(settings.zoom_sensitivity_percent));
     t.insert_or_assign("aim_assistance", settings.aim_assistance);
     t.insert_or_assign("aim_centering", settings.aim_centering);
+    t.insert_or_assign("carry_all_weapons", settings.carry_all_weapons);
+    toml::table weapon_buttons;
+    for (unsigned port = 0; port < 2; ++port)
+        weapon_buttons.insert(port ? "player_2" : "player_1", toml::array{settings.weapon_buttons[port][0], settings.weapon_buttons[port][1]});
+    t.insert_or_assign("weapon_cycle_buttons", std::move(weapon_buttons));
     toml::table bindings;
     for (size_t i = 0; i < settings.bindings.size(); ++i)
         bindings.insert(kBindingKeys[i], toml::array{int64_t(settings.bindings[i].keys[0]), int64_t(settings.bindings[i].keys[1])});
@@ -156,12 +191,12 @@ bool ControlsMessage(void*, uint32_t message, uintptr_t wp, intptr_t lp, intptr_
     else if (message == WM_XBUTTONDOWN) key = HIWORD(wp) == XBUTTON1 ? VK_XBUTTON1 : VK_XBUTTON2;
     else if (message == WM_MOUSEWHEEL) {
         if (!int16_t(HIWORD(wp))) { *result = 0; return true; }
-        key = input::kMouseWheel;
+        key = int16_t(HIWORD(wp)) > 0 ? input::kMouseWheelUp : input::kMouseWheelDown;
     }
     else return false;
     if (key == VK_ESCAPE) { g_captured = kCaptureCancelled; g_capturing = false; }
     else if (key == VK_BACK || key == VK_DELETE) { g_captured = kCaptureClear; g_capturing = false; }
-    else if (!key || key > input::kMouseWheel || key == VK_F1 || key == VK_F3 || key == VK_LWIN || key == VK_RWIN) {
+    else if (!key || key > input::kMouseWheelDown || key == VK_F1 || key == VK_F3 || key == VK_LWIN || key == VK_RWIN) {
         g_captured = kCaptureReserved;
     } else { g_captured = key; g_capturing = false; }
     *result = message == WM_XBUTTONDOWN ? TRUE : 0;
@@ -177,6 +212,8 @@ std::string ControlsKeyName(uint32_t key) {
         case VK_XBUTTON1: return "Mouse 4";
         case VK_XBUTTON2: return "Mouse 5";
         case input::kMouseWheel: return "Mouse Wheel";
+        case input::kMouseWheelUp: return "Mouse Wheel Up";
+        case input::kMouseWheelDown: return "Mouse Wheel Down";
         case VK_SHIFT: return "Shift";
         case VK_CONTROL: return "Ctrl";
         case VK_MENU: return "Alt";

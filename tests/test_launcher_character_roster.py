@@ -1,6 +1,11 @@
-"""Small synthetic contracts for selected-character routes and voice residency."""
+"""Roster routes, voice residency and original first-person attachment contracts."""
 import copy
 import itertools
+import hashlib
+import json
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 import sys
 import unittest
@@ -9,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'launcher'))
 import character_assets as art
 import character_roster as roster
+import character_archive as archive
 
 
 def layout(*banks):
@@ -52,13 +58,13 @@ class RosterTests(unittest.TestCase):
                                      locators(loc_RightHand='multiplayer'), locators(loc_Head='head'))
 
     def test_routes_are_bounded_and_pair_order_independent(self):
-        pairs = [pair for pair in itertools.combinations_with_replacement(range(8), 2)
+        pairs = [pair for pair in itertools.combinations_with_replacement(range(10), 2)
                  if max(pair) >= 3]
-        self.assertEqual(len({roster.suffix(pair) for pair in pairs}), 30)
+        self.assertEqual(len({roster.suffix(pair) for pair in pairs}), 49)
         for pair in pairs:
             self.assertEqual(roster.suffix(pair), roster.suffix(pair[::-1]))
         self.assertEqual(roster.suffix((7,)), 'roster_7')
-        for invalid in ((), (0,), (1, 2), (8,), (-1, 7), (True, 7), (3.0,), (3, 4, 5)):
+        for invalid in ((), (0,), (1, 2), (10,), (-1, 7), (True, 7), (3.0,), (3, 4, 5)):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 roster.suffix(invalid)
 
@@ -90,6 +96,8 @@ class RosterTests(unittest.TestCase):
         ):
             with self.subTest(original=original), self.assertRaises(ValueError):
                 roster._voice_banks(original, (7,))
+
+
 
 
 if __name__ == '__main__':

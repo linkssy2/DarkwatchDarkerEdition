@@ -9,9 +9,9 @@ using System.Windows;
 
 [assembly: AssemblyTitle("Play Darkwatch: Darker Edition")]
 [assembly: AssemblyProduct("Darkwatch: Darker Edition")]
-[assembly: AssemblyVersion("0.6.1.0")]
-[assembly: AssemblyFileVersion("0.6.1.0")]
-[assembly: AssemblyInformationalVersion("0.6.1")]
+[assembly: AssemblyVersion("0.7.0.0")]
+[assembly: AssemblyFileVersion("0.7.0.0")]
+[assembly: AssemblyInformationalVersion("0.7")]
 
 namespace DarkwatchDarkerEdition
 {
@@ -38,7 +38,7 @@ namespace DarkwatchDarkerEdition
                     if (Object.Equals(kind, "error") && item.TryGetValue("message", out message))
                         failure = Convert.ToString(message);
                     if (Object.Equals(kind, "error") && item.TryGetValue("cancelled", out wasCancelled) && Object.Equals(wasCancelled, true)) cancelled = true;
-                    if (Object.Equals(kind, "shader_prepare") && progress != null) {
+                    if ((Object.Equals(kind, "shader_prepare") || (Object.Equals(kind, "progress") && item.ContainsKey("message"))) && progress != null) {
                         item["language"] = language;
                         progress(item);
                     }
@@ -48,7 +48,7 @@ namespace DarkwatchDarkerEdition
                 }
                 process.WaitForExit();
                 string stderr = errors.Result;
-                if (cancelled) throw new OperationCanceledException(language == "es" ? "Se canceló la preparación de shaders. Se conservan los shaders completados." : "Shader preparation was canceled. Completed shaders are kept.");
+                if (cancelled) throw new OperationCanceledException(language == "es" ? "Se canceló la preparación del juego. Se conserva tu instalación anterior." : "Game preparation was canceled. Your previous installation is kept.");
                 if (process.ExitCode != 0 || !started || failure != null) {
                     if (String.IsNullOrWhiteSpace(failure)) failure = String.IsNullOrWhiteSpace(stderr) ? (language == "es" ? "No se pudo iniciar Darkwatch." : "Darkwatch could not start.") : stderr;
                     failure = Launcher.Localize(failure, language);
@@ -63,6 +63,7 @@ namespace DarkwatchDarkerEdition
         {
             try {
                 string package = AppDomain.CurrentDomain.BaseDirectory;
+                if (SetupProcess.TryRecover(package)) return 0;
                 string installRoot = SetupProcess.InstallRoot(package);
                 Directory.CreateDirectory(installRoot);
                 string cancelFile = Path.Combine(installRoot, ".cancel-" + Guid.NewGuid().ToString("N"));

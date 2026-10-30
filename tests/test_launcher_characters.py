@@ -106,12 +106,27 @@ class CharacterConversionTests(unittest.TestCase):
         spectral = {'packfile.pck': {'fixture/spectral.bin': b'third conversion'}}
         third = {name: archive.compose(data, spectral[name]) if name in spectral else data for name, data in base.items()}
         roster = {name: {'fixture/roster.bin': b'fourth conversion'} for name in originals}
-        final = {name: archive.compose(data, roster[name]) for name, data in third.items()}
+        fourth = {name: archive.compose(data, roster[name]) for name, data in third.items()}
+        revolver = {name: {'fixture/revolver.bin': b'fifth conversion'} for name in originals}
+        revolver['LvlSingl.pck']['fixture/replaced.bin'] = b'final chapter table'
+        final = {name: archive.compose(data, revolver[name]) for name, data in fourth.items()}
+        combined = {}
+        for stage in (groups, extension, spectral, roster, revolver):
+            combined.update(stage.get('LvlSingl.pck', {}))
+        final['LvlSingl.pck'] = archive.compose(originals['LvlSingl.pck'], combined)
+        # Compaction changes offsets, never the resource contents or original payload.
+        appended = archive.compose(fourth['LvlSingl.pck'], revolver['LvlSingl.pck'])
+        def resources(raw):
+            return {row['name']: raw[row['offset']:row['offset'] + row['size']]
+                    for row in archive.read(raw)['entries']}
+        self.assertEqual(resources(final['LvlSingl.pck']), resources(appended))
+        self.assertLess(len(final['LvlSingl.pck']), len(appended))
         metadata = dict(schema_version=1, content_revision=content.CONTENT_REVISION,
                         originals={name: pin(data) for name,data in originals.items()},
                         v7_archives={name: pin(data) for name,data in first.items()},
                         base_archives={name: pin(data) for name,data in base.items()},
                         spectral_archives={name: pin(data) for name,data in third.items()},
+                        roster_archives={name: pin(data) for name,data in fourth.items()},
                         installed={name: pin(data) for name,data in final.items()})
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -126,6 +141,7 @@ class CharacterConversionTests(unittest.TestCase):
             installed = {name:(len(data),pin(data)['sha256']) for name,data in final.items()}
             with patch.object(content, 'INSTALLED', installed), patch.object(content, 'build_resources', return_value=(groups,extension,spectral)), \
                     patch.object(content.character_roster, 'prepare', return_value=(roster, {})), \
+                    patch.object(content.revolver_content, 'prepare', return_value=revolver), \
                     patch.object(content.bonus_content, 'patch_pack', side_effect=lambda data:data):
                 with patch.object(content, 'CATALOG_SHA256', reset()):
                     content.prepare(assets,payload)
@@ -143,6 +159,12 @@ class CharacterConversionTests(unittest.TestCase):
                     content.prepare(assets, payload)
                 self.assertEqual({name: (assets/name).read_bytes() for name in originals}, originals)
                 roster['audio.pck']['fixture/roster.bin'] = b'fourth conversion'
+                # The last-stage failure must also leave every original intact.
+                revolver['audio.pck']['fixture/revolver.bin'] = b'wrong revolver output'
+                with patch.object(content, 'CATALOG_SHA256', reset()), self.assertRaisesRegex(ValueError, 'verification failed'):
+                    content.prepare(assets, payload)
+                self.assertEqual({name: (assets/name).read_bytes() for name in originals}, originals)
+                revolver['audio.pck']['fixture/revolver.bin'] = b'fifth conversion'
                 cancel_now = [False]
                 def cancel():
                     if cancel_now[0]: raise InterruptedError('cancelled')
@@ -156,8 +178,9 @@ class CharacterConversionTests(unittest.TestCase):
     def test_catalog_and_authored_pixels_match_shipped_pins(self):
         metadata = content.catalog(ROOT/'launcher')
         self.assertEqual(len(metadata['v7_outputs']),835)
-        for size,digest in content.REPAINT.items():
-            self.assertEqual(pin((ROOT/'launcher/assets'/f'cassidy-hands-{size}.dds').read_bytes())['sha256'],digest)
+        for character, pins in (('cassidy', content.REPAINT), ('tala', content.TALA_REPAINT)):
+            for size,digest in pins.items():
+                self.assertEqual(pin((ROOT/'launcher/assets'/f'{character}-hands-{size}.dds').read_bytes())['sha256'],digest)
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder)/'character-catalog.json'
             path.write_text('{}')

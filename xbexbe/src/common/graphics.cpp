@@ -73,8 +73,7 @@ settings::Character g_character_draft = settings::Character::Jericho;
 double g_character_preview_started = 0;
 bool g_character_ready = false;
 bool g_page_graphics = false;
-bool g_audio = false, g_open_audio = false, g_pause_audio = false;
-bool g_audio_focus = false, g_audio_returned = false;
+bool g_audio = false, g_open_audio = false;
 bool g_surround_draft = false;
 AudioSettings g_audio_draft;
 struct AudioRequest { uint32_t options = 0; AudioSettings settings; };
@@ -97,6 +96,12 @@ std::vector<app::Mode> g_modes;
 ControlsSettings g_controls_draft;
 darkwatch::GraphicsRouteState g_original_controls, g_original_draft;
 std::mutex g_original_lock;
+float MenuScale() {
+    const auto display = ImGui::GetIO().DisplaySize;
+    float scale = std::min(display.x / 1280.f, display.y / 720.f);
+    if (!g_coop && !g_characters && !g_quit) scale *= .8f;
+    return std::max(.5f, scale);
+}
 void PublishCoopSetup(const CoopSetupState& state) {
     {std::lock_guard lock(g_original_lock); g_coop_state = state;}
     const auto previous = g_coop_owner.exchange(state.owner);
@@ -122,7 +127,7 @@ int g_capture_action = -1, g_capture_slot = 0, g_conflict_action = -1;
 constexpr const char* kActions[] = {"D-PAD UP", "D-PAD DOWN", "D-PAD LEFT", "D-PAD RIGHT",
     "START", "BACK", "LEFT STICK CLICK", "RIGHT STICK CLICK", "A BUTTON", "B BUTTON",
     "X BUTTON", "Y BUTTON", "BLACK BUTTON", "WHITE BUTTON", "LEFT TRIGGER", "RIGHT TRIGGER",
-    "MOVE FORWARD", "MOVE BACKWARD", "MOVE LEFT", "MOVE RIGHT"};
+    "MOVE FORWARD", "MOVE BACKWARD", "MOVE LEFT", "MOVE RIGHT", "NEXT WEAPON", "PREVIOUS WEAPON"};
 constexpr const char* kDescriptions[] = {"Navigate up with the original D-pad.", "Navigate down with the original D-pad.",
     "Navigate left with the original D-pad.", "Navigate right with the original D-pad.",
     "Open the original pause menu.", "Send the original Xbox Back action.",
@@ -132,10 +137,11 @@ constexpr const char* kDescriptions[] = {"Navigate up with the original D-pad.",
     "Send the original Xbox Black action.", "Send the original Xbox White action.",
     "Send the original left-trigger action.", "Send the original right-trigger action.",
     "Move forward with the left stick.", "Move backward with the left stick.",
-    "Strafe left with the left stick.", "Strafe right with the left stick."};
+    "Strafe left with the left stick.", "Strafe right with the left stick.",
+    "Equip the next carried weapon.", "Equip the previous carried weapon."};
 constexpr const char* kPresetNames[]{"Default", "Chieftain", "Lefty", "Hopalong", "Hoss"};
 enum ActionMeaning {Unknown, Talk, Cycle, LeanLeft, LeanRight, Pause, Score, Crouch, Sight,
-    Interact, Reload, Melee, Jump, SelectPower, ActivatePower, Throw, Shoot};
+    Interact, Reload, Melee, Jump, SelectPower, ActivatePower, Throw, Shoot, CycleGrenades};
 struct ActionText {const char* name; const char* description;};
 constexpr ActionText kMeaning[]{
     {"", ""}, {"MULTIPLAYER TALK", "Talk in multiplayer."}, {"SWITCH WEAPONS", "Swap between your carried weapons."},
@@ -145,16 +151,18 @@ constexpr ActionText kMeaning[]{
     {"INTERACT", "Interact with objects."}, {"RELOAD", "Reload your weapon."},
     {"MELEE", "Perform a melee attack."}, {"JUMP", "Jump."},
     {"POWER SELECTION", "Select a power."}, {"ACTIVATE POWER", "Activate your selected power."},
-    {"THROW", "Throw."}, {"SHOOT", "Fire your weapon."}};
-// switchprimary in the original preset tables resolves to Down, except Chieftain's Y.
+    {"THROW", "Throw."}, {"SHOOT", "Fire your weapon."},
+    {"SWITCH GRENADES", "Switch between Dynamite and Splitter Grenades."}};
+// Original presets use Up for grenades; Chieftain uses Down and Up selects powers.
 constexpr ActionMeaning kPresetActions[][16]{
-    {Unknown, Cycle, LeanLeft, LeanRight, Pause, Score, Crouch, Sight, Interact, Reload, Melee, Jump, SelectPower, ActivatePower, Throw, Shoot},
-    {Unknown, Unknown, LeanLeft, LeanRight, Pause, Score, Crouch, Sight, Jump, Melee, Reload, Cycle, Interact, ActivatePower, Throw, Shoot},
-    {Unknown, Cycle, LeanLeft, LeanRight, Pause, Score, Sight, Crouch, Interact, Melee, Reload, Throw, ActivatePower, SelectPower, Shoot, Jump},
-    {Unknown, Cycle, LeanLeft, LeanRight, Pause, Score, Crouch, Sight, Interact, Melee, Reload, Throw, SelectPower, ActivatePower, Jump, Shoot},
-    {Unknown, Cycle, LeanLeft, LeanRight, Pause, Score, Crouch, Sight, Interact, Jump, Throw, Reload, SelectPower, ActivatePower, Melee, Shoot}};
+    {CycleGrenades, Cycle, LeanLeft, LeanRight, Pause, Score, Crouch, Sight, Interact, Reload, Melee, Jump, SelectPower, ActivatePower, Throw, Shoot},
+    {SelectPower, CycleGrenades, LeanLeft, LeanRight, Pause, Score, Crouch, Sight, Jump, Melee, Reload, Cycle, Interact, ActivatePower, Throw, Shoot},
+    {CycleGrenades, Cycle, LeanLeft, LeanRight, Pause, Score, Sight, Crouch, Interact, Melee, Reload, Throw, ActivatePower, SelectPower, Shoot, Jump},
+    {CycleGrenades, Cycle, LeanLeft, LeanRight, Pause, Score, Crouch, Sight, Interact, Melee, Reload, Throw, SelectPower, ActivatePower, Jump, Shoot},
+    {CycleGrenades, Cycle, LeanLeft, LeanRight, Pause, Score, Crouch, Sight, Interact, Jump, Throw, Reload, SelectPower, ActivatePower, Melee, Shoot}};
 bool KnownPreset() {return g_original_draft.controller_preset >= 0 && g_original_draft.controller_preset < int(std::size(kPresetNames));}
 const char* ActionName(unsigned action) {
+    if (action >= 20) return action < std::size(kActions) ? kActions[action] : "BUTTON ACTION";
     if (action >= 16) {
         constexpr const char* stick[]{"LEFT STICK UP", "LEFT STICK DOWN", "LEFT STICK LEFT", "LEFT STICK RIGHT"};
         constexpr const char* look[]{"LOOK UP", "LOOK DOWN", "LOOK LEFT", "LOOK RIGHT"};
@@ -166,6 +174,7 @@ const char* ActionName(unsigned action) {
     return kActions[action];
 }
 const char* ActionDescription(unsigned action) {
+    if (action >= 20) return action < std::size(kDescriptions) ? kDescriptions[action] : "";
     if (action >= 16) {
         constexpr const char* stick[]{"Original left stick up; see controller layout.", "Original left stick down; see controller layout.",
                                      "Original left stick left; see controller layout.", "Original left stick right; see controller layout."};
@@ -214,7 +223,6 @@ void Close() {
     g_binding_focus = -1;
     g_return_controls_options = 0;
     g_controller_layout = false;
-    g_pause_audio = false;
     g_layout_returned = false;
 }
 
@@ -223,11 +231,17 @@ int ControlsPort() { return PlayerTwoControls() ? 1 : 0; }
 
 void ApplyControls() {
     const bool player_two = PlayerTwoControls();
-    if (!player_two && !ControlsApply(g_controls_draft)) {
+    // Preserve the other player's button choices if they changed since this page opened.
+    const auto current = ControlsSnapshot();
+    auto pending = player_two ? current : g_controls_draft;
+    pending.weapon_buttons[ControlsPort()] = g_controls_draft.weapon_buttons[ControlsPort()];
+    pending.weapon_buttons[1 - ControlsPort()] = current.weapon_buttons[1 - ControlsPort()];
+    pending.carry_all_weapons = g_controls_draft.carry_all_weapons;
+    if (!ControlsApply(pending)) {
         g_notice = "Cannot apply these bindings. Check for duplicate or reserved keys.";
         return;
     }
-    if (!player_two) g_controls_draft = ControlsSnapshot();
+    g_controls_draft = ControlsSnapshot();
     if (!input::SetPadBindings(ControlsPort(), g_pad_draft)) {
         g_notice = "Cannot apply these controller bindings.";
         return;
@@ -255,10 +269,10 @@ void CaptureBinding() {
     g_capture_key = key; g_conflict_action = -1;
     if (key) for (unsigned i = 0; i < g_controls_draft.bindings.size(); ++i)
         if (int(i) != g_capture_action) for (auto old : g_controls_draft.bindings[i].keys)
-            if (old == key) g_conflict_action = int(i);
+            if (input::BindingKeysOverlap(old, key)) g_conflict_action = int(i);
     if (g_conflict_action < 0) {
         auto& binding = g_controls_draft.bindings[g_capture_action];
-        if (key && binding.keys[1 - g_capture_slot] == key) binding.keys[1 - g_capture_slot] = 0;
+        if (input::BindingKeysOverlap(key, binding.keys[1 - g_capture_slot])) binding.keys[1 - g_capture_slot] = 0;
         binding.keys[g_capture_slot] = key; g_capture_action = -1;
     }
 }
@@ -267,7 +281,7 @@ void ReplaceBinding() {
     if (g_capture_action < 0 || g_capture_action >= int(g_controls_draft.bindings.size()) ||
         g_capture_slot < 0 || g_capture_slot > 1 || g_conflict_action < 0) return;
     for (auto& binding : g_controls_draft.bindings)
-        for (auto& key : binding.keys) if (key == g_capture_key) key = 0;
+        for (auto& key : binding.keys) if (input::BindingKeysOverlap(key, g_capture_key)) key = 0;
     g_controls_draft.bindings[g_capture_action].keys[g_capture_slot] = g_capture_key;
     g_capture_action = -1; g_conflict_action = -1;
 }
@@ -405,8 +419,7 @@ bool MenuButton(const char* text, ImVec2 size = {}, bool navigation_selected = f
 void Hint(const char* text) {
     const float font_scale = ImGui::GetCurrentWindow()->FontWindowScale;
     ImGui::SetWindowFontScale(font_scale * .75f);
-    ImGui::PushTextWrapPos(912 * std::max(.5f, std::min(ImGui::GetIO().DisplaySize.x / 1280.f,
-                                                    ImGui::GetIO().DisplaySize.y / 720.f)));
+    ImGui::PushTextWrapPos(912 * MenuScale());
     ImGui::TextDisabled("%s", language::Text(text));
     ImGui::PopTextWrapPos(); ImGui::SetWindowFontScale(font_scale);
 }
@@ -468,7 +481,7 @@ void EndSettingsChild() {
 }
 
 void ControllerSymbol(ImDrawList* draw, ImVec2 center, float scale, ControllerPrompt prompt) {
-    const auto color = IM_COL32(240, 240, 232, 255);
+    const auto color = ImGui::GetColorU32(ImVec4(240.f/255, 240.f/255, 232.f/255, 1));
     const float radius = 10 * scale, stroke = 2 * scale;
     auto line = [&](float x1, float y1, float x2, float y2) {
         draw->AddLine({center.x + x1 * radius, center.y + y1 * radius},
@@ -507,18 +520,34 @@ void ControllerSymbol(ImDrawList* draw, ImVec2 center, float scale, ControllerPr
 }
 
 void ControllerLayoutContent(float scale) {
+    const float extra_height = ImGui::GetWindowHeight() - 600 * scale;
     // A captured button must never also activate the newly revealed footer.
     const bool capturing = g_pad_capture_action >= 0;
     if (capturing) {
         const auto result = input::TakePadCapture();
         if (result) {
-            if (result <= 16) {
-                auto old = std::find(g_pad_draft.begin(), g_pad_draft.end(), uint8_t(result - 1));
-                if (old != g_pad_draft.end()) std::swap(*old, g_pad_draft[g_pad_capture_action]);
-                g_notice = "Buttons swapped in this draft. Apply from Controls to save.";
+            const bool extra = g_pad_capture_action >= 20;
+            const bool reserved = extra && (result == 5 || result == 6);
+            if (reserved) {
+                g_notice = "Start and Back are reserved. Choose another button.";
+                if (!input::BeginPadCapture(ControlsPort())) g_pad_capture_action = -1;
+            } else {
+                if (result <= 16) {
+                    if (extra) {
+                        auto& buttons = g_controls_draft.weapon_buttons[ControlsPort()];
+                        const unsigned action = unsigned(g_pad_capture_action - 20);
+                        if (buttons[1 - action] == int(result - 1)) buttons[1 - action] = -1;
+                        buttons[action] = int(result - 1);
+                        g_notice = "Gameplay button assigned. Apply from Controls to save.";
+                    } else {
+                        auto old = std::find(g_pad_draft.begin(), g_pad_draft.end(), uint8_t(result - 1));
+                        if (old != g_pad_draft.end()) std::swap(*old, g_pad_draft[g_pad_capture_action]);
+                        g_notice = "Buttons swapped in this draft. Apply from Controls to save.";
+                    }
+                }
+                g_pad_binding_focus = g_pad_capture_action;
+                g_pad_capture_action = -1;
             }
-            g_pad_binding_focus = g_pad_capture_action;
-            g_pad_capture_action = -1;
             g_released = false; g_pad = 0;
         }
     }
@@ -535,29 +564,36 @@ void ControllerLayoutContent(float scale) {
     Choice("##controller preset", &g_original_draft.controller_preset, "Default\0Chieftain\0Lefty\0Hopalong\0Hoss\0");
     ImGui::EndDisabled(); ImGui::SetWindowFontScale(1);
     ImGui::SetCursorPos({0, 160 * scale});
-    ImGui::BeginChild("Controller layout scroll", {938 * scale, 280 * scale}, ImGuiChildFlags_NavFlattened);
+    ImGui::BeginChild("Controller layout scroll", {938 * scale, 280 * scale + extra_height}, ImGuiChildFlags_NavFlattened);
     ImGui::BeginDisabled(capturing);
-    constexpr unsigned order[]{8,9,10,11,14,15,13,12,6,7,0,1,2,3,4,5,16,17};
+    constexpr unsigned order[]{8,9,10,11,14,15,13,12,6,7,0,1,2,3,4,5,16,17,20,21};
     for (unsigned index : order) {
-        const bool stick = index >= 16;
+        const bool stick = index == 16 || index == 17;
+        const bool extra = index >= 20;
+        ImGui::BeginDisabled(extra && !g_controls_draft.carry_all_weapons);
+        const int button = extra ? g_controls_draft.weapon_buttons[ControlsPort()][index - 20] : stick ? -1 : g_pad_draft[index];
         const bool left = index == 16;
         const bool look = (g_original_draft.controller_preset == 2) == left;
         auto prompt = stick ? ControllerPrompt{left ? "L" : "R", left ? ControllerPromptSymbol::LeftStick : ControllerPromptSymbol::RightStick}
-                            : ControllerPromptInfo(g_layout_family, input::PcAction(g_pad_draft[index]));
+                            : button >= 0 ? ControllerPromptInfo(g_layout_family, input::PcAction(button)) : ControllerPrompt{"-", ControllerPromptSymbol::None};
         const char* name = stick ? (look ? "LOOK / AIM" : "MOVE") : ActionName(index);
         const char* description = stick ? "Move the stick in the direction you want to go."
                                         : ActionDescription(index);
         if (stick && look) description = "Turn and aim with this stick.";
-        if (!KnownPreset()) {
+        if (extra) description = "Gameplay override; menus unchanged.";
+        if (!KnownPreset() && !extra) {
             name = stick ? (left ? "LEFT STICK" : "RIGHT STICK") : "BUTTON ACTION";
             description = "Choose a known layout to see this action.";
         }
         ImGui::PushID(int(index)); ImGui::SetCursorPosX(70 * scale);
         auto* draw = ImGui::GetWindowDrawList();
         ImDrawListSplitter layers; layers.Split(draw, 2); layers.SetCurrentChannel(draw, 1);
-        if (!capturing && g_pad_binding_focus == int(index)) {ImGui::SetKeyboardFocusHere(); g_pad_binding_focus = -1;}
+        if (!capturing && g_pad_binding_focus == int(index)) {
+            if (!extra || g_controls_draft.carry_all_weapons) ImGui::SetKeyboardFocusHere();
+            g_pad_binding_focus = -1;
+        }
         if (ImGui::Selectable("##layout row", false, ImGuiSelectableFlags_NoPadWithHalfSpacing |
-                (stick ? ImGuiSelectableFlags_Disabled : 0), {ImGui::GetContentRegionAvail().x, 52 * scale}) && !stick) {
+                (stick ? ImGuiSelectableFlags_Disabled : 0), {ImGui::GetContentRegionAvail().x - (extra ? 132 * scale : 0), 52 * scale}) && !stick) {
             ControlsCancelCapture();
             if (input::BeginPadCapture(ControlsPort())) {
                 g_pad_capture_action = int(index); g_notice = "";
@@ -574,15 +610,23 @@ void ControllerLayoutContent(float scale) {
         ImGui::TextDisabled("%s", language::Text(description));
         ImGui::SetWindowFontScale(1); ImGui::SetCursorPos(next);
         layers.SetCurrentChannel(draw, 0); skin::Row(draw, a, b, selected); layers.Merge(draw);
+        if (extra) {
+            ImGui::SetCursorScreenPos({b.x + 8 * scale, a.y + 7 * scale});
+            ImGui::BeginDisabled(button < 0);
+            if (MenuButton("UNBIND", {118 * scale, 38 * scale}))
+                g_controls_draft.weapon_buttons[ControlsPort()][index - 20] = -1;
+            ImGui::EndDisabled(); ImGui::SetCursorPos(next);
+        }
         ImGui::PopID();
+        ImGui::EndDisabled();
     }
     ImGui::EndDisabled(); EndSettingsChild();
-    ImGui::SetCursorPos({220 * scale, 455 * scale});
+    ImGui::SetCursorPos({220 * scale, 455 * scale + extra_height});
     Hint(capturing ? "Press a controller button. Start + Back or Escape cancels."
                    : "Select an action to change its button. Menu buttons stay unchanged.");
-    ImGui::SetCursorPos({220 * scale, 490 * scale}); Hint(g_notice);
+    ImGui::SetCursorPos({220 * scale, 490 * scale + extra_height}); Hint(g_notice);
     if (capturing) {
-        ImGui::SetCursorPos({720 * scale, 542 * scale});
+        ImGui::SetCursorPos({720 * scale, 542 * scale + extra_height});
         if (MenuButton("CANCEL", {192 * scale, 39 * scale}) || ImGui::IsKeyPressed(ImGuiKey_Escape, false) ||
             ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
             g_pad_binding_focus = g_pad_capture_action;
@@ -591,18 +635,20 @@ void ControllerLayoutContent(float scale) {
         }
         return;
     }
-    ImGui::SetCursorPos({220 * scale, 542 * scale});
+    ImGui::SetCursorPos({220 * scale, 542 * scale + extra_height});
     if (MenuButton("RESET BUTTONS", {300 * scale, 39 * scale})) {
         g_pad_draft = input::DefaultPadBindings();
+        g_controls_draft.weapon_buttons[ControlsPort()] = {-1, -1};
         g_notice = "Controller buttons reset in this draft. Apply from Controls to save.";
     }
-    ImGui::SetCursorPos({720 * scale, 542 * scale});
+    ImGui::SetCursorPos({720 * scale, 542 * scale + extra_height});
     bool back = MenuButton("BACK", {192 * scale, 39 * scale});
     if (back || ImGui::IsKeyPressed(ImGuiKey_Escape, false) || GamepadBack() ||
         ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {g_controller_layout = false; g_layout_returned = true;}
 }
 
 void ControlsContent(float scale, bool just_opened) {
+    const float extra_height = ImGui::GetWindowHeight() - 600 * scale;
     const bool player_two = PlayerTwoControls();
     // Keep the capture frame isolated even if the window thread just published its result.
     bool capturing = g_capture_action >= 0 && g_conflict_action < 0;
@@ -612,7 +658,7 @@ void ControlsContent(float scale, bool just_opened) {
     }
     CaptureBinding();
     ImGui::SetCursorPos({0, 132 * scale});
-    ImGui::BeginChild("Controls scroll", {938 * scale, 308 * scale}, ImGuiChildFlags_NavFlattened);
+    ImGui::BeginChild("Controls scroll", {938 * scale, 308 * scale + extra_height}, ImGuiChildFlags_NavFlattened);
     ImGui::BeginDisabled(capturing || g_conflict_action >= 0);
     if (!player_two) {
     { MenuRow row("MOUSE SENSITIVITY", 8, scale);
@@ -660,8 +706,18 @@ void ControlsContent(float scale, bool just_opened) {
         ImGui::PushTextWrapPos(900 * scale);
         Hint("Player 2 settings. Use Controller Layout to change buttons.");
         ImGui::PopTextWrapPos();
-    } else {
-    ImGui::SetCursorPos({88 * scale, 530 * scale});
+    }
+    const float cheats_y = player_two ? 300.f : 530.f;
+    ImGui::SetCursorPos({88 * scale, cheats_y * scale});
+    ImGui::TextUnformatted(language::Text("GAMEPLAY CHEATS"));
+    { MenuRow row("CARRY ALL WEAPONS", cheats_y + 38, scale);
+      Toggle("##carry all weapons", g_controls_draft.carry_all_weapons); }
+    ImGui::SetCursorPos({88 * scale, (cheats_y + 94) * scale});
+    ImGui::PushTextWrapPos(900 * scale);
+    Hint("Both players. Turning this off keeps weapons already carried.");
+    ImGui::PopTextWrapPos();
+    if (!player_two) {
+    ImGui::SetCursorPos({88 * scale, 700 * scale});
     ImGui::BeginGroup(); ImGui::PushTextWrapPos(912 * scale);
     ImGui::TextUnformatted(language::Text("KEYBOARD AND MOUSE BINDINGS"));
     Hint("Select a binding, then press a key, mouse button, or scroll the wheel. Escape cancels; Backspace clears.");
@@ -670,8 +726,9 @@ void ControlsContent(float scale, bool just_opened) {
         ImGui::TableSetupColumn(language::Text("PRIMARY"), ImGuiTableColumnFlags_WidthFixed, 180 * scale);
         ImGui::TableSetupColumn(language::Text("ALT KEY"), ImGuiTableColumnFlags_WidthFixed, 180 * scale);
         ImGui::TableHeadersRow();
-        constexpr unsigned order[]{16,17,18,19,15,14,8,9,10,11,12,13,6,7,4,5,0,1,2,3};
+        constexpr unsigned order[]{16,17,18,19,20,21,15,14,8,9,10,11,12,13,6,7,4,5,0,1,2,3};
         for (unsigned action : order) {
+            ImGui::BeginDisabled(action >= 20 && !g_controls_draft.carry_all_weapons);
             ImGui::PushID(int(action)); ImGui::TableNextRow(); ImGui::TableNextColumn();
             ImGui::PushTextWrapPos(0); ImGui::TextUnformatted(language::Text(ActionName(action)));
             const float row_font_scale = ImGui::GetCurrentWindow()->FontWindowScale;
@@ -683,7 +740,8 @@ void ControlsContent(float scale, bool just_opened) {
                 auto label = BindingLabel(g_controls_draft.bindings[action].keys[slot]);
                 bool waiting = capturing && g_capture_action == int(action) && g_capture_slot == slot;
                 if (!capturing && g_conflict_action < 0 && g_binding_focus == int(action) * 2 + slot) {
-                    ImGui::SetKeyboardFocusHere(); g_binding_focus = -1;
+                    if (action < 20 || g_controls_draft.carry_all_weapons) ImGui::SetKeyboardFocusHere();
+                    g_binding_focus = -1;
                 }
                 if (MenuButton(waiting ? "PRESS A KEY..." : label.c_str(), {-1, 38 * scale})) {
                     g_capture_action = int(action); g_capture_slot = slot; g_conflict_action = -1;
@@ -693,6 +751,7 @@ void ControlsContent(float scale, bool just_opened) {
                 ImGui::PopID();
             }
             ImGui::PopID();
+            ImGui::EndDisabled();
         }
         ImGui::EndTable();
     }
@@ -700,12 +759,12 @@ void ControlsContent(float scale, bool just_opened) {
     }
     ImGui::EndDisabled(); EndSettingsChild();
     if (g_conflict_action >= 0) {
-        ImGui::SetCursorPos({220 * scale, 490 * scale});
+        ImGui::SetCursorPos({220 * scale, 490 * scale + extra_height});
         char conflict[256];
         std::snprintf(conflict, sizeof(conflict), language::Text("%s is assigned to %s. Replace that assignment?"),
                       language::Text(BindingLabel(g_capture_key).c_str()), language::Text(ActionName(unsigned(g_conflict_action))));
         Hint(conflict);
-        ImGui::SetCursorPos({220 * scale, 541 * scale});
+        ImGui::SetCursorPos({220 * scale, 541 * scale + extra_height});
         ImGui::BeginDisabled(capturing);
         if (MenuButton("REPLACE", {260 * scale, 39 * scale})) ReplaceBinding();
         ImGui::SameLine(650 * scale);
@@ -720,15 +779,18 @@ void ControlsContent(float scale, bool just_opened) {
         ImGui::EndDisabled();
         return;
     }
-    ImGui::SetCursorPos({220 * scale, 490 * scale});
+    ImGui::SetCursorPos({220 * scale, 490 * scale + extra_height});
     Hint(g_notice);
-    ImGui::SetCursorPos({220 * scale, 541 * scale});
+    ImGui::SetCursorPos({220 * scale, 541 * scale + extra_height});
     ImGui::BeginDisabled(capturing || g_conflict_action >= 0);
     if (MenuButton("APPLY", {200 * scale, 39 * scale})) ApplyControls();
     if (!player_two) {
         ImGui::SameLine(450 * scale);
         if (MenuButton("RESET DEFAULTS", {250 * scale, 39 * scale})) {
-            g_controls_draft = ControlsDefaults(); g_notice = "PC defaults restored in this draft. Select Apply to save.";
+            const auto other_buttons = g_controls_draft.weapon_buttons[1];
+            g_controls_draft = ControlsDefaults();
+            g_controls_draft.weapon_buttons[1] = other_buttons;
+            g_notice = "PC defaults restored in this draft. Select Apply to save.";
         }
     }
     ImGui::SameLine(720 * scale);
@@ -745,7 +807,7 @@ void AudioContent(float scale, bool just_opened) {
     ImGui::BeginChild("Audio scroll", {938 * scale, 308 * scale}, ImGuiChildFlags_NavFlattened);
     ImGui::BeginDisabled(!g_original_draft.audio_available);
     { MenuRow row("MUSIC VOLUME", 8, scale);
-      if (just_opened || g_audio_focus) {ImGui::SetKeyboardFocusHere(); g_audio_focus = false;}
+      if (just_opened) ImGui::SetKeyboardFocusHere();
       ImGui::SliderInt("##music", &g_audio_draft.music, 0, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput); }
     { MenuRow row("EFFECTS VOLUME", 64, scale);
       ImGui::SliderInt("##effects", &g_audio_draft.effects, 0, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput); }
@@ -777,10 +839,7 @@ void AudioContent(float scale, bool just_opened) {
     }
     ImGui::SameLine(720 * scale);
     if (MenuButton("BACK", {192 * scale, 39 * scale}) || ImGui::IsKeyPressed(ImGuiKey_Escape, false) ||
-        GamepadBack() || ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-        if (g_pause_audio) {g_pause_audio = false; g_audio_returned = true; g_notice = ""; g_released = false; g_pad = 0;}
-        else Close();
-    }
+        GamepadBack() || ImGui::IsMouseClicked(ImGuiMouseButton_Right)) Close();
 }
 
 void CoopContent(float scale, bool just_opened, const CoopSetupState& state) {
@@ -1068,7 +1127,7 @@ void DarkwatchGraphicsPad(int port, input::Pad& pad) {
                 (!controls || !state.paused || state.options != g_pause_owner || state.page != g_pause_page)) {
                 g_pause_owner = g_pause_page = g_pause_entry = 0;
             }
-            if (controls && state.paused && entry >= 1 && entry <= 2) {
+            if (controls && state.paused && entry >= 1 && entry <= 3) {
                 g_pause_owner = state.options; g_pause_page = state.page; g_pause_entry = entry;
             }
             g_original_controls = state;
@@ -1157,7 +1216,7 @@ void DarkwatchGraphicsUi(double fps) {
     }
     g_coop = coop.owner != 0;
     g_controls = state.route == GraphicsMenuRoute::Controls;
-    g_audio = state.route == GraphicsMenuRoute::Audio;
+    g_audio = state.route == GraphicsMenuRoute::Audio || (g_controls && pause_entry == 3);
     g_characters = g_characters_owner.load() != 0;
     g_quit = g_quit_owner.load() != 0;
     g_options = g_coop ? coop.owner : g_characters ? g_characters_owner.load() : state.options;
@@ -1166,7 +1225,6 @@ void DarkwatchGraphicsUi(double fps) {
     if (!visible) {
         if (g_confirm) Revert();
         g_open = false;
-        g_pause_audio = false;
         g_controller_layout = false;
         g_layout_returned = false;
         ControlsCancelCapture(); g_capture_action = -1; g_conflict_action = -1;
@@ -1190,7 +1248,7 @@ void DarkwatchGraphicsUi(double fps) {
         g_open_characters = g_characters;
         g_open_coop = g_coop; g_coop_ui_ready = false;
         g_open_quit = g_quit; g_quit_ready = false;
-        g_open_audio = g_audio; g_pause_audio = false; g_audio_focus = g_audio_returned = false;
+        g_open_audio = g_audio;
         g_audio_draft = state.audio; g_surround_draft = audio::SurroundEnabled();
         if (g_characters) {
             g_character_draft = settings::configured_character(0);
@@ -1228,10 +1286,11 @@ void DarkwatchGraphicsUi(double fps) {
     io.MouseDrawCursor = false; // The shared menu cursor is drawn after both original and host pages.
     ImGui::SetNextFrameWantCaptureKeyboard(true);
     ImGui::SetNextFrameWantCaptureMouse(true);
-    float scale = std::min(io.DisplaySize.x / 1280.f, io.DisplaySize.y / 720.f);
-    scale = std::max(scale, .5f);
+    const float scale = MenuScale();
     io.FontGlobalScale = scale / g_font_scale;
-    ImVec2 size = g_quit ? ImVec2(720 * scale, 360 * scale) : ImVec2(960 * scale, 600 * scale);
+    const bool tall_settings = !g_coop && !g_characters && !g_quit && !g_audio;
+    ImVec2 size = g_quit ? ImVec2(720 * scale, 360 * scale) :
+        ImVec2(960 * scale, std::min((tall_settings ? 800 : 600) * scale, io.DisplaySize.y - 24 * scale));
     ImVec2 pos((io.DisplaySize.x - size.x) / 2, (io.DisplaySize.y - size.y) / 2);
     ImGui::GetBackgroundDrawList()->AddRectFilled({0, 0}, io.DisplaySize, IM_COL32(4, 6, 10, g_coop ? 255 : 210));
     ImGui::SetNextWindowPos(pos); ImGui::SetNextWindowSize(size);
@@ -1265,13 +1324,13 @@ void DarkwatchGraphicsUi(double fps) {
     ImGui::PushStyleColor(ImGuiCol_TextDisabled, {.72f,.72f,.70f,1});
     ImGui::PushStyleColor(ImGuiCol_TextSelectedBg, {.55f,.04f,.05f,.8f});
     ImGui::PushFont(g_body);
-    const bool controls_page = g_controls && !g_page_graphics;
+    const bool controls_page = g_controls && !g_page_graphics && !g_audio;
     ImGui::Begin(g_coop ? "Co-op" : g_quit ? "Quit to Desktop" : g_characters ? "Characters" : g_audio ? "Audio" : g_controls ? "Controls" : "Graphics", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
     ImGui::SetWindowFontScale(1);
     skin::Frame(ImGui::GetWindowDrawList(), {pos.x, pos.y + 60 * scale}, {size.x, size.y - 60 * scale});
     ImGui::PushFont(g_title);
     if (g_controller_layout) ImGui::SetWindowFontScale(.75f);
-    const char* title = language::Text(g_coop ? "CO-OP" : g_quit ? "QUIT TO DESKTOP" : g_characters ? "CHOOSE CHARACTER" : g_audio || g_pause_audio ? "AUDIO" : g_controller_layout ? "CONTROLLER LAYOUT" : controls_page ? "CONTROLS" : "GRAPHICS");
+    const char* title = language::Text(g_coop ? "CO-OP" : g_quit ? "QUIT TO DESKTOP" : g_characters ? "CHOOSE CHARACTER" : g_audio ? "AUDIO" : g_controller_layout ? "CONTROLLER LAYOUT" : controls_page ? "CONTROLS" : "GRAPHICS");
     const float title_width = ImGui::CalcTextSize(title).x;
     const float title_room = size.x - 128 * scale;
     if (title_width > title_room) ImGui::SetWindowFontScale(ImGui::GetCurrentWindow()->FontWindowScale * title_room / title_width);
@@ -1308,18 +1367,19 @@ void DarkwatchGraphicsUi(double fps) {
         ImGui::End(); ImGui::PopFont(); ImGui::PopStyleColor(23); ImGui::PopStyleVar(5);
         return;
     }
-    if (g_coop || g_characters || controls_page || g_audio || g_pause_audio) {
+    if (g_coop || g_characters || controls_page || g_audio) {
         if (g_coop) CoopContent(scale, just_opened, coop);
-        else if (g_audio || g_pause_audio) AudioContent(scale, just_opened);
+        else if (g_audio) AudioContent(scale, just_opened);
         else if (g_characters) CharactersContent(scale, just_opened);
         else if (g_controller_layout) ControllerLayoutContent(scale);
         else ControlsContent(scale, just_opened);
         ImGui::End(); ImGui::PopFont(); ImGui::PopStyleColor(23); ImGui::PopStyleVar(5);
         return;
     }
+    const float extra_height = ImGui::GetWindowHeight() - 600 * scale;
     ImGui::BeginDisabled(g_confirm);
     ImGui::SetCursorPos({0, 132 * scale});
-    ImGui::BeginChild("Graphics scroll", {938 * scale, 308 * scale}, ImGuiChildFlags_NavFlattened);
+    ImGui::BeginChild("Graphics scroll", {938 * scale, 308 * scale + extra_height}, ImGuiChildFlags_NavFlattened);
     char text[96];
     { MenuRow row("DISPLAY MODE", 8, scale);
     int mode = int(g_draft.display_mode);
@@ -1444,32 +1504,23 @@ void DarkwatchGraphicsUi(double fps) {
     ImGui::SetCursorPos({430 * scale, 1237 * scale});
     Hint(available ? "Installed gameplay textures. UI unchanged." : "Install the HD texture pack in the launcher.");
     }
-    if (state.paused) {
-        ImGui::SetCursorPos({88 * scale, 1295 * scale});
-        if (g_audio_returned) {ImGui::SetKeyboardFocusHere(); g_audio_returned = false;}
-        if (MenuButton("AUDIO...", {824 * scale, 39 * scale})) {
-            g_audio_draft = state.audio; g_surround_draft = audio::SurroundEnabled();
-            g_original_draft = state; g_pause_audio = true; g_audio_focus = true; g_notice = "";
-            g_released = false; g_pad = 0;
-        }
-    }
     ImGui::Dummy({1, 12 * scale});
     EndSettingsChild();
-    ImGui::SetCursorPos({220 * scale, 507 * scale});
+    ImGui::SetCursorPos({220 * scale, 507 * scale + extra_height});
     Hint("Restart after changing aspect ratio.");
     ImGui::EndDisabled();
-    ImGui::SetCursorPos({220 * scale, 450 * scale});
+    ImGui::SetCursorPos({220 * scale, 450 * scale + extra_height});
     Hint(g_notice);
     // Disabled overlapping buttons still claim hover; submit only one footer per frame.
     if (g_confirm) {
-        ImGui::SetCursorPos({220 * scale, 448 * scale});
+        ImGui::SetCursorPos({220 * scale, 448 * scale + extra_height});
         std::snprintf(text, sizeof(text), language::Text("Keep display settings? Reverting in %d seconds."), std::max(1, int(std::ceil(g_confirm_until - ImGui::GetTime())))); Hint(text);
-        ImGui::SetCursorPos({220 * scale, 541 * scale});
+        ImGui::SetCursorPos({220 * scale, 541 * scale + extra_height});
         if (MenuButton("KEEP", {310 * scale, 39 * scale})) SaveChanges();
         ImGui::SameLine(550 * scale);
         if (MenuButton("REVERT", {362 * scale, 39 * scale}) || ImGui::IsKeyPressed(ImGuiKey_Escape, false) || GamepadBack() || ImGui::IsMouseClicked(ImGuiMouseButton_Right)) Revert();
     } else {
-        ImGui::SetCursorPos({220 * scale, 541 * scale});
+        ImGui::SetCursorPos({220 * scale, 541 * scale + extra_height});
         if (MenuButton("APPLY", {300 * scale, 39 * scale})) ApplyChanges();
         ImGui::SameLine(650 * scale);
         if (MenuButton("BACK", {262 * scale, 39 * scale})) Close();

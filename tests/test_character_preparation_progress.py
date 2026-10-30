@@ -173,7 +173,7 @@ class PreparationProgressTests(unittest.TestCase):
 
     def test_campaign_cancels_inside_area_before_next_combination(self):
         calls = 0
-        append = art.append_resources
+        append = art.append_resource_bytes
         def cancel():
             if calls == 3:
                 raise InterruptedError('cancelled')
@@ -182,7 +182,7 @@ class PreparationProgressTests(unittest.TestCase):
             calls += 1
             return append(*args)
         with roster_fixture(cancel, lambda message: None) as args:
-            with patch.object(art, 'append_resources', adapted), self.assertRaises(InterruptedError):
+            with patch.object(art, 'append_resource_bytes', adapted), self.assertRaises(InterruptedError):
                 roster.prepare(*args)
         self.assertEqual(calls, 3)
 

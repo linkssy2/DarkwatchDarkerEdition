@@ -16,6 +16,16 @@ import setup_backend as setup
 
 
 class CharacterPreviewTests(unittest.TestCase):
+    def test_tala_variants_keep_old_ids_and_use_only_wingless_playable_boss(self):
+        self.assertEqual(len(preview.MODELS), 10)
+        self.assertEqual(preview.MODELS[7:], (
+            'characters/talaagent/base_agenttala.rx1',
+            'characters/tala/base_cine_tala.rx1',
+            'characters/player_roster/base_tala_boss.rx1'))
+        self.assertNotIn('characters/tala_cine/base_cine_tala.rx1', preview.MODELS)
+        self.assertNotIn('characters/tala_boss/base_tala_boss.rx1', preview.MODELS)
+        self.assertEqual((preview.VERSION, preview.MAGIC), (3, b'DWCP0003'))
+
     def test_import_uses_only_standard_library(self):
         check = subprocess.run([sys.executable, '-S', '-c',
             'import sys;sys.path.insert(0,sys.argv[1]);import character_preview', str(ROOT/'launcher')],

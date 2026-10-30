@@ -30,6 +30,10 @@ void DarkwatchCoopCallback(X86Context& ctx, uint8_t*) {
 void DarkwatchCoopEnter(X86Context& ctx, uint8_t* base) {
     if (HasLiteral(ctx,base,0x4298B8)) input::SetCoopKeyboard(!input::GetLastDevice().controller);
 }
+void DarkwatchCoopTextureQuality(X86Context& ctx, uint8_t* base) {
+    // Keep the full single-player dictionary; the optional HD pack still overrides it.
+    if (ctx.esi == 1) ReplaceLiteral(ctx,base,1,0);
+}
 void DarkwatchCoopParticipants(X86Context& ctx, uint8_t* base) {
     if (!base || ctx.ebp < 0x84 || !ctx.esi || ctx.esi > 0xFFFFFFFC ||
         ctx.ebx != 0 || (ctx.edi != 0 && ctx.edi != 0x20) ||

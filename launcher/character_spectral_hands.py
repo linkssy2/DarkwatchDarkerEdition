@@ -6,6 +6,7 @@ weights for the player's articulated grip. No weapon animation is changed.
 """
 from collections import Counter
 import hashlib
+import heapq
 import math
 import struct
 
@@ -102,7 +103,7 @@ def _geometry(raw, index):
                 inverse_bytes=raw[inv:inv+bones*64], geometry=raw[geos[index][0]-12:geos[index][1]])
 
 
-def _finger_weights(source, used, triangles, inverses, old, new, child, side, scale, target, binds, tala=False):
+def _finger_weights(source, used, triangles, inverses, old, new, child, side, scale, target, binds, tala=False, tala_variant=None):
     """Diffuse anatomical finger seeds across the connected original surface.
 
     The boss has rigid hand bones. Nearest-surface transfer from a gloved hand
@@ -111,7 +112,7 @@ def _finger_weights(source, used, triangles, inverses, old, new, child, side, sc
     """
     points, weld, nodes = [], {}, []
     for vertex in used:
-        point = _point(tuple(v*(1. if tala else boss.SCALE) for v in source['positions'][vertex]), inverses[old[2]])
+        point = _point(tuple(v*(1. if tala or tala_variant else boss.SCALE) for v in source['positions'][vertex]), inverses[old[2]])
         key = tuple(round(v,6) for v in point)
         if key not in weld:
             weld[key] = len(points)
@@ -125,8 +126,8 @@ def _finger_weights(source, used, triangles, inverses, old, new, child, side, sc
             if a != b:
                 adjacency[a][b] = adjacency[b][a] = 1/max(math.dist(points[a],points[b]),1e-6)
     reach = max(p[0] for p in points)
-    def branches(cut):
-        pending = {i for i,p in enumerate(points) if p[0] > cut}
+    def branches(cut, distances=None):
+        pending = {i for i,p in enumerate(points) if (p[0] if distances is None else distances[i]) > cut}
         result = []
         while pending:
             stack, found = [min(pending)], set()
@@ -140,9 +141,39 @@ def _finger_weights(source, used, triangles, inverses, old, new, child, side, sc
             if len(found) > 2:
                 result.append(found)
         return sorted(result,key=lambda group:sum(points[n][1] for n in group)/len(group))
-    fingers, thumb = branches(reach*(.65 if tala else .63)), branches(reach*.46)
-    if len(fingers) != (2 if tala else 5) or len(thumb) != 2:
-        raise ValueError('Original hand finger branches differ')
+    if tala_variant == 'vampire':
+        fingers = branches(reach*.46)
+        if len(fingers) != 5:
+            raise ValueError('Original vampire Tala finger branches differ')
+        thumb = [fingers[-1]]
+    elif tala_variant == 'boss':
+        # Her curled fingers overlap along the wrist axis; surface distance
+        # separates their authored tips without jumping across adjacent digits.
+        distance = [0. if p[0] < reach*.1 else math.inf for p in points]
+        queue = [(d, i) for i, d in enumerate(distance) if d == 0.]
+        heapq.heapify(queue)
+        while queue:
+            d, i = heapq.heappop(queue)
+            if d != distance[i]:
+                continue
+            for j, inverse_length in adjacency[i].items():
+                value = d + 1/inverse_length
+                if value < distance[j]:
+                    distance[j] = value
+                    heapq.heappush(queue, (value, j))
+        if not all(math.isfinite(d) for d in distance):
+            raise ValueError('Disconnected boss Tala hand')
+        fingers = branches(max(distance)*.6, distance)
+        if len(fingers) != 5:
+            raise ValueError('Original boss Tala finger branches differ')
+        thumb = [max(fingers, key=lambda group: abs(sum(points[i][2] for i in group)/len(group)))]
+        fingers = [group for group in fingers if group is not thumb[0]] + thumb
+    else:
+        if tala_variant is not None:
+            raise ValueError('Unknown Tala hand topology')
+        fingers, thumb = branches(reach*(.65 if tala else .63)), branches(reach*.46)
+        if len(fingers) != (2 if tala else 5) or len(thumb) != 2:
+            raise ValueError('Original hand finger branches differ')
     families = ((7,), (7,), (7,), (5,6), (9,10)) if side == 'left' else (
         (17,18), (17,18), (17,18), (15,16), (19,20))
     if tala:
@@ -392,9 +423,10 @@ def _emit(model, original, spectral, source, target, plain_material=None):
             raise ValueError('Original spectral skin material differs')
         selected_material = materials[2]
     else:
-        if len(materials) != 3 or plain_material not in materials[1]:
+        matches = [material for material in materials if plain_material in material]
+        if len(matches) != 1:
             raise ValueError('Original plain skin material differs')
-        selected_material = materials[1]
+        selected_material = matches[0]
     material = _chunk(8,_chunk(1,struct.pack('<2I',1,0xffffffff))+selected_material)
     geom = bytearray(_one(source['geometry'],1)[12:])
     struct.pack_into('<2I',geom,4,triangles,count)

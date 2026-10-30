@@ -65,8 +65,10 @@ class BonusImportTests(unittest.TestCase):
         for name in ('character_content.py', 'character_animation.py', 'character_assets.py',
                      'character_archive.py', 'character_repaint.py', 'character-catalog.json',
                      'character_boss.py', 'character_boss_effects.py', 'character_spectral_hands.py',
-                     'character_hand_seams.py', 'character_secondary.py', 'character_preview.py', 'character_roster.py',
-                     'character-art/cassidy-hands-1024.dds', 'character-art/cassidy-hands-256.dds'):
+                     'character_hand_seams.py', 'character_secondary.py', 'character_preview.py', 'character_roster.py', 'character_tala.py',
+                     'revolver_content.py', 'revolver_scripts.py', 'installed_source.py',
+                     'character-art/cassidy-hands-1024.dds', 'character-art/cassidy-hands-256.dds',
+                     'character-art/tala-hands-1024.dds', 'character-art/tala-hands-256.dds'):
             (payload/name).write_bytes(b'synthetic character fixture')
         catalog = dict(schema_version=1, kind="darkwatch-gameplay-hd", version="1", texture_catalog_sha256="1" * 64,
                        files=[dict(path="gameplay-hd/example.dwt", size=44, sha256="2" * 64)])
@@ -100,6 +102,12 @@ class BonusImportTests(unittest.TestCase):
                                     INSTALLED={'packfile.pck':(len(EXPECTED),sha(EXPECTED))})
         characters.start()
         self.addCleanup(characters.stop)
+        # These selector fixtures are intentionally not PCK archives. Recovery
+        # has its own codec/update tests; retain the old-install boundary here.
+        recovery = patch.object(setup.installed_source, 'capture',
+                                side_effect=lambda assets, output, originals, cancel: cancel())
+        recovery.start()
+        self.addCleanup(recovery.stop)
         def fixture_preview(assets, output, cancel):
             # Preview parsing is tested against real models elsewhere; this ISO is synthetic.
             cancel()

@@ -1,5 +1,8 @@
 #include "graphics_cinematic.h"
+#include <algorithm>
+#include <cmath>
 #include <cstring>
+#include "app/app.h"
 #include "graphics_view.h"
 #include "cpu/x86_context.h"
 #include "kernel/memory.h"
@@ -16,6 +19,23 @@ uint32_t Read(const uint8_t* base, uint32_t address) {
     uint32_t value; std::memcpy(&value, base + address, sizeof(value)); return value;
 }
 } // namespace
+
+void DarkwatchCinematicBorderProjection(X86Context& ctx, uint8_t* base) {
+    if (!app::Widescreen() || !darkwatch::view::Snapshot().cutscene_borders ||
+        !Span(base, 0x4B7A41, 0x2B) || base[0x4B7A41] ||
+        Read(base, 0x4B7A4C) < 1 || Read(base, 0x4B7A4C) > 3 ||
+        Read(base, 0x4B7A68) != ctx.esi || !Span(base, ctx.esi, 0x3C) ||
+        Read(base, ctx.esi) != 0x478244 || ctx.ebp < 0x68 ||
+        ctx.esp != ctx.ebp - 0x68 || !Span(base, ctx.ebp, 12)) return;
+    float target, amount;
+    std::memcpy(&target, base + ctx.esi + 0x30, 4);
+    std::memcpy(&amount, base + ctx.esi + 0x24, 4);
+    if (!std::isfinite(target) || target < 0.5f || target > 1.0f ||
+        !std::isfinite(amount) || amount < 0 || amount > 1) return;
+    // Match the corrected camera's vertical framing without changing mask lifetime.
+    const float thickness = std::max(0.0f, 0.5f - (target - 0.5f) * (4.0f / 3.0f)) * amount;
+    std::memcpy(base + ctx.ebp + 8, &thickness, 4);
+}
 
 bool DarkwatchHideCinematicBorder(X86Context& ctx, uint8_t* base) {
     if (darkwatch::view::Snapshot().cutscene_borders || ctx.esi < 0x29 ||

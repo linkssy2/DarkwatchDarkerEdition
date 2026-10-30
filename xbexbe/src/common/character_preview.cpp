@@ -72,9 +72,9 @@ void Reduce(Image& image) {
 bool Load(std::span<const uint8_t> bytes, std::array<Model, settings::kCharacterCount>& models) {
     if (bytes.size() < 24 || bytes.size() > kFileLimit) return false;
     uint64_t stored; std::memcpy(&stored, bytes.data() + bytes.size() - 8, 8);
-    if (hd::Hash(bytes.first(bytes.size() - 8)) != stored || std::memcmp(bytes.data(), "DWCP0002", 8)) return false;
+    if (hd::Hash(bytes.first(bytes.size() - 8)) != stored || std::memcmp(bytes.data(), "DWCP0003", 8)) return false;
     Reader reader{bytes.first(bytes.size() - 8), 8};
-    if (reader.Value<uint32_t>() != 2 || reader.Value<uint32_t>() != models.size()) return false;
+    if (reader.Value<uint32_t>() != 3 || reader.Value<uint32_t>() != models.size()) return false;
     size_t atlas_pixels = 0;
     for (uint32_t id = 0; id < models.size(); ++id) {
         Model& model = models[id];

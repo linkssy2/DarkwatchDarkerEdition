@@ -12,6 +12,7 @@ import character_assets as art
 import character_boss_effects
 import character_repaint as rw
 import character_spectral_hands as skin
+import character_tala
 
 CHARACTERS = 'xml/actortemplates_characters.bxml'
 TALA = 'characters/talaagent/base_agenttala'
@@ -26,6 +27,8 @@ ROSTER = {
     6: ('RedTrooper', 'characters/multiplayer/base_dwstormtrooper_red',
         'characters/player_first/base_pov_red'),
     7: ('Tala', TALA, TALA_HANDS),
+    8: ('VampireTala', character_tala.VAMPIRE, 'characters/player_first/base_pov_vampiretala'),
+    9: ('BossTala', character_tala.MODEL, 'characters/player_first/base_pov_bosstala'),
 }
 
 
@@ -48,7 +51,7 @@ def _trooper_locators(player, multiplayer, coop):
     return result
 
 
-def _hands(original, tala):
+def _hands(original, tala, identity=7):
     """Transfer Tala's original arms/UVs onto the existing articulated POV rig."""
     source, target = skin._geometry(tala, 0), skin._geometry(original, 0)
     old_binds = list(map(skin._inverse, source['inverse']))
@@ -64,7 +67,9 @@ def _hands(original, tala):
         triangles = [tri for tri in source['triangles'] if all((allowed[i] for i in tri))]
         used = sorted({i for tri in triangles for i in tri})
         welded, boundary = skin._boundary(triangles, source['positions'])
-        if len(used) != 224 or len(triangles) != 317 or len(boundary) != 9:
+        expected = {7: (224, 317, 9), 8: (220 if side == 'left' else 219, 228, 6),
+                    9: (455, 598, 6)}[identity]
+        if (len(used), len(triangles), len(boundary)) != expected:
             raise ValueError('Original Tala arm topology differs')
         scales = []
         for j, (a, b) in enumerate(zip(old, new)):
@@ -99,7 +104,8 @@ def _hands(original, tala):
                 model[key].append(source[key][i])
         for ids, weights in skin._finger_weights(
                 source, used, triangles, source['inverse'], old, new, child,
-                side, scales[2], target, binds, tala=True):
+                side, scales[2], target, binds, tala=identity == 7,
+                tala_variant={7: None, 8: 'vampire', 9: 'boss'}[identity]):
             model['bones'].append(ids)
             model['weights'].append(weights)
         ring = {i for edge in boundary for i in edge}
@@ -116,7 +122,9 @@ def _hands(original, tala):
                 model['bones'][index], model['weights'][index] = ([new[0], 0, 0, 0], [255, 0, 0, 0])
         model['triangles'].extend(tuple(mapping[i] for i in tri) for tri in triangles)
         model['triangles'].extend(skin._cap(boundary, mapping, model['positions'], target['inverse'][new[0]]))
-    return skin._emit(model, original, tala, source, target, b'TalaAgent_body_clr\x00')
+    material = {7: b'TalaAgent_body_clr\x00', 8: b'Tala_Body_A_Clr\x00',
+                9: b'Tala_Body_A_Clr_X\x00'}[identity]
+    return skin._emit(model, original, tala, source, target, material)
 
 
 def _hand_actor(original, name, model):
@@ -126,7 +134,7 @@ def _hand_actor(original, name, model):
     art.child(hands, 'm_HandsModel')['attributes']['value'] = model
     for row in art.child(hands, 'm_AlternativeHandsModels')['children']:
         row['attributes']['value'] = model
-    art.child(art.child(result, 'LocatorAttachmentComponent'), 'm_locatorFileName')['attributes']['value'] = model
+    # All POV meshes share Chaz's rig; variant locator lists omit dual pistols.
     return result
 
 
@@ -143,22 +151,23 @@ def _actor(original, identity, solo):
         row['attributes']['value'] = model
     locator = 'characters/player_roster/' + name.lower()
     art.child(art.child(player, 'LocatorAttachmentComponent'), 'm_locatorFileName')['attributes']['value'] = locator
-    hand_name = name + 'Hands' if identity == 7 else prefix + 'Hands'
+    hand_name = name + 'Hands' if identity >= 7 else prefix + 'Hands'
     if identity == 4:
         hand_name = 'ChazHands'
     art.child(art.child(player, 'InventoryComponent'), 'm_handActorName')['attributes']['value'] = hand_name
     component = art.child(player, 'AnimationComponent')
-    character = {3: 'civilianjericho', 4: 'trooper', 5: 'colortrooper', 6: 'colortrooper', 7: 'tala'}[identity]
+    character = {3: 'civilianjericho', 4: 'trooper', 5: 'colortrooper', 6: 'colortrooper',
+                 7: 'tala', 8: 'vampiretala', 9: 'bosstala'}[identity]
     source = {alias: destination.replace('cassidy', character)[:-5] for alias, _, destination, _, _, _ in animation.TABLES}
     if solo:
         source['Multi'] = 'characters/player_two/' + character + 'solomultiplayeranimation'
     for row in art.child(component, 'm_AnimationFiles')['children']:
         row['attributes']['value'] = source[row['attributes']['key']]
-    ragdoll_actor = 'AgentTala' if identity == 7 else 'Chaz' if identity == 3 else 'CoOpChaz'
+    ragdoll_actor = 'AgentTala' if identity >= 7 else 'Chaz' if identity == 3 else 'CoOpChaz'
     original_animation = art.child(art.child(original, ragdoll_actor), 'AnimationComponent')
     art.child(component, 'm_ragdollFileName')['attributes']['value'] = (
         art.child(original_animation, 'm_ragdollFileName')['attributes']['value'])
-    if identity == 7:
+    if identity >= 7:
         npc = art.child(original, 'AgentTala')
         voice = art.child(art.child(npc, 'SpeakerComponent'), 'm_speakerMap')['children']
         own = {row['attributes']['key']: row for row in voice if row['attributes'].get('sound', '').startswith('TALA_')}
@@ -190,7 +199,7 @@ def _dependencies(actor, hand, read):
 
 def suffix(choices):
     if (len(choices) not in (1, 2)
-            or any(type(n) is not int or not 0 <= n < 8 for n in choices)
+            or any(type(n) is not int or not 0 <= n < 10 for n in choices)
             or max(choices) < 3):
         raise ValueError('Invalid roster route')
     return 'roster_' + '_'.join(str(n) for n in sorted(choices))
@@ -204,7 +213,7 @@ def _voice_banks(audio, choices):
     selected = []
     if any(identity in (1, 2) for identity in choices):
         selected.append('CASSIDY')
-    if 7 in choices:
+    if any(identity in (7, 8, 9) for identity in choices):
         selected.append('TALA')
     for bank_name in selected:
         rows = [row for row in banks if art.fields(row)['name'].upper() == bank_name]
@@ -223,13 +232,14 @@ def _voice_banks(audio, choices):
     return layout
 
 
-def prepare(source, groups, extension, spectral):
+def prepare(source, groups, extension, spectral, tala_variants=False, *, tala_pixels=None):
     read = source.read
     original = art.decode(read(CHARACTERS))
     merged = {**groups['packfile.pck'], **extension['packfile.pck'], **spectral['packfile.pck']}
     actors = art.decode(merged[CHARACTERS])
     outputs = {}
     families = {}
+    roster = {identity: row for identity, row in ROSTER.items() if tala_variants or identity < 8}
 
     def resource(name):
         key = art.norm(name)
@@ -249,10 +259,30 @@ def prepare(source, groups, extension, spectral):
             progress=lambda message, label=label: source.report(f'Preparing {label} {message}'))
         outputs.update(added)
     source.report('Preparing Tala first-person hands...')
-    outputs[TALA_HANDS + '.rx1'] = _hands(read(rw.SOURCE), read(TALA + '.rx1'))
+    outputs[TALA_HANDS + '.rx1'] = (
+        rw.repaint_tala(read(rw.SOURCE), tala_pixels) if tala_pixels is not None
+        else _hands(read(rw.SOURCE), read(TALA + '.rx1')))
     source.cancel()
     for ext in ('jlist', 'llist', 'bllist'):
         outputs[TALA_HANDS + '.' + ext] = read('characters/player_first/base_pov_chaz.' + ext)
+    if tala_variants:
+        source.report('Preparing wingless Boss Tala model...')
+        outputs[character_tala.MODEL + '.rx1'] = character_tala.model(read)
+        outputs[character_tala.MODEL + '.jlist'] = character_tala.secondary.joint_names(
+            read(character_tala.ORIGINAL_BOSS + '.jlist'))
+        source.report('Preparing Vampire Tala animations...')
+        added, _, _ = animation.prepare(read, art.decode, art.encode,
+            character_tala.VAMPIRE + '.rx1', 'vampiretala', cancel=source.cancel,
+            progress=lambda message: source.report('Preparing Vampire Tala ' + message))
+        outputs.update(added)
+        outputs.update(character_tala.animations(read, outputs[character_tala.MODEL + '.rx1'],
+            cancel=source.cancel, progress=lambda message: source.report('Preparing Boss Tala ' + message)))
+        for identity in (8, 9):
+            source.report(f'Preparing {roster[identity][0]} first-person hands...')
+            _, model, hands = roster[identity]
+            outputs[hands + '.rx1'] = _hands(read(rw.SOURCE), resource(model + '.rx1'), identity)
+            for ext in ('jlist', 'llist', 'bllist'):
+                outputs[hands + '.' + ext] = read('characters/player_first/base_pov_chaz.' + ext)
     # Blue/red share their own bind basis; the standard trooper differs.
     blue = animation.frames(read(ROSTER[5][1] + '.rx1'))
     red = animation.frames(read(ROSTER[6][1] + '.rx1'))
@@ -265,19 +295,19 @@ def prepare(source, groups, extension, spectral):
             raise ValueError('Trooper variant rig differs')
     for identity in (5, 6):
         outputs[ROSTER[identity][1] + '.jlist'] = read('characters/multiplayer/base_dwstormtrooper.jlist')
-    for identity, (prefix, model, hand_model) in ROSTER.items():
-        source.report(f'Preparing player equipment: {identity - 2}/{len(ROSTER)}')
+    for identity, (prefix, model, hand_model) in roster.items():
+        source.report(f'Preparing player equipment: {identity - 2}/{len(roster)}')
         joints = set(resource(model + '.jlist').decode('ascii').split())
         chaz = art.decode(read('characters/player_third/base_chaz.bllist'))
         coop = art.decode(read('characters/multiplayer/base_dwstormtrooper_coop.bllist'))
-        if identity == 7:
-            npc = art.decode(read(TALA + '.bllist'))
+        if identity >= 7:
+            npc = art.decode(read((TALA if identity == 7 else character_tala.VAMPIRE) + '.bllist'))
         elif identity in (4, 5, 6):
             npc = art.decode(read('characters/multiplayer/base_dwstormtrooper.bllist'))
         for solo in (True, False):
             source.cancel()
             player, hand_name, locator = _actor(original, identity, solo)
-            if identity == 7:
+            if identity >= 7:
                 loc = art.solo_locators(chaz, npc) if solo else art.adapt_locators(coop, npc)
             elif identity == 3:
                 loc = chaz if solo else art.jericho_locators(chaz, coop, joints)
@@ -316,25 +346,27 @@ def prepare(source, groups, extension, spectral):
     if len(resources) != 102:
         raise ValueError('Incomplete roster chapter coverage')
     result = {'packfile.pck': outputs, 'LvlSingl.pck': {}, 'audio.pck': {}}
-    choices = [(identity,) for identity in ROSTER]
-    choices += [pair for pair in itertools.combinations_with_replacement(range(8), 2)
+    choices = [(identity,) for identity in roster]
+    choices += [pair for pair in itertools.combinations_with_replacement(range(10 if tala_variants else 8), 2)
                 if max(pair) >= 3]
+    # Character dependencies do not change between campaign areas.
+    choice_dependencies = {}
+    for pair in choices:
+        modes = (True,) if len(pair) == 1 else (True, False)
+        choice_dependencies[pair] = _unique(dep for identity in pair for mode in modes
+                                            for dep in families[identity, mode])
     source.report(f'Preparing campaign character combinations: 0/{len(resources)} areas')
     for completed, path in enumerate(resources, 1):
         source.cancel()
-        tree = art.decode(read(path))
+        original_resources = read(path)
         audio_path = path.replace('/streaming/', '/resources/audio/').replace('_resources', '')[:-5] + '.bblf'
         audio = art.decode(read(audio_path))
         for pair in choices:
             source.cancel()
             tag = suffix(pair)
-            # Two-player sessions can resolve either native player-template alias.
-            modes = (True,) if len(pair) == 1 else (True, False)
-            deps = _unique(dep for identity in pair for mode in modes
-                           for dep in families[identity, mode])
-            adapted, _ = art.append_resources(tree, deps)
+            adapted, _ = art.append_resource_bytes(original_resources, choice_dependencies[pair])
             target = path[:-5] + '_' + tag + '.bxml'
-            result['LvlSingl.pck'][target] = art.encode(adapted)
+            result['LvlSingl.pck'][target] = adapted
             owner = source.metadata['sources'][audio_path]['archive']
             result.setdefault(owner, {})[audio_path[:-5] + '_' + tag + '.bblf'] = (
                 art.encode(_voice_banks(audio, pair)))

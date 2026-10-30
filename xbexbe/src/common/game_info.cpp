@@ -3,6 +3,7 @@
 #include "common/graphics.h"
 #include "common/graphics_view.h"
 #include "common/controls.h"
+#include "common/weapon_input.h"
 #include "common/audio_settings.h"
 #include "common/character_selection.h"
 #include "common/character_preview.h"
@@ -36,7 +37,7 @@ const app::GameInfo app::kGame = {
     .window = DarkwatchGraphicsWindow,
     .message = darkwatch::ControlsMessage,
     .ui = DrawUi,
-    .pad = DarkwatchGraphicsPad,
+    .pad = [](int port, input::Pad& pad) { DarkwatchGraphicsPad(port, pad); DarkwatchWeaponInput(port, pad); },
     .prepare = darkwatch::PrepareShaders,
 };
 
@@ -131,11 +132,27 @@ bool ActiveVehicleCamera(const uint8_t* base, uint32_t rider, uint32_t& camera) 
 
 uint32_t ZoomSensitivity(const uint8_t* base, uint32_t actor, uint32_t percent) {
     if (percent == 100) return 100;
-    uint32_t component = 0;
-    uint8_t zoom = 0;
-    // Original 211D6 handles SelectNo/Low/Medium/HighZoom at 214A8/214B4.
-    return AimComponent(base, actor, 0x418390, component) &&
-           AimField(base, component, 0x23C, zoom) && zoom == 1 ? percent : 100;
+    uint32_t inventory = 0, categories = 0, slots = 0, slot = 0, weapon = 0, type = 0;
+    uint16_t category_count = 0, slot_count = 0;
+    int32_t primary = -1;
+    // Original 963E6 forwards zoom events to equipped inventory actors. Resolve
+    // category zero through 951D4/951FA/98A64, not a weapon component on the player.
+    if (!AimComponent(base, actor, 0x41F29C, inventory) ||
+        !AimField(base, inventory, 0x78, category_count) || !category_count || category_count > 64 ||
+        !AimField(base, inventory, 0x7C, categories) || !AimRead(base, categories, primary) || primary < 0 ||
+        !AimField(base, inventory, 0x88, slot_count) || !slot_count || slot_count > 128 || primary >= slot_count ||
+        !AimField(base, inventory, 0x8C, slots) || !slots ||
+        !AimRead(base, uint64_t(slots) + uint64_t(primary) * 4, slot) ||
+        !AimField(base, slot, 0, type) || type != 0x41F570 ||
+        !AimField(base, slot, 0xC, weapon)) return 100;
+    // Base and derived weapon handlers all delegate zoom to 211D6 (214A8/214B4).
+    for (uint32_t vtable : {0x418390u, 0x417E90u, 0x417F78u, 0x418098u, 0x418150u, 0x418208u}) {
+        uint32_t component = 0;
+        uint8_t zoom = 0;
+        if (AimComponent(base, weapon, vtable, component))
+            return AimField(base, component, 0x23C, zoom) && zoom == 1 ? percent : 100;
+    }
+    return 100;
 }
 
 const char* ReadMouseTarget(const X86Context& ctx, const uint8_t* base, unsigned axis, MouseTarget& t) {

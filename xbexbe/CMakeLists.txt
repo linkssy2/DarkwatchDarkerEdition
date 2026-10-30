@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.25)
 project(darkwatch_xbe LANGUAGES C CXX)
 option(DARKWATCH_RELEASE "Build a quiet runtime for the own-ISO launcher" OFF)
+option(DARKWATCH_GRENADE_PAIR_FIXTURE "Build the private 2026-10-29 grenade pickup test" OFF)
+if(DARKWATCH_GRENADE_PAIR_FIXTURE)
+    set_property(SOURCE src/common/character_content.cpp APPEND PROPERTY
+        COMPILE_DEFINITIONS DARKWATCH_GRENADE_PAIR_FIXTURE=20261029)
+    message(STATUS "Private grenade fixture admission enabled; this executable is not a release payload")
+endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../third_party/XboxXBERecomp/cmake/XbeRecomp.cmake")
@@ -12,6 +18,10 @@ set(XBE_HOST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/common/game_info.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/fatal_assert.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/shader_preparation.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/controls.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/revolver_ammo.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/carry_all_weapons.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/grenade_switch.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/weapon_input.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/audio_settings.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/menu_cursor.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/native_menu.cpp"
@@ -57,6 +67,7 @@ set(SHADER_PREPARATION_INPUTS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/shader_preparation.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/shader_preparation.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/shader_preparation_catalogue.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/shader_preparation_observed.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/config/game.toml"
     "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/XboxXBERecomp/runtime/gpu/shaders.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/XboxXBERecomp/runtime/gpu/shaders.h"

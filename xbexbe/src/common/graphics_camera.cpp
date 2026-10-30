@@ -15,7 +15,7 @@ namespace {
 struct Configuration {uint32_t address; std::array<uint32_t, 7> words;};
 // FA277 selects these original layouts by active player count and co-op mode.
 // The final word is the viewport/player index; the two split layouts have
-// different authored FOV scales, which remain unchanged at 100%.
+// different authored FOV scales; widescreen preserves their vertical framing.
 constexpr std::array<Configuration, 5> kConfigurations{{
     {0x491668, {0x3F800000, 0x3FAAAAAB, 0, 0, 0x3F800000, 0x3F800000, 0}},
     {0x4915F8, {0x3FB33333, 0x402AAAAB, 0, 0, 0x3F800000, 0x3EFEB852, 0}},
@@ -86,7 +86,31 @@ void SetScale(const X86Context& ctx, uint8_t* base, uint32_t camera, float scale
     std::memcpy(base + call.esp, args, sizeof(args));
     sub_00216B7C(call, base);
 }
+
+void ConfigureCinematic(const X86Context& ctx, uint8_t* base, uint32_t owner, uint32_t resume) {
+    if (!Span(base, 0x4B7A34, 0xE) || base[0x4B7A41] ||
+        !owner || Read(base, 0x4B7A34) != owner || !Span(base, owner, 0x14)) return;
+    const uint32_t camera = Read(base, owner + 0xC);
+    constexpr std::array<uint32_t, 4> viewport{0, 0, 0x3F800000, 0x3F800000};
+    if (!Span(base, camera, 0x68) ||
+        !CameraValid(base, camera, Read(base, camera + 0x34)) ||
+        std::memcmp(base + camera + 0x58, viewport.data(), sizeof(viewport))) return;
+    float previous, scale;
+    std::memcpy(&previous, base + camera + 0x40, 4);
+    const float aspect = app::Widescreen() ? 16.0f / 9.0f : 4.0f / 3.0f;
+    if (previous == aspect || (previous != 4.0f / 3.0f && previous != 16.0f / 9.0f) ||
+        !ScaleValid(base, camera, scale) || scale != 1.0f ||
+        ctx.esp < 256 || !Span(base, uint64_t(ctx.esp) - 256, 256)) return;
+    // Keep the authored horizontal shot and FOV animation; the player Hor+ scale
+    // would widen cinematic framing. The native setter also refreshes RW culling.
+    std::memcpy(base + camera + 0x40, &aspect, 4);
+    SetScale(ctx, base, camera, scale, resume);
+}
 }  // namespace
+
+void DarkwatchConfigureCinematicCamera(X86Context& ctx, uint8_t* base) {
+    ConfigureCinematic(ctx, base, ctx.eax, 0x21AF54);
+}
 
 void DarkwatchConfigurePlayerCamera(X86Context& ctx, uint8_t* base) {
     // F9B1D owns this component; F9B78 passes aspect then scale to the original setter.
@@ -101,11 +125,15 @@ void DarkwatchConfigurePlayerCamera(X86Context& ctx, uint8_t* base) {
         Read(base, ctx.ecx) != 0x0043F97C ||
         std::memcmp(base + ctx.ecx + 0x58, configuration->words.data() + 2, 16)) return;
 
-    const bool full = ctx.esi == 0x491668, wide = full && app::Widescreen();
+    const bool full = ctx.esi == 0x491668, wide = app::Widescreen();
     float aspect, aspect_scale;
     std::memcpy(&aspect, base + ctx.esi + 4, 4);
     std::memcpy(&aspect_scale, base + ctx.esi, 4);
-    if (wide) {aspect = 16.0f / 9.0f; aspect_scale = aspect / (4.0f / 3.0f);}
+    if (wide) {
+        const float ratio = (16.0f / 9.0f) / (4.0f / 3.0f);
+        aspect = full ? 16.0f / 9.0f : aspect * ratio;
+        aspect_scale *= ratio;
+    }
     const uint32_t index = configuration->words[6];
     const float scale = aspect_scale * (float(darkwatch::view::Snapshot(index).fov_percent) / 100.0f);
     if (wide || scale != aspect_scale) {
@@ -128,7 +156,8 @@ void DarkwatchConfigurePlayerCamera(X86Context& ctx, uint8_t* base) {
               index + 1, ctx.ecx, full ? (wide ? "16:9" : "4:3") : "split");
 }
 
-void DarkwatchUpdatePlayerView(X86Context& ctx, uint8_t* base) {
+void DarkwatchUpdateCameraView(X86Context& ctx, uint8_t* base) {
+    ConfigureCinematic(ctx, base, ctx.esi, 0x21606D);
     const PlayerCamera player = FindPlayer(ctx.esi, true);
     // At 21606D the original active-camera update has finished; ESI is its owning
     // component. Never apply this preference to a separate weapon/render camera.
@@ -181,11 +210,13 @@ void DarkwatchEndWeaponView(X86Context& ctx, uint8_t* base) {
 }
 
 void DarkwatchBeginPowerView(X86Context& ctx, uint8_t* base) {
-    // B851D binds this authored screen effect to its player's camera. Its first
-    // emitter is a fixed 2.1 x 1.1 rectangle; world FOV must not shrink it.
+    // B851D binds rune overlays to their player's camera. Both authored resources
+    // contain a fixed 2.1 x 1.1 rectangle; world FOV must not shrink it.
     // +50 is the original CRC32 of the resolved resource path, not the body aura.
     if (g_power_view.frame || !Span(base, ctx.ecx, 0x70) ||
-        Read(base, ctx.ecx + 0x50) != 0x9EA613DE || !base[ctx.ecx + 0x62] ||
+        (Read(base, ctx.ecx + 0x50) != 0x9EA613DE &&  // FX/BloodFrenzyView
+         Read(base, ctx.ecx + 0x50) != 0xC541E482) || // FX/SilverBrandView
+        !base[ctx.ecx + 0x62] ||
         Read(base, ctx.ecx + 0x54) != 1 || !Span(base, ctx.ebp, 12) ||
         !Span(base, ctx.esi, 4) || Read(base, ctx.esi) != ctx.ecx) return;
     const PlayerCamera player = FindPlayer(Read(base, ctx.ebp + 8), false);

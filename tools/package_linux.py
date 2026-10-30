@@ -15,6 +15,7 @@ WRAPPER_FILES = {
     'launcher.py': ('linux/launcher.py', 0o644),
     'run_backend.py': ('linux/run_backend.py', 0o644),
     'README-LINUX.md': ('README-LINUX.md', 0o644),
+    'ASSETS.txt': ('assets/README.txt', 0o644),
 }
 
 

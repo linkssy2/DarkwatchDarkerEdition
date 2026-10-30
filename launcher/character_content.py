@@ -1,6 +1,6 @@
 """Build selectable-character resources from a verified, user-supplied disc.
 
-The package contains conversion code, hashes and an authored hand repaint only.
+The package contains conversion code, hashes and authored hand repaints only.
 Original archives stay intact until all three converted copies pass their pins.
 The caller supplies an isolated installation stage and commits it afterwards.
 """
@@ -20,18 +20,23 @@ import character_boss
 import character_boss_effects
 import character_repaint
 import character_roster
+import revolver_content
 
-CONTENT_REVISION = 'wartrain-splitter-characters-v4'
-CATALOG_SHA256 = 'd65d53e69542ac87772614b77e2466c8decdd83968c3a749802ed0dc8ae55e46'
+CONTENT_REVISION = 'revolver-headshot-characters-v13'
+CATALOG_SHA256 = '9b260c514454b533279be79dd5a29a47a659c05b72a7c9f687f3c4a53ea1d483'
 CHARACTERS = 'xml/actortemplates_characters.bxml'
 INSTALLED = {
-    'packfile.pck': (133411077, 'a9d820cd920db58a276fba4d1069ab9d14061e57b9d78a53d6ae64c1cb8fcd72'),
-    'LvlSingl.pck': (1170739944, '97a1b7d06cc2ee42de3875685cc5d6c561b5a34275de072b0aa5e2463110c64e'),
-    'audio.pck': (145688078, 'c889f14963005bb796e29d84ad06c7ab52fa1d8b138a7107f8fa7355e73970f1'),
+    'packfile.pck': (143099169, 'ceacf60e64cafc0d676fa5b03a0a11289811ba29a1bd7adcfbcea6582827466f'),
+    'LvlSingl.pck': (1792512951, '4897d56557d87584ed6804d9b4eab172ae959460e89f13715088bc0391d672b3'),
+    'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285'),
 }
 REPAINT = {
     1024: '73ca5d8c1ab1451c8863ee91139678f28af63b992934090acf233433ebabb3a3',
     256: 'fee9d7abf2f7b0100937f576c0bd1564c71f06b0d07b9ece14300d51c8f5113f',
+}
+TALA_REPAINT = {
+    1024: '0a129bc58ffe9639b0b9ff62c670380c36951d203f697aa7505a383fcb9b02b2',
+    256: '2036c65069474ce6cab9bcba9db9396e59a3146416f90b1df5d629c0e75d479d',
 }
 
 
@@ -39,6 +44,18 @@ def checked(raw, pin, label):
     if len(raw) != pin['size'] or pck.sha(raw) != pin['sha256']:
         raise ValueError(f'Character conversion verification failed: {label}')
     return raw
+
+
+def checked_file(path, pin, cancel):
+    if path.stat().st_size != pin['size']:
+        raise ValueError(f'Character conversion verification failed: {path.name}')
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        while block := stream.read(8 * 1024 * 1024):
+            cancel()
+            digest.update(block)
+    if digest.hexdigest() != pin['sha256']:
+        raise ValueError(f'Character conversion verification failed: {path.name}')
 
 
 def catalog(payload):
@@ -123,8 +140,7 @@ def build_resources(source, payload):
     dependencies = {solo: art.mode_dependencies(tables, solo, solo_clips) for solo in (False, True)}
     for completed, path in enumerate(resources, 1):
         solo = not path.endswith('_coop.bxml')
-        tree, _ = art.append_resources(art.decode(read(path)), dependencies[solo])
-        outputs[path] = art.encode(tree)
+        outputs[path], _ = art.append_resource_bytes(read(path), dependencies[solo])
         bank_path = path.replace('/streaming/', '/resources/audio/').replace('_resources', '')[:-5]+'.bblf'
         old = read(bank_path)
         tree, changed = (art.solo_bank if solo else art.append_voice_bank)(art.decode(old))
@@ -171,10 +187,8 @@ def build_resources(source, payload):
     for path in resources:
         if not path.endswith('_coop.bxml'):
             continue
-        tree, _ = art.append_resources(art.decode(read(path)), deps)
-        extension['LvlSingl.pck'][variant(path, 'jericho')] = art.encode(tree)
-        tree, _ = art.append_resources(art.decode(outputs[path]), deps)
-        extension['LvlSingl.pck'][variant(path)] = art.encode(tree)
+        extension['LvlSingl.pck'][variant(path, 'jericho')], _ = art.append_resource_bytes(read(path), deps)
+        extension['LvlSingl.pck'][variant(path)], _ = art.append_resource_bytes(outputs[path], deps)
     spectral = build_spectral(source, groups, extension)
     return groups, extension, spectral
 
@@ -229,8 +243,8 @@ def build_spectral(source, groups, extension):
         source.cancel()
         target = variant(path)
         raw = extension['LvlSingl.pck'].get(target, groups['LvlSingl.pck'][target])
-        tree, _ = art.append_resources(art.decode(raw), dependencies[not path.endswith('_coop.bxml')])
-        result['LvlSingl.pck'][variant(path, 'cassidy_spectral')] = art.encode(tree)
+        result['LvlSingl.pck'][variant(path, 'cassidy_spectral')], _ = art.append_resource_bytes(
+            raw, dependencies[not path.endswith('_coop.bxml')])
         if completed % 10 == 0 or completed == len(resources):
             source.report(f'Preparing Spectral Cassidy campaign areas: {completed}/{len(resources)}')
     # The complete composed archives are checked before the installation is committed.
@@ -252,32 +266,57 @@ def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None)
         progress('Preparing selectable characters...')
         source = Source(streams, metadata, cancel, progress)
         groups, extension, spectral = build_resources(source, payload)
-        roster, _ = character_roster.prepare(source, groups, extension, spectral)
+        def tala_pixels(size):
+            data = (payload / 'character-art' / f'tala-hands-{size}.dds').read_bytes()
+            if pck.sha(data) != TALA_REPAINT[size]:
+                raise ValueError('Tala hand repaint changed')
+            return data
+        roster, _ = character_roster.prepare(source, groups, extension, spectral,
+                                             tala_variants=True, tala_pixels=tala_pixels)
+        revolver = revolver_content.prepare(source, groups, extension, spectral, roster)
     with tempfile.TemporaryDirectory(prefix='.characters-', dir=assets) as temporary:
         staged = Path(temporary)
         for name in INSTALLED:
             cancel()
             progress('Preparing character resources...')
-            cancel()
-            raw = checked((assets / name).read_bytes(), metadata['originals'][name], name)
+            current = assets / name
+            checked_file(current, metadata['originals'][name], cancel)
             if name == 'packfile.pck':
-                raw = bonus_content.patch_pack(raw)
-            raw = pck.compose(raw, groups[name])
-            checked(raw, metadata['v7_archives'][name], name)
-            cancel()
-            if name in extension:
-                raw = pck.compose(raw, extension[name])
-            checked(raw, metadata['base_archives'][name], name)
-            cancel()
-            if name in spectral:
-                raw = pck.compose(raw, spectral[name])
-            checked(raw, metadata['spectral_archives'][name], name)
-            cancel()
-            if roster.get(name):
-                raw = pck.compose(raw, roster[name])
-            checked(raw, metadata['installed'][name], name)
-            (staged / name).write_bytes(raw)
-            del raw
+                current = staged / (name + '.base')
+                current.write_bytes(bonus_content.patch_pack((assets / name).read_bytes()))
+            # Keep every intermediate proof on disk instead of retaining several
+            # multi-gigabyte archive copies in memory.
+            stages = ((groups[name], 'v7_archives'),
+                      (extension.get(name), 'base_archives'),
+                      (spectral.get(name), 'spectral_archives'),
+                      (roster.get(name) or None, 'roster_archives'))
+            for index, (changes, proof) in enumerate(stages):
+                cancel()
+                if changes is not None:
+                    target = staged / f'{name}.{index}'
+                    pck.compose_file(current, changes, target, cancel)
+                    previous, current = current, target
+                    if previous.parent == staged:
+                        previous.unlink()
+                checked_file(current, metadata[proof][name], cancel)
+            if revolver.get(name):
+                if name == 'LvlSingl.pck':
+                    # Keep every intermediate proof, but write each final chapter
+                    # table once. Appending its superseded copies crosses 2 GiB.
+                    final = {}
+                    for stage in (groups, extension, spectral, roster, revolver):
+                        final.update(stage.get(name, {}))
+                    source, changes = assets / name, final
+                    checked_file(source, metadata['originals'][name], cancel)
+                else:
+                    source, changes = current, revolver[name]
+                target = staged / (name + '.final')
+                pck.compose_file(source, changes, target, cancel)
+                if current.parent == staged:
+                    current.unlink()
+                current = target
+            checked_file(current, metadata['installed'][name], cancel)
+            os.replace(current, staged / name)
         # No original in this stage is replaced until all copies pass their pins.
         cancel()
         for name in INSTALLED:

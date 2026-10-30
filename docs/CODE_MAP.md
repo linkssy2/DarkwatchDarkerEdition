@@ -18,7 +18,7 @@
 | `character_content.cpp`, `character_audio.cpp`, `character_melee.*` | Verified own-disc character admission, bank setup and scoped melee cue selection. Hurt voice work remains unresolved. |
 | `gameplay_textures.h`, `gameplay_texture_assets.h` | Optional replacement loader and fingerprint metadata; no original pixels. |
 | `cri_lifetime.cpp`, `sound_pool.*` | Host synchronization and sound allocation fixes. |
-| `shader_preparation.*`, `shader_preparation_catalogue.h` | Local preparation of known shaders from verified game data. The catalogue stores descriptors and hashes, not captured shader programs. |
+| `shader_preparation.*`, `shader_preparation_catalogue.h`, `shader_preparation_observed.h` | Local preparation of known shaders from verified game data. The catalogue stores descriptors and hashes, not captured shader programs. |
 | `hd_ui.*`, `hd_ui_*.h`, `xbexbe/src/tools/` | Runtime HD replacement and the local pack builder. Atlas headers contain layout/identity metadata, not extracted texture pixels. |
 | `xbexbe/hd_ui/` | Approved restored enhancement images and their exact override map. Original archives and assembled texture packs are excluded. |
 | `launcher/` | WPF launcher/direct start, verified import, portable saves, local shader preparation and package allowlist. |
@@ -29,7 +29,7 @@
 | `launcher/character_*.py` | Adapts own-disc characters, animation, hands and presentation while retaining original player rules; no model or animation payload is included. |
 | `launcher/gameplay_hd.py`, `gameplay-hd-catalog.json` | Optional HD texture installation, integrity checks and rollback. |
 | `tools/package_gameplay_hd.py` | Separately provisioned texture packaging; strips native reference bytes. |
-| `tools/package_linux.py` | Packages the exact verified Windows files and four allowlisted Proton wrapper files; excludes installed data and records readback hashes. |
+| `tools/package_linux.py` | Packages the exact verified Windows files and allowlisted Proton wrappers and guides; excludes installed data and records readback hashes. |
 | `tools/intake.py` | Project-owned XDVDFS parser and extractor. |
 | `scripts/` | Native/launcher build entry points and source fingerprinting. |
 | `tests/` | Selected synthetic tests suitable for public distribution. |
@@ -63,10 +63,12 @@ they replace the originals in that stage; the setup backend then commits the
 installation. Installed verification expects prepared identities for those
 archives and original hashes for untouched files.
 
-The content-revision marker requires older portable installations to reimport
-while preserving saves, settings and compatible cache. The launcher tests use
-synthetic archives to cover preparation and transactional installation without
-starting the game.
+The content-revision marker checks whether prepared data needs rebuilding.
+Installed source-recovery records support future in-place upgrades without an
+ISO for extracted installations; directly mounted installations keep their ISO.
+Published 0.6.1 installations may need a final import to obtain those records.
+The launcher tests use synthetic archives to cover preparation and transactional
+installation without starting the game.
 
 Weapon FOV borrows the registered player camera only for the first-person model pass, then restores the world projection. Both preferences retain the original at 100%. Cutscene Borders skips only the active cinematic manager's two border draws. Subtitle presentation retains original glyph layout and timing but draws separately from scene feedback. The authored view, cinematic-guard and ImGui tests are included; original-function fixtures remain private.
 
@@ -102,3 +104,42 @@ Original instruction-based witnesses remain private.
 Spanish conversion retains Xbox movie video and timestamps. Only matched audio
 slots are replaced; complete campaign synchronization still needs live review.
 No captured game media or generated original functions are exported.
+
+## Version 0.7 additions
+
+| Location | Purpose |
+| --- | --- |
+| `launcher/installed_source.py` | Captures small recovery records and reconstructs verified source archives during in-place content updates. |
+| `launcher/release_check.py`, `release_download.py`, `release_update.py` | Reads compatible GitHub release metadata, downloads verified archives and replaces only managed package files with rollback. |
+| `launcher/setup_backend.py`, `launcher/linux/` | Direct ISO, import-once and existing-install choices; retained ISO path repair and Linux read-only access. First-time startup can select one supported ISO from the packaged assets folder, including the Steam --play route. |
+| `patches/xbexbe.patch` | Includes the read-only ISO mount, prepared-file precedence, optional language overlay and guest file-service integration. |
+| `launcher/revolver_content.py`, `revolver_scripts.py` | Own-disc starter weapon tuning, resource dependencies and hash-guarded authored script deltas. No complete original scripts are exported. |
+| `carry_all_weapons.*`, `weapon_input.*`, `revolver_ammo.cpp`, `grenade_switch.cpp` | Optional weapon capacity, cycle bindings, independent ammo refill and native grenade selection. |
+| `launcher/character_tala.py` | Builds playable Vampire/Boss Tala from the player's disc; the playable boss adaptation excludes wings. |
+| `hd_ui_small_hud.h` | Small HUD identity/layout metadata; no captured texture pixels. |
+| `gameplay-hd-catalog.json`, `gameplay_hd.py`, `tools/package_gameplay_hd.py` | Expanded optional texture inventory and lossless shared-payload archive format. |
+
+Direct ISO mode stores an explicit marker and prepared archive overrides. The
+runtime reads other disc entries from the retained ISO; it never writes to the
+image. Spanish overrides take precedence only for the language resources, and
+save paths remain separate. The exported native fixtures use tiny synthetic
+XDVDFS images to test these paths without original game data.
+
+The updater owns only the instructional assets/README.txt file in that folder;
+player ISO/XISO files are never package-owned. Either player's native pause
+menu routes Audio separately from Graphics and Controls. Carry All bindings
+retain their values while disabled; native weapon cycling and mirrored ammo
+admission use the original weapon component's identity getter field.
+
+Shader preparation constructs the original guest programs serially, then compiles
+known host shaders with at most four workers. Observed recipes add only validated
+metadata; shader words still come from the importing player's XBE. The 0.7
+catalogue has 4,474 items and 3,822 distinct cache keys. Per-key synchronization
+prevents duplicate cache writes, and failed preparation never publishes a ready
+stamp. Unseen variants and driver pipeline creation may still occur in gameplay.
+
+Character archive preparation uses bounded file output and memory-mapped inputs
+for intermediate stages. Each intermediate and final archive remains hash-checked
+before installation commits. Regular Tala uses an authored glove repaint on the
+original first-person hand geometry and UVs; the other Tala variants retain
+their existing hand conversions.

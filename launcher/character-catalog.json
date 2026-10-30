@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "content_revision": "wartrain-splitter-characters-v4",
+  "content_revision": "revolver-headshot-characters-v13",
   "originals": {
     "audio.pck": {
       "size": 137741272,
@@ -43,6 +43,12 @@
       "offset": 4052992,
       "size": 960512,
       "sha256": "a71b9ae4292feb69fbb152c72ec10034d5cba93474254ddc691eae12f1269ba8"
+    },
+    "audio/tala/tala.babf": {
+      "archive": "audio.pck",
+      "offset": 83215776,
+      "size": 5040,
+      "sha256": "0e8b8c4d2866ea07588c8579de9065582d6d17dac661ddd082512c55875db551"
     },
     "characters/cassidy/base_cassidy.bllist": {
       "archive": "packfile.pck",
@@ -92,17 +98,41 @@
       "size": 34365,
       "sha256": "6533b0ce6478d94c30bbfe9d282555e06a6f2dc218491bb5c8bdfcf87fc8c7bf"
     },
+    "characters/multiplayer/base_dwstormtrooper.bllist": {
+      "archive": "packfile.pck",
+      "offset": 20424378,
+      "size": 938,
+      "sha256": "9f86b2290f4429fafe54fd5f56605246612d68ae7f3ff1e8aa20f259af0c5c79"
+    },
+    "characters/multiplayer/base_dwstormtrooper.jlist": {
+      "archive": "packfile.pck",
+      "offset": 20425316,
+      "size": 559,
+      "sha256": "1f75f807e4686ed32da668762bb8eb6866968072ecd2ebb68bb2f21b562121f7"
+    },
     "characters/multiplayer/base_dwstormtrooper.rx1": {
       "archive": "packfile.pck",
       "offset": 20428800,
       "size": 169564,
       "sha256": "697d68592b6c53ce250f22e298d2770c6a8de8f4c990219b35f4b0128b2aa478"
     },
+    "characters/multiplayer/base_dwstormtrooper_blue.rx1": {
+      "archive": "packfile.pck",
+      "offset": 20598784,
+      "size": 130744,
+      "sha256": "37bb3be6b4578ce57d3595ac7a2b034952da255949c4322db2ab8259827b3a3b"
+    },
     "characters/multiplayer/base_dwstormtrooper_coop.bllist": {
       "archive": "packfile.pck",
       "offset": 20729528,
       "size": 1804,
       "sha256": "7ab7326e8ace16f74415e6766902677709bb8d62f5ffb606ba0fcd7612ad3722"
+    },
+    "characters/multiplayer/base_dwstormtrooper_red.rx1": {
+      "archive": "packfile.pck",
+      "offset": 20736000,
+      "size": 130736,
+      "sha256": "52f07f4e0568cfde03c28467ccd3e5f73ef06b40fd9327b7a7af5558e65e17ae"
     },
     "characters/multiplayer/multiplayeranimation.bxml": {
       "archive": "packfile.pck",
@@ -2072,6 +2102,18 @@
       "size": 373094,
       "sha256": "86ae91129740abb0075d4785a114fcbbef6b1f9f690213f243ed4d42f2f11a5b"
     },
+    "characters/player_third/base_jerichociv.jlist": {
+      "archive": "packfile.pck",
+      "offset": 27785753,
+      "size": 559,
+      "sha256": "1f75f807e4686ed32da668762bb8eb6866968072ecd2ebb68bb2f21b562121f7"
+    },
+    "characters/player_third/base_jerichociv.rx1": {
+      "archive": "packfile.pck",
+      "offset": 27789312,
+      "size": 353456,
+      "sha256": "a1abaac00ac4b1cc24fa16077478defea463791f0475d9f41f6daf989845c657"
+    },
     "characters/player_third/chazbasicanimation.bxml": {
       "archive": "packfile.pck",
       "offset": 28203231,
@@ -2258,6 +2300,54 @@
       "size": 8920,
       "sha256": "010a0534df7168ee95819ab5d0f3cc51a82d421847d36c1523e330f25c470f94"
     },
+    "characters/tala/base_cine_tala.bllist": {
+      "archive": "packfile.pck",
+      "offset": 35867069,
+      "size": 493,
+      "sha256": "61a1a179947e95f0f3c15f3e537f49c645a55b4f6cacb0723c7588dbd3e5c66d"
+    },
+    "characters/tala/base_cine_tala.jlist": {
+      "archive": "packfile.pck",
+      "offset": 35867562,
+      "size": 559,
+      "sha256": "1f75f807e4686ed32da668762bb8eb6866968072ecd2ebb68bb2f21b562121f7"
+    },
+    "characters/tala/base_cine_tala.rx1": {
+      "archive": "packfile.pck",
+      "offset": 35870720,
+      "size": 471660,
+      "sha256": "9d1691d4fa15f1939dbd4c64479c28693c9ce701e78b1745868a1dad2cbb8c5f"
+    },
+    "characters/tala_boss/base_tala_boss.jlist": {
+      "archive": "packfile.pck",
+      "offset": 38382726,
+      "size": 1845,
+      "sha256": "35ac5d2af192001f7d2e02d40828ac840eebd66fbacc2eef6a1162d0914b5b1b"
+    },
+    "characters/tala_boss/base_tala_boss.rx1": {
+      "archive": "packfile.pck",
+      "offset": 38387712,
+      "size": 1111652,
+      "sha256": "775d6bbd677ee25b07cdc6194b35b5e5df18eecf12ffacd694ded4357ace11ef"
+    },
+    "characters/talaagent/base_agenttala.bllist": {
+      "archive": "packfile.pck",
+      "offset": 36685112,
+      "size": 493,
+      "sha256": "2a4ad8acc035c713b1eec23cf8cf91536658e9288c2fc05d6b4179cc3f34c446"
+    },
+    "characters/talaagent/base_agenttala.jlist": {
+      "archive": "packfile.pck",
+      "offset": 36685605,
+      "size": 559,
+      "sha256": "1f75f807e4686ed32da668762bb8eb6866968072ecd2ebb68bb2f21b562121f7"
+    },
+    "characters/talaagent/base_agenttala.rx1": {
+      "archive": "packfile.pck",
+      "offset": 36687872,
+      "size": 198104,
+      "sha256": "61ec2ceac3ebf48f560413492ef566918cc4b6e17ea2348ca8318a5db7899efb"
+    },
     "fx/cassidyaura.sep": {
       "archive": "packfile.pck",
       "offset": 48210728,
@@ -2329,6 +2419,12 @@
       "offset": 87751,
       "size": 1299,
       "sha256": "9e50aecbaa8c9fdb5c61c0f9bfa8931faf70005be69501f4bd7dc4b4d7ed6072"
+    },
+    "levels/singleplayer/fallofcitadel/resources/scripts/zoomtofallofcitadel_b.lobj": {
+      "archive": "LvlSingl.pck",
+      "offset": 13777623,
+      "size": 989,
+      "sha256": "87dcc598d224f72c03781dea51e8a91701b0fc7ffe6f2a9680f2b92b403105b9"
     },
     "levels/singleplayer/fallofcitadel/streaming/fallofcitadel_a_resources.bxml": {
       "archive": "LvlSingl.pck",
@@ -2738,6 +2834,24 @@
       "size": 1371,
       "sha256": "0477281371f3781472e6803ce910a40ae787dc4aa62c67987cf05f518b468eb3"
     },
+    "levels/singleplayer/m09_torturemaze/resources/scripts/a_coop_restore_1.lobj": {
+      "archive": "LvlSingl.pck",
+      "offset": 79280091,
+      "size": 1216,
+      "sha256": "448c67ccc81528a6aa494e6a3e28901db12a1da3dda2234a2cde2bde080d73cb"
+    },
+    "levels/singleplayer/m09_torturemaze/resources/scripts/m09_a_cwgreeting.lobj": {
+      "archive": "LvlSingl.pck",
+      "offset": 79293837,
+      "size": 3824,
+      "sha256": "fee36e28c1b4d6346cf44fcb7bc63ecb76892b13c5c4d9718cff8a775e9991bd"
+    },
+    "levels/singleplayer/m09_torturemaze/resources/scripts/m09_b_challengesetup.lobj": {
+      "archive": "LvlSingl.pck",
+      "offset": 79312004,
+      "size": 1539,
+      "sha256": "2f40c210c4f89757aabe1211302aa804f99b22ab28446d3bad4d079243ce3682"
+    },
     "levels/singleplayer/m09_torturemaze/streaming/m09_a_resources.bxml": {
       "archive": "LvlSingl.pck",
       "offset": 201248768,
@@ -3037,6 +3151,18 @@
       "offset": 196593,
       "size": 1413,
       "sha256": "3b654bfd2ddd177be7f98bbcc327de7754bdf9006fd2a951e08fb87ccd85252c"
+    },
+    "levels/singleplayer/m12_citadelunderattack/resources/cinematics/m12_aa_introactiveview.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 131994315,
+      "size": 4370,
+      "sha256": "f19163553fd9220d754e7c3a54ea0b4452005bdf1d47927607eeb58b7e22efbe"
+    },
+    "levels/singleplayer/m12_citadelunderattack/resources/scripts/m12_aa_checkpoint1.lobj": {
+      "archive": "LvlSingl.pck",
+      "offset": 132250346,
+      "size": 1387,
+      "sha256": "f9a12da6d27d262962e32c0d2f9ecd76a1364221f322f08c34a2f78ca75fecf1"
     },
     "levels/singleplayer/m12_citadelunderattack/streaming/m12_a_resources.bxml": {
       "archive": "LvlSingl.pck",
@@ -3482,6 +3608,18 @@
       "size": 1402,
       "sha256": "b5ff9a925c52e00e9e2e164dbd4aab5bfca12eec90a3f972c73143674510f29e"
     },
+    "levels/singleplayer/wrongtrain/resources/scripts/wrongtrain_a_checkpoint2.lobj": {
+      "archive": "LvlSingl.pck",
+      "offset": 189511170,
+      "size": 1456,
+      "sha256": "ddbc7aec4f4b229cf94dbec763836a22fc0950fdb10ac202181cfe34bf4608f0"
+    },
+    "levels/singleplayer/wrongtrain/resources/scripts/wrongtrain_a_raiseweapon.lobj": {
+      "archive": "LvlSingl.pck",
+      "offset": 189521909,
+      "size": 1009,
+      "sha256": "46ff9a9374524f86634fdcbe1e7ac881c9a9103367dce793c599a6e4e6c15af8"
+    },
     "levels/singleplayer/wrongtrain/streaming/wrongtrain_a_resources.bxml": {
       "archive": "LvlSingl.pck",
       "offset": 207011840,
@@ -3512,65 +3650,101 @@
       "size": 216502,
       "sha256": "723c0fbc742317a3a4e4a5a070802cb6cd3c1db67f877ed7dff05bbb7ed86cad"
     },
-    "characters/player_third/base_jerichociv.rx1": {
+    "xml/actortemplates_weapons.bxml": {
       "archive": "packfile.pck",
-      "offset": 27789312,
-      "size": 353456,
-      "sha256": "a1abaac00ac4b1cc24fa16077478defea463791f0475d9f41f6daf989845c657"
+      "offset": 109250560,
+      "size": 146830,
+      "sha256": "a2f9764effef1e9ca1575afbc7aebe32a9478229d383c69b85cfe69748d71fca"
     },
-    "characters/multiplayer/base_dwstormtrooper_blue.rx1": {
+    "xml/projectiletemplates.bxml": {
       "archive": "packfile.pck",
-      "offset": 20598784,
-      "size": 130744,
-      "sha256": "37bb3be6b4578ce57d3595ac7a2b034952da255949c4322db2ab8259827b3a3b"
+      "offset": 109519644,
+      "size": 7873,
+      "sha256": "08bfe757293c1e36ef68ddac843f7e886008bbe9f56b957c82f20a31164eb9bf"
     },
-    "characters/talaagent/base_agenttala.rx1": {
-      "archive": "packfile.pck",
-      "offset": 36687872,
-      "size": 198104,
-      "sha256": "61ec2ceac3ebf48f560413492ef566918cc4b6e17ea2348ca8318a5db7899efb"
+    "levels/singleplayer/m03_cemetery/m03_c/m03_c_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 28025516,
+      "size": 24126,
+      "sha256": "6ff332ee073588d7ff96fddfa2a4a525125e8217696932f7e6205760b453cf21"
     },
-    "characters/multiplayer/base_dwstormtrooper_red.rx1": {
-      "archive": "packfile.pck",
-      "offset": 20736000,
-      "size": 130736,
-      "sha256": "52f07f4e0568cfde03c28467ccd3e5f73ef06b40fd9327b7a7af5558e65e17ae"
+    "levels/singleplayer/citadel_launch/citadel_launch_aa/citadel_launch_aa_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 2133361,
+      "size": 13795,
+      "sha256": "684fc66ed80c6d55f9c0be2c76cb1c6171a005975b321fd1f14aeac6615d53b6"
     },
-    "characters/multiplayer/base_dwstormtrooper.jlist": {
-      "archive": "packfile.pck",
-      "offset": 20425316,
-      "size": 559,
-      "sha256": "1f75f807e4686ed32da668762bb8eb6866968072ecd2ebb68bb2f21b562121f7"
+    "levels/singleplayer/fallofcitadel/fallofcitadel_a/fallofcitadel_a_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 10368692,
+      "size": 12954,
+      "sha256": "9f331b3f4ecaf199e5e0c4e015a100ba1d2a50b3488aa1049af11ec72e753152"
     },
-    "characters/player_third/base_jerichociv.jlist": {
-      "archive": "packfile.pck",
-      "offset": 27785753,
-      "size": 559,
-      "sha256": "1f75f807e4686ed32da668762bb8eb6866968072ecd2ebb68bb2f21b562121f7"
+    "levels/singleplayer/groundzero/groundzero_a/groundzero_a_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 15876096,
+      "size": 36392,
+      "sha256": "aadf02869aa24f80ee8c7356c7c9ca680b203d42964cfb11ff1d9b30058e652c"
     },
-    "characters/multiplayer/base_dwstormtrooper.bllist": {
-      "archive": "packfile.pck",
-      "offset": 20424378,
-      "size": 938,
-      "sha256": "9f86b2290f4429fafe54fd5f56605246612d68ae7f3ff1e8aa20f259af0c5c79"
+    "levels/singleplayer/m10_tradingpost/m10_a/m10_a_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 81764820,
+      "size": 25851,
+      "sha256": "c52b2ea7bf831656db8d8c70c24f2e32b926402ec6404ff092bfb821305022b5"
     },
-    "characters/talaagent/base_agenttala.jlist": {
-      "archive": "packfile.pck",
-      "offset": 36685605,
-      "size": 559,
-      "sha256": "1f75f807e4686ed32da668762bb8eb6866968072ecd2ebb68bb2f21b562121f7"
+    "levels/singleplayer/m20_penetratingdeadfall/hub_a/hub_a_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 169960956,
+      "size": 25150,
+      "sha256": "50b3d4799b0986d77735aea610183e49c14eb4f54c32819942ab73804ecdae21"
     },
-    "characters/talaagent/base_agenttala.bllist": {
-      "archive": "packfile.pck",
-      "offset": 36685112,
-      "size": 493,
-      "sha256": "2a4ad8acc035c713b1eec23cf8cf91536658e9288c2fc05d6b4179cc3f34c446"
+    "levels/singleplayer/m11_hangtown/m11_f/m11_f_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 98316232,
+      "size": 30350,
+      "sha256": "479748eaf4568ee2492a9ae634a9afd8031dc4e54b828077c56c6b78b68fbaa5"
     },
-    "audio/tala/tala.babf": {
-      "archive": "audio.pck",
-      "offset": 83215776,
-      "size": 5040,
-      "sha256": "0e8b8c4d2866ea07588c8579de9065582d6d17dac661ddd082512c55875db551"
+    "levels/singleplayer/m12_citadelunderattack/m12_aa/m12_aa_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 115338178,
+      "size": 21718,
+      "sha256": "ec8ad16d25d32c8c3ef5211da086be708f15745d0750cb2deb0e4e62a8464a16"
+    },
+    "levels/singleplayer/m15_splittingpaths/m15_d/m15_d_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 141417320,
+      "size": 12864,
+      "sha256": "8b6ed7686517ceb70319c5a43e014458765262e2f8bb3781735d0d3ee70b9f28"
+    },
+    "levels/singleplayer/m17_invasion/m17_b/m17_b_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 151631179,
+      "size": 25172,
+      "sha256": "33ff5a2c9017df6a968599b7c114eb260274b4bab71f6f17c5ec736aea79aafd"
+    },
+    "levels/singleplayer/m11_hangtown/resources/scripts/m11_f_citadellaunch_giveweapons.lobj": {
+      "archive": "LvlSingl.pck",
+      "offset": 108985579,
+      "size": 3199,
+      "sha256": "1f6abbbb06fd90824497ff414f2e9dcde97eb7b26bc15a950a924e7d730592f7"
+    },
+    "levels/singleplayer/m12_citadelunderattack/resources/scripts/m12_aa_raisearmonrevolverpickup.lobj": {
+      "archive": "LvlSingl.pck",
+      "offset": 132292139,
+      "size": 1478,
+      "sha256": "aef37888dfe15a80400bdd7a159b89a21dbb0e708e63b2352d9fd4a5e88a2000"
+    },
+    "levels/singleplayer/m15_splittingpaths/resources/scripts/m15_d_citadellaunch_giveweapons.lobj": {
+      "archive": "LvlSingl.pck",
+      "offset": 148796285,
+      "size": 3225,
+      "sha256": "f2418a969e58eedc4a94c451eddfb613d0ee9fdbc988290f245373a62b9259c4"
+    },
+    "levels/singleplayer/m17_invasion/resources/scripts/m17_b_citadellaunch_giveweapons.lobj": {
+      "archive": "LvlSingl.pck",
+      "offset": 161346170,
+      "size": 3212,
+      "sha256": "6069528ef5983e1e6509f17136fb304b6f694e71ea57949223429d4a6f354e52"
     }
   },
   "v7_outputs": {
@@ -6931,16 +7105,16 @@
   },
   "installed": {
     "packfile.pck": {
-      "size": 133411077,
-      "sha256": "a9d820cd920db58a276fba4d1069ab9d14061e57b9d78a53d6ae64c1cb8fcd72"
+      "size": 143099169,
+      "sha256": "ceacf60e64cafc0d676fa5b03a0a11289811ba29a1bd7adcfbcea6582827466f"
     },
     "LvlSingl.pck": {
-      "size": 1170739944,
-      "sha256": "97a1b7d06cc2ee42de3875685cc5d6c561b5a34275de072b0aa5e2463110c64e"
+      "size": 1792512951,
+      "sha256": "4897d56557d87584ed6804d9b4eab172ae959460e89f13715088bc0391d672b3"
     },
     "audio.pck": {
-      "size": 145688078,
-      "sha256": "c889f14963005bb796e29d84ad06c7ab52fa1d8b138a7107f8fa7355e73970f1"
+      "size": 152395109,
+      "sha256": "33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285"
     }
   },
   "base_archives": {
@@ -6960,7 +7134,7 @@
   "spectral_archives": {
     "packfile.pck": {
       "size": 120732531,
-      "sha256": "6a17c34ba180c839350297725248887c17b3b7540870978ee2b3ebb8b7cd778d"
+      "sha256": "3168b3ba93694bc3d9c54b38ac19d97ac3b8b1b31c6b49b93f716e93550d086c"
     },
     "LvlSingl.pck": {
       "size": 258077411,
@@ -6969,6 +7143,20 @@
     "audio.pck": {
       "size": 137958865,
       "sha256": "f148f43fbaeedbaa3ba6465fd009a802681900dafb24de671dea1c2ffaa67c01"
+    }
+  },
+  "roster_archives": {
+    "packfile.pck": {
+      "size": 142943521,
+      "sha256": "69e0e2d6e86353c7d2a1c94bcf648f92e10bbc227169579b243805dd824831b8"
+    },
+    "LvlSingl.pck": {
+      "size": 1762073527,
+      "sha256": "c24d5000e689a46ee5400f25d2ef42964b065c3373fd3e00e804fa8fdff19bf9"
+    },
+    "audio.pck": {
+      "size": 150256997,
+      "sha256": "38e22ef916fd42496ffba247546ff4adbccd299954267ee2b9a3503311b88b0d"
     }
   }
 }

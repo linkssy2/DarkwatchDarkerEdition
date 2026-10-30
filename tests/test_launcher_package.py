@@ -5,6 +5,7 @@ import importlib.util
 import json
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -18,8 +19,36 @@ SPEC.loader.exec_module(package)
 
 
 class LauncherPackageTests(unittest.TestCase):
+    def test_release_checker_and_verified_https_runtime_are_packaged(self):
+        with patch.object(package, 'hd_sources', return_value={}):
+            plan = package.sources()
+        self.assertIn('payload/release_check.py', plan)
+        self.assertIn('payload/release_download.py', plan)
+        self.assertIn('payload/release_update.py', plan)
+        for name in ('_ssl.pyd', 'libssl-3.dll', 'libcrypto-3.dll', '_socket.pyd', 'select.pyd', 'unicodedata.pyd'):
+            self.assertIn('payload/python/' + name, plan)
+
+    @unittest.skipUnless(sys.platform == 'win32' and (package.PYTHON / 'python.exe').is_file(),
+                         'Windows embedded Python is required')
+    def test_shipped_python_can_import_https_checker_with_verified_tls(self):
+        with tempfile.TemporaryDirectory() as folder:
+            payload = Path(folder)
+            runtime = payload / 'python'
+            runtime.mkdir()
+            for name in package.PYTHON_FILES:
+                shutil.copyfile(package.PYTHON / name, runtime / name)
+            (runtime / 'python312._pth').write_text(package.GENERATED['payload/python/python312._pth'])
+            shutil.copyfile(ROOT / 'launcher/release_check.py', payload / 'release_check.py')
+            smoke = subprocess.run([str(runtime / 'python.exe'), '-B', '-c',
+                "import release_check,ssl; context=ssl.create_default_context(); "
+                "assert context.check_hostname and context.verify_mode==ssl.CERT_REQUIRED; "
+                "assert 'api.github.com'.encode('idna')==b'api.github.com'"],
+                capture_output=True, text=True, timeout=15)
+            self.assertEqual(smoke.returncode, 0, smoke.stderr)
+
     def test_release_version_agrees_across_both_exes_backend_and_platform_labels(self):
         version = package.VERSION
+        assembly_version = '.'.join((version.split('.') + ['0'] * 4)[:4])
         backend = ast.parse((ROOT / 'launcher/setup_backend.py').read_text(encoding='utf-8'))
         value = next(ast.literal_eval(node.value) for node in backend.body
                      if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and
@@ -29,8 +58,8 @@ class LauncherPackageTests(unittest.TestCase):
             source = (ROOT / 'launcher' / name).read_text(encoding='utf-8')
             for attribute in ('AssemblyVersion', 'AssemblyFileVersion', 'AssemblyInformationalVersion'):
                 found = re.findall(attribute + r'\("([^"]+)"\)', source)
-                self.assertEqual(found, [version if attribute == 'AssemblyInformationalVersion' else version + '.0'])
-        self.assertIn('assemblyIdentity version="' + version + '.0"',
+                self.assertEqual(found, [version if attribute == 'AssemblyInformationalVersion' else assembly_version])
+        self.assertIn('assemblyIdentity version="' + assembly_version + '"',
                       (ROOT / 'launcher/app.manifest').read_text(encoding='utf-8'))
         self.assertIn('DARKER EDITION   /   ' + version + '"',
                       (ROOT / 'launcher/MainWindow.xaml').read_text(encoding='utf-8'))
@@ -195,6 +224,9 @@ class LauncherPackageTests(unittest.TestCase):
 
     def test_character_archive_pins_and_authored_art_match_runtime(self):
         import character_content
+        plan = package.sources()
+        for name in ('revolver_content.py', 'revolver_scripts.py'):
+            self.assertEqual(plan['payload/' + name], ROOT / 'launcher' / name)
         with tempfile.TemporaryDirectory() as folder, patch.object(package,'REPO',Path(folder)):
             root = Path(folder)
             source_name = 'xbexbe/src/common/character_content.cpp'
@@ -204,19 +236,24 @@ class LauncherPackageTests(unittest.TestCase):
             build = {'host_sources': {'files': [{'path':source_name,'sha256':package.sha(source)}]}}
             shutil.copyfile(ROOT/'launcher/character-catalog.json',root/'character-catalog.json')
             plan = {'payload/character-catalog.json':root/'character-catalog.json'}
-            for size in (1024,256):
-                name = f'cassidy-hands-{size}.dds'
-                shutil.copyfile(ROOT/'launcher/assets'/name,root/name)
-                plan['payload/character-art/'+name] = root/name
+            for character in ('cassidy', 'tala'):
+                for size in (1024,256):
+                    name = f'{character}-hands-{size}.dds'
+                    shutil.copyfile(ROOT/'launcher/assets'/name,root/name)
+                    plan['payload/character-art/'+name] = root/name
             package.check_character_catalog(plan,build)
             old = source.read_bytes()
             source.write_bytes(old+b'changed')
             with self.assertRaisesRegex(ValueError,'differs from the runtime'):
                 package.check_character_catalog(plan,build)
             source.write_bytes(old)
-            (root/'cassidy-hands-256.dds').write_bytes(b'wrong authored art')
-            with self.assertRaisesRegex(ValueError,'approved conversion'):
-                package.check_character_catalog(plan,build)
+            for character in ('cassidy', 'tala'):
+                art = root/f'{character}-hands-256.dds'
+                original = art.read_bytes()
+                art.write_bytes(b'wrong authored art')
+                with self.assertRaisesRegex(ValueError,'approved conversion'):
+                    package.check_character_catalog(plan,build)
+                art.write_bytes(original)
 
     def test_hd_artwork_only_referenced_and_no_traversal(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(package, 'REPO', Path(folder)):

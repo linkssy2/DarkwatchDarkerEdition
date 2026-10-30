@@ -65,7 +65,7 @@ class GameplayTextures {
         uint64_t hash = 0;
         std::memcpy(&hash, data.data() + data.size() - 8, 8);
         if (hash != hd::Hash({data.data(), data.size()-8})) return false;
-        // Pack v1 mapped grille RGB to six blood decals; retain originals for these exact files.
+        // Reject exact legacy payloads with unrelated artwork; corrected files remain eligible.
         switch (hash) {
         case 0x1df864062beaf83full: case 0x2e0cf7a8c407e4ccull: // bloodstain, base
         case 0xd31ccba86361254bull: case 0xf696dd35268b687full: // bloodstain, distance
@@ -73,6 +73,14 @@ class GameplayTextures {
         case 0xc21786724088f17full: case 0xeb211f2e428b2f0dull: // arterial, distance
         case 0x3c8432ed906cef7dull: case 0xbc1dee29427f24b4ull: // blood, base
         case 0x7c7dc03b58236015ull: case 0x197dd929ef18d104ull: // blood, distance
+        case 0xac8168202c3214eaull: case 0x0b5d9ab72e9442afull: // bandito hat, distance: grille atlas
+        case 0x5ad504a3cfb9e217ull: case 0x16ea2eb0f1971f37ull: // bandito hat, base: grille atlas
+        case 0x8c3d61852f994493ull: case 0x1b8228f9009b4a91ull: // light001: lost radial intensity
+        case 0x960b8b6af2abecabull: case 0xa60e0bdee4ed6d1aull:
+        case 0x5ef809133d28949dull: case 0xe74ffee80209e688ull: // light003: lost radial intensity
+        case 0x3128e1e825f6922full: case 0xfaad6f8f56e3cf23ull:
+        case 0xe8c58cf06e07c403ull: case 0x8777103273261524ull: // walkway boards: incorrect green tint
+        case 0xa100b3c6b859b00eull: case 0x682bca5df6c040faull:
             return false;
         }
         if (data[7] == '1') {
@@ -109,7 +117,7 @@ public:
     }
     void Open(const std::filesystem::path& directory) {
         directory_=directory; index_.clear(); aliases_.clear();
-        std::array<size_t,3> required{}, present{};
+        std::array<size_t,4> required{}, present{};
         for(const auto& a:kGameplayAssets) {
             if (a.pack_revision < 1 || a.pack_revision > required.size()) { index_.clear(); return; }
             ++required[a.pack_revision - 1];
@@ -144,7 +152,6 @@ public:
                 if (entry.second->native_hash == alias.target_native_hash) {
                     aliases_.emplace(Key(alias.width,alias.height,alias.format,alias.levels),
                                      AliasMatch{&alias,entry.second});
-                    break;
                 }
     }
     bool Available() const { return !index_.empty(); }
@@ -161,12 +168,20 @@ public:
         const auto [begin,end]=index_.equal_range(Key(d.width,d.height,d.format,d.levels));
         const auto [alias_begin,alias_end]=aliases_.equal_range(Key(d.width,d.height,d.format,d.levels));
         if(begin==end && alias_begin==alias_end) return false;
-        uint64_t hash=14695981039346656037ull;
-        if(d.format==11) for(uint8_t b:std::span(reinterpret_cast<const uint8_t*>(palette),1024)) hash=(hash^b)*1099511628211ull;
-        for(uint8_t b:std::span(original,bytes)) hash=(hash^b)*1099511628211ull;
+        const auto native_hash = [&](size_t palette_bytes) {
+            uint64_t value=14695981039346656037ull;
+            if(d.format==11) for(uint8_t b:std::span(reinterpret_cast<const uint8_t*>(palette),palette_bytes)) value=(value^b)*1099511628211ull;
+            for(uint8_t b:std::span(original,bytes)) value=(value^b)*1099511628211ull;
+            return value;
+        };
+        const uint64_t hash=native_hash(1024);
+        uint64_t small_hash=0; bool small_hashed=false;
         for(auto it=begin;it!=end;++it) {
             const auto& a=*it->second;
-            if(bytes==a.bytes && hash==a.native_hash && Load(a,original,palette,out)) return true;
+            if(bytes!=a.bytes) continue;
+            // The renderer zero-extends 32-colour palettes; only the authored 128 bytes identify these assets.
+            if(a.palette==128 && !small_hashed) {small_hash=native_hash(128); small_hashed=true;}
+            if((a.palette==128 ? small_hash : hash)==a.native_hash && Load(a,original,palette,out)) return true;
         }
         for(auto it=alias_begin;it!=alias_end;++it) {
             const auto& match=it->second;

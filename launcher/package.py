@@ -12,52 +12,100 @@ REFERENCE = REPO.parent / 'Urban Chaos Riot Response Recompiled'
 PYTHON = REFERENCE / '.tools/python'
 VS = Path('C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools')
 CRT = VS / 'VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT'
-VERSION = '0.6.1'
+VERSION = '0.7'
 RELEASE_PROFILE = {'name': 'release-candidate', 'diagnostics': False, 'strict_assets': True}
 LAUNCHER = 'Darkwatch Darker Edition.exe'
 DIRECT_PLAY = 'Play Darkwatch.exe'
 CRT_FILES = ('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
 PYTHON_FILES = ('python.exe', 'python312.dll', 'python3.dll', 'python312.zip',
                 'vcruntime140.dll', 'vcruntime140_1.dll', '_hashlib.pyd',
-                'libcrypto-3.dll', '_ctypes.pyd', 'libffi-8.dll', 'LICENSE.txt')
+                'libcrypto-3.dll', '_ssl.pyd', 'libssl-3.dll', '_socket.pyd', 'select.pyd', 'unicodedata.pyd',
+                '_ctypes.pyd', 'libffi-8.dll', 'LICENSE.txt')
 FORBIDDEN = {'.iso', '.xiso', '.xbe', '.pck', '.xmv', '.wmv', '.wav', '.pdb', '.log', '.dmp', '.pyc', '.dwt', '.pack'}
 GENERATED = {
     'payload/python/python312._pth': 'python312.zip\n.\n..\n',
-    'README.txt': '''Darkwatch: Darker Edition - 0.6.1
+    'assets/README.txt': '''Put your supported original Xbox Darkwatch ISO or XISO in this folder,
+then open Darkwatch Darker Edition.exe. On a fresh installation, one disc image
+is detected automatically and prepared for direct ISO playback. Keep it here.
+The launcher validates the disc first; multiple images require selecting one.
+Setup prepares local resources and shaders, without extracting the whole disc.
+Existing installations are reused. Updates preserve your ISO, saves and add-ons.
+Prefer to remove the ISO after setup? Use Select Game > Import once instead.
+''',
+    'README.txt': '''Darkwatch: Darker Edition - 0.7
 
-Version 0.6.1 - changes since 0.6
-- Fixed the mounted boss getting stuck at high FPS; accepted in testing at 240 FPS.
-- Fixed directional audio routing and speaker panning; accepted with Windows Sonic.
-- Install Spanish text, subtitles and voices from your European PS2 ISO (SLES-53564).
-  Replaces the older community pack; English and existing saves remain available.
+Version 0.7 - changes since 0.6.1
+- Choose direct ISO playback, import once, or reuse an existing installation.
+- Simpler launcher with GitHub update detection and explicit in-place updates.
+- Co-op uses single-player-quality original textures when the HD pack is off.
+- Corrected horizontal split-screen camera, HUD and text proportions.
+- Restored TNT/Splitter switching while keeping their separate ammunition.
+- Fixed mouse zoom sensitivity and expanded power-effect screen coverage.
+- Fixed alternate-character left-pistol attachment and a campaign loading crash.
+- Added playable Vampire Tala and wingless Boss Tala to both character selectors.
+- Keep the starter revolver, with 65 base damage and bonus Redeemer ammo refills.
+- Optional Carry All Weapons cheat, plus Next/Previous Weapon bindings.
+- Corrected cinematic widescreen framing and chapter-preview transparency.
+- Smaller settings panels, with taller Graphics/Controls lists and HD small indicators.
 Matching Windows and experimental Linux/Proton packages. Co-op remains BETA.
-Existing HD packs remain compatible; this update does not require a new HD download.
+The new separate 0.7 HD pack is recommended for expanded coverage and a smaller
+lossless download. It keeps the same texture detail, alpha and distance mipmaps;
+installed textures still need the same disk space. Existing HD packs remain
+compatible. The expanded optional pack adds HD artwork
+for Cassidy's story ragdoll and additional campaign, character, prop, weapon and
+blood textures.
+Older packs retain the original textures for these additions.
 
 Extract the entire ZIP into a new folder, then open Darkwatch Darker Edition.exe.
 Keep both EXEs and the payload folder together; do not run them inside the ZIP.
+The launcher checks GitHub for a newer release in the background. Check for
+Updates retries the check; Install Update downloads a newer Windows release when
+clicked. The verified package replaces the required files in this same folder,
+then the launcher restarts and updates the installed runtime/content. Saves,
+settings and optional packs stay in place. Close the game first. A failed download
+leaves the working package intact; restart the launcher to recover an interrupted
+file replacement. No download starts without clicking Install Update. Offline
+checks do not prevent installation or play. Only releases with the matching
+platform package are shown; source, HD-only and prerelease uploads are skipped.
 Use a short writable path such as C:/Games/Darkwatch, not Program Files.
 Native Windows path handling still has the 260-character limit.
-Select your supported original Xbox ISO or XISO with Import ISO. Setup imports your own
-disc locally, then prepares shaders and the HD menus, font and HUD from that verified data.
-After import, choose Play. No ISO, Xbox executable, movies or original game
+For automatic first-time setup, put one supported Xbox ISO/XISO in the supplied
+assets folder and open the launcher. It prepares direct ISO playback; keep the
+ISO in that folder. Existing installations are reused. Multiple images open the
+source chooser, and an unsupported image produces an error without installation.
+Select Game offers three choices for your supported Xbox ISO or XISO:
+- Use ISO directly: keep the ISO in place. Unmodified assets are read from the
+  disc image; setup still prepares the necessary local resources and shaders.
+- Import once: copy the game files locally. The ISO can be removed after setup;
+  ordinary play and later updates reuse the installed files.
+- Use Existing Install: select your previous launcher folder or GameData and
+  reuse its files, saves and add-ons in place.
+Setup verifies your own disc and prepares the HD menus, font, HUD and characters.
+After setup, choose Play. No ISO, Xbox executable, movies or original game
 payloads are included. The prebuilt HD pack is not included either.
 Gameplay HD textures are a separate optional download. Download all numbered
 texture parts into one folder. Use Install HD Textures in the launcher and select
 the .zip.001 file (or the complete texture ZIP). The Graphics toggle stays
 unavailable until the pack is installed; HD menus, fonts and HUD remain included.
-The existing 0.6 HD pack is reused unchanged; there is no separate 0.6.1 HD download.
+The existing 0.6 HD pack works without reinstallation. For the added artwork,
+install the new separate 0.7 pack with this launcher. The expanded pack adds
+Cassidy's story ragdoll, corrected blood and additional campaign/model textures,
+including their distance versions. These additions require the expanded pack.
 Earlier 0.4 and 0.5 packs remain compatible but have less character coverage.
 Play from this launcher has no ten-minute test timer.
 
-After importing once, open Play Darkwatch.exe to start the game directly without
+After setup, open Play Darkwatch.exe to start the game directly without
 the launcher window. It uses the same installed game, saves and verification.
 Shader preparation must finish before play. Both launch paths check the cache;
 if preparation is needed, a themed screen reports the completed shaders. Warm
 direct launches remain windowless until the game opens. Canceling preparation
 before play keeps completed cache entries for the next attempt.
 Keep it beside the rest of this extracted package, or create a desktop shortcut
-to it. If no game is installed, it asks you to use the launcher to import first.
-The entire extracted folder is portable; move it together with GameData.
+to it. If no game is installed, use Select Game in the launcher first.
+The entire extracted folder is portable; move it together with GameData. If you
+linked an existing installation elsewhere, keep that folder or select it again
+with Use Existing Install after moving it. Direct ISO mode also requires the
+source ISO; select it again with Use ISO directly if you move that file.
 
 Requires Windows 10 version 1903 or newer / Windows 11 x64, .NET Framework 4.8,
 an x86-64-v2 CPU (including
@@ -72,37 +120,47 @@ The file picker accepts both .iso and .xiso filenames; no renaming is needed.
 Other revisions are rejected. Keep at least 6 GB free per import, plus space
 for saves and shader cache. Your source ISO is never modified.
 
-The launcher stores everything it installs in GameData/ beside both EXEs.
+By default the launcher stores everything it installs in GameData/ beside both EXEs.
 That includes imported game files, saves, controls, graphics settings and cache.
-The original source ISO is only needed for import or repair, not normal play.
+In Import once mode, the source ISO is only needed for import or repair.
+In Use ISO directly mode, keep the source ISO available for play and updates.
 Use Open Game Folder to find the imported game, settings and saves. The existing
 development build and its saves are not changed or automatically migrated.
 Import cancellation or a failed verification keeps the previous complete install.
-To update a portable copy, extract the new release into a new folder and copy your
-existing GameData folder into it, then use Import / Repair with your original ISO
-or XISO. Reimport enables character and bonus content when updating an older installation and
-preserves saves, settings and cache.
-For an earlier per-user installation, import your ISO once here; setup copies its
-matching saved data and settings into the new portable install, leaving the old
-installation untouched. Later repairs preserve the portable saves and cache.
-Each successful import creates a new extracted installation and retains the old
-version, so updates require additional disk space. The ISO itself is not copied.
-Do not delete previous installations until you have checked the new version and
-backed up your saves. Verify Files checks without running the game.
+For a manual update, close the game and launcher and extract the complete new
+package over the existing package folder, replacing matching launcher files.
+Keep GameData and any retained ISO. If you prefer a separate new folder, choose
+Use Existing Install and select your previous Darkwatch folder, GameData folder,
+or active game folder. Then choose Update Game. It reuses those files in place;
+it does not copy the game or your saves into the new release folder. Keep the
+selected GameData folder. You can instead carry GameData into the new package.
+Play Darkwatch.exe also applies pending updates before launching. Saves, settings,
+optional HD textures, Spanish audio and shader caches remain in place.
+Import once with this launcher: normal play and future updates need no ISO.
+Direct ISO mode keeps using the selected ISO instead of a full extracted copy.
+Setup keeps about 1 MB of private recovery data so content updates can rebuild
+their original inputs locally. Older installations without it may require one
+final ISO import for a content update; runtime-only updates reuse them immediately.
+Select Game remains available to reselect the ISO or import missing/damaged files. A repair
+retains the previous installation and preserves saves; normal updates do not
+create another full installed copy. Temporary update files need free disk space
+and are removed on completion or cancellation. Keep a backup of your saves.
+Verify Files checks without running the game. The launcher never deletes your ISO.
 
 Graphics and Controls are available from the main menu and Pause. Esc pauses;
 right-click goes back in menus. Configure bindings in Controls. Choose Quit to
 Desktop in the main menu to close the game.
 Single Player opens rotating character previews. Choices include Jericho,
-Civilian Jericho, Cassidy, Spectral Cassidy, Tala, and the standard, blue and red
-Darkwatch Troopers.
+Civilian Jericho, Cassidy, Spectral Cassidy, Tala, Vampire Tala, Boss Tala, and the
+standard, blue and red Darkwatch Troopers. Playable Boss Tala has no wings;
+the original NPC boss is unchanged.
 Choose a character, then Continue to choose a chapter or resume your save.
 Local co-op is under Multiplayer > CO-OP. Choose each player's character in the
 left and right co-op panels; both players must select Ready to confirm their choices.
 Co-op is a beta feature; full campaign progression and two-player gameplay have
 not been fully verified. Character previews and conversion use your own disc;
 no original models, animations or voices are included in this package.
-The approved hand repaint is included.
+Authored Cassidy and regular Tala first-person hand repaints are included.
 In co-op, Player 2 pauses with their controller to edit their own controller settings.
 Controls supports controller-button rebinding as well as the original layout presets.
 Each player's bindings are saved separately. Mouse and keyboard remain Player 1's.
@@ -110,8 +168,8 @@ Audio offers Music, Effects and Speech volume plus Stereo or Surround output.
 Surround requires a compatible configured device; otherwise output falls back to stereo.
 The gameplay HD pack is separate from the HD interface and character selection.
 Install Spanish prepares text, subtitles and voices from your European PS2
-Darkwatch disc (SLES-53564). Import your Xbox disc first, close the game, then
-choose Install Spanish and select the PS2 ISO. Select Español in Game Language
+Darkwatch disc (SLES-53564). Set up your Xbox game first, close the game, then
+choose Manage > Install Spanish and select the PS2 ISO. Select Español in Game Language
 when the import finishes; the choice applies to the next launch, including
 Play Darkwatch.exe. English is always available and uses the original Xbox audio.
 Original game text and Spanish audio are not bundled with the launcher.
@@ -148,8 +206,10 @@ Spanish presentation need broader live testing. The mounted-boss fix was accepte
 at 240 FPS, and directional audio was accepted with Windows Sonic. These checks
 do not establish every encounter or audio device. Linux gameplay, audio and
 controllers remain unverified.
-The existing 0.6 HD pack includes the added character artwork; earlier 0.4 and 0.5
-packs remain compatible with less coverage. No physical PS4/Switch retest was performed.
+The existing 0.6 HD pack remains compatible. Vampire Tala's body and hands use
+its matching HD artwork; her head and Boss Tala's body/head retain original
+textures where no matching HD artwork exists. Earlier packs have less coverage.
+No physical PS4/Switch retest was performed.
 Original game content and branding belong to their owners.
 Spanish text and audio are prepared from the user's supported PS2 disc.
 PC menu translations and compatibility corrections are by Darkwatch: Darker Edition.
@@ -209,6 +269,10 @@ def sources():
     runtime = REPO / 'build/xbexbe-release'
     plan = {
         'payload/setup_backend.py': HERE / 'setup_backend.py',
+        'payload/release_check.py': HERE / 'release_check.py',
+        'payload/release_download.py': HERE / 'release_download.py',
+        'payload/release_update.py': HERE / 'release_update.py',
+        'payload/installed_source.py': HERE / 'installed_source.py',
         'payload/bonus_content.py': HERE / 'bonus_content.py',
         'payload/gameplay_hd.py': HERE / 'gameplay_hd.py',
         'payload/language_pack.py': HERE / 'language_pack.py',
@@ -234,12 +298,14 @@ def sources():
     for name in ('character_content.py', 'character_animation.py', 'character_assets.py',
                  'character_archive.py', 'character_repaint.py', 'character_boss.py',
                  'character_boss_effects.py', 'character_spectral_hands.py', 'character_hand_seams.py',
-                 'character_secondary.py', 'character_preview.py', 'character_roster.py',
+                 'character_secondary.py', 'character_preview.py', 'character_roster.py', 'character_tala.py',
+                 'revolver_content.py', 'revolver_scripts.py',
                  'character-catalog.json'):
         plan['payload/' + name] = HERE / name
-    for size in (1024, 256):
-        name = f'cassidy-hands-{size}.dds'
-        plan['payload/character-art/' + name] = HERE / 'assets' / name
+    for character in ('cassidy', 'tala'):
+        for size in (1024, 256):
+            name = f'{character}-hands-{size}.dds'
+            plan['payload/character-art/' + name] = HERE / 'assets' / name
     for name in ('Microsoft-Visual-Cpp-Runtime-license.rtf', 'Microsoft-Visual-Cpp-Redistribution.txt'):
         plan['licenses/' + name] = REFERENCE / 'launcher/burner-xbe' / name
     plan.update({'payload/runtime/' + name: CRT / name for name in CRT_FILES})
@@ -334,9 +400,10 @@ def check_character_catalog(plan, build):
     for name, pin in catalog['installed'].items():
         if name not in source or pin['sha256'] not in source or str(pin['size']) not in source:
             raise ValueError('Runtime and launcher character archive identities differ.')
-    for size, digest in character_content.REPAINT.items():
-        if sha(plan[f'payload/character-art/cassidy-hands-{size}.dds']) != digest:
-            raise ValueError('Packaged character repaint differs from the approved conversion.')
+    for character, pins in (('cassidy', character_content.REPAINT), ('tala', character_content.TALA_REPAINT)):
+        for size, digest in pins.items():
+            if sha(plan[f'payload/character-art/{character}-hands-{size}.dds']) != digest:
+                raise ValueError('Packaged character repaint differs from the approved conversion.')
 
 
 def disc_hashes(package):

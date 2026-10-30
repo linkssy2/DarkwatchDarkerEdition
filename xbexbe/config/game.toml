@@ -364,7 +364,12 @@ call = "DarkwatchConfigurePlayerCamera"
 # Apply the saved view scale after the original player-camera update.
 [[hook]]
 at = 0x0021606D
-call = "DarkwatchUpdatePlayerView"
+call = "DarkwatchUpdateCameraView"
+
+# Dedicated cinematic component, after its original factory stores global ownership.
+[[hook]]
+at = 0x0021AF54
+call = "DarkwatchConfigureCinematicCamera"
 
 # The first-person actor pass borrows the player camera; restore it before returning.
 # Original owner/event/projection evidence: viewmodel-cinematics-20261018/weapon/.
@@ -376,7 +381,7 @@ call = "DarkwatchBeginWeaponView"
 at = 0x000DEE24
 call = "DarkwatchEndWeaponView"
 
-# Scope the authored Blood Frenzy screen particles without changing world/weapon cameras.
+# Scope authored rune screen overlays without changing world/weapon cameras.
 [[hook]]
 at = 0x001F851A
 call = "DarkwatchBeginPowerView"
@@ -391,6 +396,10 @@ call = "DarkwatchPowerViewProjection"
 
 # Only the cinematic manager's two ScreenMaskEffect quads; movie playback is excluded.
 # Original owner/draw evidence: viewmodel-cinematics-20261018/cinematics/.
+[[hook]]
+at = 0x00326CF3
+call = "DarkwatchCinematicBorderProjection"
+
 [[hook]]
 at = 0x00326D22
 call = "DarkwatchHideCinematicBorder"
@@ -734,6 +743,17 @@ at = 0x000EAB6A
 call = "DarkwatchCoopCallback"
 after = true
 
+# Co-op world/model texture arguments only; leave other resource settings intact.
+[[hook]]
+at = 0x000CC6C0
+call = "DarkwatchCoopTextureQuality"
+after = true
+
+[[hook]]
+at = 0x000CC6CD
+call = "DarkwatchCoopTextureQuality"
+after = true
+
 [[hook]]
 at = 0x000EABA0
 call = "DarkwatchCoopLabel"
@@ -789,6 +809,11 @@ call = "DarkwatchCharacterResourceHeap"
 [[hook]]
 at = 0x00217BFA
 call = "DarkwatchStringHeap"
+
+# Shared animation references retain both bucket arrays during native rehash.
+[[hook]]
+at = 0x0021C94A
+call = "DarkwatchReferenceMapHeap"
 
 # Snapshot choices before the original single-player/co-op resource selection.
 [[hook]]

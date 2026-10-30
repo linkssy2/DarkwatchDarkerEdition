@@ -156,60 +156,70 @@ name = "WrongTrain"
 native_offset = 100877812
 file = "WrongTrain.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "GroundZero"
 native_offset = 100647540
 file = "GroundZero.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "M03_Cemetery"
 native_offset = 100844916
 file = "M03_Cemetery.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "M02_CanyonShoot"
 native_offset = 102294132
 file = "M02_CanyonShoot.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "M19_RidetoDeadfall"
 native_offset = 100680436
 file = "M19_RidetoDeadfall.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "M15_SplittingPaths"
 native_offset = 100713332
 file = "M15_SplittingPaths.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "M11_Hangtown"
 native_offset = 100746228
 file = "M11_Hangtown.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "M09_TortureMaze"
 native_offset = 100779124
 file = "M09_TortureMaze.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "M07_DWOutpost"
 native_offset = 100812020
 file = "M07_DWOutpost.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "Citadel_Launch"
 native_offset = 100910708
 file = "Citadel_Launch.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "loadingBad"
@@ -240,48 +250,56 @@ name = "FallOfCitadel"
 native_offset = 102261236
 file = "FallOfCitadel.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "M05_DevilsBelly"
 native_offset = 102327028
 file = "M05_DevilsBelly.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "M08_Regulator"
 native_offset = 102359924
 file = "M08_Regulator.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "M10_TradingPost"
 native_offset = 102392820
 file = "M10_TradingPost.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "M12_CitadelUnderAttack"
 native_offset = 102425716
 file = "M12_CitadelUnderAttack.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "M17_Invasion"
 native_offset = 102458612
 file = "M17_Invasion.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "M20_PenetratingDeadfall"
 native_offset = 102491508
 file = "M20_PenetratingDeadfall.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "WarTrain"
 native_offset = 102524404
 file = "WarTrain.png"
 crop = [0, 0, 1774, 887]
+alpha = "original"
 
 [[texture]]
 name = "StartScreenLogo"
@@ -404,6 +422,44 @@ name = "Icon_SoulStealer"
 native_offset = 102889204
 file = "Icon_SoulStealer-restored.png"
 crop = [0, 0, 1254, 1254]
+
+# The gameplay atlas uses the same eight power emblems. Keep the original
+# cell positions, opacity and gutters; the builder preserves the other cells.
+[[texture]]
+name = "hud_judgment"
+native_offset = 103200948
+[[texture.region]]
+file = "Icon_SoulStealer-restored.png"
+crop = [0, 0, 1254, 1254]
+dest = [45, 2, 36, 36]
+[[texture.region]]
+file = "Icon_Vindicator-restored.png"
+crop = [0, 0, 1254, 1254]
+dest = [168, 2, 36, 36]
+[[texture.region]]
+file = "Icon_SilverBullet-restored.png"
+crop = [0, 0, 1254, 1254]
+dest = [210, 2, 36, 36]
+[[texture.region]]
+file = "Icon_MysticArmor-restored.png"
+crop = [0, 0, 1254, 1254]
+dest = [4, 42, 36, 36]
+[[texture.region]]
+file = "Icon_BloodFrenzy-restored.png"
+crop = [0, 0, 1254, 1254]
+dest = [85, 2, 36, 36]
+[[texture.region]]
+file = "Icon_Fear-restored.png"
+crop = [0, 0, 1254, 1254]
+dest = [5, 212, 36, 36]
+[[texture.region]]
+file = "Icon_BlackShroud-restored.png"
+crop = [0, 0, 1254, 1254]
+dest = [43, 212, 36, 36]
+[[texture.region]]
+file = "Icon_Turn-restored.png"
+crop = [0, 0, 1254, 1254]
+dest = [81, 212, 36, 36]
 
 [[texture]]
 name = "Options_Selection"

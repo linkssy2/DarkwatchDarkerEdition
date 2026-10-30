@@ -44,6 +44,93 @@ class GameplayHDPackTests(unittest.TestCase):
                             row['native_fnv64'] + 'ull},\n};\n')
         return row, data, native, pixels, source, metadata, compiled
 
+    def shared_pixels(self, root):
+        row, data, native, pixels, source, metadata, compiled = self.fixture(root)
+        other_native = native.replace(b'original', b'changed!')
+        other = dict(row, name='second', native_fnv64=f'{fnv(other_native):016x}',
+                     native_sha256=hashlib.sha256(other_native).hexdigest())
+        body = data[:24] + other_native + pixels
+        second = body + struct.pack('<Q', fnv(body))
+        (source / 'second.dwt').write_bytes(second)
+        metadata.write_text(json.dumps({'textures': [row, other]}))
+        lines = compiled.read_text().splitlines()
+        lines.insert(-1, lines[-2].replace('fixture.dwt', 'second.dwt').replace(row['native_fnv64'], other['native_fnv64']))
+        compiled.write_text('\n'.join(lines) + '\n')
+        return [row, other], source, metadata, compiled
+
+    def test_compact_deduplicates_pixels_without_changing_any_installed_byte(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rows, source, metadata, compiled = self.shared_pixels(root)
+            trusted = root / 'normal.json'
+            pack.package(source, root / 'normal.zip', trusted, metadata, compiled, fnv)
+            compact_catalog = root / 'compact.json'
+            result = pack.package(source, root / 'compact.zip', compact_catalog, metadata, compiled, fnv, compact=True)
+            self.assertEqual(result['unique_pixel_payloads'], 1)
+            self.assertEqual(result['duplicate_pixel_files'], 1)
+            self.assertEqual(compact_catalog.read_bytes(), trusted.read_bytes())
+            self.assertIn('requires the accompanying updated launcher', (root / 'compact.README.txt').read_text())
+            self.assertIn('Existing HD installs remain compatible', (root / 'compact.README.txt').read_text())
+            self.assertNotIn('compact format', (root / 'normal.README.txt').read_text())
+            with zipfile.ZipFile(root / 'normal.zip') as normal, zipfile.ZipFile(root / 'compact.zip') as compact:
+                self.assertEqual(len(compact.namelist()), 3)
+                layout = json.loads(compact.read('layout.json'))
+                for name, item in layout['files'].items():
+                    decoded = bytes.fromhex(item['header']) + compact.read('pixels/' + item['pixel_sha256'] + '.rgba') + bytes.fromhex(item['footer'])
+                    self.assertEqual(decoded, normal.read(name))
+                self.assertNotEqual(layout['files']['gameplay-hd/fixture.dwt']['header'],
+                                    layout['files']['gameplay-hd/second.dwt']['header'])
+                self.assertNotEqual(layout['files']['gameplay-hd/fixture.dwt']['footer'],
+                                    layout['files']['gameplay-hd/second.dwt']['footer'])
+            for asset in rows:
+                file = source / (asset['name'] + '.dwt')
+                file.write_bytes(pack.convert(file.read_bytes(), asset, fnv))
+            (source / 'pack.json').write_bytes(trusted.read_bytes())
+            result = pack.package(source, root / 'pinned.zip', root / 'pinned.json', metadata, compiled, fnv,
+                                  replacement_catalog=trusted, compact=True)
+            self.assertEqual(result['unique_pixel_payloads'], 1)
+            self.assertEqual((root / 'pinned.json').read_bytes(), trusted.read_bytes())
+            before = (root / 'compact.zip').read_bytes()
+            with self.assertRaises(FileExistsError):
+                pack.package(source, root / 'compact.zip', root / 'unchanged.json', metadata, compiled, fnv,
+                             replacement_catalog=trusted, compact=True)
+            self.assertEqual((root / 'compact.zip').read_bytes(), before)
+
+    def test_compact_verification_rejects_corrupt_layout_pixels_and_inventory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rows, source, metadata, compiled = self.shared_pixels(root)
+            trusted = root / 'trusted.json'
+            pack.package(source, root / 'valid.zip', trusted, metadata, compiled, fnv, compact=True)
+            with zipfile.ZipFile(root / 'valid.zip') as archive:
+                entries = {name: archive.read(name) for name in archive.namelist()}
+            layout = json.loads(entries['layout.json'])
+            pixel_name = next(name for name in entries if name.startswith('pixels/'))
+            bad_header = json.loads(entries['layout.json'])
+            bad_header['files']['gameplay-hd/fixture.dwt']['header'] = '00' * 32
+            bad_footer = json.loads(entries['layout.json'])
+            bad_footer['files']['gameplay-hd/fixture.dwt']['footer'] = '00' * 8
+            bad_path = json.loads(entries['layout.json'])
+            bad_path['files']['../outside'] = bad_path['files'].pop('gameplay-hd/fixture.dwt')
+            changes = [
+                dict(entries, **{'layout.json': json.dumps(bad_header).encode()}),
+                dict(entries, **{'layout.json': json.dumps(bad_footer).encode()}),
+                dict(entries, **{'layout.json': json.dumps(bad_path).encode()}),
+                dict(entries, **{'layout.json': b'{"schema_version":1,"schema_version":1}'}),
+                dict(entries, **{'layout.json': b'x' * (2 * 1024 * 1024 + 1)}),
+                dict(entries, **{pixel_name: entries[pixel_name][:-1] + b'x'}),
+                dict(entries, **{pixel_name: entries[pixel_name][:-1]}),
+                dict(entries, **{'pixels/unused.rgba': b'x'}),
+                {name: data for name, data in entries.items() if name != pixel_name},
+            ]
+            for index, damaged in enumerate(changes):
+                path = root / f'corrupt-{index}.zip'
+                with zipfile.ZipFile(path, 'w') as archive:
+                    for name, data in damaged.items():
+                        archive.writestr(name, data)
+                with self.subTest(case=index), self.assertRaises(ValueError):
+                    pack.verify_archive(path, trusted.read_bytes(), rows, fnv)
+
     def test_replacement_only_exact_format_and_private_validation(self):
         with tempfile.TemporaryDirectory() as tmp:
             row, data, native, pixels, *_ = self.fixture(Path(tmp))
@@ -214,12 +301,12 @@ class GameplayHDPackTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'byte-for-byte compatible'):
                 pack.package(source, root/'bad-extension.zip', root/'bad.json', metadata, compiled, fnv)
 
-    def test_three_generations_pin_every_published_receipt_and_payload(self):
+    def test_four_generations_pin_every_published_receipt_and_payload(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             row, data, _, _, source, metadata, compiled = self.fixture(root)
             rows, previous = [], None
-            for revision in (1, 2, 3):
+            for revision in (1, 2, 3, 4):
                 asset = dict(row, name=f'generation-{revision}', pack_revision=revision)
                 rows.append(asset)
                 (source / (asset['name'] + '.dwt')).write_bytes(data)
@@ -244,23 +331,26 @@ class GameplayHDPackTests(unittest.TestCase):
                 if previous is not None:
                     self.assertEqual(receipt['previous_catalog'].encode(), previous)
                 previous = trusted.read_bytes()
-            # Both nested historical receipts have exact file/SHA membership.
+            # All three historical receipts have exact file/SHA membership.
             current = json.loads(previous)
-            for depth in (0, 1):
-                altered = json.loads(current['previous_catalog'])
-                target = altered
-                if depth:
-                    target = json.loads(altered['previous_catalog'])
-                target['files'][0]['sha256'] = '0' * 64
-                if depth:
-                    altered['previous_catalog'] = json.dumps(target)
+            for depth in (0, 1, 2):
+                chain = [json.loads(current['previous_catalog'])]
+                for _ in range(depth):
+                    chain.append(json.loads(chain[-1]['previous_catalog']))
+                chain[-1]['files'][0]['sha256'] = '0' * 64
+                for index in range(len(chain) - 2, -1, -1):
+                    chain[index]['previous_catalog'] = json.dumps(chain[index + 1])
                 with self.assertRaisesRegex(ValueError, 'byte-for-byte compatible'):
-                    pack.encode_catalog(rows, current['files'], current['texture_catalog_sha256'], json.dumps(altered))
+                    pack.encode_catalog(rows, current['files'], current['texture_catalog_sha256'], json.dumps(chain[0]))
             for wrong_previous in (None, json.loads(current['previous_catalog'])['previous_catalog']):
                 with self.assertRaisesRegex(ValueError, 'byte-for-byte compatible'):
                     pack.encode_catalog(rows, current['files'], current['texture_catalog_sha256'], wrong_previous)
             with self.assertRaisesRegex(ValueError, 'Unsupported HD pack revision'):
-                pack.encode_catalog([dict(row, pack_revision=4)], current['files'], '0' * 64, previous.decode())
+                pack.encode_catalog([dict(row, pack_revision=5)], current['files'], '0' * 64, previous.decode())
+            metadata.write_text(json.dumps({'textures': [dict(row, pack_revision=5)]}))
+            with self.assertRaisesRegex(ValueError, 'Invalid texture metadata'):
+                pack.load_assets(metadata, compiled)
+            metadata.write_text(json.dumps(contents))
             # Repack the complete reviewed replacement-only generation unchanged.
             for asset in rows:
                 (source / (asset['name'] + '.dwt')).write_bytes(pack.convert(data, asset, fnv))
@@ -269,6 +359,10 @@ class GameplayHDPackTests(unittest.TestCase):
             pack.package(source, root / 'copied.zip', copied, metadata, compiled, fnv,
                          replacement_catalog=trusted)
             self.assertEqual(copied.read_bytes(), previous)
+            compact = root / 'compact.json'
+            pack.package(source, root / 'compact.zip', compact, metadata, compiled, fnv,
+                         replacement_catalog=trusted, compact=True)
+            self.assertEqual(compact.read_bytes(), previous)
 
     def test_download_parts_exact_round_trip_and_corruption(self):
         with tempfile.TemporaryDirectory() as tmp:

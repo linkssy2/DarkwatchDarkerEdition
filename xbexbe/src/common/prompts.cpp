@@ -467,7 +467,7 @@ void Refresh(uint8_t* base) {
 unsigned Key(unsigned action) {
     const auto& binding=g_settings.bindings[action];
     const unsigned key=binding.keys[0]?binding.keys[0]:binding.keys[1];
-    return key==input::kMouseWheel?kMouseWheelBadge:key<256?key:0;
+    return key>=input::kMouseWheel&&key<=input::kMouseWheelDown?kMouseWheelBadge:key<256?key:0;
 }
 bool CString(const uint8_t* base,uint32_t p,std::string& text,unsigned limit=80) {
     text.clear();for(unsigned i=0;i<limit;++i){char c;if(!Read(base,uint64_t(p)+i,c))return false;if(!c)return true;text+=c;}return false;

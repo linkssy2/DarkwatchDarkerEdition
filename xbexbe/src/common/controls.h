@@ -10,8 +10,11 @@ struct ControlsSettings {
     uint32_t zoom_sensitivity_percent = 100;
     bool aim_assistance = true;
     bool aim_centering = true;
+    bool carry_all_weapons = false;
+    std::array<std::array<int, 2>, 2> weapon_buttons{{{{-1, -1}}, {{-1, -1}}}};
 };
 
+bool GetCarryAllWeapons();
 ControlsSettings ControlsDefaults();
 ControlsSettings ControlsSnapshot();
 bool ControlsApply(const ControlsSettings& settings); // Live changes; app::Save persists them.

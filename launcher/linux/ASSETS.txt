@@ -1,0 +1,8 @@
+Put your supported original Xbox Darkwatch ISO or XISO in this folder,
+then run Darkwatch.sh or your configured Steam shortcut with --play.
+On a fresh installation, one disc image is detected
+automatically and prepared for direct ISO playback. Keep it here.
+The launcher validates the disc first; multiple images require selecting one.
+Setup prepares local resources and shaders, without extracting the whole disc.
+Existing installations are reused. Updates preserve your ISO, saves and add-ons.
+Prefer to remove the ISO after setup? Use Select Game > Import once instead.

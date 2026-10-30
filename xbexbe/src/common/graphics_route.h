@@ -40,7 +40,7 @@ bool OpenPauseSettings(uint8_t* base, uint32_t expected_options);
 // Add real original MenuItem objects to the validated Pause main list.
 bool EnsureNativePauseEntries(uint8_t* base);
 // Consume the added row after the original action opened its Controls handler:
-// 0 = no added entry, 1 = Graphics, 2 = Controls.
+// 0 = no added entry, 1 = Graphics, 2 = Controls, 3 = Audio.
 uint32_t TakeNativePauseEntry(uint8_t* base, uint32_t expected_options);
 }  // namespace darkwatch
 

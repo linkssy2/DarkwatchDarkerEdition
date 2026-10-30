@@ -41,7 +41,7 @@ def load_assets(metadata, compiled):
                 not 0 < row['width'] <= 4096 or not 0 < row['height'] <= 4096 or
                 not 0 < row['native_levels'] <= row['dds_mips'] <= max(row['width'], row['height']).bit_length() or
                 not row['native_bytes'] or
-                type(row.get('pack_revision', 1)) is not int or row.get('pack_revision', 1) not in (1, 2, 3) or
+                type(row.get('pack_revision', 1)) is not int or row.get('pack_revision', 1) not in (1, 2, 3, 4) or
                 not re.fullmatch(r'[0-9a-f]{16}', row['native_fnv64']) or
                 not re.fullmatch(r'[0-9a-f]{64}', row['native_sha256'])):
             raise ValueError('Invalid texture metadata: ' + name)
@@ -87,7 +87,7 @@ def encode_catalog(rows, records, metadata_sha, previous):
     catalog = {'schema_version': 1, 'kind': 'darkwatch-gameplay-hd', 'version': '1',
                'texture_catalog_sha256': metadata_sha, 'files': records}
     revision = max(row.get('pack_revision', 1) for row in rows)
-    if not 1 <= revision <= 3:
+    if not 1 <= revision <= 4:
         raise ValueError('Unsupported HD pack revision')
     remaining = previous
     # Each published generation is an exact prefix of the additive catalog.
@@ -139,12 +139,50 @@ def verify_archive(path, catalog_bytes, assets, fnv):
         raise ValueError('Optional pack texture catalog mismatch')
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
-        if len(names) != len(set(names)) or set(names) != set(records) | {'pack.json'}:
+        if len(names) != len(set(names)) or 'pack.json' not in names:
             raise ValueError('Optional ZIP contains missing, repeated or unexpected files')
         if archive.read('pack.json') != catalog_bytes:
             raise ValueError('Optional pack manifest differs from the trusted catalog')
+        layout = None
+        if 'layout.json' in names:
+            if archive.getinfo('layout.json').file_size > 2 * 1024 * 1024:
+                raise ValueError('Shared-pixel layout is too large')
+            def unique(pairs):
+                value = {}
+                for key, item in pairs:
+                    if key in value:
+                        raise ValueError('Repeated shared-pixel layout field')
+                    value[key] = item
+                return value
+            layout = json.loads(archive.read('layout.json'), object_pairs_hook=unique)
+            if (not isinstance(layout, dict) or set(layout) != {'schema_version', 'kind', 'files'} or
+                    type(layout['schema_version']) is not int or layout['schema_version'] != 1 or
+                    layout['kind'] != 'darkwatch-hd-shared-rgba' or not isinstance(layout['files'], dict) or
+                    set(layout['files']) != set(records)):
+                raise ValueError('Invalid shared-pixel layout')
+            for item in layout['files'].values():
+                if (not isinstance(item, dict) or set(item) != {'pixel_sha256', 'header', 'footer'} or
+                        any(not isinstance(item[key], str) or not re.fullmatch('[0-9a-f]{%d}' % length, item[key])
+                            for key, length in [('pixel_sha256', 64), ('header', 64), ('footer', 16)])):
+                    raise ValueError('Invalid shared-pixel layout entry')
+            expected = {'pack.json', 'layout.json'} | {
+                'pixels/' + item['pixel_sha256'] + '.rgba' for item in layout['files'].values()}
+        else:
+            expected = set(records) | {'pack.json'}
+        if set(names) != expected:
+            raise ValueError('Optional ZIP contains missing, repeated or unexpected files')
         for name, record in records.items():
-            data = archive.read(name)
+            if layout is None:
+                data = archive.read(name)
+            else:
+                item = layout['files'][name]
+                member = 'pixels/' + item['pixel_sha256'] + '.rgba'
+                if archive.getinfo(member).file_size != record['size'] - 40:
+                    raise ValueError('Shared-pixel payload size mismatch: ' + name)
+                pixels = archive.read(member)
+                if hashlib.sha256(pixels).hexdigest() != item['pixel_sha256']:
+                    raise ValueError('Shared-pixel payload identity mismatch: ' + name)
+                data = bytes.fromhex(item['header']) + pixels + bytes.fromhex(item['footer'])
             if len(data) != record['size'] or hashlib.sha256(data).hexdigest() != record['sha256']:
                 raise ValueError('Optional pack file identity mismatch: ' + name)
             verify_replacement(data, rows[name], fnv)
@@ -168,7 +206,7 @@ def verify_parts(folder, records, expected_sha):
         raise ValueError('Optional pack download parts do not reproduce the verified ZIP')
 
 
-def split_archive(path, expected_sha, part_bytes=PART_BYTES):
+def split_archive(path, expected_sha, part_bytes=PART_BYTES, compact=False):
     if part_bytes <= 0 or path.stat().st_size == 0:
         raise ValueError('Invalid archive or download part size')
     count = (path.stat().st_size + part_bytes - 1) // part_bytes
@@ -198,12 +236,17 @@ def split_archive(path, expected_sha, part_bytes=PART_BYTES):
                       f'{targets[0].name}. The launcher reads the remaining parts automatically.\n'
                       'The game must be closed during installation. After installation, enable\n'
                       'HD Textures in Graphics. Menus, fonts and HUD are separate\n'
-                      'and stay included with the base game installation.\n', encoding='utf-8')
+                      'and stay included with the base game installation.\n' +
+                      ('\nThis compact download requires the accompanying updated launcher.\n'
+                       'Older launchers cannot install the compact format. Compression does not\n'
+                       'change texture quality. Existing HD installs remain compatible; install\n'
+                       'a newer pack to receive any additional artwork included in it.\n' if compact else ''),
+                      encoding='utf-8')
     return result
 
 
 def package(source, output, trusted, metadata=METADATA, compiled=COMPILED, fnv=None,
-            replacement_catalog=None):
+            replacement_catalog=None, compact=False):
     rows, metadata_sha = load_assets(metadata, compiled)
     fnv = fnv or load_hash(ROOT / 'build/tools/gameplay_hash.dll')
     previous = json.loads(metadata.read_bytes()).get('previous_catalog')
@@ -224,6 +267,8 @@ def package(source, output, trusted, metadata=METADATA, compiled=COMPILED, fnv=N
         raise ValueError('Private texture directory differs from the catalog')
     output.parent.mkdir(parents=True, exist_ok=True)
     records = []
+    layout = {'schema_version': 1, 'kind': 'darkwatch-hd-shared-rgba', 'files': {}}
+    pixel_names = set()
     with zipfile.ZipFile(output, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=3, allowZip64=True) as archive:
         for index, row in enumerate(rows, 1):
             name = row['name'] + '.dwt'
@@ -235,20 +280,37 @@ def package(source, output, trusted, metadata=METADATA, compiled=COMPILED, fnv=N
                 verify_replacement(data, row, fnv)
                 if hashlib.sha256(data).hexdigest() != pinned[member]['sha256']:
                     raise ValueError('Replacement texture differs from the pinned catalog: ' + name)
-            archive.writestr(member, data)
+            if compact:
+                pixels = data[32:-8]
+                digest = hashlib.sha256(pixels).hexdigest()
+                pixel_name = 'pixels/' + digest + '.rgba'
+                layout['files'][member] = {'pixel_sha256': digest, 'header': data[:32].hex(), 'footer': data[-8:].hex()}
+                if pixel_name not in pixel_names:
+                    archive.writestr(pixel_name, pixels)
+                    pixel_names.add(pixel_name)
+            else:
+                archive.writestr(member, data)
             records.append({'path': member, 'size': len(data), 'sha256': hashlib.sha256(data).hexdigest()})
             if index % 50 == 0:
                 print(f'Packaged {index}/{len(rows)} textures', flush=True)
         catalog_bytes = encode_catalog(rows, records, metadata_sha, previous)
         archive.writestr('pack.json', catalog_bytes)
+        if compact:
+            layout_bytes = (json.dumps(layout, separators=(',', ':')) + '\n').encode('utf-8')
+            if len(layout_bytes) > 2 * 1024 * 1024:
+                raise ValueError('Shared-pixel layout is too large')
+            archive.writestr('layout.json', layout_bytes)
     result = verify_archive(output, catalog_bytes, rows, fnv)
+    if compact:
+        result.update(download_format='darkwatch-hd-shared-rgba', unique_pixel_payloads=len(pixel_names),
+                      duplicate_pixel_files=len(records) - len(pixel_names))
     trusted.parent.mkdir(parents=True, exist_ok=True)
     temporary = trusted.with_suffix('.tmp')
     temporary.write_bytes(catalog_bytes)
     temporary.replace(trusted)
     with output.open('rb') as stream:
         result['zip_sha256'] = hashlib.file_digest(stream, 'sha256').hexdigest()
-    result['download'] = split_archive(output, result['zip_sha256'])
+    result['download'] = split_archive(output, result['zip_sha256'], compact=compact)
     return dict(result, zip=str(output), zip_bytes=output.stat().st_size)
 
 
@@ -259,9 +321,11 @@ def main():
     parser.add_argument('--catalog-output', type=Path, default=TRUSTED)
     parser.add_argument('--replacement-catalog', type=Path,
                         help='Independently validated catalog required for DWGAME02 input; never trust its receipt alone')
+    parser.add_argument('--compact', action='store_true',
+                        help='Store identical RGBA mip chains once; requires a launcher with shared-pixel ZIP support')
     args = parser.parse_args()
     print(json.dumps(package(args.source, args.output, args.catalog_output,
-                             replacement_catalog=args.replacement_catalog), indent=2))
+                             replacement_catalog=args.replacement_catalog, compact=args.compact), indent=2))
 
 
 if __name__ == '__main__':

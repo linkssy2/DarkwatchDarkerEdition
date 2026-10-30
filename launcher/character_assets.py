@@ -245,6 +245,95 @@ def append_resources(original, dependencies):
     return result,added
 
 
+def append_resource_bytes(raw, dependencies):
+    """Append canonical resource rows without rebuilding their existing tree.
+
+    Other valid BXML layouts use the original converter, including noncanonical
+    string tables: retaining those bytes would differ from encode()'s output.
+    """
+    def fallback():
+        tree, added = append_resources(decode(raw), dependencies)
+        return encode(tree), added
+
+    if raw[:4] != b'\x01\0\0\0' or len(raw) < 6:
+        return fallback()
+    count = struct.unpack_from('<H', raw, 4)[0]
+    if count >= 20000:
+        return fallback()
+    pos, strings = 6, []
+    for _ in range(count):
+        if pos + 2 > len(raw):
+            return fallback()
+        length = struct.unpack_from('<H', raw, pos)[0]
+        pos += 2
+        if length >= 4096 or pos + length > len(raw):
+            return fallback()
+        strings.append(raw[pos:pos + length].decode('ascii'))
+        pos += length
+    if len(set(strings)) != count or strings[:2] != ['ResourceSetCInfo', 'data']:
+        return fallback()
+    body = raw[pos:]
+    if len(body) < 16:
+        return fallback()
+    root, attrs, children, data, data_attrs, rows = struct.unpack_from('<6H', body)
+    if ((root, attrs, children, data, data_attrs) != (0, 0, 1, 1, 0)
+            or rows >= 20000 or len(body) != 16 + rows * 24 or body[-4:] != b'\xff' * 4):
+        return fallback()
+    indexes = {value: index for index, value in enumerate(strings)}
+    tags = tuple(indexes.get(value) for value in ('element', 'name', 'type'))
+    seen, next_index = set(), 2
+    for row in struct.iter_unpack('<12H', body[12:-4]):
+        if ((row[0], row[3], row[7]) != tags
+                or (row[1], row[2], row[4], row[5], row[8], row[9], row[11]) != (0, 2, 0, 0, 0, 0, 65535)
+                or row[6] >= count or row[10] >= count):
+            return fallback()
+        for index in (row[0], row[3], row[6], row[7], row[10]):
+            if index >= next_index:
+                if index != next_index:
+                    return fallback()
+                next_index += 1
+        key = norm(strings[row[6]]), strings[row[10]]
+        if key in seen:
+            raise ValueError('Resource-list duplicates or unexpected schema')
+        seen.add(key)
+    if next_index != count:
+        return fallback()
+
+    added, extra_strings, extra_rows = [], bytearray(), bytearray()
+    def text(value):
+        if not isinstance(value, str):
+            raise ValueError('Invalid BXML string')
+        encoded = value.encode('ascii')
+        if len(encoded) >= 4096:
+            raise ValueError('Invalid BXML string')
+        if value not in indexes:
+            if len(indexes) >= 19999:
+                raise ValueError('Too many BXML strings')
+            indexes[value] = len(indexes)
+            extra_strings.extend(struct.pack('<H', len(encoded)) + encoded)
+        return indexes[value]
+
+    for name, kind in dependencies:
+        key = norm(name), kind
+        if key in seen:
+            continue
+        if rows + len(added) + 1 >= 20000:
+            raise ValueError('BXML structure exceeds witnessed bounds')
+        # Match encode's first-use order, including the first row of an empty list.
+        element_index, name_index, path_index = text('element'), text('name'), text(name)
+        type_index, kind_index = text('type'), text(kind)
+        extra_rows.extend(struct.pack('<12H', element_index, 0, 2, name_index, 0, 0,
+                                      path_index, type_index, 0, 0, kind_index, 65535))
+        seen.add(key)
+        added.append(dict(name=name, type=kind))
+    if not added:
+        return bytes(raw), added
+    result = (raw[:4] + struct.pack('<H', len(indexes)) + raw[6:pos] + extra_strings
+              + body[:10] + struct.pack('<H', rows + len(added)) + body[12:-4]
+              + extra_rows + body[-4:])
+    return bytes(result), added
+
+
 def append_voice_bank(original):
     # Audio has a separate BankLayoutConfig, not a generic resource-list loader.
     if original['name'] != 'BankLayoutConfig' or named(original,'layoutType')['value'] != 'HubCoop':

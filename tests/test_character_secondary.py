@@ -3,6 +3,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 import struct
 import sys
 import unittest
@@ -41,6 +42,58 @@ def vertex_pose(point, weights, inverse, world):
         for i in range(3):
             result[i] += weight*(sum(local[j]*world[bone][j][i] for j in range(3))+world[bone][3][i])
     return result
+
+
+def animation_pose(model, data, time):
+    """Sample real unblended disc keys; missing tracks retain their bind pose."""
+    _, sections = animation.sections(data)
+    rig, frames, _ = boss.rig(model, 51)
+    frame_bones = {row['frame']: bone for bone, row in rig.items()}
+    def value(bit, bone):
+        section = sections.get(bit)
+        if not section or bone is None or bone >= 22:
+            return None
+        start = section['indices'][bone]
+        if start == 0xffffffff:
+            return None
+        stop = min([i for i in section['indices'] if start < i < 0xffffffff]+[section['count']])
+        keys = []
+        for key in range(start, stop):
+            at = section['keys']+key*section['stride']
+            values = struct.unpack_from('<4h' if bit == 4 else '<3f', data, at+4)
+            keys.append((struct.unpack_from('<f', data, at)[0],
+                         tuple(v/32768 for v in values) if bit == 4 else values))
+        a = keys[0]
+        for b in keys[1:]:
+            if b[0] >= time:
+                f = min(1., max(0., (time-a[0])/(b[0]-a[0]))) if b[0] > a[0] else 0.
+                other = b[1]
+                if bit == 4 and sum(x*y for x, y in zip(a[1], other)) < 0:
+                    other = tuple(-v for v in other)
+                result = tuple(x*(1-f)+y*f for x, y in zip(a[1], other))
+                break
+            a = b
+        else:
+            result = a[1]
+        length = math.sqrt(sum(v*v for v in result)) if bit == 4 else 1.
+        return tuple(v/length for v in result)
+    world = []
+    for index, frame in enumerate(frames):
+        local = [list(frame[i:i+3])+[0.] for i in (0, 3, 6)]+[list(frame[9:12])+[1.]]
+        if index == 0:
+            local = [[float(i == j) for j in range(4)] for i in range(4)]
+        bone = frame_bones.get(index)
+        rotation, translation = value(4, bone), value(8, bone)
+        if rotation is not None:
+            local[:3] = [list(row)+[0.] for row in animation._quaternion_matrix(rotation)]
+        if translation is not None:
+            local[3][:3] = translation
+        parent = frame[12]
+        if parent >= 0:
+            local = [[sum(local[i][k]*world[parent][k][j] for k in range(4))
+                      for j in range(4)] for i in range(4)]
+        world.append(local)
+    return [world[rig[i]['frame']] for i in range(51)]
 
 
 class InfluenceTests(unittest.TestCase):

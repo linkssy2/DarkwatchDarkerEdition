@@ -140,6 +140,20 @@ int main(){
  Equal(Poll(1),snapshot);Frame();Equal(Poll(0),snapshot);
  Key('W',true);Mouse(8,-4);Frame();p=Poll(0);CHECK(p.ly==32767&&p.lx==0&&p.rx>8000&&p.ry>4000&&p.analog[6]==62);
  SetActive(false);Equal(Poll(0),snapshot);Equal(Poll(1),snapshot);
+
+ // Title actions see only filtered physical input, never merged keyboard controls.
+ SetActive(true);Frame();CHECK(Poll(0).physical_buttons==uint16_t(0x20|0x4000));
+ Tap(0x20);Frame();CHECK(Poll(0).analog[0]==255&&!(Poll(0).physical_buttons&0x100));
+ SetMenuMode(true);CHECK(!Poll(0).physical_buttons);SetMenuMode(false);Frame();
+ SetActive(false);CHECK(!Poll(0).physical_buttons);SetActive(true);Frame();
+ auto mapping=DefaultPadBindings();std::swap(mapping[5],mapping[8]);CHECK(SetPadBindings(0,mapping));
+ fake_pads[0].buttons[SDL_GAMEPAD_BUTTON_BACK]=false;fake_pads[0].axes[SDL_GAMEPAD_AXIS_LEFT_TRIGGER]=0;Poll(0);
+ fake_pads[0].buttons[SDL_GAMEPAD_BUTTON_BACK]=true;fake_pads[0].axes[SDL_GAMEPAD_AXIS_LEFT_TRIGGER]=8000;
+ CHECK(Poll(0).physical_buttons==uint16_t(0x20|0x4000)&&Poll(0).analog[0]==255);
+ CHECK(SetPadBindings(0,DefaultPadBindings()));
+ fake_pads[0].buttons[SDL_GAMEPAD_BUTTON_BACK]=false;fake_pads[0].axes[SDL_GAMEPAD_AXIS_LEFT_TRIGGER]=0;Poll(0);
+ fake_pads[0].buttons[SDL_GAMEPAD_BUTTON_BACK]=true;fake_pads[0].axes[SDL_GAMEPAD_AXIS_LEFT_TRIGGER]=8000;
+ Frame();
  // Raw counts are immutable once published. Direct mode changes only PC right-stick merging.
  SetMouseToStick(false);SetActive(true);Frame();
  auto raw=GetMouseSnapshot();CHECK(raw.active&&!raw.dx&&!raw.dy);

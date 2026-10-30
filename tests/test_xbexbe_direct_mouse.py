@@ -53,6 +53,8 @@ bool darkwatch::InitializeMenuCursor() { return true; }
 void darkwatch::InitializeHdUi() {}
 int darkwatch::PrepareShaders() { return 0; }
 void DarkwatchGraphicsPad(int, input::Pad&) {}
+// Weapon cycling has its own real input fixture; this fixture isolates aiming.
+void DarkwatchWeaponInput(int, input::Pad&) {}
 #define CHECK(x) do {if(!(x)){std::fprintf(stderr,"line %d: %s\n",__LINE__,#x);std::exit(90);}} while(0)
 static uint8_t memory[0x500000],before[0x500000];
 static std::set<uint32_t> blocked;
@@ -66,6 +68,23 @@ bool mem::IsCommitted(uint32_t page){CHECK(!(page&0xFFF));return page<sizeof(mem
 void* app::Window(){return nullptr;}
 void logx::Write(Level,const char* fmt,...){char text[2048];va_list args;va_start(args,fmt);std::vsnprintf(text,sizeof(text),fmt,args);va_end(args);messages.emplace_back(text);}
 static void W(uint32_t p,uint32_t v){std::memcpy(memory+p,&v,4);}
+// Original InventoryComponent category zero resolves the currently held primary
+// weapon through a GeometryInventorySlot; WeaponComponent belongs to that actor.
+static constexpr uint32_t zoom_inventory=0x120000,zoom_categories=0x121000,zoom_slots=0x122000;
+static constexpr uint32_t zoom_parts=0x123000,zoom_slot=0x124000,zoom_weapon=0x125000;
+static constexpr uint32_t zoom_weapon_parts=0x126000,zoom_component=0x127000;
+static void ZoomInventory(uint32_t actor,uint32_t weapon_type=0x418390,unsigned primary_slot=7){
+ uint16_t count=0;uint32_t parts=0;
+ std::memcpy(&count,memory+actor+0x60,2);std::memcpy(&parts,memory+actor+0x64,4);
+ if(!parts){parts=zoom_parts;W(actor+0x64,parts);}
+ W(parts+count*8+4,zoom_inventory);W(actor+0x60,count+1);
+ W(zoom_inventory,0x41F29C);W(zoom_inventory+0xC,actor);
+ W(zoom_inventory+0x78,4);W(zoom_inventory+0x7C,zoom_categories);W(zoom_categories,primary_slot);
+ W(zoom_inventory+0x88,primary_slot+11);W(zoom_inventory+0x8C,zoom_slots);
+ W(zoom_slots+primary_slot*4,zoom_slot);W(zoom_slot,0x41F570);W(zoom_slot+0xC,zoom_weapon);
+ W(zoom_weapon+0x60,1);W(zoom_weapon+0x64,zoom_weapon_parts);W(zoom_weapon_parts+4,zoom_component);
+ W(zoom_component,weapon_type);W(zoom_component+0xC,zoom_weapon);
+}
 static void F(uint32_t p,float v){std::memcpy(memory+p,&v,4);}
 static float RF(uint32_t p){float v;std::memcpy(&v,memory+p,4);return v;}
 static bool Near(double a,double b){return std::abs(a-b)<0.0002*std::max(1.0,std::abs(b));}
@@ -165,19 +184,31 @@ int main(){
  // Missing or reversed pair cannot consume Y; unsupported hooks do not change context.
  Reset();Frame(20,40);Prepare(1);CHECK(!Center());NoChange(1);Yaw(-1);Pitch(2);
  Reset();Frame(20,40);Yaw(-1);Prepare(1);W(c.ebp,0x6100);F(0x6108,.02f);CHECK(!Center());NoChange(1);
- // Zoom follows the owned component's original event flag, never a held key.
- for(uint32_t r:{0x421FE0u,0x420E50u,0x4223A8u}){
-  Reset(r);controls.zoom_sensitivity_percent=25;
-  W(owner+0xC,0x9000);W(0x9060,1);W(0x9064,0xA000);W(0xA004,0xB000);
-  W(0xB000,0x418390);W(0xB00C,0x9000);
+ // Zoom follows the equipped weapon's event flag, never a held key or a
+ // similarly shaped component on the player. Solo/co-op category indices differ.
+ for(uint32_t r:{0x421FE0u,0x420E50u,0x4223A8u})for(unsigned slot:{7u,9u})
+ for(uint32_t type:{0x418390u,0x417E90u,0x417F78u,0x418098u,0x418150u,0x418208u}){
+  Reset(r);controls.zoom_sensitivity_percent=25;W(owner+0xC,0x9000);ZoomInventory(0x9000,type,slot);
   Frame(20,40);Yaw(-1);Pitch(2);
-  memory[0xB23C]=1;Frame(20,40);Yaw(-.25);
-  memory[0xB23C]=0;controls.zoom_sensitivity_percent=200;Pitch(.5); // Pair latches zoom and sensitivity.
+  memory[zoom_component+0x23C]=1;Frame(20,40);Yaw(-.25);
+  memory[zoom_component+0x23C]=0;controls.zoom_sensitivity_percent=200;Pitch(.5); // Pair latches both.
   Frame(20,40);Yaw(-1);Pitch(2);
-  memory[0xB23C]=1;Frame(20,40);Yaw(-2);Pitch(4);
-  W(0xB00C,0x9100);Frame(20,40);Yaw(-1);Pitch(2); // Foreign component fails closed.
-  W(0xB00C,0x9000);blocked.insert(0xB000);Frame(20,40);Yaw(-1);Pitch(2);
-  blocked.clear();memory[0xB23C]=2;Frame(20,40);Yaw(-1);Pitch(2);
+  memory[zoom_component+0x23C]=1;Frame(20,40);Yaw(-2);Pitch(4);
+ }
+ for(unsigned bad=0;bad<13;bad++){
+  Reset();controls.zoom_sensitivity_percent=25;W(owner+0xC,0x9000);ZoomInventory(0x9000);
+  memory[zoom_component+0x23C]=1;
+  if(bad==0)W(zoom_inventory+0xC,0x9100);if(bad==1)W(zoom_component+0xC,0x9100);
+  if(bad==2)blocked.insert(zoom_component);if(bad==3)memory[zoom_component+0x23C]=2;
+  if(bad==4)W(zoom_inventory+0x78,0);if(bad==5)W(zoom_categories,0xFFFFFFFF);
+  if(bad==6)W(zoom_categories,18);if(bad==7)W(zoom_slot+0xC,0);
+  if(bad==8)W(zoom_component,0xDEADBEEF);if(bad==9)W(zoom_inventory+0x8C,0xFFFFFFFE);
+  if(bad==10){W(zoom_weapon+0x60,2);W(zoom_weapon_parts+12,zoom_component);}
+  if(bad==11)W(zoom_slot,0xDEADBEEF);
+  if(bad==12){ // The old fictional player-owned WeaponComponent must not enable zoom.
+   W(zoom_parts+12,zoom_component);W(0x9060,2);W(zoom_component+0xC,0x9000);W(zoom_slot+0xC,0);
+  }
+  Frame(20,40);Yaw(-1);Pitch(2);
  }
  // Settings use synchronized snapshots and callbacks, not mutable GameInfo pointers.
  Reset();app::kGame.init();Frame();Frame(8,-4);CHECK(!input::Poll(0).rx&&!input::Poll(0).ry);

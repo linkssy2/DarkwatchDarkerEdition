@@ -144,12 +144,12 @@ class GameplayHdSetupTests(unittest.TestCase):
             catalog.install(self.archive([("pack.json", old_content),
                             ("gameplay-hd/example.dwt", self.texture[:-1] + b"X")]), current, cancel, quiet, cancel)
 
-    def test_two_exact_published_generations_and_current_keep_strict_validation(self):
+    def test_three_exact_published_generations_and_current_keep_strict_validation(self):
         current = self.install_disc()
         old = (self.payload / 'gameplay-hd-catalog.json').read_bytes()
         receipts = [old]
         files = list(self.catalog['files'])
-        for revision in (2, 3):
+        for revision in (2, 3, 4):
             files += [dict(files[0], path=f'gameplay-hd/rev{revision}-{i}.dwt') for i in range(2)]
             receipts.append((json.dumps(dict(self.catalog, files=files,
                                             previous_catalog=receipts[-1].decode())) + '\n').encode())
@@ -191,17 +191,19 @@ class GameplayHdSetupTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 catalog.install(self.archive(bad_entries), current, cancel, quiet, cancel)
             self.assertEqual(before, self.snapshot(current / 'gameplay-hd'))
-        fourth = dict(json.loads(receipts[-1]), previous_catalog=receipts[-1].decode(),
-                      files=files + [dict(files[0], path='gameplay-hd/fourth.dwt')])
+        fifth = dict(json.loads(receipts[-1]), previous_catalog=receipts[-1].decode(),
+                     files=files + [dict(files[0], path='gameplay-hd/fifth.dwt')])
         with self.assertRaisesRegex(ValueError, 'Unsupported previous'):
-            setup.gameplay_hd.Catalog(json.dumps(fourth).encode())
-        altered = json.loads(receipts[1])
-        changed_old = json.loads(receipts[0])
-        changed_old['files'][0]['sha256'] = '0' * 64
-        altered['previous_catalog'] = json.dumps(changed_old)
-        invalid = dict(json.loads(receipts[2]), previous_catalog=json.dumps(altered))
-        with self.assertRaisesRegex(ValueError, 'Previous HD textures differ'):
-            setup.gameplay_hd.Catalog(json.dumps(invalid).encode())
+            setup.gameplay_hd.Catalog(json.dumps(fifth).encode())
+        for depth in (1, 2, 3):
+            chain = [json.loads(receipts[-1])]
+            for _ in range(depth):
+                chain.append(json.loads(chain[-1]['previous_catalog']))
+            chain[-1]['files'][0]['sha256'] = '0' * 64
+            for index in range(len(chain) - 2, -1, -1):
+                chain[index]['previous_catalog'] = json.dumps(chain[index + 1])
+            with self.assertRaisesRegex(ValueError, 'Previous HD textures differ'):
+                setup.gameplay_hd.Catalog(json.dumps(chain[0]).encode())
 
     def test_zip_paths_duplicates_links_and_expansion_are_rejected(self):
         current = self.install_disc()
@@ -403,6 +405,145 @@ class GameplayHdSetupTests(unittest.TestCase):
 
 
 del Fixtures  # unittest must not discover the imported fixture's existing tests twice.
+
+class CompactPackTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.current = self.root / 'game'
+        self.current.mkdir()
+        (self.current / 'save.dat').write_bytes(b'preserve progress')
+        self.pixels = bytes(range(20))  # Both 2x2 and 1x1 mip levels.
+        self.textures = {
+            'gameplay-hd/a.dwt': b'DWGAME02' + struct.pack('<4IQ', 2, 2, 2, 16, 1) + self.pixels + b'12345678',
+            'gameplay-hd/b.dwt': b'DWGAME02' + struct.pack('<4IQ', 2, 2, 2, 16, 2) + self.pixels + b'87654321',
+        }
+        catalog = dict(schema_version=1, kind='darkwatch-gameplay-hd', version='1',
+                       texture_catalog_sha256='1' * 64,
+                       files=[dict(path=name, size=len(data), sha256=sha(data)) for name, data in self.textures.items()])
+        self.receipt = json.dumps(catalog).encode()
+        self.catalog = setup.gameplay_hd.Catalog(self.receipt)
+        self.layout = dict(schema_version=1, kind='darkwatch-hd-shared-rgba', files={
+            name: dict(pixel_sha256=sha(data[32:-8]), header=data[:32].hex(), footer=data[-8:].hex())
+            for name, data in self.textures.items()})
+        self.pixel_name = 'pixels/' + sha(self.pixels) + '.rgba'
+        self.quiet = lambda *args, **kwargs: None
+
+    def archive(self, entries=None):
+        entries = entries if entries is not None else [
+            ('pack.json', self.receipt), ('layout.json', json.dumps(self.layout).encode()),
+            (self.pixel_name, self.pixels)]
+        path = self.root / 'compact.zip'
+        with warnings.catch_warnings(), zipfile.ZipFile(path, 'w', compression=zipfile.ZIP_DEFLATED) as output:
+            warnings.simplefilter('ignore', UserWarning)
+            for name, data in entries:
+                output.writestr(name, data)
+        return path
+
+    def install(self, path=None, cancel=None, notify=None):
+        self.catalog.install(path or self.archive(), self.current, cancel or self.quiet,
+                             notify or self.quiet, self.quiet)
+
+    def assert_preserved(self):
+        self.assertEqual((self.current / 'save.dat').read_bytes(), b'preserve progress')
+        for name, data in self.textures.items():
+            self.assertEqual((self.current / name).read_bytes(), data)
+        self.assertEqual((self.current / 'gameplay-hd/pack.json').read_bytes(), self.receipt)
+        self.assertFalse(list(self.current.glob('.gameplay-hd-*')))
+
+    def test_shared_pixels_reconstruct_distinct_original_headers_and_every_mip(self):
+        path = self.archive()
+        with zipfile.ZipFile(path) as archive:
+            self.assertEqual(archive.namelist(), ['pack.json', 'layout.json', self.pixel_name])
+        self.install(path)
+        self.assert_preserved()
+        self.assertTrue(self.catalog.validate(self.current, self.quiet, self.quiet, full=True))
+        # No hardlinks: each canonical file has its own fingerprint and checksum.
+        self.assertFalse(os.path.samefile(self.current / 'gameplay-hd/a.dwt', self.current / 'gameplay-hd/b.dwt'))
+        self.assertEqual((self.current / 'gameplay-hd/a.dwt').stat().st_nlink, 1)
+
+    def test_old_zip_and_previous_receipt_still_install(self):
+        self.install(self.archive([('pack.json', self.receipt), *self.textures.items()]))
+        self.assert_preserved()
+        newer = json.loads(self.receipt)
+        newer['files'].append(dict(newer['files'][0], path='gameplay-hd/c.dwt'))
+        newer['previous_catalog'] = self.receipt.decode()
+        self.catalog = setup.gameplay_hd.Catalog(json.dumps(newer).encode())
+        self.install()
+        self.assert_preserved()
+        self.assertTrue(self.catalog.validate(self.current, self.quiet, self.quiet, full=True))
+
+    def test_corruption_of_any_reconstructed_segment_keeps_working_pack(self):
+        self.install()
+        for segment in ('header', 'footer', 'pixels', 'pixel_sha256'):
+            layout = json.loads(json.dumps(self.layout))
+            pixels = self.pixels
+            if segment == 'pixels':
+                pixels = b'X' + pixels[1:]
+            elif segment == 'pixel_sha256':
+                for record in layout['files'].values():
+                    record[segment] = '0' * 64
+            else:
+                # A valid shape and size cannot authenticate a changed native fingerprint/footer.
+                data = bytearray.fromhex(layout['files']['gameplay-hd/a.dwt'][segment])
+                data[-1] ^= 1
+                layout['files']['gameplay-hd/a.dwt'][segment] = data.hex()
+            pixel_name = 'pixels/' + next(iter(layout['files'].values()))['pixel_sha256'] + '.rgba'
+            entries = [('pack.json', self.receipt), ('layout.json', json.dumps(layout).encode()), (pixel_name, pixels)]
+            with self.subTest(segment=segment), self.assertRaises(ValueError):
+                self.install(self.archive(entries))
+            self.assert_preserved()
+
+    def test_malformed_layout_and_inventory_are_rejected_without_changes(self):
+        self.install()
+        original = json.dumps(self.layout).encode()
+        bad_layouts = [b'not json', b'\xff', b'x' * (2 * 1024 * 1024 + 1),
+                       original.replace(b'"schema_version": 1', b'"schema_version": true'),
+                       original.replace(b'"schema_version": 1', b'"schema_version": 1, "schema_version": 1'),
+                       original.replace(b'gameplay-hd/a.dwt', b'../escape.dwt'),
+                       original.replace(b'darkwatch-hd-shared-rgba', b'unknown'),
+                       original.replace(b'"footer":', b'"unknown":'),
+                       json.dumps(dict(self.layout, files={})).encode()]
+        variants = [[('pack.json', self.receipt), ('layout.json', content), (self.pixel_name, self.pixels)]
+                    for content in bad_layouts]
+        good = [('pack.json', self.receipt), ('layout.json', original), (self.pixel_name, self.pixels)]
+        variants += [good[:-1], good + [('../escape', b'x')], good + [('LAYOUT.JSON', original)],
+                     good + [('layout.json', original)],
+                     good[:-1] + [(self.pixel_name, self.pixels + b'extra')]]
+        linked = zipfile.ZipInfo(self.pixel_name)
+        linked.create_system = 3
+        linked.external_attr = (stat.S_IFLNK | 0o777) << 16
+        variants.append(good[:-1] + [(linked, self.pixels)])
+        for index, entries in enumerate(variants):
+            with self.subTest(index=index), self.assertRaises(ValueError):
+                self.install(self.archive(entries))
+            self.assert_preserved()
+
+    def test_compact_cancellation_and_commit_failure_keep_previous_files(self):
+        self.install()
+        def cancelled(*args, **kwargs):
+            raise setup.Cancelled('cancel compact install')
+        with self.assertRaises(setup.Cancelled):
+            self.install(notify=cancelled)
+        self.assert_preserved()
+        replace = os.replace
+        def fail(source, destination):
+            if Path(source).name.startswith('.gameplay-hd-stage-'):
+                raise OSError('compact commit failure')
+            return replace(source, destination)
+        with patch.object(os, 'replace', side_effect=fail), self.assertRaisesRegex(OSError, 'compact commit failure'):
+            self.install()
+        self.assert_preserved()
+
+    def test_compact_parts_install_without_joining_or_extracting_them_manually(self):
+        data = self.archive().read_bytes()
+        for offset in range(0, len(data), 128):
+            (self.root / f'compact.zip.{offset // 128 + 1:03d}').write_bytes(data[offset:offset + 128])
+        with patch.object(setup.gameplay_hd, 'PART_SIZE', 128):
+            self.install(self.root / 'compact.zip.001')
+        self.assert_preserved()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -9,6 +9,8 @@ X86_EXTERN_FUNC(__imp__sub_001EC5F4);
 X86_EXTERN_FUNC(__imp__sub_000EF592);
 X86_EXTERN_FUNC(__imp__sub_00326CD1);
 X86_EXTERN_FUNC(__imp__sub_001F16EF);
+X86_EXTERN_FUNC(__imp__sub_00132B60);
+X86_EXTERN_FUNC(__imp__sub_00130D70);
 
 namespace {
 bool UiSpan(const uint8_t* base, uint64_t address, uint32_t size) {
@@ -36,6 +38,32 @@ void Present(X86Context& ctx, uint8_t* base, X86Func& original, bool valid, bool
     original(ctx, base);
 }
 } // namespace
+
+X86_FUNC(sub_00132B60) {
+    const bool ui_alpha = d3d::State().presentation_overlay &&
+        UiSpan(base, ctx.esp, 12) && UiRead(base, ctx.esp + 4) == 12;
+    __imp__sub_00132B60(ctx, base);
+    if (!ui_alpha || !UiSpan(base, 0x4AE5A8, 8) || !UiSpan(base, 0x4DE56C, 4) ||
+        ctx.esp < 32 || !UiSpan(base, uint64_t(ctx.esp) - 32, 32)) return;
+
+    // Material passes can override the low-level blend cache without changing
+    // RenderWare's logical alpha flags. Its repeated UI alpha request then
+    // returns early, leaving the first HUD bitmap opaque. Reconcile only that
+    // explicit UI request through the original coherent render-state setter.
+    const uint32_t blend = UiRead(base, 0x4AE5A8) != 0 || UiRead(base, 0x4AE5AC) != 0;
+    if (UiRead(base, 0x4DE56C) == blend) return;
+    uint8_t previous[32];
+    std::memcpy(previous, base + ctx.esp - sizeof(previous), sizeof(previous));
+    struct Restore {
+        uint8_t* target; const uint8_t* saved;
+        ~Restore() { std::memcpy(target, saved, 32); }
+    } restore{base + ctx.esp - sizeof(previous), previous};
+    X86Context call = ctx;
+    call.esp -= 12;
+    const uint32_t args[]{UiRead(base, ctx.esp - 4), 0x3B, blend};
+    std::memcpy(base + call.esp, args, sizeof(args));
+    __imp__sub_00130D70(call, base);
+}
 
 X86_FUNC(sub_0021B0D1) {
     Present(ctx, base, __imp__sub_0021B0D1,

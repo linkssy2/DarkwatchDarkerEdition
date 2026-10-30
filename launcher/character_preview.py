@@ -17,9 +17,9 @@ import character_boss as boss
 import character_content
 import character_spectral_hands as skin
 
-VERSION = 2
+VERSION = 3
 NAME = 'character-previews.pack'
-MAGIC = b'DWCP0002'
+MAGIC = b'DWCP0003'
 FRAMES = 30
 IDLE = 'characters/player_third/sanm/lo/jericho_idle.sanm'
 IDLE_SHA = 'ed5897a5f771b88176e0f1dba0674776650b89563bacd2ded87451be25c9ac7e'
@@ -32,6 +32,8 @@ MODELS = (
     'characters/multiplayer/base_dwstormtrooper_blue.rx1',
     'characters/multiplayer/base_dwstormtrooper_red.rx1',
     'characters/talaagent/base_agenttala.rx1',
+    'characters/tala/base_cine_tala.rx1',
+    'characters/player_roster/base_tala_boss.rx1',
 )
 
 
@@ -295,7 +297,7 @@ def build(read, cancel=lambda: None):
     for identity, name in enumerate(MODELS):
         raw = chaz if identity == 0 else read(name)
         clip = idle
-        if identity == 2:
+        if identity in (2, 9):
             clip, _ = animation.retarget(idle, boss.body_parameters(chaz, raw))
             clip = boss.expand_player(clip)
         elif identity:

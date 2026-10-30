@@ -21,7 +21,8 @@ class GameplayTexturesTests(unittest.TestCase):
 inline const std::array<uint8_t,1040> high=[](){std::array<uint8_t,1040> a{};a[3]=255;a[1024]=3;return a;}();
 inline const std::array<uint8_t,1025> low=[](){std::array<uint8_t,1025> a{};a[7]=255;a[1024]=1;return a;}();
 inline const GameplayAsset kGameplayAssets[]{
- {"base.dwt",4,4,1,11,16,1024,8,8,1,hd::Hash(high)}
+ {"base.dwt",4,4,1,11,16,1024,8,8,1,hd::Hash(high)},
+ {"corrected.dwt",4,4,1,11,16,1024,8,8,1,hd::Hash(high),2}
 };
 ''')
             (folder/'gameplay_texture_aliases.h').write_text(r'''
@@ -34,14 +35,14 @@ inline const GameplayAlias kGameplayAliases[]{
 #include "gameplay_textures.h"
 #include <cassert>
 using namespace darkwatch;
-static void Write(bool v2,bool corrupt=false){
+static void Write(bool v2,bool corrupt=false,const char* name="base.dwt"){
  std::vector<uint8_t> d(v2?32:24);std::memcpy(d.data(),v2?"DWGAME02":"DWGAME01",8);
  uint32_t h[]{8,8,1,16};std::memcpy(d.data()+8,h,16);
  if(v2){auto hash=hd::Hash(high);std::memcpy(d.data()+24,&hash,8);}
  else d.insert(d.end(),high.begin(),high.end());
  d.insert(d.end(),8*8*4,77);auto hash=hd::Hash(d);auto p=reinterpret_cast<uint8_t*>(&hash);d.insert(d.end(),p,p+8);
  if(corrupt)d[32]^=1;
- std::ofstream f("base.dwt",std::ios::binary);f.write((char*)d.data(),d.size());assert(f);
+ std::ofstream f(name,std::ios::binary);f.write((char*)d.data(),d.size());assert(f);
 }
 int main(){
  GameplayTextures t;gpu::TextureReplacement out;gpu::TextureDesc d{};d.format=11;
@@ -67,6 +68,13 @@ int main(){
   assert(t.Replace(full,high.data()+1024,16,fullpalette.data(),out));
   Write(v2,true);assert(!t.Replace(d,low.data()+1024,1,palette.data(),out));
  }
+ // Both target entries must remain eligible regardless of index iteration order.
+ for(bool corrupt_base:{false,true}){
+  Write(true,corrupt_base);Write(true,!corrupt_base,"corrected.dwt");
+  t.Open(".");assert(t.Available());
+  assert(t.Replace(d,low.data()+1024,1,palette.data(),out));
+ }
+ std::filesystem::remove("corrected.dwt");
  Write(true);t.Open(".");assert(t.Replace(d,low.data()+1024,1,palette.data(),out));
  std::filesystem::remove("base.dwt");t.Open(".");
  assert(!t.Available()&&!t.Replace(d,low.data()+1024,1,palette.data(),out));
@@ -79,7 +87,7 @@ int main(){
             run = subprocess.run([str(exe)],cwd=folder,capture_output=True,text=True)
             self.assertEqual(run.returncode,0,run.stdout+run.stderr)
 
-    def test_two_published_packs_or_complete_current_generation_only(self):
+    def test_three_published_packs_or_complete_current_generation_only(self):
         compiler = shutil.which('clang++')
         if not compiler:
             self.skipTest('Requires compiler')
@@ -91,8 +99,10 @@ inline constexpr GameplayAsset kGameplayAssets[]{
  {"base.dwt",1,1,1,6,4,0,1,1,1,11},
  {"new-a.dwt",1,1,1,6,4,0,1,1,1,12,2},
  {"new-b.dwt",1,1,1,6,4,0,1,1,1,13,2},
- {"current-a.dwt",1,1,1,6,4,0,1,1,1,14,3},
- {"current-b.dwt",1,1,1,6,4,0,1,1,1,15,3}
+ {"third-a.dwt",1,1,1,6,4,0,1,1,1,14,3},
+ {"third-b.dwt",1,1,1,6,4,0,1,1,1,15,3},
+ {"current-a.dwt",1,1,1,6,4,0,1,1,1,16,4},
+ {"current-b.dwt",1,1,1,6,4,0,1,1,1,17,4}
 };
 ''')
             (folder/'test.cpp').write_text(r'''
@@ -108,24 +118,25 @@ static void Write(size_t i){
 }
 int main(int argc,char**){
  GameplayTextures t;gpu::TextureReplacement out;
+ if(argc==3){for(unsigned i=0;i<7;++i)Write(i);t.Open(".");assert(!t.Available());return 0;}
  if(argc==2){
   Write(0);std::error_code error;std::filesystem::exists(kGameplayAssets[1].file,error);assert(error);
   t.Open(".");assert(!t.Available());return 0;
  }
- // Exhaust every possible partial install: only the three complete released
+ // Exhaust every possible partial install: only the four complete released
  // generations qualify, never a later group without its earlier additions.
- for(unsigned mask=0;mask<32;++mask){
-  for(unsigned i=0;i<5;++i){
+ for(unsigned mask=0;mask<128;++mask){
+  for(unsigned i=0;i<7;++i){
    std::filesystem::remove(kGameplayAssets[i].file);if(mask&(1u<<i))Write(i);
   }
-  t.Open(".");bool valid=mask==1||mask==7||mask==31;assert(t.Available()==valid);
-  for(unsigned i=0;i<5;++i)assert(t.LoadByNativeHash(11+i,out)==(valid&&bool(mask&(1u<<i))));
+  t.Open(".");bool valid=mask==1||mask==7||mask==31||mask==127;assert(t.Available()==valid);
+  for(unsigned i=0;i<7;++i)assert(t.LoadByNativeHash(11+i,out)==(valid&&bool(mask&(1u<<i))));
  }
  // A changed current payload cannot pass its lazy integrity check; a damaged
  // current header invalidates the install rather than downgrading it silently.
  {std::fstream f("current-a.dwt",std::ios::binary|std::ios::in|std::ios::out);f.seekp(32);f.put('x');}
- t.Open(".");assert(t.Available()&&!t.LoadByNativeHash(14,out)&&t.LoadByNativeHash(11,out));
- Write(3);{std::fstream f("current-a.dwt",std::ios::binary|std::ios::in|std::ios::out);f.seekp(8);f.put('x');}
+ t.Open(".");assert(t.Available()&&!t.LoadByNativeHash(16,out)&&t.LoadByNativeHash(11,out));
+ Write(5);{std::fstream f("current-a.dwt",std::ios::binary|std::ios::in|std::ios::out);f.seekp(8);f.put('x');}
  t.Open(".");assert(!t.Available());
  for(const auto& a:kGameplayAssets)std::filesystem::remove(a.file);
  t.Open(".");assert(!t.Available());
@@ -148,6 +159,7 @@ int main(int argc,char**){
             self.assertEqual(run.returncode,0,run.stdout+run.stderr)
             # A filesystem status error is not evidence that an extension is absent.
             catalog = folder/'gameplay_texture_assets.h'
+            original_catalog = catalog.read_text()
             # Windows reports invalid status for the reserved device; POSIX reports
             # ELOOP for a self-referencing link. Neither needs permission changes.
             error_name = 'NUL' if os.name == 'nt' else 'loop.dwt'
@@ -158,6 +170,13 @@ int main(int argc,char**){
                 '-I',str(ROOT/'third_party/XboxXBERecomp/runtime'),str(folder/'test.cpp'),'-o',str(exe)],capture_output=True,text=True)
             self.assertEqual(build.returncode,0,build.stdout+build.stderr)
             run = subprocess.run([str(exe),'status-error'],cwd=folder,capture_output=True,text=True)
+            self.assertEqual(run.returncode,0,run.stdout+run.stderr)
+            # A future revision is rejected even if every declared file is present.
+            catalog.write_text(original_catalog.replace(',4}', ',5}'))
+            build = subprocess.run([compiler,'-std=c++20','-O2','-I',str(ROOT/'xbexbe/src/common'),
+                '-I',str(ROOT/'third_party/XboxXBERecomp/runtime'),str(folder/'test.cpp'),'-o',str(exe)],capture_output=True,text=True)
+            self.assertEqual(build.returncode,0,build.stdout+build.stderr)
+            run = subprocess.run([str(exe),'unsupported','revision'],cwd=folder,capture_output=True,text=True)
             self.assertEqual(run.returncode,0,run.stdout+run.stderr)
 
 

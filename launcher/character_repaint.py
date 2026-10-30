@@ -6,6 +6,8 @@ SOURCE = 'characters/player_first/base_pov_chaz.rx1'
 SOURCE_SHA = 'a323481cc83532c746ff5926e3c7f033a455f91309a6161c06569ba4b7759b77'
 OUTPUT_SHA = 'e834d2eb9ff52e795fc01b5fc283e259404a6a3176d8668f3fc99782784cf4d4'
 OLD, NEW = b'POV_chaz_B_clr', b'POV_Cass_B_clr'
+TALA_NEW = b'POV_Tala_B_clr'
+TALA_OUTPUT_SHA = 'c3c7041532536cd2dd5589c6a159f5b342ca3cd43c9c08e2fa9495dd172b7ab5'
 
 
 def chunks(raw, start=0):
@@ -27,8 +29,10 @@ def rebuild(raw, data):
     return struct.pack('<3I', tag, len(data), version) + data
 
 
-def repaint(original, pixels):
+def _repaint(original, pixels, material):
     """pixels(size) returns a package-verified DDS containing only authored art."""
+    if material not in (NEW, TALA_NEW) or len(material) != len(OLD):
+        raise ValueError('Unsupported first-person texture identity')
     if hashlib.sha256(original).hexdigest() != SOURCE_SHA:
         raise ValueError('Unsupported first-person character model')
     top = chunks(original)
@@ -57,7 +61,7 @@ def repaint(original, pixels):
                                     struct.unpack_from('<II', header, 72) != (0x8600, 0) or
                                     (header[84], header[86], header[87]) != (32, 4, 12)):
                                 raise ValueError('Unexpected first-person texture schema')
-                            header[8:40] = NEW + bytes(32-len(NEW))
+                            header[8:40] = material + bytes(32-len(material))
                             struct.pack_into('<HH', header, 80, size, size)
                             header[85] = count
                             struct.pack_into('<I', header, 88, expected)
@@ -76,9 +80,22 @@ def repaint(original, pixels):
         elif tag == 0x10:
             if raw.count(OLD + b'\0') != 1:
                 raise ValueError('Unexpected first-person material name')
-            raw = raw.replace(OLD + b'\0', NEW + b'\0')
+            raw = raw.replace(OLD + b'\0', material + b'\0')
         output.append(raw)
-    result = b''.join(output)
+    return b''.join(output)
+
+
+def repaint(original, pixels):
+    """Retain the accepted Cassidy repaint's exact conversion contract."""
+    result = _repaint(original, pixels, NEW)
     if hashlib.sha256(result).hexdigest() != OUTPUT_SHA:
         raise ValueError('Character repaint differs from the supported conversion')
+    return result
+
+
+def repaint_tala(original, pixels):
+    """Use Tala's authored pixels on the unchanged original POV hand rig."""
+    result = _repaint(original, pixels, TALA_NEW)
+    if hashlib.sha256(result).hexdigest() != TALA_OUTPUT_SHA:
+        raise ValueError('Tala repaint differs from the supported conversion')
     return result

@@ -107,7 +107,7 @@ bool RefIs(const uint8_t* base, uint32_t ref, const char* text) {
 }
 struct PauseRows {
     const uint8_t* base = nullptr;
-    uint32_t owner = 0, main = 0, menu = 0, rows[2]{}, removed[2]{};
+    uint32_t owner = 0, main = 0, menu = 0, rows[3]{}, removed[2]{};
     bool consumed = false;
 };
 PauseRows g_pause_rows[2];
@@ -118,34 +118,35 @@ bool PauseMenu(const uint8_t* base, uint32_t owner, uint32_t& main, uint32_t& me
     if (!Field(base, owner, 0xE8, main) || !Field(base, main, 0, type) || type != kPauseMainVtable ||
         !Field(base, main, 8, parent) || parent != owner || !Field(base, main, 4, menu) ||
         !Field(base, menu, 0, type) || type != 0x43C8B8 || !Span(base, menu, 0xA4) ||
-        !Read(base, uint64_t(menu) + 0x58, count) || count != 6 ||
+        !Read(base, uint64_t(menu) + 0x58, count) || (count != 6 && count != 7) ||
         !Field(base, menu, 0x5C, items) || !Span(base, items, count * 4) ||
         !Field(base, menu, 0x68, selected) || selected >= count) return false;
-    // These are the six authored Pause rows, in their original dispatch order.
+    // Validate either the untouched authored list or our complete replacement.
     constexpr const char* names[]{"GEN_ResumeGame", "GEN_Lore", "GEN_Options",
         "XBL_XboxLiveOptions", "GEN_RestartMission", "GEN_QuitGame"};
+    constexpr const char* added[]{"GEN_ResumeGame", "GEN_Lore", "~GRAPHICS",
+        "~CONTROLS", "~AUDIO", "GEN_RestartMission", "GEN_QuitGame"};
     for (unsigned i = 0; i < count; ++i) {
         uint32_t item;
         if (!Read(base, uint64_t(items) + i * 4, item) || !Span(base, item, 0x68) ||
             !Field(base, item, 0, type) || type != 0x43C8F8 ||
             !Field(base, item, 4, parent) || parent != menu) return false;
-        if (!RefIs(base, item + 0x30, names[i]) &&
-            !(i == 2 && RefIs(base, item + 0x30, "~GRAPHICS")) &&
-            !(i == 3 && RefIs(base, item + 0x30, "~CONTROLS"))) return false;
+        if (!RefIs(base, item + 0x30, count == 6 ? names[i] : added[i])) return false;
     }
     return true;
 }
 bool AddedRows(const PauseRows& rows, const uint8_t* base, uint32_t owner, uint32_t main, uint32_t menu,
                uint32_t items, uint16_t count) {
     if (rows.base != base || rows.owner != owner || rows.main != main ||
-        rows.menu != menu || count != 6) return false;
+        rows.menu != menu || count != 7) return false;
     const auto key = PauseControlsKey(base, owner);
     uint32_t page_key;
     if (!key || !Read(base, key, page_key)) return false;
-    for (unsigned i = 0; i < 2; ++i) {
+    constexpr const char* names[]{"~GRAPHICS", "~CONTROLS", "~AUDIO"};
+    for (unsigned i = 0; i < 3; ++i) {
         uint32_t item, value;
         if (!Read(base, uint64_t(items) + (2 + i) * 4, item) || item != rows.rows[i] ||
-            !RefIs(base, item + 0x30, i ? "~CONTROLS" : "~GRAPHICS") ||
+            !RefIs(base, item + 0x30, names[i]) ||
             !Field(base, item, 0x50, value) || value != page_key) return false;
     }
     uint32_t type, parent;
@@ -346,6 +347,15 @@ GraphicsRouteState QueryGraphicsMenuRoute(const uint8_t* base) {
             result.controls_available = true;
         }
     } else return result;
+    if (result.paused && result.route == GraphicsMenuRoute::Controls) {
+        // Pause owns the same profile settings as frontend Options, but does
+        // not construct a Visual handler. Its host Graphics page uses Controls.
+        uint8_t subtitles;
+        if (Read(base, uint64_t(options) + 0x88, subtitles)) {
+            result.subtitles_available = true;
+            result.subtitles = subtitles != 0;
+        }
+    }
     if (result.route == GraphicsMenuRoute::Audio ||
         (result.paused && result.route == GraphicsMenuRoute::Controls)) {
         float values[3]; uint32_t widgets[3];
@@ -364,19 +374,33 @@ GraphicsRouteState QueryGraphicsMenuRoute(const uint8_t* base) {
 bool SetGraphicsSubtitles(uint8_t* base, uint32_t expected_options, bool enabled) {
     const auto route = QueryGraphicsMenuRoute(base);
     auto* thread = kernel::Current();
-    if (route.route != GraphicsMenuRoute::Visual || route.options != expected_options ||
-        !route.subtitles_available || !thread || !thread->ctx || base != kernel::g_base) return false;
-    uint32_t widget, label;
-    if (!Field(base, route.page, 0xC, widget) || !Field(base, widget, 0x58, label) ||
-        !Span(base, label, 0x50)) return false;
-    // Use the original BoolWidget setter and profile-setting callback, preserving their owned strings.
+    if ((route.route != GraphicsMenuRoute::Visual &&
+         !(route.paused && route.route == GraphicsMenuRoute::Controls)) ||
+        route.options != expected_options || !route.subtitles_available ||
+        !thread || !thread->ctx || base != kernel::g_base || thread->ctx->esp < 0x100 ||
+        !Span(base, uint64_t(thread->ctx->esp) - 0x100, 0x100) ||
+        !Span(base, 0x4B7A42, 1)) return false;
     X86Context call = *thread->ctx;
-    call.ecx = widget;
-    kernel::CallGuest(call, 0x001F0396, {uint32_t(enabled), 0});
-    call = *thread->ctx;
+    if (!route.paused) {
+        uint32_t widget, label;
+        if (!Field(base, route.page, 0xC, widget) || !Field(base, widget, 0x58, label) ||
+            !Span(base, label, 0x50)) return false;
+        // Keep the frontend BoolWidget's owned caption in sync. Pause has no
+        // subtitle widget; its Controls+0C is Invert Look and must stay intact.
+        call.ecx = widget;
+        kernel::CallGuest(call, 0x001F0396, {uint32_t(enabled), 0});
+        call = *thread->ctx;
+    }
+    // F65F2 updates the owned profile copy. F017C applies Pause's dirty copy
+    // through FA68A when resuming, just as for the original control settings.
     call.ecx = route.options + 0x78;
     kernel::CallGuest(call, 0x000F65F2, {uint32_t(enabled)});
     base[route.options + 0xE4] = 1;  // F6609 marks the Options copy dirty after the same setting call.
+    // Gameplay reads the separate global via 21B02C/21B8F7. The original
+    // frontend's full apply (CA630) syncs it, but Pause's FA68A only copies the
+    // owner's settings. Use the original narrow setter without reapplying audio.
+    call = *thread->ctx;
+    kernel::CallGuest(call, 0x0021B03C, {uint32_t(enabled)});
     return true;
 }
 
@@ -508,7 +532,7 @@ bool EnsureNativePauseEntries(uint8_t* base) {
         return true;
     }
     uint32_t options_row, live_row;
-    if (!Read(base, uint64_t(items) + 8, options_row) || !RefIs(base, options_row + 0x30, "GEN_Options") ||
+    if (count != 6 || !Read(base, uint64_t(items) + 8, options_row) || !RefIs(base, options_row + 0x30, "GEN_Options") ||
         !Read(base, uint64_t(items) + 12, live_row) || !RefIs(base, live_row + 0x30, "XBL_XboxLiveOptions")) return false;
     uint32_t shown, frame;
     float rect[4], baseline[4], live[4];
@@ -530,21 +554,24 @@ bool EnsureNativePauseEntries(uint8_t* base) {
     // text is a localization key and an absent key renders an empty string.
     std::memcpy(base + scratch + 0x20, "~GRAPHICS", 10);
     std::memcpy(base + scratch + 0x40, "~CONTROLS", 10);
+    std::memcpy(base + scratch + 0x60, "~AUDIO", 7);
     X86Context call = *thread->ctx;
     call.esp = scratch - 0x10;
-    uint32_t rows[2]{};
-    for (unsigned i = 0; i < 2; ++i) {
+    uint32_t rows[3]{};
+    for (unsigned i = 0; i < 3; ++i) {
         call.ecx = scratch + i * 4;
         kernel::CallGuest(call, 0x138FA, {scratch + 0x20 + i * 0x20});
         const auto allocation = kernel::CallGuest(call, 0x24C546, {0x68});
         if (allocation) {
             call.ecx = allocation;
-            rows[i] = kernel::CallGuest(call, 0x1EFB52, {scratch + i * 4, key, scratch + 8});
+            rows[i] = kernel::CallGuest(call, 0x1EFB52, {scratch + i * 4, key, scratch + 0x10});
         }
         call.ecx = scratch + i * 4;
         kernel::CallGuest(call, 0x11C1A, {});
         if (!rows[i]) {
-            if (rows[0]) { call.ecx = rows[0]; kernel::CallGuest(call, 0xECB9D, {1}); }
+            for (unsigned j = 0; j < i; ++j) {
+                call.ecx = rows[j]; kernel::CallGuest(call, 0xECB9D, {1});
+            }
             return false;
         }
     }
@@ -555,7 +582,7 @@ bool EnsureNativePauseEntries(uint8_t* base) {
     // Replace Options and unused Xbox Live in the navigation vector. Retain
     // both owned children for the original destructor, but hide and unfocus
     // them because base render/input traversal also walks the child list.
-    uint32_t ordered[8], selected;
+    uint32_t ordered[9], selected;
     if (!Field(base, menu, 0x5C, items) || !Read(base, items, ordered) ||
         !Field(base, menu, 0x68, selected) || selected >= 6) return false;
     const uint32_t removed[]{ordered[2], ordered[3]};
@@ -565,17 +592,22 @@ bool EnsureNativePauseEntries(uint8_t* base) {
         call.ecx = row;
         kernel::CallGuest(call, 0x1E8E77, {0});
     }
-    const uint32_t final_rows[]{ordered[0], ordered[1], rows[0], rows[1],
+    const uint32_t final_rows[]{ordered[0], ordered[1], rows[0], rows[1], rows[2],
         ordered[4], ordered[5], 0, 0};
     std::memcpy(base + items, final_rows, sizeof(final_rows));
-    const uint16_t final_count = 6;
+    const uint16_t final_count = 7;
     std::memcpy(base + menu + 0x58, &final_count, sizeof(final_count));
+    // Preserve Restart/Quit selection when the new Audio entry shifts them.
+    if (selected >= 4) {
+        ++selected;
+        std::memcpy(base + menu + 0x68, &selected, sizeof(selected));
+    }
     if (selected == 2 || selected == 3) {
         call.ecx = rows[selected - 2];
         kernel::CallGuest(call, 0x1E8E4F, {base[menu + 0x2E]});
     }
-    // Six rows retain the original frame, spacing, selection indices and footer.
-    cached = {base, route.options, main, menu, {rows[0], rows[1]}, {removed[0], removed[1]}, false};
+    // Original all-row layout fits seven entries within the existing frame/footer.
+    cached = {base, route.options, main, menu, {rows[0], rows[1], rows[2]}, {removed[0], removed[1]}, false};
     DarkwatchInvalidateMenuSnapshot();
     return true;
 }
@@ -590,7 +622,7 @@ uint32_t TakeNativePauseEntry(uint8_t* base, uint32_t expected_options) {
     if (!route.paused || route.options != expected_options || route.route != GraphicsMenuRoute::Controls ||
         cached.consumed || !PauseMenu(base, route.options, main, menu, items, count) ||
         !AddedRows(cached, base, route.options, main, menu, items, count) ||
-        !Field(base, menu, 0x68, selected) || selected < 2 || selected > 3 ||
+        !Field(base, menu, 0x68, selected) || selected < 2 || selected > 4 ||
         !base[cached.rows[selected - 2] + 0x54]) return 0;
     cached.consumed = true;
     return selected - 1;

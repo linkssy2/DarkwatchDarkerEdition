@@ -38,7 +38,7 @@
       <Setter Property="Background" Value="#15181D"/>
       <Setter Property="BorderBrush" Value="#41454C"/>
       <Setter Property="FontSize" Value="12"/>
-      <Setter Property="Padding" Value="12,10"/>
+      <Setter Property="Padding" Value="12,8"/>
     </Style>
     <Style TargetType="ComboBoxItem">
       <Setter Property="Foreground" Value="#F1E9DA"/>
@@ -103,8 +103,8 @@
         </Border>
         <Grid Grid.Column="1" Margin="42,24,42,20">
           <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/><RowDefinition Height="18"/><RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/><RowDefinition Height="20"/><RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
           </Grid.RowDefinitions>
           <StackPanel>
             <Grid>
@@ -116,35 +116,50 @@
             </Grid>
             <Rectangle Height="1" Fill="#56565B" Margin="0,16,0,0"/>
           </StackPanel>
-          <StackPanel Grid.Row="2">
+          <Grid Grid.Row="2">
+          <StackPanel x:Name="HomePanel" VerticalAlignment="Center">
             <TextBlock x:Name="StateTitle" Text="PREPARE YOUR HUNT" FontFamily="Georgia" FontSize="22"/>
-            <TextBlock x:Name="StateDescription" Text="Bring your own original Xbox Darkwatch ISO. Import it once to prepare Darker Edition on this PC." FontSize="14" LineHeight="21" TextWrapping="Wrap" Foreground="#B8B7B5" Margin="0,8,0,12"/>
-            <Border Background="#15181D" BorderBrush="#373B42" BorderThickness="1" Padding="12,9">
-              <StackPanel>
-                <TextBlock x:Name="DiscTitle" Text="YOUR DISC, ENHANCED" FontSize="11" FontWeight="SemiBold" Foreground="#C8AE89"/>
-                <TextBlock x:Name="DiscFeatures" Text="Widescreen · HD interface · Mouse &amp; keyboard" FontSize="12" Foreground="#B8B7B5" Margin="0,5,0,0"/>
-                <TextBlock x:Name="DiscNotice" Text="Original game files are not included." FontSize="11" Foreground="#85898F" Margin="0,5,0,0"/>
-              </StackPanel>
-            </Border>
-          </StackPanel>
-          <StackPanel Grid.Row="4">
-            <TextBlock x:Name="StatusText" Text="Checking installation…" FontSize="13" TextWrapping="Wrap" Foreground="#B8B7B5" Margin="0,0,0,10"/>
-            <ProgressBar x:Name="Progress" Height="4" Minimum="0" Maximum="100" Foreground="#AA383C" Background="#292D33" BorderThickness="0" Margin="0,0,0,18"/>
+            <TextBlock x:Name="StateDescription" Text="Choose your Xbox ISO or an existing installation to begin." FontSize="14" LineHeight="21" TextWrapping="Wrap" Foreground="#B8B7B5" Margin="0,10,0,24"/>
             <Grid x:Name="LaunchActions">
-              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-              <Button x:Name="ImportButton" Content="IMPORT ISO" Background="#701C25" Height="54"/>
-              <Button x:Name="PlayButton" Grid.Column="2" Content="PLAY" IsEnabled="False" Height="54" FontSize="17"/>
+              <Button x:Name="ImportButton" Content="SELECT GAME" Background="#701C25" Height="56" FontSize="17"/>
+              <Button x:Name="PlayButton" Content="PLAY" Visibility="Collapsed" IsEnabled="False" Height="56" FontSize="17"/>
             </Grid>
-            <Grid x:Name="RepairActions" Margin="0,12,0,0">
+            <Button x:Name="ManageButton" Content="MANAGE" Style="{StaticResource Quiet}" Margin="0,10,0,0"/>
+          </StackPanel>
+          <StackPanel x:Name="SourcePanel" Visibility="Collapsed" VerticalAlignment="Center">
+            <DockPanel Margin="0,0,0,16">
+              <Button x:Name="SourceBackButton" Content="← BACK" Style="{StaticResource Quiet}" Margin="0,0,16,0"/>
+              <TextBlock x:Name="SourceTitle" Text="SELECT GAME" FontFamily="Georgia" FontSize="21" VerticalAlignment="Center"/>
+            </DockPanel>
+            <Button x:Name="UseIsoButton" Content="USE ISO DIRECTLY" Background="#701C25"/>
+            <TextBlock x:Name="UseIsoHint" Text="Play from your Xbox ISO. Keep the ISO in place for future launches." FontSize="12" TextWrapping="Wrap" Foreground="#B8B7B5" Margin="0,7,0,18"/>
+            <Button x:Name="ExtractIsoButton" Content="IMPORT ONCE" Style="{StaticResource Quiet}"/>
+            <TextBlock x:Name="ExtractIsoHint" Text="Copy the game files once. The ISO can be removed after setup." FontSize="12" TextWrapping="Wrap" Foreground="#B8B7B5" Margin="0,7,0,18"/>
+            <Button x:Name="HomeExistingButton" Content="USE EXISTING INSTALL" Style="{StaticResource Quiet}"/>
+            <TextBlock x:Name="ExistingHint" Text="Reuse game files, saves and add-ons from a previous installation." FontSize="12" TextWrapping="Wrap" Foreground="#B8B7B5" Margin="0,7,0,0"/>
+          </StackPanel>
+          <StackPanel x:Name="ManagePanel" Visibility="Collapsed">
+            <DockPanel Margin="0,0,0,16">
+              <Button x:Name="BackButton" Content="← BACK" Style="{StaticResource Quiet}" Margin="0,0,16,0"/>
+              <TextBlock x:Name="ManageTitle" Text="MANAGE GAME" FontFamily="Georgia" FontSize="21" VerticalAlignment="Center"/>
+            </DockPanel>
+            <TextBlock x:Name="FilesTitle" Text="GAME FILES" Foreground="#C8AE89" FontSize="11" Margin="0,0,0,8"/>
+            <Grid x:Name="SourceActions">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <Button x:Name="ExistingInstallButton" Content="USE EXISTING INSTALL" Style="{StaticResource Quiet}" FontSize="11"/>
+              <Button x:Name="RepairIsoButton" Grid.Column="2" Content="REPAIR FROM ISO" Style="{StaticResource Quiet}" FontSize="11"/>
+            </Grid>
+            <Grid x:Name="RepairActions" Margin="0,8,0,0">
               <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <Button x:Name="VerifyButton" Content="VERIFY FILES" Style="{StaticResource Quiet}" IsEnabled="False"/>
               <Button x:Name="FolderButton" Grid.Column="2" Content="OPEN GAME FOLDER" Style="{StaticResource Quiet}" IsEnabled="False"/>
             </Grid>
-            <StackPanel x:Name="TextureActions" Margin="0,12,0,0">
-              <Button x:Name="TextureButton" Content="INSTALL HD TEXTURES" Style="{StaticResource Quiet}" IsEnabled="False" ToolTip="Import your ISO first. Download all HD pack parts into one folder, then select the .001 file. A complete ZIP also works."/>
+            <TextBlock x:Name="ContentTitle" Text="TEXTURES &amp; LANGUAGE" Foreground="#C8AE89" FontSize="11" Margin="0,20,0,8"/>
+            <StackPanel x:Name="TextureActions">
+              <Button x:Name="TextureButton" Content="INSTALL HD TEXTURES" Style="{StaticResource Quiet}" IsEnabled="False" ToolTip="Set up your game first. Download all HD pack parts into one folder, then select the .001 file. A complete ZIP also works."/>
               <TextBlock x:Name="TextureStatus" Text="Optional download · Gameplay textures not installed" Foreground="#85898F" FontSize="11" Margin="0,7,0,0" TextWrapping="Wrap"/>
             </StackPanel>
-            <StackPanel x:Name="LanguageActions" Margin="0,12,0,0">
+            <StackPanel x:Name="LanguageActions" Margin="0,8,0,0">
               <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <ComboBox x:Name="LanguageChoice" SelectedIndex="0" Height="36" IsEnabled="False" AutomationProperties.Name="Game language">
@@ -153,11 +168,26 @@
                 </ComboBox>
                 <Button x:Name="SpanishButton" Grid.Column="2" Content="INSTALL SPANISH" Height="36" Padding="8,6" Style="{StaticResource Quiet}" IsEnabled="False"/>
               </Grid>
-              <TextBlock x:Name="LanguageStatus" Text="Game language · Import your ISO first" Foreground="#85898F" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
+              <TextBlock x:Name="LanguageStatus" Text="Game language · Set up your game first" Foreground="#85898F" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
             </StackPanel>
-            <Button x:Name="CancelButton" Content="CANCEL" Style="{StaticResource Quiet}" Visibility="Collapsed" Margin="0,12,0,0"/>
+            <Button x:Name="CheckUpdatesButton" Content="CHECK FOR UPDATES" Style="{StaticResource Quiet}" Margin="0,20,0,0"/>
           </StackPanel>
-          <TextBlock Grid.Row="5" Text="DARKER EDITION   /   0.6.1" Foreground="#676B72" FontSize="10" Margin="0,16,0,0"/>
+          </Grid>
+          <StackPanel Grid.Row="3" Margin="0,12,0,0">
+            <TextBlock x:Name="StatusText" Text="Checking installation…" FontSize="12" TextWrapping="Wrap" Foreground="#B8B7B5" Margin="0,0,0,10"/>
+            <ProgressBar x:Name="Progress" Height="4" Minimum="0" Maximum="100" Foreground="#AA383C" Background="#292D33" BorderThickness="0" Visibility="Collapsed"/>
+            <Button x:Name="CancelButton" Content="CANCEL" Style="{StaticResource Quiet}" Visibility="Collapsed" Margin="0,8,0,0"/>
+          </StackPanel>
+          <Grid Grid.Row="4" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="194"/></Grid.ColumnDefinitions>
+            <StackPanel VerticalAlignment="Center">
+              <TextBlock Text="DARKER EDITION   /   0.7" Foreground="#676B72" FontSize="10"/>
+              <TextBlock x:Name="ReleaseStatus" Text="Check GitHub for updates" Visibility="Collapsed" Foreground="#B8B7B5" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+            <Grid x:Name="ReleaseActions" Grid.Column="2" Visibility="Collapsed">
+              <Button x:Name="ReleaseButton" Content="INSTALL UPDATE" Style="{StaticResource Quiet}" FontSize="10" Padding="6,8"/>
+            </Grid>
+          </Grid>
         </Grid>
       </Grid>
     </Grid>

@@ -99,8 +99,11 @@ constexpr Presentation presentations[]{
     {"BlueTrooperSolo", "BlueTrooperCoop", "BlueTrooperHands", "BlueTrooperHands"},
     {"RedTrooperSolo", "RedTrooperCoop", "RedTrooperHands", "RedTrooperHands"},
     {"TalaSolo", "TalaCoop", "TalaSoloHands", "TalaCoopHands"},
+    {"VampireTalaSolo", "VampireTalaCoop", "VampireTalaSoloHands", "VampireTalaCoopHands"},
+    {"BossTalaSolo", "BossTalaCoop", "BossTalaSoloHands", "BossTalaCoopHands"},
 };
 static_assert(std::size(presentations) == darkwatch::settings::kCharacterCount);
+static_assert(std::size(presentations) <= 16); // Mission choices occupy four bits per player.
 unsigned Family(unsigned choice, bool coop) {
     if (choice >= 3) return 1u << (5 + 2 * (choice - 3) + unsigned(coop));
     return choice == 2 ? (coop ? 8 : 16) : choice == 1 ? (coop ? 2 : 1) : 4;
@@ -256,6 +259,17 @@ void DarkwatchStringHeap(X86Context& ctx, uint8_t* base) {
     Write(base, ctx.esp, uint32_t(2 * 1024 * 1024));
 }
 
+void DarkwatchReferenceMapHeap(X86Context& ctx, uint8_t* base) {
+    uint32_t bytes, initial[3], shared[2];
+    if (base != kernel::g_base || ctx.ecx != ctx.esi || ctx.eax ||
+        !Read(base, ctx.esp, bytes) || bytes != 0xF000 ||
+        !Read(base, ctx.esi, initial) || !Read(base, 0x4B7B0C, shared) ||
+        shared[0] || shared[1] ||
+        std::any_of(std::begin(initial), std::end(initial), [](uint32_t v) { return v != 0; })) return;
+    // Expanded character animations need old and new reference-map buckets during rehash.
+    Write(base, ctx.esp, uint32_t(1024 * 1024));
+}
+
 void DarkwatchCharacterMissionEnd(X86Context& ctx, uint8_t* base) {
     if (ctx.ecx == owner) Reset(ctx, base);
 }
@@ -311,10 +325,10 @@ void DarkwatchCharacterFile(X86Context& ctx, uint8_t* base) {
     if (!state && !startup) return;
     const bool cassidy = state & 12;
     const bool roster = Roster(state);
-    // Added preloads cannot consume the original sequential bundle; a missing sibling uses archive reads.
-    const bool stream = (roster || (cassidy && ((state & 3) == 1 || (state & 48)))) && path.size() >= 15 &&
+    // Carryable weapons expand every campaign list; missing bundles use ordinary archive reads.
+    const bool stream = path.size() >= 15 &&
         Hash(path.substr(path.size() - 15)) == Hash("_streamfile.str");
-    const bool audio_stream = (cassidy || roster) && path.size() > 9 &&
+    const bool audio_stream = path.size() > 9 &&
         Hash(path.substr(path.size() - 9)) == Hash("Audio.str");
     std::string audio_path;
     if (audio_stream) {
@@ -335,7 +349,8 @@ void DarkwatchCharacterFile(X86Context& ctx, uint8_t* base) {
     if (!startup) {
         if (route == std::end(routes) || (stream && (route->mode != 1 || route->audio)) ||
             (audio_stream && !route->audio)) return;
-        if (!cassidy && !roster && ((state & 3) != 2 || route->audio || route->mode != 2)) return;
+        if (!cassidy && !roster && !stream && !audio_stream &&
+            ((state & 3) != 2 || route->audio || route->mode != 2)) return;
     }
     const bool spectral = !startup && !route->audio && (state & 48);
     std::string suffix = spectral ? "_cassidy_spectral" : startup || cassidy ? "_cassidy" : "_jericho";
@@ -379,7 +394,8 @@ void DarkwatchCharacterSpawn(X86Context& ctx, uint8_t* base) {
     if (!Actor(base, actor_manager, name)) { Reject(base, ctx.edi, "body", family, name); return; }
     if (!Actor(base, actor_manager, hands)) { Reject(base, ctx.edi, "hands", family, hands); return; }
     const char* audio_failure = "-";
-    if ((cassidy || choice == 7) && !DarkwatchCharacterAudioReady(base, &audio_failure, choice == 7)) {
+    const bool tala = darkwatch::settings::TalaCharacter(darkwatch::settings::Character(choice));
+    if ((cassidy || tala) && !DarkwatchCharacterAudioReady(base, &audio_failure, tala)) {
         Reject(base, ctx.edi, "audio", family, name, nullptr, 0, audio_failure); return;
     }
     if (!Acquire(ctx, base, family, ctx.edi, name)) return;
@@ -457,9 +473,11 @@ bool DarkwatchCharacterIsTalaPlayer(const uint8_t* base, uint32_t actor) {
     const unsigned state = mission.load();
     uint32_t count, mode, category;
     std::string character;
-    return (Selection(state, 0) == 7 || ((state & 3) == 2 && Selection(state, 1) == 7)) &&
+    const auto tala = [](unsigned choice) { return darkwatch::settings::TalaCharacter(darkwatch::settings::Character(choice)); };
+    bool solo; unsigned choice;
+    return (tala(Selection(state, 0)) || ((state & 3) == 2 && tala(Selection(state, 1)))) &&
         owner && actor && Read(base, uint64_t(owner) + 0x4C, count) && count == (state & 3) &&
         Read(base, uint64_t(owner) + 0xEC, mode) && !mode &&
         Read(base, uint64_t(actor) + 0x98, category) && category == 9 &&
-        OwnedString(base, actor + 0x50, character) && (character == "TalaSolo" || character == "TalaCoop");
+        OwnedString(base, actor + 0x50, character) && PlayerTemplate(character, solo, choice) && tala(choice);
 }

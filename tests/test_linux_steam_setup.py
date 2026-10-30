@@ -8,6 +8,7 @@ import io
 import json
 import os
 from pathlib import Path
+import queue
 import stat
 import subprocess
 import sys
@@ -88,6 +89,175 @@ class SteamSetupTests(unittest.TestCase):
         self.assertEqual(self.command(backend, *explicit)[0], 0)
         backend.main.assert_called_with(explicit)
         self.assertEqual(sys.path, before)
+
+    def test_direct_iso_acknowledges_retained_disc_without_launching(self):
+        event = dict(event="result", message="Ready from ISO", ready=True, source_mode="iso", iso_available=True)
+        backend = self.worker([event])
+        code, output, _, dialogs = self.command(backend, "--interactive", "--use-iso", "game.iso")
+        self.assertEqual(code, 0)
+        self.assertEqual(backend.main.call_args.args[0][-2:], ["--use-iso", "game.iso"])
+        self.assertEqual(len(dialogs), 2)
+        self.assertIn("leave it in place for every launch", dialogs[0].args[0])
+        self.assertEqual(dialogs[-1], mock.call("Ready from ISO"))
+        self.assertEqual(json.loads(output.getvalue()), event)
+        backend.game_running.assert_not_called()
+
+    def test_play_requests_fresh_drop_in_preparation_and_keeps_normal_play(self):
+        events = [dict(event='progress', message='Found your disc in assets', percent=0, automatic_setup=True),
+                  dict(event='result', message='Started', pid=123, installed=True, ready=True)]
+        backend = self.worker(events)
+        code, output, _, dialogs = self.command(backend, '--interactive', '--play')
+        self.assertEqual(code, 0)
+        arguments = backend.main.call_args.args[0]
+        self.assertEqual(arguments[arguments.index('--auto-iso-folder') + 1], str(self.root / 'assets'))
+        self.assertIn('--play', arguments)
+        self.assertNotIn('--import-iso', arguments)
+        self.assertEqual(len(dialogs), 1)
+        self.assertIn('Leave Steam running', dialogs[0].args[0])
+        self.assertIn('game will start', dialogs[0].args[0])
+        self.assertEqual([json.loads(line) for line in output.getvalue().splitlines()], events)
+        backend.game_running.assert_called_once()
+        backend = self.worker([dict(event='error', message='Several disc images are in assets', ready=False)], code=1)
+        code, _, _, dialogs = self.command(backend, '--interactive', '--play')
+        self.assertEqual(code, 1)
+        self.assertIn('Several disc images', dialogs[-1].args[0])
+        backend.game_running.assert_not_called()
+
+    def test_noninteractive_play_also_requests_drop_in_folder(self):
+        backend = self.worker([dict(event='result', message='Started', pid=123)])
+        code, _, _, dialogs = self.command(backend, '--play')
+        self.assertEqual(code, 0)
+        self.assertEqual(dialogs, [])
+        arguments = backend.main.call_args.args[0]
+        self.assertEqual(arguments[arguments.index('--auto-iso-folder') + 1], str(self.root / 'assets'))
+
+    def test_steam_selected_compatibility_environment_reaches_backend_unchanged(self):
+        selected = {"STEAM_COMPAT_TOOL_PATHS": "/installed/Chosen Proton",
+                    "STEAM_COMPAT_DATA_PATH": "/steam/compatdata/1234",
+                    "SteamAppId": "1234", "PROTON_LOG": "1",
+                    "PROTON_NO_ESYNC": "1", "DXVK_HUD": "fps"}
+        backend = self.worker()
+        seen = []
+        def main(arguments):
+            seen.append({name: os.environ.get(name) for name in selected})
+            backend.emit("result", "Started", pid=123)
+            return 0
+        backend.main.side_effect = main
+        with mock.patch.dict(os.environ, selected, clear=True):
+            code, _, _, dialogs = self.command(backend, "--interactive", "--play")
+        self.assertEqual(code, 0)
+        self.assertEqual(seen, [selected])
+        self.assertEqual(dialogs, [])
+        backend.game_running.assert_called_once()
+
+    def test_release_check_bypasses_backend_and_reports_unavailable_without_error_file(self):
+        for status in ("available", "current", "unavailable"):
+            result = dict(status=status, current_version="0.6.1", message="Release " + status)
+            release = SimpleNamespace(check_releases=mock.Mock(return_value=result),
+                                      release_text=mock.Mock(return_value=result["message"]))
+            with self.subTest(status=status), mock.patch.object(adapter, "release_tools", return_value=release):
+                backend = self.worker()
+                code, output, _, dialogs = self.command(backend, "--interactive", "--check-updates")
+                self.assertEqual(code, 0)
+                self.assertEqual(json.loads(output.getvalue()), dict(result, event="release_check"))
+                self.assertEqual(dialogs, [mock.call(result["message"])])
+                release.check_releases.assert_called_once_with(self.root)
+                backend.main.assert_not_called()
+                backend.game_running.assert_not_called()
+                self.assertFalse((self.root / adapter.ERROR_FILE).exists())
+                self.assertFalse((self.root / "GameData").exists())
+        with mock.patch.object(adapter, "release_tools", side_effect=OSError("missing optional checker")):
+            code, output, _, dialogs = self.command(None, "--interactive", "--check-updates", import_error=AssertionError("No backend import"))
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(output.getvalue())["status"], "unavailable")
+        self.assertNotIn("error", dialogs[0].kwargs)
+        self.assertFalse((self.root / adapter.ERROR_FILE).exists())
+
+    def test_release_tools_loads_native_checker_and_passes_linux_platform(self):
+        (self.root / "linux/launcher.py").write_text((ROOT / "launcher/linux/launcher.py").read_text(encoding="utf-8"), encoding="utf-8")
+        payload = self.root / "windows/payload"
+        payload.mkdir(parents=True)
+        (self.root / "windows/package-manifest.json").write_text('{"version":"0.6.1"}')
+        (payload / "release_check.py").write_text('def check(version, platform):\n    assert platform == "linux"\n    return dict(status="current", current_version=version, message="Current")\n')
+        code, output, _, dialogs = self.command(None, "--check-updates", import_error=AssertionError("No backend"))
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(output.getvalue()), dict(event="release_check", status="current", current_version="0.6.1", message="Current"))
+        self.assertEqual(dialogs, [])
+
+    def test_steam_download_request_directs_to_native_update_without_installing(self):
+        backend = self.worker()
+        code, output, _, dialogs = self.command(backend, "--interactive", "--download-update")
+        self.assertEqual(code, 0)
+        self.assertTrue(json.loads(output.getvalue())["native_update_required"])
+        self.assertIn("./Darkwatch.sh --download-update", dialogs[0].args[0])
+        self.assertIn("same folder", dialogs[0].args[0])
+        backend.main.assert_not_called()
+        self.assertFalse((self.root / "GameData").exists())
+        self.assertFalse((self.root / adapter.ERROR_FILE).exists())
+
+    def test_steam_blocks_mixed_package_before_importing_backend_or_release_checker(self):
+        journal = self.root / ".launcher-update/transaction.json"
+        journal.parent.mkdir()
+        for contents in ('{"phase":"prepared"}', '{"phase":"applying"}', '{bad', '[]', '{"phase":"unknown"}'):
+            journal.write_text(contents)
+            with self.subTest(contents=contents), mock.patch.object(adapter, "release_tools") as release:
+                code, output, _, dialogs = self.command(None, "--interactive", "--play", import_error=AssertionError("No backend import"))
+            self.assertEqual(code, 1)
+            self.assertEqual(json.loads(output.getvalue())["event"], "update_notice")
+            self.assertIn("interrupted", dialogs[0].args[0])
+            release.assert_not_called()
+            self.assertEqual(journal.read_text(), contents)
+            self.assertFalse((self.root / adapter.ERROR_FILE).exists())
+        for phase in ("committed", "rolled_back"):
+            journal.write_text(json.dumps(dict(phase=phase)))
+            backend = self.worker([dict(event="status", message="Ready")])
+            self.assertEqual(self.command(backend, "--status")[0], 0)
+            backend.main.assert_called_once()
+
+    def test_play_release_notice_waits_for_natural_exit_and_only_shows_available(self):
+        for status in ("available", "current", "unavailable", "pending"):
+            pending = queue.Queue()
+            if status != "pending":
+                pending.put(dict(status=status, message="New Linux release"))
+            release = SimpleNamespace(start_release_check=mock.Mock(return_value=pending),
+                                      release_text=mock.Mock(return_value="New Linux release\nhttps://github.com/linkssy2/DarkwatchDarkerEdition/releases/tag/v0.7"))
+            backend = self.worker([dict(event="result", message="Started", pid=123)])
+            state = iter([True, False])
+            def still_running():
+                adapter.notify.assert_not_called()
+                return next(state)
+            backend.game_running.side_effect = still_running
+            with self.subTest(status=status), mock.patch.object(adapter, "release_tools", return_value=release), \
+                 mock.patch.object(adapter.time, "sleep"):
+                code, _, _, dialogs = self.command(backend, "--interactive", "--play")
+            self.assertEqual(code, 0)
+            release.start_release_check.assert_called_once_with(self.root)
+            self.assertEqual(backend.game_running.call_count, 2)
+            self.assertEqual(len(dialogs), 1 if status == "available" else 0)
+            if dialogs:
+                self.assertIn("https://github.com/", dialogs[0].args[0])
+            self.assertFalse((self.root / adapter.ERROR_FILE).exists())
+
+    def test_update_and_attach_forward_to_shared_backend_without_import_or_play(self):
+        backend = self.worker([dict(event="result", message="Updated", ready=True)])
+        code, output, _, dialogs = self.command(backend, "--interactive", "--update")
+        self.assertEqual(code, 0)
+        self.assertEqual(backend.main.call_args.args[0][-1:], ["--update"])
+        self.assertIn("Import the Xbox disc once", dialogs[0].args[0])
+        self.assertEqual(dialogs[-1], mock.call("Updated"))
+        self.assertEqual(json.loads(output.getvalue())["message"], "Updated")
+        backend.game_running.assert_not_called()
+        event = dict(event="status", message="Existing installation selected", ready=False, update_available=True)
+        backend = self.worker([event])
+        folder = "Z:\\old\\My café game\\GameData"
+        code, output, _, dialogs = self.command(backend, "--interactive", "--use-installation", folder)
+        self.assertEqual(code, 0)
+        self.assertEqual(backend.main.call_args.args[0][-2:], ["--use-installation", folder])
+        self.assertEqual(json.loads(output.getvalue()), event)
+        self.assertEqual(len(dialogs), 1)
+        self.assertIn("Choose Update Installation", dialogs[0].args[0])
+        self.assertIn("does not need to be imported again", dialogs[0].args[0])
+        backend.game_running.assert_not_called()
 
     def test_noninteractive_preserves_json_no_dialog_or_error_report(self):
         event = dict(event="error", message="Bad disc", ready=False)

@@ -32,7 +32,7 @@ int main(){
  static_assert(int(J)==0&&int(C)==1&&int(S)==2);
  app::Load();assert((characters()==std::array{J,J}));
  assert(configured_character(0)==J&&configured_character(1)==J&&configured_character(2)==J&&configured_character(~0u)==J);
- static_assert(kCharacterCount==8&&int(Character::Tala)==7);
+ static_assert(kCharacterCount==10&&int(Character::Tala)==7&&int(Character::VampireTala)==8&&int(Character::BossTala)==9);
  for(unsigned one=0;one<kCharacterCount;++one)for(unsigned two=0;two<kCharacterCount;++two){
   const auto p1=Character(one),p2=Character(two);
   const std::array expected{p1,p2};assert(set_characters(expected)&&app::Save());
@@ -56,7 +56,7 @@ int main(){
  const std::array a{J,S},b{S,C};assert(set_characters(a));std::atomic<bool> done=false;
  std::thread writer([&]{for(unsigned i=0;i<10000;++i)assert(set_characters(i&1?a:b));done=true;});
  do{const auto value=characters();assert(value==a||value==b);}while(!done);writer.join();
- std::puts("character settings: original defaults/tokens, all 64 pairs, roster persistence, invalid values, failed atomic save and coherent snapshots passed");
+ std::puts("character settings: original defaults/tokens, all 100 pairs, roster persistence, invalid values, failed atomic save and coherent snapshots passed");
 }
 '''
 
@@ -78,7 +78,7 @@ int main(){
  CHECK(std::find(rendered_text.begin(),rendered_text.end(),"CHOOSE CHARACTER")!=rendered_text.end());
  CHECK(std::find(rendered_text.begin(),rendered_text.end(),"Continue to choose a chapter or resume your save.")!=rendered_text.end());
  CHECK((characters()==std::array{J,J}));
- ClickNamed("PREVIOUS");CHECK(g_character_draft==Character::Tala);ClickNamed("NEXT");CHECK(g_character_draft==J);
+ ClickNamed("PREVIOUS");CHECK(g_character_draft==Character::BossTala);ClickNamed("NEXT");CHECK(g_character_draft==J);
  Frame();CHECK(darkwatch::preview::drawn==J);Frame(1);CHECK(darkwatch::preview::elapsed>=1);
  ClickNamed("BACK");Poll();Frame();
  for(unsigned one=0;one<kCharacterCount;++one)for(unsigned two=0;two<kCharacterCount;++two){
@@ -90,19 +90,19 @@ int main(){
   CHECK((characters()==std::array{Character(one),Character(two)})&&saves==saved+1);
   CHECK(!g_open&&!g_leave&&!DarkwatchGraphicsVisible());Poll();Frame();
  }
- CHECK(darkwatch::single_player_continues==64);
- CHECK(set_characters({Character::Tala,S}));
+ CHECK(darkwatch::single_player_continues==kCharacterCount*kCharacterCount);
+ CHECK(set_characters({Character::BossTala,S}));
  for(unsigned exit=0;exit<4;++exit){
-  open();CHECK(g_character_draft==Character::Tala);ClickNamed("NEXT");CHECK(g_character_draft==J);
+  open();CHECK(g_character_draft==Character::BossTala);ClickNamed("NEXT");CHECK(g_character_draft==J);
   if(exit==0)ClickNamed("BACK");
   if(exit==1){io.AddKeyEvent(ImGuiKey_Escape,true);Frame();io.AddKeyEvent(ImGuiKey_Escape,false);Frame();}
   if(exit==2){io.AddMouseButtonEvent(1,true);Frame();Frame();Frame();io.AddMouseButtonEvent(1,false);Frame();}
   if(exit==3){Poll(0,0,255);Frame();Frame();Frame();}
-  CHECK(!g_open&&!g_leave&&(characters()==std::array{Character::Tala,S}));Poll();Frame();Frame();
+  CHECK(!g_open&&!g_leave&&(characters()==std::array{Character::BossTala,S}));Poll();Frame();Frame();
  }
  // A failed native continuation keeps the draft, restores the selected settings, and can retry.
  open();ClickNamed("NEXT");darkwatch::single_player_ok=false;const auto saved=saves;
- ClickNamed("CONTINUE");Poll();Frame();CHECK(g_open&&g_character_choice==-2&&saves==saved&&(characters()==std::array{Character::Tala,S}));
+ ClickNamed("CONTINUE");Poll();Frame();CHECK(g_open&&g_character_choice==-2&&saves==saved&&(characters()==std::array{Character::BossTala,S}));
  darkwatch::single_player_ok=true;save_ok=false;ClickNamed("CONTINUE");Poll();Frame();
  CHECK(!g_open&&(characters()==std::array{J,S}));save_ok=true;Frame(11);
  // Stale owner, even with a queued selection, must not save or navigate.

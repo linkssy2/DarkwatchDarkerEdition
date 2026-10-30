@@ -38,7 +38,8 @@ class LinuxPackageTests(unittest.TestCase):
         self.assertFalse(result['linux_gameplay_verified'])
         with tarfile.open(self.output) as archive:
             entries = archive.getmembers()
-            self.assertEqual(len(entries), 6)
+            self.assertEqual(len(entries), 7)
+            self.assertTrue(any(entry.name.endswith('/assets/README.txt') for entry in entries))
             self.assertTrue(all(entry.isfile() for entry in entries))
             self.assertFalse(any(entry.name.endswith('save.dat') for entry in entries))
             self.assertEqual(next(e.mode for e in entries if e.name.endswith('/Darkwatch.sh')), 0o755)

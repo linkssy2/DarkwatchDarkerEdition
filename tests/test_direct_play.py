@@ -10,22 +10,38 @@ import shutil
 import struct
 import subprocess
 import tempfile
+import time
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
 FRAMEWORK = Path(os.environ.get("WINDIR", "C:/Windows")) / "Microsoft.NET/Framework64/v4.0.30319"
-REFERENCES = ["System.dll", "System.Core.dll", "System.Web.Extensions.dll", "System.Xaml.dll",
+REFERENCES = ["System.dll", "System.Core.dll", "System.Web.Extensions.dll", "System.Xaml.dll", "System.Windows.Forms.dll",
               "WPF/PresentationFramework.dll", "WPF/PresentationCore.dll", "WPF/WindowsBase.dll"]
 
 HELPER = r'''
 using System;
+using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
 class DirectPlayFixture {
+    [DllImport("kernel32.dll")] static extern IntPtr GetStdHandle(int kind);
+    [DllImport("kernel32.dll")] static extern uint GetFileType(IntPtr handle);
     static int Main(string[] args) {
+        if(Environment.GetEnvironmentVariable("DARKWATCH_DIRECT_FIXTURE_MODE")=="recover") {
+            int parent=0;
+            for(int i=0;i<args.Length-1;++i)if(args[i]=="--wait-pid")parent=Int32.Parse(args[i+1]);
+            bool exited=false;
+            try {using(var process=Process.GetProcessById(parent))exited=process.WaitForExit(5000);}
+            catch(ArgumentException) {exited=true;}
+            File.WriteAllText(Environment.GetEnvironmentVariable("DARKWATCH_DIRECT_FIXTURE_REPORT"),
+                new JavaScriptSerializer().Serialize(new {args=args,cwd=Environment.CurrentDirectory,parentExited=exited,
+                    input=GetFileType(GetStdHandle(-10)),output=GetFileType(GetStdHandle(-11)),error=GetFileType(GetStdHandle(-12))}),Encoding.UTF8);
+            return 0;
+        }
         Console.OutputEncoding=new UTF8Encoding(false);
         string mode=Environment.GetEnvironmentVariable("DARKWATCH_DIRECT_FIXTURE_MODE");
         var json=new JavaScriptSerializer();
@@ -33,8 +49,12 @@ class DirectPlayFixture {
             json.Serialize(new {args=args,cwd=Environment.CurrentDirectory,
                 encoding=Environment.GetEnvironmentVariable("PYTHONIOENCODING")}),Encoding.UTF8);
         Console.WriteLine("not JSON"); Console.WriteLine("null");
-        if(mode=="cold-es"||mode=="error-es") Console.WriteLine("{\"event\":\"status\",\"language\":\"es\"}");
+        if(mode=="cold-es"||mode=="update-es"||mode=="error-es") Console.WriteLine("{\"event\":\"status\",\"language\":\"es\"}");
         Console.WriteLine("{\"event\":\"progress\",\"percent\":100}");
+        if(mode=="update"||mode=="update-es") {
+            Console.WriteLine("{\"event\":\"progress\",\"message\":\"Preparing selectable characters...\",\"percent\":80}");
+            Console.WriteLine("{\"event\":\"progress\",\"message\":\"Preserving saves, controls, and shader cache\",\"percent\":95}");
+        }
         if(mode=="cold"||mode=="cold-es"||mode=="cancel") {
             Console.WriteLine("{\"event\":\"shader_prepare\",\"message\":\"Preparing shaders — 1 of 2\",\"percent\":50,\"completed\":1,\"total\":2}");
             if(mode=="cancel") {
@@ -67,6 +87,7 @@ class DirectPlayFixture {
 
 HARNESS = r'''
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Web.Script.Serialization;
@@ -78,14 +99,18 @@ class DirectPlayHarness {
         Console.OutputEncoding=new UTF8Encoding(false);
         var json=new JavaScriptSerializer();
         try {
-            if(args[0]=="info") {
-                var info=SetupProcess.Create(args[1],args[2],"--play");
+            if(args[0]=="recover") {
+                bool started=SetupProcess.TryRecover(args[1]);
+                Console.Write(json.Serialize(new {ok=true,started=started,pid=Process.GetCurrentProcess().Id}));
+            } else if(args[0]=="info"||args[0]=="download-info"||args[0]=="status-info") {
+                var info=SetupProcess.Create(args[1],args[2],args[0]=="download-info"?"--download-update":args[0]=="status-info"?"--status":"--play");
                 Console.Write(json.Serialize(new {file=info.FileName,arguments=info.Arguments,
+                    pid=Process.GetCurrentProcess().Id,
                     cwd=info.WorkingDirectory,shell=info.UseShellExecute,hidden=info.CreateNoWindow,
                     stdout=info.RedirectStandardOutput,stderr=info.RedirectStandardError,
                     outcode=info.StandardOutputEncoding.CodePage,errcode=info.StandardErrorEncoding.CodePage,
                     encoding=info.EnvironmentVariables["PYTHONIOENCODING"]}));
-            } else if(args[0]=="prepare"||args[0]=="prepare-es"||args[0]=="cancel"||args[0]=="close") {
+            } else if(args[0]=="prepare"||args[0]=="prepare-es"||args[0]=="update"||args[0]=="update-es"||args[0]=="cancel"||args[0]=="close") {
                 int updates=0,cancels=0;Launcher view=null;
                 string token=Path.Combine(args[2],".cancel-fixture");Directory.CreateDirectory(args[2]);
                 try {
@@ -94,10 +119,11 @@ class DirectPlayHarness {
                         if(view==null)view=Launcher.Preparing(()=>{++cancels;File.WriteAllText(token,"cancel");});
                         view.UpdatePreparation(item);
                         if(view.Window.IsVisible)throw new Exception("Preparation fixture showed a window");
-                        if(((TextBlock)view.Window.FindName("StateTitle")).Text!=(args[0]=="prepare-es"?"PREPARANDO SHADERS":"PREPARING SHADERS"))throw new Exception("Missing preparation title");
+                        string title=args[0]=="update"?"PREPARING YOUR GAME":args[0]=="update-es"?"PREPARANDO EL JUEGO":args[0]=="prepare-es"?"PREPARANDO SHADERS":"PREPARING SHADERS";
+                        if(((TextBlock)view.Window.FindName("StateTitle")).Text!=title)throw new Exception("Missing preparation title");
                         if(args[0]=="prepare-es"&&!((TextBlock)view.Window.FindName("StatusText")).Text.StartsWith("Preparando shaders — "))throw new Exception("Shader progress stayed English");
                         if(((Grid)view.Window.FindName("LaunchActions")).Visibility!=Visibility.Collapsed)throw new Exception("Preparation exposes launch actions");
-                        if(((StackPanel)view.Window.FindName("LanguageActions")).Visibility!=Visibility.Collapsed)throw new Exception("Preparation exposes language mutation");
+                        if(((StackPanel)view.Window.FindName("ManagePanel")).Visibility!=Visibility.Collapsed || ((ComboBox)view.Window.FindName("LanguageChoice")).IsEnabled)throw new Exception("Preparation exposes language mutation");
                         if(((ProgressBar)view.Window.FindName("Progress")).Value!=Convert.ToDouble(item["percent"]))throw new Exception("Wrong shader progress");
                         if(((Image)view.Window.FindName("Cover")).Source==null)throw new Exception("Preparation lost artwork");
                         if(args[0]=="cancel")((Button)view.Window.FindName("CancelButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -161,6 +187,9 @@ class DirectPlayTests(unittest.TestCase):
         compile_cs([*references, *resources, "/define:DIRECT_PLAY", f"/out:{cls.production}",
                     f"/win32manifest:{ROOT / 'launcher/app.manifest'}",
                     f"/win32icon:{ROOT / 'launcher/assets/insignia.ico'}", *sources], "winexe")
+        cls.launcher_production = cls.build / "Darkwatch Darker Edition.exe"
+        compile_cs([*references, *resources, f"/out:{cls.launcher_production}",
+                    f"/win32manifest:{ROOT / 'launcher/app.manifest'}", sources[0], sources[2]], "winexe")
         cls.results = {"real_backend_or_game_started": False, "fixture_results": {},
                        "source_sha256": {Path(p).name: hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in sources}}
 
@@ -171,6 +200,7 @@ class DirectPlayTests(unittest.TestCase):
 
     def run_fixture(self, mode="success", operation="run", package=None):
         record = self.evidence / f"{mode}-{operation}.json"
+        record.unlink(missing_ok=True)
         environment = dict(os.environ, DARKWATCH_DIRECT_FIXTURE_MODE=mode,
                            DARKWATCH_DIRECT_FIXTURE_REPORT=str(record))
         result = subprocess.run([str(self.harness), operation, str(package or self.build), str(self.install)],
@@ -180,6 +210,141 @@ class DirectPlayTests(unittest.TestCase):
         response = json.loads(result.stdout)
         self.results["fixture_results"][mode + "-" + operation] = response
         return response, record
+
+    def recovery_package(self, name, phase="prepared"):
+        package = self.build.parent / name
+        runner = package / ".launcher-update/runner"
+        runner.mkdir(parents=True)
+        shutil.copyfile(self.helper, runner / "python.exe")
+        (runner / "release_update.py").write_text("# Harmless recovery fixture; never interpreted.\n", encoding="utf-8")
+        (runner.parent / "transaction.json").write_text(json.dumps({"phase": phase}), encoding="utf-8")
+        return package
+
+    def recovery_report(self, record):
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            try:
+                return json.loads(record.read_text(encoding="utf-8-sig"))
+            except (FileNotFoundError, json.JSONDecodeError):
+                time.sleep(0.025)
+        self.fail("Detached recovery fixture did not finish after its caller exited")
+
+    def test_download_update_alone_passes_launcher_identity(self):
+        for operation in ("info", "status-info", "download-info"):
+            response, _ = self.run_fixture(operation=operation)
+            if operation == "download-info":
+                self.assertTrue(response["arguments"].endswith("--download-update --launcher-pid " + str(response["pid"])))
+            else:
+                self.assertNotIn("--launcher-pid", response["arguments"])
+
+    def test_recovery_handoff_fixed_paths_detached_and_parent_exit(self):
+        for phase in ("prepared", "applying"):
+            with self.subTest(phase=phase):
+                package = self.recovery_package("recovery " + phase + " 日本語 🦇", phase)
+                journal = package / ".launcher-update/transaction.json"
+                journal.write_text(json.dumps({"phase": phase, "runner": "C:/untrusted/evil.exe",
+                                               "script": "../../evil.py", "restart": "cmd.exe"}), encoding="utf-8")
+                started = time.monotonic()
+                response, record = self.run_fixture("recover", "recover", package)
+                self.assertTrue(response["ok"])
+                self.assertTrue(response["started"])
+                self.assertLess(time.monotonic() - started, 3, "Recovery must return rather than wait on its own caller")
+                details = self.recovery_report(record)
+                self.assertTrue(details["parentExited"], "The runner must outlive the bootstrap caller")
+                self.assertEqual(details["args"], ["-B", str(package / ".launcher-update/runner/release_update.py"),
+                                                 "--recover", str(package), "--wait-pid", str(response["pid"]), "--restart"])
+                self.assertEqual(details["cwd"], str(package / ".launcher-update/runner"))
+                for handle in ("input", "output", "error"):
+                    self.assertNotEqual(details[handle], 3, "Recovery inherited a caller pipe: " + handle)
+
+    def test_pending_recovery_blocks_backend_before_missing_payload(self):
+        for phase in ("prepared", "applying"):
+            package = self.recovery_package("block " + phase, phase)
+            for operation in ("run", "status-info", "download-info"):
+                response, record = self.run_fixture(operation=operation, package=package)
+                self.assertFalse(response["ok"])
+                self.assertEqual(response["type"], "System.IO.IOException")
+                self.assertIn("update is in progress", response["message"])
+                self.assertFalse(record.exists())
+
+    def test_absent_or_terminal_transaction_does_not_launch_recovery(self):
+        for package in (self.build, self.recovery_package("committed recovery", "committed"),
+                        self.recovery_package("rolled back recovery", "rolled_back")):
+            response, record = self.run_fixture("recover", "recover", package)
+            self.assertTrue(response["ok"])
+            self.assertFalse(response["started"])
+            self.assertFalse(record.exists())
+        for name in ("committed recovery", "rolled back recovery"):
+            package = self.build.parent / name
+            (package / "payload/python").mkdir(parents=True)
+            shutil.copyfile(self.helper, package / "payload/python/python.exe")
+            shutil.copyfile(self.backend, package / "payload/setup_backend.py")
+            response, _ = self.run_fixture(package=package)
+            self.assertTrue(response["ok"])
+
+    def test_invalid_recovery_journal_and_missing_runner_fail_closed(self):
+        values = ("{", "null", "[]", "{}", '{"phase":"unknown"}', '{"phase":false}', " " * (8 * 1024 * 1024 + 1))
+        for number, content in enumerate(values):
+            with self.subTest(number=number):
+                package = self.recovery_package("invalid journal " + str(number))
+                (package / ".launcher-update/transaction.json").write_text(content, encoding="utf-8")
+                for operation in ("recover", "info"):
+                    response, record = self.run_fixture("recover", operation, package)
+                    self.assertFalse(response["ok"])
+                    self.assertEqual(response["type"], "System.IO.IOException")
+                    self.assertFalse(record.exists())
+        for name in ("python.exe", "release_update.py"):
+            package = self.recovery_package("missing runner " + name)
+            (package / ".launcher-update/runner" / name).unlink()
+            response, record = self.run_fixture("recover", "recover", package)
+            self.assertFalse(response["ok"])
+            self.assertFalse(record.exists())
+
+    def test_recovery_rejects_linked_stage_journal_runner_and_dependencies(self):
+        target = self.build.parent / "link target"
+        target.mkdir()
+        (target / "file").write_text("fixture", encoding="utf-8")
+        for name in (".launcher-update", ".launcher-update/transaction.json", ".launcher-update/runner",
+                     ".launcher-update/runner/python.exe", ".launcher-update/runner/release_update.py",
+                     ".launcher-update/runner/python312.dll"):
+            with self.subTest(name=name):
+                package = self.recovery_package("linked " + name.replace("/", "-"))
+                link = package / name
+                directory = link.is_dir()
+                if directory:
+                    shutil.rmtree(link)
+                else:
+                    link.unlink(missing_ok=True)
+                try:
+                    link.symlink_to(target if directory else target / "file", target_is_directory=directory)
+                except OSError as error:
+                    if directory:
+                        import _winapi
+                        _winapi.CreateJunction(str(target), str(link))
+                    else:
+                        self.skipTest("Windows file symbolic links unavailable: " + str(error))
+                response, record = self.run_fixture("recover", "recover", package)
+                self.assertFalse(response["ok"])
+                self.assertIn("without links", response["message"])
+                self.assertFalse(record.exists())
+
+    def test_production_entry_hands_off_recovery_before_loading_backend(self):
+        for source in (self.production, self.launcher_production):
+            with self.subTest(source=source.name):
+                package = self.recovery_package("production recovery " + source.stem)
+                executable = package / source.name
+                shutil.copyfile(source, executable)
+                record = self.evidence / ("production-recovery-" + source.stem + ".json")
+                environment = dict(os.environ, DARKWATCH_DIRECT_FIXTURE_MODE="recover",
+                                   DARKWATCH_DIRECT_FIXTURE_REPORT=str(record))
+                result = subprocess.run([str(executable)], capture_output=True, env=environment, timeout=12)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(result.stdout + result.stderr, b"")
+                details = self.recovery_report(record)
+                self.assertTrue(details["parentExited"])
+                self.assertEqual(details["args"][2], "--recover")
+                self.assertEqual(Path(details["args"][3]), package)
+                self.assertFalse((package / "GameData").exists(), "Recovery must precede installation setup")
 
     def test_hidden_shared_helper_contract(self):
         response, _ = self.run_fixture(operation="info")
@@ -239,6 +404,14 @@ class DirectPlayTests(unittest.TestCase):
         self.assertFalse(response["ok"])
         self.assertIn("Cierra Darkwatch", response["message"])
         self.assertIn("importar o reparar", response["message"])
+
+    def test_asset_update_progress_uses_general_preparation_title(self):
+        for mode in ("update", "update-es"):
+            with self.subTest(mode=mode):
+                response, _ = self.run_fixture(mode, operation=mode)
+                self.assertTrue(response["ok"])
+                self.assertEqual(response["updates"], 2)
+                self.assertFalse(response["shown"])
 
     def test_cancel_from_preparation_view_reaches_backend_and_does_not_report_success(self):
         for operation in ("cancel", "close"):

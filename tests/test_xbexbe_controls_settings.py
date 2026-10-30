@@ -110,10 +110,42 @@ int main(){
   }
   CHECK(ControlsApply(restored));
  }
+
+ // Carry-all is opt-in and controller cycle overrides are independent per player.
+ {
+  auto extra=restored;CHECK(!extra.carry_all_weapons&&!GetCarryAllWeapons());
+  extra.carry_all_weapons=true;extra.weapon_buttons[0]={2,3};extra.weapon_buttons[1]={12,13};
+  extra.bindings[size_t(PcAction::NextWeapon)]={{input::kMouseWheelUp,0}};
+  extra.bindings[size_t(PcAction::PreviousWeapon)]={{input::kMouseWheelDown,0}};
+  CHECK(ControlsApply(extra)&&GetCarryAllWeapons()&&app::Save());
+  CHECK(ControlsApply(defaults));app::Load();auto saved_extra=ControlsSnapshot();
+  CHECK(saved_extra.carry_all_weapons&&saved_extra.weapon_buttons==extra.weapon_buttons);
+  for(int invalid:{-2,4,5,16}){auto bad=extra;bad.weapon_buttons[1][0]=invalid;CHECK(!ControlsApply(bad));}
+  auto duplicate=extra;duplicate.weapon_buttons[0]={2,2};CHECK(!ControlsApply(duplicate));
+  CHECK(ControlsSnapshot().weapon_buttons==extra.weapon_buttons);
+  uint64_t now=3000000;
+  for(int direction:{120,-120}) {
+   CHECK(ControlsApply(extra));input::SetActive(true);input::Wheel(direction);input::AdvanceFrame(now+=100000);
+   CHECK(input::PcActionDown(PcAction::NextWeapon)==(direction>0));
+   CHECK(input::PcActionDown(PcAction::PreviousWeapon)==(direction<0));
+   CHECK(!input::Poll(0).buttons);
+   input::AdvanceFrame(now+=150001);CHECK(!input::PcActionDown(PcAction::NextWeapon)&&!input::PcActionDown(PcAction::PreviousWeapon));
+  }
+  auto collision=extra;collision.bindings[fire].keys[1]=input::kMouseWheel;CHECK(!ControlsApply(collision));
+  input::Wheel(120);input::SetMenuMode(true);input::AdvanceFrame(now+=16667);
+  CHECK(!input::PcActionDown(PcAction::NextWeapon));input::SetMenuMode(false);
+  input::AdvanceFrame(now+=16667);CHECK(!input::PcActionDown(PcAction::NextWeapon));
+  input::Wheel(-120);input::SetActive(false);input::SetActive(true);input::AdvanceFrame(now+=16667);
+  CHECK(!input::PcActionDown(PcAction::PreviousWeapon));
+  // An existing custom bracket assignment remains intact instead of resetting every key.
+  Write("[key_bindings]\nright_trigger=[221,0]\n");app::Load();
+  CHECK(ControlsSnapshot().bindings[fire].keys[0]==221&&!ControlsSnapshot().bindings[size_t(PcAction::NextWeapon)].keys[0]);
+  CHECK(ControlsApply(restored));
+ }
  // Invalid live draft must leave both controls and actual input unchanged.
  s=restored;s.bindings[fire].keys[0]='I';CHECK(!ControlsApply(s));
  CHECK(ControlsSnapshot().bindings[fire].keys[0]=='P'&&input::GetPcBindings()[fire].keys[0]=='P');
- for(const char* bad:{"[malformed", "[key_bindings]\nright_trigger=[257,0]\n","[key_bindings]\nright_trigger=[112,0]\n","[key_bindings]\nright_trigger=[87,0]\n","[key_bindings]\nright_trigger=[1]\n","[key_bindings]\nright_trigger=['P',0]\n","key_bindings=3\n"}){
+ for(const char* bad:{"[malformed", "[key_bindings]\nright_trigger=[259,0]\n","[key_bindings]\nright_trigger=[112,0]\n","[key_bindings]\nright_trigger=[87,0]\n","[key_bindings]\nright_trigger=[1]\n","[key_bindings]\nright_trigger=['P',0]\n","key_bindings=3\n"}){
    Write(bad);app::Load();auto value=ControlsSnapshot();CHECK(value.bindings[fire].keys[0]==VK_LBUTTON&&value.bindings[forward].keys[0]=='W');
  }
  Write("mouse_millidegrees_per_count=-7\naim_assistance=false\naim_centering=true\n");app::Load();CHECK(ControlsSnapshot().mouse_millidegrees==1&&!ControlsSnapshot().aim_assistance&&ControlsSnapshot().aim_centering);
@@ -140,7 +172,7 @@ int main(){
  ControlsBeginCapture();CHECK(Capture(WM_XBUTTONDOWN,uintptr_t(XBUTTON1)<<16)==VK_XBUTTON1);
  ControlsBeginCapture();CHECK(Capture(WM_XBUTTONDOWN,uintptr_t(XBUTTON2)<<16)==VK_XBUTTON2);
  for(int delta:{120,-120,30,-30}){
-  ControlsBeginCapture();CHECK(Capture(WM_MOUSEWHEEL,uintptr_t(uint16_t(delta))<<16)==input::kMouseWheel&&!ControlsCapturing());
+  ControlsBeginCapture();CHECK(Capture(WM_MOUSEWHEEL,uintptr_t(uint16_t(delta))<<16)==(delta>0?input::kMouseWheelUp:input::kMouseWheelDown)&&!ControlsCapturing());
  }
  ControlsBeginCapture();CHECK(Capture(WM_MOUSEWHEEL,0)==0&&ControlsCapturing());
  CHECK(Capture(WM_KEYDOWN,VK_ESCAPE)==kCaptureCancelled);

@@ -8,6 +8,7 @@
 #include "kernel/memory.h"
 
 X86_EXTERN_FUNC(__imp__sub_001EE8BE);
+X86_EXTERN_FUNC(__imp__sub_001ECDB6);
 
 namespace {
 struct HudScope {uint8_t* base = nullptr; uint32_t root = 0, camera = 0; float anchor = 0;};
@@ -31,14 +32,15 @@ void Store(uint8_t* base, uint32_t address, float value) {
     std::memcpy(base + address, &value, 4);
 }
 bool Camera(const HudScope& scope) {
-    // D835C copies the player's viewport into the HUD's own camera. Split views
-    // retain their original layout, as do menus and unrelated screen overlays.
+    // D835C copies the player's viewport into the HUD's own camera.
     if (!Span(scope.base, scope.root, 0x1E0) || Read(scope.base, scope.root) != 0x427740 ||
         Read(scope.base, scope.root + 0x1DC) != scope.camera ||
         !Span(scope.base, scope.camera, 0x68) || Read(scope.base, scope.camera) != 0x43F97C)
         return false;
-    constexpr std::array<uint32_t, 4> viewport{0, 0, 0x3F800000, 0x3F800000};
-    return !std::memcmp(scope.base + scope.camera + 0x58, viewport.data(), sizeof(viewport));
+    const uint32_t x = Read(scope.base, scope.camera + 0x58), y = Read(scope.base, scope.camera + 0x5C);
+    const uint32_t width = Read(scope.base, scope.camera + 0x60), height = Read(scope.base, scope.camera + 0x64);
+    return !x && width == 0x3F800000 &&
+        ((!y && height == 0x3F800000) || (height == 0x3EFEB852 && (!y || y == 0x3F00A3D7)));
 }
 HudScope Scope(X86Context& ctx, uint8_t* base) {
     if (!app::Widescreen() || !Span(base, ctx.esp, 8)) return {};
@@ -50,12 +52,14 @@ HudScope Scope(X86Context& ctx, uint8_t* base) {
         if (Read(base, parent) == 0x427740) {
             HudScope result{base, parent, Read(base, ctx.esp + 4), 0};
             if (!Camera(result)) return {};
+            // Keep the split HUD's existing 2% edge inset while correcting its width.
+            if (Read(base, result.camera + 0x64) == 0x3EFEB852) result.anchor = 0.02f;
             // Constructor DBB4C and layout D9FEC bind these complete groups.
             // Their descendants inherit one anchor, including numbers and art.
             for (uint32_t field : {0x64u, 0x6Cu, 0x78u, 0x68u})
                 if (Read(base, parent + field) == child) return result;
             for (uint32_t field : {0x70u, 0x7Cu})
-                if (Read(base, parent + field) == child) {result.anchor = 1; return result;}
+                if (Read(base, parent + field) == child) {result.anchor = 1 - result.anchor; return result;}
             for (uint32_t field : {0x74u, 0x80u, 0x94u, 0xA8u, 0xF4u, 0xF8u, 0x10Cu})
                 if (Read(base, parent + field) == child) {result.anchor = 0.5f; return result;}
             return {};
@@ -65,6 +69,17 @@ HudScope Scope(X86Context& ctx, uint8_t* base) {
     return {};
 }
 bool Active(uint8_t* base) {return g_hud.base == base && Camera(g_hud);}
+bool ExpiredCheckpoint(uint8_t* base, uint32_t text) {
+    if (!Span(base, text, 0x80) || Read(base, text) != 0x43C36C ||
+        base[text + 0x57] != 0 || Float(base, text + 0x78) != 0) return false;
+    const uint32_t checkpoint = Read(base, text + 4);
+    if (!Span(base, checkpoint, 0xE8) || Read(base, checkpoint) != 0x427048 ||
+        Read(base, checkpoint + 0xE0) != text || Read(base, checkpoint + 0xDC) != 0 ||
+        Float(base, checkpoint + 0xBC) != 0 || base[checkpoint + 0xE7] != 0) return false;
+    const uint32_t root = Read(base, checkpoint + 4);
+    return Span(base, root, 0x98) && Read(base, root) == 0x427740 &&
+        Read(base, root + 0x94) == checkpoint;
+}
 } // namespace
 
 bool DarkwatchHudSplitView() {return g_split_view.load(std::memory_order_relaxed);}
@@ -74,6 +89,17 @@ X86_FUNC(sub_001EE8BE) {
     g_hud = Scope(ctx, base);
     struct Restore {HudScope previous; ~Restore() {g_hud = previous;}} restore{previous};
     __imp__sub_001EE8BE(ctx, base);
+}
+
+X86_FUNC(sub_001ECDB6) {
+    // The native checkpoint fade leaves its text visible with zero alpha.
+    // Do not submit that expired text when weapon swaps refresh the HUD's
+    // rendering state. Keep the widget and its timer intact for a new checkpoint.
+    if (ExpiredCheckpoint(base, ctx.ecx)) {
+        ctx.esp += 12; // Original thiscall returns with ret 8.
+        return;
+    }
+    __imp__sub_001ECDB6(ctx, base);
 }
 
 void DarkwatchCoopHudMargins(X86Context& ctx, uint8_t* base) {

@@ -24,6 +24,16 @@ CHUNK = 8 * 1024 * 1024
 DIRECTORY = "gameplay-hd"
 RECEIPT = "pack.json"
 PART_SIZE = 1024 * 1024 * 1024
+LAYOUT = "layout.json"
+
+
+def unique(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise PackError("Duplicate HD texture catalog field.")
+        result[key] = value
+    return result
 
 
 class PackError(ValueError):
@@ -131,16 +141,9 @@ class Archive(io.RawIOBase):
 
 
 class Catalog:
-    def __init__(self, content, *, previous_limit=2):
+    def __init__(self, content, *, previous_limit=3):
         if len(content) > 2 * 1024 * 1024:
             raise PackError("HD texture catalog is too large.")
-        def unique(pairs):
-            result = {}
-            for key, value in pairs:
-                if key in result:
-                    raise PackError("Duplicate HD texture catalog field.")
-                result[key] = value
-            return result
         data = json.loads(content, object_pairs_hook=unique)
         if (not isinstance(data, dict) or data.get("schema_version") != 1 or
                 data.get("kind") != "darkwatch-gameplay-hd" or data.get("version") != "1" or
@@ -169,7 +172,7 @@ class Catalog:
         if "previous_catalog" in data:
             previous = data["previous_catalog"]
             # Keep exact published receipts, including their older compatibility
-            # receipt. The two released generations bound parsing and admission.
+            # receipt. Three prior generations bound parsing and admission.
             if previous_limit <= 0 or not isinstance(previous, str):
                 raise PackError("Unsupported previous HD texture catalog.")
             self.previous = Catalog(previous.encode("utf-8"), previous_limit=previous_limit - 1)
@@ -242,6 +245,15 @@ class Catalog:
         try:
             with Archive(archive, self.total * 1.01 + 4 * 1024 * 1024) as stream, zipfile.ZipFile(stream) as source:
                 entries = source.infolist()
+                names = set()
+                for entry in entries:
+                    mode = entry.external_attr >> 16
+                    if (entry.orig_filename != entry.filename or entry.filename.casefold() in names or
+                            entry.is_dir() or stat.S_IFMT(mode) not in (0, stat.S_IFREG) or
+                            entry.external_attr & 0x410 or entry.flag_bits & 1 or
+                            entry.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)):
+                        raise PackError("HD texture download contains unsafe or incompatible entries.")
+                    names.add(entry.filename.casefold())
                 receipts = [entry for entry in entries if entry.filename == RECEIPT]
                 if len(receipts) != 1 or receipts[0].file_size not in self.receipt_sizes():
                     raise PackError("HD texture download has a missing or incompatible catalog.")
@@ -249,26 +261,51 @@ class Catalog:
                 if selected is not self:
                     return selected.extract(archive, stage, cancel, notify)
                 expected = {**self.files, RECEIPT: (len(self.content), hashlib.sha256(self.content).hexdigest())}
+                shared = {}
+                layouts = [entry for entry in entries if entry.filename == LAYOUT]
+                if layouts:
+                    if not 0 < layouts[0].file_size <= 2 * 1024 * 1024:
+                        raise PackError("HD texture layout is too large.")
+                    layout = json.loads(source.read(layouts[0]), object_pairs_hook=unique)
+                    if (not isinstance(layout, dict) or set(layout) != {"schema_version", "kind", "files"} or
+                            type(layout["schema_version"]) is not int or layout["schema_version"] != 1 or
+                            layout["kind"] != "darkwatch-hd-shared-rgba" or
+                            not isinstance(layout["files"], dict) or set(layout["files"]) != set(self.files)):
+                        raise PackError("HD texture layout differs from the trusted catalog.")
+                    expected = {RECEIPT: expected[RECEIPT], LAYOUT: (layouts[0].file_size, None)}
+                    for name, record in layout["files"].items():
+                        if (not isinstance(record, dict) or set(record) != {"pixel_sha256", "header", "footer"} or
+                                any(not isinstance(record[key], str) or not re.fullmatch(pattern, record[key])
+                                    for key, pattern in (("pixel_sha256", r"[0-9a-f]{64}"),
+                                                         ("header", r"[0-9a-f]{64}"), ("footer", r"[0-9a-f]{16}")))):
+                            raise PackError("Invalid HD texture shared image record.")
+                        header, footer = bytes.fromhex(record["header"]), bytes.fromhex(record["footer"])
+                        size, _ = self.files[name]
+                        self.header(header, size)
+                        pixel = "pixels/" + record["pixel_sha256"] + ".rgba"
+                        identity = (size - 40, record["pixel_sha256"])
+                        if pixel in expected and expected[pixel] != identity:
+                            raise PackError("HD texture shared image sizes disagree.")
+                        expected[pixel] = identity
+                        shared[name] = (pixel, header, footer)
                 if len(entries) != len(expected):
                     raise PackError("HD texture download has missing or unexpected files.")
-                names = set()
                 for entry in entries:
-                    mode = entry.external_attr >> 16
-                    if (entry.orig_filename != entry.filename or entry.filename not in expected or
-                            entry.filename.casefold() in names or entry.is_dir() or
-                            stat.S_IFMT(mode) not in (0, stat.S_IFREG) or entry.external_attr & 0x410 or
-                            entry.flag_bits & 1 or entry.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED) or
+                    if (entry.filename not in expected or
                             entry.file_size != expected[entry.filename][0]):
                         raise PackError("HD texture download contains unsafe or incompatible entries.")
-                    names.add(entry.filename.casefold())
                 if source.read(RECEIPT) != self.content:
                     raise PackError("This HD texture download belongs to a different build.")
                 done = 0
                 for name, (size, digest) in self.files.items():
                     cancel()
                     target = checked(stage, Path(name).name)
-                    result, remaining = hashlib.sha256(), size
-                    with source.open(name) as original, target.open("xb") as output:
+                    member, header, footer = shared.get(name, (name, b"", b""))
+                    result, pixels = hashlib.sha256(header), hashlib.sha256()
+                    remaining = size - len(header) - len(footer)
+                    with source.open(member) as original, target.open("xb") as output:
+                        output.write(header)
+                        done += len(header)
                         while remaining:
                             cancel()
                             block = original.read(min(CHUNK, remaining))
@@ -276,15 +313,22 @@ class Catalog:
                                 raise PackError("HD texture download is truncated.")
                             output.write(block)
                             result.update(block)
+                            if shared:
+                                pixels.update(block)
                             remaining -= len(block)
                             done += len(block)
                             notify("progress", "Installing optional HD textures", percent=95 * done / self.total)
-                        if original.read(1) or result.hexdigest() != digest:
+                        output.write(footer)
+                        result.update(footer)
+                        done += len(footer)
+                        if (original.read(1) or result.hexdigest() != digest or
+                                (shared and pixels.hexdigest() != expected[member][1])):
                             raise PackError("HD texture download is damaged. Download a fresh copy.")
                     with target.open("rb") as original:
                         self.header(original.read(32), size)
                 checked(stage, RECEIPT).write_bytes(self.content)
-        except (zipfile.BadZipFile, zipfile.LargeZipFile, RuntimeError, EOFError, zlib.error) as error:
+        except (zipfile.BadZipFile, zipfile.LargeZipFile, RuntimeError, EOFError, zlib.error,
+                json.JSONDecodeError, UnicodeDecodeError) as error:
             raise PackError("HD texture download is not a valid complete ZIP. For a multipart download, keep all parts in the same folder and select .zip.001.") from error
 
     def install(self, archive, current, cancel, notify, require_closed):

@@ -10,7 +10,7 @@ if (Test-Path -LiteralPath $Output) { throw 'Choose a new launcher output direct
 $Python = Join-Path $ProjectRoot '.venv/Scripts/python.exe'
 $Framework = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319'
 $Compiler = Join-Path $Framework 'csc.exe'
-$References = @('System.dll','System.Core.dll','System.Xaml.dll','System.Web.Extensions.dll',
+$References = @('System.dll','System.Core.dll','System.Xaml.dll','System.Web.Extensions.dll','System.Windows.Forms.dll',
     'WPF/PresentationFramework.dll','WPF/PresentationCore.dll','WPF/WindowsBase.dll')
 $Arguments = @('/nologo','/target:winexe','/platform:x64','/optimize+',
     ('/win32icon:' + (Join-Path $Source 'assets/insignia.ico')),

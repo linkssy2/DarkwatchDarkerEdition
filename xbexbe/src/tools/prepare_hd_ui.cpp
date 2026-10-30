@@ -5,6 +5,7 @@
 #include "common/hd_ui_filter.h"
 #include "common/hd_ui_font.h"
 #include "common/hd_ui_hud_masks.h"
+#include "common/hd_ui_small_hud.h"
 #include "hd_ui_png.h"
 #include <toml++/toml.hpp>
 #include <filesystem>
@@ -30,11 +31,20 @@ bool HudCell(uint32_t offset,const std::array<uint32_t,4>& dest) {
     constexpr std::array<uint32_t,4> cells[]{
         {3,0,141,41},{151,7,74,10},{152,17,74,10},{13,177,8,33},
         {1,175,9,40},{195,85,60,107},{2,107,191,13},{0,42,127,62}};
-    return offset==103041076 && std::find(std::begin(cells),std::end(cells),dest)!=std::end(cells);
+    constexpr std::array<uint32_t,4> runes[]{
+        {45,2,36,36},{168,2,36,36},{210,2,36,36},{4,42,36,36},
+        {85,2,36,36},{5,212,36,36},{43,212,36,36},{81,212,36,36}};
+    return (offset==103041076 && std::find(std::begin(cells),std::end(cells),dest)!=std::end(cells)) ||
+           (offset==103200948 && std::find(std::begin(runes),std::end(runes),dest)!=std::end(runes));
 }
-bool OriginalPanelAlpha(uint32_t offset) {
-    constexpr uint32_t panels[]{101214580,102130036,100516340,102557300,102754292,100319220};
-    return std::find(std::begin(panels),std::end(panels),offset)!=std::end(panels);
+bool OriginalMaterialAlpha(uint32_t offset) {
+    // The chapter preview quad intentionally extends behind and beyond its frame.
+    // Its original right/bottom padding is transparent, even when restored PNGs
+    // contain opaque black there. Preserve that coverage without changing the UVs.
+    constexpr uint32_t materials[]{101214580,102130036,100516340,102557300,102754292,100319220,
+        100647540,100680436,100713332,100746228,100779124,100812020,100844916,100877812,100910708,
+        102261236,102294132,102327028,102359924,102392820,102425716,102458612,102491508,102524404};
+    return std::find(std::begin(materials),std::end(materials),offset)!=std::end(materials);
 }
 std::vector<std::optional<Override>> Overrides(const std::filesystem::path& directory) {
     using namespace darkwatch;
@@ -81,7 +91,7 @@ std::vector<std::optional<Override>> Overrides(const std::filesystem::path& dire
             entry.image=image(*item);
             if(item->contains("alpha")){
                 const auto alpha=(*item)["alpha"].value<std::string>();
-                if(alpha!="original"||!OriginalPanelAlpha(a.offset))throw std::runtime_error("Original alpha is restricted to the six authored menu panels");
+                if(alpha!="original"||!OriginalMaterialAlpha(a.offset))throw std::runtime_error("Original alpha is restricted to authored menu panels and chapter previews");
                 entry.original_alpha=true;
             }
         }
@@ -127,7 +137,7 @@ int main(int argc, char** argv) {
                 if(hd::ReadPng(imaging.Get(),art,*overrides[i]->image,a.width*4,a.height*4,large,reason)){
                     if(overrides[i]->original_alpha){
                         decode();const auto original=hd_ui::Upscale4x(a.width,a.height,pixels);
-                        if(original.size()!=large.size())throw std::runtime_error("Original panel alpha extent");
+                        if(original.size()!=large.size())throw std::runtime_error("Original material alpha extent");
                         for(size_t p=0;p<large.size();p+=4){
                             if(!original[p+3])large[p]=large[p+1]=large[p+2]=0;
                             else if(!large[p+3])std::copy_n(original.data()+p,3,large.data()+p);
@@ -145,6 +155,15 @@ int main(int argc, char** argv) {
                     if(!hd::ReadPng(imaging.Get(),art,region.image,d[2]*4,d[3]*4,cell,reason)){
                         std::cerr<<"Original cell retained for "<<a.name<<" ["<<d[0]<<','<<d[1]<<"]: "<<reason<<'\n';continue;}
                     if(large.empty()){decode();large=hd_ui::Upscale4x(a.width,a.height,pixels);if(large.size()!=hd::PixelBytes(a))throw std::runtime_error("Partial atlas baseline failed");}
+                    // Gameplay runes keep their exact authored opacity and transparent
+                    // gutters; only the matching existing HD emblem supplies colour.
+                    if(a.offset==103200948u)for(uint32_t y=0;y<d[3]*4;++y)for(uint32_t x=0;x<d[2]*4;++x){
+                        auto* p=cell.data()+(size_t(y)*d[2]*4+x)*4;
+                        const auto* original=large.data()+(size_t(d[1]*4+y)*a.width*4+d[0]*4+x)*4;
+                        if(!original[3])p[0]=p[1]=p[2]=0;
+                        else if(!p[3])std::copy_n(original,3,p);
+                        p[3]=original[3];
+                    }
                     for(uint32_t y=0;y<d[3]*4;++y)std::copy_n(cell.data()+size_t(y)*d[2]*16,d[2]*16,
                         large.data()+(size_t(d[1]*4+y)*a.width*4+d[0]*4)*4);
                     ++replaced;
@@ -153,6 +172,11 @@ int main(int argc, char** argv) {
             }else if(a.offset==103115060u){
                 decode();if(hd_ui::ReconstructHudMasks(a,pixels,large)){
                     ++partial;std::cout<<"Partially reconstructed "<<a.name<<": 32 pinned monochrome cells; other masks retain original artwork.\n";
+                }
+            }else if(a.offset==103180764u || a.offset==103198772u || a.offset==103266612u){
+                decode();if(hd_ui::ReconstructSmallHud(a,pixels,large)){
+                    ++partial;std::cout<<"Prepared "<<a.name<<": "
+                        <<(a.offset==103180764u?"10 reconstructed digit contours; coloured ammo and other cells filtered.":"Original soft glow filtered; animation and UVs unchanged.")<<'\n';
                 }
             }else if(hd_ui::FindFontCells(a.offset)){
                 decode();if(hd_ui::ReconstructFont(a,pixels,large))++fonts;
@@ -192,4 +216,5 @@ int main(int argc, char** argv) {
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n'; return 1;
     }
+    return 0;
 }

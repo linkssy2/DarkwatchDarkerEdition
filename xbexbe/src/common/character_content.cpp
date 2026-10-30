@@ -9,10 +9,25 @@
 namespace {
 struct ArchivePin { const char* guest_path; uint64_t size; std::string_view sha256; };
 constexpr std::array<ArchivePin, 3> kCharacterArchives{{
-    {"D:\\packfile.pck", 133411077, "a9d820cd920db58a276fba4d1069ab9d14061e57b9d78a53d6ae64c1cb8fcd72"},
-    {"D:\\LvlSingl.pck", 1170739944, "97a1b7d06cc2ee42de3875685cc5d6c561b5a34275de072b0aa5e2463110c64e"},
-    {"D:\\audio.pck", 145688078, "c889f14963005bb796e29d84ad06c7ab52fa1d8b138a7107f8fa7355e73970f1"},
+    {"D:\\packfile.pck", 143099169, "ceacf60e64cafc0d676fa5b03a0a11289811ba29a1bd7adcfbcea6582827466f"},
+    {"D:\\LvlSingl.pck", 1792512951, "4897d56557d87584ed6804d9b4eab172ae959460e89f13715088bc0391d672b3"},
+    {"D:\\audio.pck", 152395109, "33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285"},
 }};
+
+#if defined(DARKWATCH_GRENADE_PAIR_FIXTURE)
+static_assert(DARKWATCH_GRENADE_PAIR_FIXTURE == 20261029);
+// Only the private pickup arrangement may replace the production archive pin.
+constexpr auto kAdmittedCharacterArchives = [] {
+    auto pins = kCharacterArchives;
+    pins[0].size = 142404897;
+    pins[0].sha256 = "8b8f1b9e3d0334a03ccbf8fb38d3d3a471374e3822aec37d597a0b1b7cd9a073";
+    pins[1].size = 1792254903;
+    pins[1].sha256 = "04878dcaf630a679a327460c72939d98f84140d2d42cf3a79492ccb1f9eea7a9";
+    return pins;
+}();
+#else
+constexpr auto& kAdmittedCharacterArchives = kCharacterArchives;
+#endif
 
 HANDLE OpenCharacterArchive(const ArchivePin& pin) {
     const auto host = kernel::ResolvePath(pin.guest_path, 0);
@@ -75,7 +90,7 @@ struct CharacterArchiveSet {
 
 bool DarkwatchCharacterContentReady() {
     // Call after mounting D: and before guest archive opens; retained locks force their read-only fallback.
-    static const CharacterArchiveSet content(kCharacterArchives);
+    static const CharacterArchiveSet content(kAdmittedCharacterArchives);
     return content.ready;
 }
 

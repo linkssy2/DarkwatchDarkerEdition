@@ -30,11 +30,14 @@ int main(){
  auto write=[&](const std::string& data){std::ofstream f(target,std::ios::binary|std::ios::trunc);f.write(data.data(),data.size());};
  toml::table en{{"language",toml::table{{"text","en"}}}},es{{"language",toml::table{{"text","es"}}}},invalid{{"language",toml::table{{"text",42}}}};
  Load(&en);CHECK(Initialize(root)&&!Spanish()&&std::string(Text("GRAPHICS"))=="GRAPHICS");
+ CHECK(std::string(Guest("AUDIO"))=="AUDIO"&&std::string(Text("AUDIO"))=="AUDIO");
  Load(&es);CHECK(!Initialize(root)&&!Spanish());toml::table saved{{"video",toml::table{{"width",1920}}}};Save(&saved);CHECK(saved["language"]["text"].value_or(std::string{})=="es"&&saved["video"]["width"].value_or(0)==1920);
  write(Pack());CHECK(Initialize(root)&&Spanish());
  CHECK(Translate("GEN_Test","Back")=="Atr\xC1s");CHECK(Translate("GEN_Test","Changed").empty());
  CHECK(Translate("Other","Back").empty()&&Translate("gen_test","Back")=="Atr\xC1s");
  CHECK(std::string(Text("GRAPHICS"))=="GR\xC3\x81" "FICOS");CHECK(std::string(Guest("Graphics"))=="GR\xC1" "FICOS");
+ CHECK(std::string(Guest("CONTROLS"))=="CONTROLES");
+ CHECK(std::string(Guest("AUDIO"))=="AUDIO"&&std::string(Text("AUDIO"))=="AUDIO");
  CHECK(std::string(Text("Unbound"))=="Sin asignar");CHECK(std::string(Text("Never translated"))=="Never translated");
  CHECK(std::string(Text("QUIT TO DESKTOP"))=="SALIR DEL JUEGO"&&std::string(Guest("QUIT TO DESKTOP"))=="SALIR DEL JUEGO");
  CHECK(std::string(Text("Quit to desktop?"))=="\xC2\xBF" "Salir al escritorio?");

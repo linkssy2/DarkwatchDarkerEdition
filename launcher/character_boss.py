@@ -94,7 +94,7 @@ def body_parameters(source, target):
     return animation.parameters(old, normalized)
 
 
-def scaled_model(original, regular):
+def scaled_model(original, regular, geometry_count=3):
     """Scale positions, binds and bounds together; retain materials and UVs."""
     boss, frames, frame_at = rig(original, BONES)
     normal, normal_frames, _ = rig(regular, BODY_BONES)
@@ -117,7 +117,7 @@ def scaled_model(original, regular):
     # The non-bone scene root has an authoring offset, not a body proportion.
     struct.pack_into('<12f', output, frame_at, *normal_frames[0][:12])
     geometries = [(a,z) for t,a,z,p in _records(original) if t == 15]
-    if len(geometries) != 3:
+    if len(geometries) != geometry_count:
         raise ValueError('Expected boss eyes, wings and body geometries')
     for a, z in geometries:
         rows = list(_records(original, a, z, 15))

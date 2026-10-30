@@ -1,5 +1,7 @@
 """Bounded native PCK reader and additive writer. No game data is embedded."""
 import hashlib
+import mmap
+from pathlib import Path
 import struct
 
 U64 = (1 << 64) - 1
@@ -101,6 +103,8 @@ def build_rows(entries, capacity):
     mask = capacity - 1
     rows = [[0, 0, 0] for _ in range(capacity)]
     names = [None] * capacity
+    incoming = [None] * capacity
+    free = 2
     for item in entries:
         name = item['name']
         home = path_hash(name) & (mask >> 1)
@@ -109,13 +113,20 @@ def build_rows(entries, capacity):
         if not rows[home][0]:
             rows[home], names[home] = candidate, name
             continue
-        predecessor = next((i for i, row in enumerate(rows) if row[0] & mask == home), None) if home >= 2 else None
-        free = next((i for i in range(2, capacity) if not rows[i][0]), None)
-        if free is None:
+        predecessor = incoming[home] if home >= 2 else None
+        # Occupied slots never become empty, including when an overflow moves home.
+        while free < capacity and rows[free][0]:
+            free += 1
+        if free == capacity:
             raise ValueError('No free collision row')
         if predecessor is not None:
             rows[free], names[free] = rows[home], names[home]
             rows[predecessor][0] = (rows[predecessor][0] & ~mask) | free
+            incoming[free] = predecessor
+            successor = rows[free][0] & mask
+            if successor != 1:
+                incoming[successor] = free
+            incoming[home] = None
             rows[home], names[home] = candidate, name
             continue
         slot = home
@@ -127,6 +138,7 @@ def build_rows(entries, capacity):
                 break
             slot = nxt
         rows[slot][0] = (rows[slot][0] & ~mask) | free
+        incoming[free] = slot
         rows[free], names[free] = candidate, name
     for e in entries:
         slot = lookup(rows, mask, e['name'])
@@ -135,50 +147,108 @@ def build_rows(entries, capacity):
     return rows, names
 
 
-def compose(source, replacements):
-    """Append checked resources and rebuild the native lookup; retain old data."""
+def _compose_to(source, replacements, write, cancel):
     original = read(source)
-    old_entries = {e['name']: e for e in original['entries']}
     original_count = len(replacements)
     replacements = {canonical(name): bytes(data) for name, data in replacements.items()}
     if len(replacements) != original_count:
         raise ValueError('Duplicate canonical resource name')
     if not replacements or any(not data for data in replacements.values()):
         raise ValueError('Empty candidate resource')
+
+    def emit(data, end=None):
+        end = len(data) if end is None else end
+        with memoryview(data) as view:
+            for offset in range(0, end, 4 * 1024 * 1024):
+                cancel()
+                with view[offset:min(offset + 4 * 1024 * 1024, end)] as chunk:
+                    write(chunk)
+
     # Existing payloads retain exact positions, including originals superseded by new rows.
-    payload = bytearray(original['raw'][:original['start']])
+    emit(source, original['start'])
+    position = original['start']
     entries = [dict(e) for e in original['entries'] if e['name'] not in replacements]
     for name, data in sorted(replacements.items()):
-        payload.extend(b'\0' * (-len(payload) % 2048))
-        entries.append(dict(name=name, offset=len(payload), size=len(data), pointer=0))
-        payload.extend(data)
-    payload.extend(b'\0' * (-len(payload) % 2048))
-    start = len(payload)
+        padding = -position % 2048
+        emit(b'\0' * padding)
+        position += padding
+        entries.append(dict(name=name, offset=position, size=len(data), pointer=0))
+        emit(data)
+        position += len(data)
+    padding = -position % 2048
+    emit(b'\0' * padding)
+    start = position + padding
     capacity = len(original['rows'])
     while capacity < len(entries) + 2:
         capacity *= 2
+    cancel()
     rows, names = build_rows(entries, capacity)
-    payload.extend(struct.pack('<4I', capacity, len(entries), capacity - 1, 0))
+    index = bytearray(struct.pack('<4I', capacity, len(entries), capacity - 1, 0))
     for row in rows:
-        payload.extend(struct.pack('<QII', *row))
+        index.extend(struct.pack('<QII', *row))
     by_name = {e['name']: e for e in entries}
     for name in names:
         if name is None:
             continue
         encoded = name.encode('ascii')
-        payload.extend(struct.pack('<II', by_name[name]['pointer'], len(encoded)))
-        payload.extend(encoded)
+        index.extend(struct.pack('<II', by_name[name]['pointer'], len(encoded)))
+        index.extend(encoded)
     footer = bytearray(original['footer'])
     struct.pack_into('<I', footer, 32, start)
-    payload.extend(footer)
-    result = read(payload)
+    index.extend(footer)
+    emit(index)
+    return original, replacements
+
+
+def _verify_composition(original, replacements, output, cancel):
+    result = read(output)
+    old_entries = {e['name']: e for e in original['entries']}
     by_output = {e['name']: e for e in result['entries']}
     for name, entry in by_output.items():
         expected = replacements.get(name)
+        expected_offset = 0
         if expected is None:
             old = old_entries[name]
-            expected = original['raw'][old['offset']:old['offset'] + old['size']]
-        actual = result['raw'][entry['offset']:entry['offset'] + entry['size']]
-        if actual != expected:
+            expected = original['raw']
+            expected_offset = old['offset']
+            expected_size = old['size']
+        else:
+            expected_size = len(expected)
+        if expected_size != entry['size']:
             raise AssertionError('Payload preservation failure: ' + name)
+        # Bound comparison copies while retaining the fast byte-buffer comparator.
+        for offset in range(0, entry['size'], 4 * 1024 * 1024):
+            cancel()
+            end = min(offset + 4 * 1024 * 1024, entry['size'])
+            actual = output[entry['offset'] + offset:entry['offset'] + end]
+            if actual != expected[expected_offset + offset:expected_offset + end]:
+                raise AssertionError('Payload preservation failure: ' + name)
+
+
+def compose(source, replacements):
+    """Append checked resources and rebuild the native lookup; retain old data."""
+    payload = bytearray()
+    original, replacements = _compose_to(source, replacements, payload.extend, lambda: None)
+    _verify_composition(original, replacements, payload, lambda: None)
     return bytes(payload)
+
+
+def compose_file(source, replacements, destination, cancel=lambda: None):
+    """Write an identical checked archive without holding its payload in memory."""
+    source, destination = Path(source), Path(destination)
+    if source.resolve() == destination.resolve():
+        raise ValueError('Archive output must differ from its source')
+    created = False
+    try:
+        cancel()
+        with source.open('rb') as stream, mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as raw:
+            with destination.open('xb') as output:
+                created = True
+                original, replacements = _compose_to(raw, replacements, output.write, cancel)
+            with destination.open('rb') as stream, mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as output:
+                _verify_composition(original, replacements, output, cancel)
+            cancel()
+    except BaseException:
+        if created:
+            destination.unlink()
+        raise
