@@ -21,13 +21,14 @@ import character_boss_effects
 import character_repaint
 import character_roster
 import revolver_content
+import player_corpses
 
-CONTENT_REVISION = 'revolver-headshot-characters-v13'
-CATALOG_SHA256 = '9b260c514454b533279be79dd5a29a47a659c05b72a7c9f687f3c4a53ea1d483'
+CONTENT_REVISION = 'player-corpses-characters-v14'
+CATALOG_SHA256 = '286ed96e9ff5eacbbf49ae1804861983838f900f6e21b5d8af5d62471ba62e18'
 CHARACTERS = 'xml/actortemplates_characters.bxml'
 INSTALLED = {
-    'packfile.pck': (143099169, 'ceacf60e64cafc0d676fa5b03a0a11289811ba29a1bd7adcfbcea6582827466f'),
-    'LvlSingl.pck': (1792512951, '4897d56557d87584ed6804d9b4eab172ae959460e89f13715088bc0391d672b3'),
+    'packfile.pck': (143437089, 'e28e1da7f73eb182a320e057b8d050b2a67b0bb10961b5775f735b435674f51c'),
+    'LvlSingl.pck': (1794665399, '5968a9080af60f2bfb620406dd1961b3f1676d3c0d1d89584f420eda67355396'),
     'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285'),
 }
 REPAINT = {
@@ -274,6 +275,7 @@ def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None)
         roster, _ = character_roster.prepare(source, groups, extension, spectral,
                                              tala_variants=True, tala_pixels=tala_pixels)
         revolver = revolver_content.prepare(source, groups, extension, spectral, roster)
+        corpses = player_corpses.prepare(source, groups, extension, spectral, roster, revolver)
     with tempfile.TemporaryDirectory(prefix='.characters-', dir=assets) as temporary:
         staged = Path(temporary)
         for name in INSTALLED:
@@ -299,17 +301,19 @@ def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None)
                     if previous.parent == staged:
                         previous.unlink()
                 checked_file(current, metadata[proof][name], cancel)
-            if revolver.get(name):
+            if revolver.get(name) or corpses.get(name):
                 if name == 'LvlSingl.pck':
                     # Keep every intermediate proof, but write each final chapter
                     # table once. Appending its superseded copies crosses 2 GiB.
                     final = {}
-                    for stage in (groups, extension, spectral, roster, revolver):
+                    for stage in (groups, extension, spectral, roster, revolver, corpses):
                         final.update(stage.get(name, {}))
                     source, changes = assets / name, final
                     checked_file(source, metadata['originals'][name], cancel)
                 else:
-                    source, changes = current, revolver[name]
+                    changes = dict(revolver.get(name, {}))
+                    changes.update(corpses.get(name, {}))
+                    source = current
                 target = staged / (name + '.final')
                 pck.compose_file(source, changes, target, cancel)
                 if current.parent == staged:

@@ -101,35 +101,25 @@ bool Resolve(const uint8_t* base, uint32_t weapon, Pair& pair) {
         return false;
     pair = {weapon, peer, owner}; return true;
 }
-struct Refill { uint32_t weapon = 0, accepted = 0; };
-thread_local Refill* active_refill = nullptr;
 } // namespace
 
-X86_FUNC(sub_0001CED0) {
-    const uint32_t weapon = ctx.ecx;
-    __imp__sub_0001CED0(ctx, base);
-    // Only a committed pickup counts; reloads and other direct grants stay independent.
-    if (active_refill && active_refill->weapon == weapon && int32_t(ctx.eax) > 0)
-        active_refill->accepted = ctx.eax;
-}
 X86_FUNC(sub_0001D7B2) {
     Pair before; uint32_t message = 0, mode = 0, event = 0, requested = 0;
     const bool eligible = Resolve(base, ctx.ecx, before) &&
         Read(base, uint64_t(ctx.esp) + 4, message) &&
         Read(base, uint64_t(message) + 4, event) && (event == 0xA2 || event == 0xA4) &&
-        Read(base, uint64_t(message) + 0xC, mode) && mode == 0 &&
+        Read(base, uint64_t(message) + 0xC, mode) && mode <= 1 &&
         Read(base, uint64_t(message) + 0x1C, requested) && requested && requested <= 32767;
-    Refill refill{eligible ? uint32_t(ctx.ecx) : 0, 0};
-    auto* previous = active_refill;
-    active_refill = &refill;
     __imp__sub_0001D7B2(ctx, base);
-    active_refill = previous;
 
     Pair after;
-    if (!eligible || !(ctx.eax & 0xFF) || !refill.accepted || refill.accepted > requested ||
+    const bool accepted = (ctx.eax & 0xFF) != 0;
+    if (!eligible || (mode == 1 && accepted) ||
         !Resolve(base, before.weapon, after) || after.peer != before.peer || after.owner != before.owner ||
         ctx.esp < 0x200 || !Span(base, uint64_t(ctx.esp) - 0x200, 0x200)) return;
-    // Use the original capacity and empty-magazine notification for the separate pistol reserve.
+    // Check both independent reserves. A full Redeemer must not reject ammunition
+    // that the retained pistol can use. Queries stay read-only and the caller
+    // receives one acceptance result, so it consumes the world pickup only once.
     X86Context call = ctx;
     call.ecx = after.peer;
     call.esp -= 8;
@@ -137,8 +127,17 @@ X86_FUNC(sub_0001D7B2) {
     Read(base, call.esp, saved_return);
     Read(base, uint64_t(call.esp) + 4, saved_argument);
     Put(base, call.esp, 0);
-    Put(base, call.esp + 4, refill.accepted);
-    __imp__sub_0001CED0(call, base);
+    if (accepted) {
+        // The Redeemer already issued the pickup notification. Give the pistol
+        // the full requested amount through its native clamp/reload notification.
+        Put(base, call.esp + 4, requested);
+        __imp__sub_0001CED0(call, base);
+    } else {
+        // Reuse the native query or commit, including its single HUD notification.
+        Put(base, call.esp + 4, message);
+        __imp__sub_0001D7B2(call, base);
+        ctx.eax = (uint32_t(ctx.eax) & 0xFFFFFF00u) | (uint32_t(call.eax) & 0xFFu);
+    }
     Put(base, ctx.esp - 8, saved_return);
     Put(base, ctx.esp - 4, saved_argument);
 }

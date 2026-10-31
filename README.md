@@ -1,9 +1,9 @@
 # Darkwatch: Darker Edition
 
-**Windows 0.7 · Experimental Linux/Proton 0.7**
+**Windows 0.7.1 · Experimental Linux/Proton 0.7.1**
 
 [Release downloads](https://github.com/linkssy2/DarkwatchDarkerEdition/releases) ·
-[0.7 changes and installation](docs/RELEASE-0.7.md)
+[0.7.1 changes and installation](docs/RELEASE-0.7.1.md)
 
 An unofficial PC port of original Xbox Darkwatch, powered by
 [XboxXBERecomp](https://github.com/TGP482/Xbox-XBERecomp), with Direct3D 12
@@ -36,7 +36,11 @@ Keep GameData and any selected external installation or direct-mode ISO.
 An upgrade from published 0.6.1 may need one final Xbox import because that
 version did not retain the recovery records used for future content updates.
 The launcher preserves saves, settings and compatible add-ons. See the
-[release instructions](docs/RELEASE-0.7.md) for the exact options and limits.
+[release instructions](docs/RELEASE-0.7.1.md) for the exact options and limits.
+
+Version 0.7.1 prepares the new character-body resources once. Modern import-once
+installations reuse their recovery data; directly mounted installations retain
+their ISO. Saves, settings, installed Spanish and compatible HD textures remain.
 
 Windows requires Windows 10 version 1903 or newer / Windows 11 x64, .NET
 Framework 4.8, an x86-64-v2 CPU and a Direct3D 12 GPU supporting feature level
@@ -51,7 +55,8 @@ one option. Steam/Proton are not bundled.
 
 ## Optional textures and Spanish
 
-The new separate 0.7 HD pack contains five parts. Keep `.zip.001` through `.005`
+The existing separate 0.7 HD pack remains compatible; no new pack is required
+for 0.7.1. For a fresh installation, keep `.zip.001` through `.005`
 together and select the first in **Manage → Install HD Textures**. Do not extract
 individual parts; no parts.json is required. Enable **Graphics → HD Textures →
 Apply**. The compact format preserves exact texture pixels, transparency and
@@ -76,6 +81,11 @@ English remains available. Community language ZIPs are not used.
 - Starter revolver retention and optional Carry All Weapons with next/previous
   bindings and mouse-wheel cycling. Those binding rows are unavailable while
   the option is off, without erasing saved assignments.
+- Optional Forever Ragdolls with player contact and separate co-op player bodies;
+  retained bodies do not keep a deleted player object's controls or inventory.
+- Carry All inventory and ammunition restoration during individual co-op respawn.
+- Steadier Blood Vision, magnification-aware mouse zoom sensitivity, and per-player
+  reticle size from 0% (hidden) to 200%, with 100% retaining the normal size.
 
 Co-op remains beta and Linux/Proton remains experimental. Targeted tests do not
 establish every campaign transition, character/weapon pairing, physical 5.1
@@ -87,7 +97,7 @@ failure reports remain enabled; routine development captures are disabled in pla
 ## Source
 
 See [building](docs/BUILDING.md), [code map](docs/CODE_MAP.md),
-[credits](CREDITS.md) and [release notes](docs/RELEASE-0.7.md). This snapshot
+[credits](CREDITS.md) and [release notes](docs/RELEASE-0.7.1.md). This snapshot
 contains maintained host integration, the exact SDK patch, own-disc import
 tools and synthetic tests. Generated gameplay C++, original assets, saves,
 caches and private original-instruction fixtures are excluded. The player

@@ -37,10 +37,11 @@ void DarkwatchScaleReticle(X86Context& ctx, uint8_t* base) {
     if (height == 0x3EFEB852 && (top == 0 || top == 0x3F00A3D7)) player = top ? 1 : 0;
     else if (top || height != 0x3F800000) return;
     const float scale = darkwatch::view::ReticleScale(player);
-    if (scale == 1 || !std::isfinite(scale) || scale < 0.5f || scale > 2) return;
+    if (scale == 1 || !std::isfinite(scale) || scale < 0 || scale > 2) return;
 
     // D6F51: the original reticle path has calculated pixel half-extents.
     // Its vertex consumer uses center +/- half-extents; center, UV and animation stay original.
+    // At zero the native triangle strip is degenerate, so it draws no center pixel.
     float extents[2];
     std::memcpy(extents, base + ctx.ebp + 0x18, sizeof(extents));
     for (float& extent : extents) {

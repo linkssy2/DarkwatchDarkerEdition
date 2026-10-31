@@ -245,14 +245,22 @@ def append_resources(original, dependencies):
     return result,added
 
 
-def append_resource_bytes(raw, dependencies):
+def append_resource_bytes(raw, dependencies=(), *, select=None):
     """Append canonical resource rows without rebuilding their existing tree.
 
     Other valid BXML layouts use the original converter, including noncanonical
     string tables: retaining those bytes would differ from encode()'s output.
+    Optional select receives existing normalized (name, type) keys and returns
+    dependencies, avoiding another full tree decode to choose resident resources.
     """
     def fallback():
-        tree, added = append_resources(decode(raw), dependencies)
+        original = decode(raw)
+        chosen = dependencies
+        if select is not None:
+            keys = frozenset((norm(fields(row)['name']), fields(row)['type'])
+                             for row in named(original, 'data')['children'])
+            chosen = select(keys)
+        tree, added = append_resources(original, chosen)
         return encode(tree), added
 
     if raw[:4] != b'\x01\0\0\0' or len(raw) < 6:
@@ -313,7 +321,7 @@ def append_resource_bytes(raw, dependencies):
             extra_strings.extend(struct.pack('<H', len(encoded)) + encoded)
         return indexes[value]
 
-    for name, kind in dependencies:
+    for name, kind in select(frozenset(seen)) if select is not None else dependencies:
         key = norm(name), kind
         if key in seen:
             continue

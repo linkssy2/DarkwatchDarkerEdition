@@ -9,3 +9,4 @@ void DarkwatchCharacterVoiceLocal(X86Context&, uint8_t*);
 void DarkwatchCharacterVoiceDispatch(X86Context&, uint8_t*);
 void DarkwatchCharacterVoiceCreated(X86Context&, uint8_t*);
 void DarkwatchCharacterVoiceMelee(X86Context&, uint8_t*);
+void DarkwatchCharacterVoiceThrow(X86Context&, uint8_t*, uint32_t weapon_component, uint32_t owner);

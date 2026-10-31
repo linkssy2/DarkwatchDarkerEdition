@@ -225,7 +225,7 @@ class LauncherPackageTests(unittest.TestCase):
     def test_character_archive_pins_and_authored_art_match_runtime(self):
         import character_content
         plan = package.sources()
-        for name in ('revolver_content.py', 'revolver_scripts.py'):
+        for name in ('revolver_content.py', 'revolver_scripts.py', 'player_corpses.py'):
             self.assertEqual(plan['payload/' + name], ROOT / 'launcher' / name)
         with tempfile.TemporaryDirectory() as folder, patch.object(package,'REPO',Path(folder)):
             root = Path(folder)

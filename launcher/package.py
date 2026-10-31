@@ -12,7 +12,7 @@ REFERENCE = REPO.parent / 'Urban Chaos Riot Response Recompiled'
 PYTHON = REFERENCE / '.tools/python'
 VS = Path('C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools')
 CRT = VS / 'VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT'
-VERSION = '0.7'
+VERSION = '0.7.1'
 RELEASE_PROFILE = {'name': 'release-candidate', 'diagnostics': False, 'strict_assets': True}
 LAUNCHER = 'Darkwatch Darker Edition.exe'
 DIRECT_PLAY = 'Play Darkwatch.exe'
@@ -32,29 +32,12 @@ Setup prepares local resources and shaders, without extracting the whole disc.
 Existing installations are reused. Updates preserve your ISO, saves and add-ons.
 Prefer to remove the ISO after setup? Use Select Game > Import once instead.
 ''',
-    'README.txt': '''Darkwatch: Darker Edition - 0.7
+    'README.txt': '''Darkwatch: Darker Edition - 0.7.1
 
-Version 0.7 - changes since 0.6.1
-- Choose direct ISO playback, import once, or reuse an existing installation.
-- Simpler launcher with GitHub update detection and explicit in-place updates.
-- Co-op uses single-player-quality original textures when the HD pack is off.
-- Corrected horizontal split-screen camera, HUD and text proportions.
-- Restored TNT/Splitter switching while keeping their separate ammunition.
-- Fixed mouse zoom sensitivity and expanded power-effect screen coverage.
-- Fixed alternate-character left-pistol attachment and a campaign loading crash.
-- Added playable Vampire Tala and wingless Boss Tala to both character selectors.
-- Keep the starter revolver, with 65 base damage and bonus Redeemer ammo refills.
-- Optional Carry All Weapons cheat, plus Next/Previous Weapon bindings.
-- Corrected cinematic widescreen framing and chapter-preview transparency.
-- Smaller settings panels, with taller Graphics/Controls lists and HD small indicators.
 Matching Windows and experimental Linux/Proton packages. Co-op remains BETA.
-The new separate 0.7 HD pack is recommended for expanded coverage and a smaller
-lossless download. It keeps the same texture detail, alpha and distance mipmaps;
-installed textures still need the same disk space. Existing HD packs remain
-compatible. The expanded optional pack adds HD artwork
-for Cassidy's story ragdoll and additional campaign, character, prop, weapon and
-blood textures.
-Older packs retain the original textures for these additions.
+Keep using the existing separate 0.7 HD texture pack; no new pack or
+reinstallation is needed for this update. Older HD packs remain compatible
+but have less coverage. Full release notes are on the GitHub release page.
 
 Extract the entire ZIP into a new folder, then open Darkwatch Darker Edition.exe.
 Keep both EXEs and the payload folder together; do not run them inside the ZIP.
@@ -88,7 +71,7 @@ texture parts into one folder. Use Install HD Textures in the launcher and selec
 the .zip.001 file (or the complete texture ZIP). The Graphics toggle stays
 unavailable until the pack is installed; HD menus, fonts and HUD remain included.
 The existing 0.6 HD pack works without reinstallation. For the added artwork,
-install the new separate 0.7 pack with this launcher. The expanded pack adds
+install the existing separate 0.7 pack with this launcher. The expanded pack adds
 Cassidy's story ragdoll, corrected blood and additional campaign/model textures,
 including their distance versions. These additions require the expanded pack.
 Earlier 0.4 and 0.5 packs remain compatible but have less character coverage.
@@ -299,7 +282,7 @@ def sources():
                  'character_archive.py', 'character_repaint.py', 'character_boss.py',
                  'character_boss_effects.py', 'character_spectral_hands.py', 'character_hand_seams.py',
                  'character_secondary.py', 'character_preview.py', 'character_roster.py', 'character_tala.py',
-                 'revolver_content.py', 'revolver_scripts.py',
+                 'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py',
                  'character-catalog.json'):
         plan['payload/' + name] = HERE / name
     for character in ('cassidy', 'tala'):

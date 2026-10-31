@@ -38,10 +38,10 @@ int main(){using namespace darkwatch::view;
  for(const char* invalid:{"hd_ui=0\n","hd_ui='false'\n","hd_ui=[]\n"}){Write(invalid);app::Load();Values(100,100);}
  Write("field_of_view_scale=120\nreticle_size=50\nhd_ui=true\n");app::Load();Values(120,50);CHECK(app::Save());Apply({});app::Load();Values(120,50);
  Write("field_of_view_scale=-1\nreticle_size=99999999999\n");app::Load();Values(50,200);
- Write("field_of_view_scale=99999999999\nreticle_size=-99\n");app::Load();Values(200,50);
+ Write("field_of_view_scale=99999999999\nreticle_size=-99\n");app::Load();Values(200,0);
  Write("field_of_view_scale='wrong'\nreticle_size=false\nshow_fps=1\n");app::Load();Values(100,100);
  Write("field_of_view_scale=[\n");app::Load();Values(100,100);
- Apply({0,~0u});Values(50,200);Apply({~0u,0});Values(200,50);
+ Apply({0,~0u});Values(50,200);Apply({~0u,0});Values(200,0);
  Apply({110,90,true});CHECK(app::Save());original=Read();
  HANDLE held=CreateFileW(L"view.toml",GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);CHECK(held!=INVALID_HANDLE_VALUE);
  Apply({130,75,false,false});CHECK(!app::Save());CHECK(Read()==original);Values(130,75,false,false);CloseHandle(held);
@@ -96,7 +96,7 @@ int main(){using namespace darkwatch::view;
  Write((legacy+"[player2_view]\nfield_of_view_scale=-1\nreticle_size=99999999999\nweapon_field_of_view_scale=-1\n").c_str());
  app::Load();PlayerView(0,125,80,140);PlayerView(1,50,200,50);
  Write((legacy+"[player2_view]\nfield_of_view_scale=99999999999\nreticle_size=-1\nweapon_field_of_view_scale=99999999999\n").c_str());
- app::Load();PlayerView(0,125,80,140);PlayerView(1,200,50,150);
+ app::Load();PlayerView(0,125,80,140);PlayerView(1,200,0,150);
  Write("[player2_view]\nfield_of_view_scale=110\n");app::Load();PlayerView(0,100,100,100);PlayerView(1,110,100,100);
  Write("player2_view=[\n");app::Load();PlayerView(0,100,100,100);PlayerView(1,100,100,100);
 
@@ -140,6 +140,62 @@ int main(){using namespace darkwatch::view;
 
 
 class GraphicsViewTests(unittest.TestCase):
+    def test_reticle_zero_and_original_size_for_each_player(self):
+        self.run_fixture(COOP_FIXTURE[:COOP_FIXTURE.index("int main(){")] + r'''
+int main(){using namespace darkwatch::view;
+ // Old supported percentages retain their exact scale, without a migration.
+ for(unsigned old:{50u,80u,100u,155u,200u}){
+  Write(("reticle_size="+std::to_string(old)+"\n").c_str());app::Load();
+  CHECK(Snapshot().reticle_percent==old&&Snapshot(1).reticle_percent==old);
+  CHECK(ReticleScale()==float(old)/100&&ReticleScale(1)==float(old)/100);
+ }
+ Apply({},0);Apply({},1);CHECK(ReticleScale()==1&&ReticleScale(1)==1);
+ for(unsigned player:{0u,1u})for(unsigned size:{0u,1u,25u,49u,100u,200u}){
+  const auto other=Snapshot(1-player).reticle_percent;
+  auto setting=Snapshot(player);setting.reticle_percent=size;Apply(setting,player);
+  CHECK(Snapshot(player).reticle_percent==size&&ReticleScale(player)==float(size)/100);
+  CHECK(Snapshot(1-player).reticle_percent==other);
+  CHECK(app::Save());Apply({},player);app::Load();
+  CHECK(Snapshot(player).reticle_percent==size&&Snapshot(1-player).reticle_percent==other);
+ }
+ Write("reticle_size=0\n[player2_view]\nreticle_size=100\n");app::Load();
+ CHECK(ReticleScale()==0&&ReticleScale(1)==1);
+ Write("reticle_size=100\n[player2_view]\nreticle_size=0\n");app::Load();
+ CHECK(ReticleScale()==1&&ReticleScale(1)==0);
+ std::puts("reticle settings: 0 off, 100 original, unchanged legacy sizes, both players isolated and persisted");
+}
+''')
+
+    def test_forever_ragdolls_default_shared_and_persisted(self):
+        self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + r'''
+int main(){using namespace darkwatch::view;
+ app::Load();CHECK(!Snapshot().forever_ragdolls&&!Snapshot(1).forever_ragdolls);
+ for(const char* invalid:{"", "forever_ragdolls=1\n", "forever_ragdolls='true'\n", "forever_ragdolls=[]\n"}){
+  auto enabled=Snapshot();enabled.forever_ragdolls=true;Apply(enabled);
+  Write(invalid);app::Load();CHECK(!Snapshot().forever_ragdolls&&!Snapshot(1).forever_ragdolls);
+ }
+ Write("forever_ragdolls=true\n[player2_view]\nforever_ragdolls=false\nfield_of_view_scale=130\n");
+ app::Load();CHECK(Snapshot().forever_ragdolls&&Snapshot(1).forever_ragdolls);
+ CHECK(Snapshot().fov_percent==100&&Snapshot(1).fov_percent==130);
+ CHECK(app::Save());const auto saved=Read();auto table=toml::parse(saved);
+ CHECK(table["forever_ragdolls"].is_boolean()&&table["forever_ragdolls"].value_or(false));
+ CHECK(!table["player2_view"]["forever_ragdolls"]);
+ Apply({});app::Load();CHECK(Snapshot().forever_ragdolls&&Snapshot(1).forever_ragdolls);
+ auto p2=Snapshot(1);p2.forever_ragdolls=false;Apply(p2,1);
+ CHECK(!Snapshot().forever_ragdolls&&!Snapshot(1).forever_ragdolls);
+ CHECK(Snapshot().fov_percent==100&&Snapshot(1).fov_percent==130);
+ HANDLE held=CreateFileW(L"view.toml",GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);
+ CHECK(held!=INVALID_HANDLE_VALUE);CHECK(!app::Save()&&Read()==saved);CloseHandle(held);
+ CHECK(app::Save());Apply({});app::Load();CHECK(!Snapshot().forever_ragdolls&&!Snapshot(1).forever_ragdolls);
+ for(bool fps:{false,true})for(bool hd:{false,true})for(bool borders:{false,true})for(bool textures:{false,true})for(bool bodies:{false,true}){
+  Apply({120,80,fps,hd,110,borders,textures,bodies},1);const auto s=Snapshot();
+  CHECK(s.show_fps==fps&&s.hd_ui==hd&&s.cutscene_borders==borders&&s.hd_textures==textures&&s.forever_ragdolls==bodies);
+  CHECK(Snapshot(1).forever_ragdolls==bodies&&Snapshot(1).fov_percent==120);
+ }
+ std::puts("forever ragdolls: default off, strict booleans, shared flag, persistence, atomic failure and no flag collisions passed");
+}
+''')
+
     def test_actual_title_settings_persistence_and_snapshots(self):
         self.run_fixture(FIXTURE)
 

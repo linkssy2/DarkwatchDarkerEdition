@@ -10,6 +10,7 @@ struct Settings {
     uint32_t viewmodel_fov_percent = 100;
     bool cutscene_borders = true;
     bool hd_textures = true;
+    bool forever_ragdolls = false;
 };
 // Players are zero-based; out-of-range indices use Player One.
 Settings Snapshot(uint32_t player = 0);

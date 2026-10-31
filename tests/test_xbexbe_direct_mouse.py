@@ -88,6 +88,20 @@ static void ZoomInventory(uint32_t actor,uint32_t weapon_type=0x418390,unsigned 
 static void F(uint32_t p,float v){std::memcpy(memory+p,&v,4);}
 static float RF(uint32_t p){float v;std::memcpy(&v,memory+p,4);return v;}
 static bool Near(double a,double b){return std::abs(a-b)<0.0002*std::max(1.0,std::abs(b));}
+static constexpr uint32_t zoom_camera_component=0x130000,zoom_personal=0x131000;
+static constexpr uint32_t zoom_stack=0x132000,zoom_camera_list=0x133000,zoom_output=0x134000;
+static void ZoomCamera(uint32_t actor,float normal=70,float current=35,uint32_t offset=0){
+ const auto component=zoom_camera_component+offset,personal=zoom_personal+offset;
+ const auto stack=zoom_stack+offset,list=zoom_camera_list+offset,output=zoom_output+offset;
+ uint16_t count=0;uint32_t parts=0;
+ std::memcpy(&count,memory+actor+0x60,2);std::memcpy(&parts,memory+actor+0x64,4);
+ if(!parts){parts=zoom_parts+offset;W(actor+0x64,parts);}
+ W(parts+count*8+4,component);W(actor+0x60,count+1);
+ W(component,0x416444);W(component+0xC,actor);W(component+0x70,personal);W(component+0x80,stack);
+ W(personal,0x423990);W(personal+0x18C,actor);F(personal+0x16C,normal);F(personal+0x170,current);
+ W(stack+4,1);W(stack+8,list);W(list,personal);W(stack+0xC,output);
+ W(output,0x43F97C);F(output+0x44,current);
+}
 static void Frame(int32_t dx=0,int32_t dy=0,uint64_t elapsed=20000){input::Mouse(dx,dy);now+=elapsed;input::AdvanceFrame(now);}
 static void Prepare(unsigned axis,unsigned top=0,double angle=10,double rate=3){
  std::memset(&c,0xA5,sizeof(c));c.ebp=axis?0x5100:0x5000;c.ebx=c.esi=state;c.top=top;
@@ -210,6 +224,47 @@ int main(){
   }
   Frame(20,40);Yaw(-1);Pitch(2);
  }
+ // Equal zoom100 preserves small target motion near the crosshair, not cm/360.
+ // The actual rendered angle includes intermediate zoom frames; aspect and the
+ // user's view-window FOV scale cancel from the zoom/unzoom projection ratio.
+ for(uint32_t r:{0x421FE0u,0x420E50u,0x4223A8u})for(float normal:{50.f,70.f,100.f})
+ for(float fraction:{1.f,.75f,.5f,.25f})for(unsigned percent:{25u,100u,200u}){
+  Reset(r);W(owner+0xC,0x9000);ZoomInventory(0x9000);ZoomCamera(0x9000,normal,normal*fraction);
+  memory[zoom_component+0x23C]=1;controls.zoom_sensitivity_percent=percent;
+  double ratio=std::tan(normal*fraction*.008726646259971648)/std::tan(normal*.008726646259971648);
+  for(float scale:{.5f,1.f,2.f})for(float aspect:{4.f/3,16.f/9,32.f/9}){
+   F(zoom_output+0x40,aspect);F(zoom_output+0x48,scale);
+   Frame(20,40);Yaw(-ratio*percent/100.0);Pitch(2*ratio*percent/100.0);
+   double base_view=std::tan(normal*.008726646259971648)*scale/aspect;
+   double zoom_view=std::tan(normal*fraction*.008726646259971648)*scale/aspect;
+   CHECK(Near(ratio/zoom_view,1/base_view));
+  }
+ }
+ // Geometry compensation follows the camera back out after the weapon's zoom
+ // flag clears, and a camera/setting change cannot split one yaw/pitch pair.
+ Reset();W(owner+0xC,0x9000);ZoomInventory(0x9000);ZoomCamera(0x9000);
+ const double ratio=std::tan(35*.008726646259971648)/std::tan(70*.008726646259971648);
+ Frame(20,40);Yaw(-ratio);F(zoom_output+0x44,70);controls.zoom_sensitivity_percent=25;Pitch(2*ratio);
+ Frame(20,40);Yaw(-1);Pitch(2);
+ Reset();ZoomCamera(0x9000,70,35);ZoomCamera(0x9500,70,17.5f,0x20000);
+ const double stronger=std::tan(17.5*.008726646259971648)/std::tan(70*.008726646259971648);
+ CHECK(Near(ZoomSensitivity(memory,0x9000,100),100*ratio));
+ CHECK(Near(ZoomSensitivity(memory,0x9500,100),100*stronger));
+ F(zoom_output+0x44,70);CHECK(ZoomSensitivity(memory,0x9000,100)==100);
+ CHECK(Near(ZoomSensitivity(memory,0x9500,100),100*stronger));
+ for(unsigned bad=0;bad<16;bad++){
+  Reset();W(owner+0xC,0x9000);ZoomInventory(0x9000);ZoomCamera(0x9000);
+  if(bad==0)W(zoom_camera_component+0xC,0x9100);if(bad==1)W(zoom_personal,0xDEADBEEF);
+  if(bad==2)W(zoom_personal+0x18C,0x9100);if(bad==3)W(zoom_stack+4,0);
+  if(bad==4)W(zoom_stack+4,65);if(bad==5)W(zoom_stack+8,0xFFFFFFFE);
+  if(bad==6)W(zoom_camera_list,zoom_personal+4);if(bad==7)W(zoom_output,0xDEADBEEF);
+  if(bad==8)F(zoom_personal+0x16C,0);if(bad==9)F(zoom_personal+0x16C,180);
+  if(bad==10)F(zoom_output+0x44,std::numeric_limits<float>::quiet_NaN());
+  if(bad==11)F(zoom_output+0x44,0);if(bad==12)F(zoom_output+0x44,100);
+  if(bad==13)blocked.insert(zoom_output);if(bad==14)W(zoom_camera_component+0x80,0);
+  if(bad==15){W(0x9060,3);W(zoom_parts+20,zoom_camera_component);}
+  Frame(20,40);Yaw(-1);Pitch(2);
+ }
  // Settings use synchronized snapshots and callbacks, not mutable GameInfo pointers.
  Reset();app::kGame.init();Frame();Frame(8,-4);CHECK(!input::Poll(0).rx&&!input::Poll(0).ry);
  Yaw(-.4);Pitch(-.2);
@@ -309,7 +364,8 @@ class DirectMouseTests(unittest.TestCase):
             source.write_text(FIXTURE)
             built = subprocess.run([compiler, "-std=c++20", "-march=x86-64-v2", "-O1", "-fuse-ld=lld",
                                     "-I", str(folder), "-I", str(ROOT / "xbexbe/src/common"), "-I", str(ROOT / "xbexbe/src"), "-I", str(SDK),
-                                    str(source), "-o", str(exe), "-luser32"], capture_output=True, text=True, timeout=60)
+                                    str(source), str(SDK / "gpu/shaders.cpp"), str(ROOT / "xbexbe/src/common/render_shaders.cpp"),
+                                    "-o", str(exe), "-luser32"], capture_output=True, text=True, timeout=60)
             self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
             for perf in (False, True):
                 env = os.environ.copy()

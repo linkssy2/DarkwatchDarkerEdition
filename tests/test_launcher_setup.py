@@ -146,7 +146,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
                      'character_repaint.py', 'character_content.py', 'character_boss.py',
                      'character_boss_effects.py', 'character_spectral_hands.py', 'character_hand_seams.py',
                      'character_secondary.py', 'character_preview.py', 'character_roster.py', 'character_tala.py',
-                     'revolver_content.py', 'revolver_scripts.py',
+                     'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py',
                      'character-catalog.json'):
             shutil.copyfile(ROOT / 'launcher' / name, self.payload / name)
         (self.payload / 'character-art').mkdir()

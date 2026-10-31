@@ -1,4 +1,5 @@
 #include "common/shader_preparation.h"
+#include "common/render_shaders.h"
 #include "common/shader_preparation_catalogue.h"
 #include "common/shader_preparation_observed.h"
 #include "shader_preparation_build.h"
@@ -338,6 +339,7 @@ bool PrepareCatalogue(const X86Context& entry, uint8_t* base) {
 
 int darkwatch::PrepareShaders() {
     if (!app::PreparingShaders()) return -1;
+    gpu::g_shader_hooks = &darkwatch::RenderShaders();
     if (!RevisionFile()) return Error("Shader preparation needs the supported original game files. Please repair the installation.");
     g_compiler = gpu::ShaderCompilerCacheIdentity();
     if (!HexDigest(g_compiler)) return Error("The Windows shader compiler could not be identified.");

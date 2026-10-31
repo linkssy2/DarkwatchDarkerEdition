@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "content_revision": "revolver-headshot-characters-v13",
+  "content_revision": "player-corpses-characters-v14",
   "originals": {
     "audio.pck": {
       "size": 137741272,
@@ -3745,6 +3745,12 @@
       "offset": 161346170,
       "size": 3212,
       "sha256": "6069528ef5983e1e6509f17136fb304b6f694e71ea57949223429d4a6f354e52"
+    },
+    "xml/actortemplates_props.bxml": {
+      "archive": "packfile.pck",
+      "offset": 108861440,
+      "size": 359874,
+      "sha256": "97d72dc7a8ee85fb5e0e5279b7b8d61f037ce16893cd8d5480c1b9cd59d74195"
     }
   },
   "v7_outputs": {
@@ -7105,12 +7111,12 @@
   },
   "installed": {
     "packfile.pck": {
-      "size": 143099169,
-      "sha256": "ceacf60e64cafc0d676fa5b03a0a11289811ba29a1bd7adcfbcea6582827466f"
+      "size": 143437089,
+      "sha256": "e28e1da7f73eb182a320e057b8d050b2a67b0bb10961b5775f735b435674f51c"
     },
     "LvlSingl.pck": {
-      "size": 1792512951,
-      "sha256": "4897d56557d87584ed6804d9b4eab172ae959460e89f13715088bc0391d672b3"
+      "size": 1794665399,
+      "sha256": "5968a9080af60f2bfb620406dd1961b3f1676d3c0d1d89584f420eda67355396"
     },
     "audio.pck": {
       "size": 152395109,

@@ -56,7 +56,7 @@ PARTITIONS = (0, 0x18300000)
 EXE = "darkwatch_xbe.exe"
 SETTINGS = "darkwatch_xbe_settings.toml"
 DISC_SOURCE = "disc-source.toml"
-PACKAGE_VERSION = "0.7"
+PACKAGE_VERSION = "0.7.1"
 RELEASE_PROFILE = {"name": "release-candidate", "diagnostics": False, "strict_assets": True}
 # Maximum time without a completed shader, not a limit on the whole preparation.
 SHADER_PREPARE_TIMEOUT = 15 * 60
@@ -216,7 +216,7 @@ class Setup:
                      "payload/character_boss.py", "payload/character_boss_effects.py", "payload/character_spectral_hands.py",
                      "payload/character_hand_seams.py", "payload/character_secondary.py", "payload/character_preview.py",
                      "payload/character_roster.py", "payload/character_tala.py",
-                     "payload/revolver_content.py", "payload/revolver_scripts.py",
+                     "payload/revolver_content.py", "payload/revolver_scripts.py", "payload/player_corpses.py",
                      "payload/character-art/cassidy-hands-1024.dds", "payload/character-art/cassidy-hands-256.dds",
                      "payload/character-art/tala-hands-1024.dds", "payload/character-art/tala-hands-256.dds",
                      "payload/runtime/" + EXE, "payload/runtime/darkwatch_hd_ui_builder.exe"):

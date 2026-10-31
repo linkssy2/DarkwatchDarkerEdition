@@ -100,7 +100,7 @@ bool ObservedCombo(const char* label,int* current,const char* items,int maximum=
  combo_disabled[label]=(GImGui->CurrentItemFlags&ImGuiItemFlags_Disabled)!=0;
  WidgetHighlightProbe highlight(label);
  auto p=GetCursorScreenPos();float width=CalcItemWidth(),height=GetFrameHeight();
- bool observe=record_combo_text&&(std::string(label)=="##carry all weapons"||std::string(label)=="##fps"||std::string(label)=="##vsync"||std::string(label)=="##msaa"||std::string(label)=="##aniso"||std::string(label)=="##hd_ui"||std::string(label)=="##subtitles"||std::string(label)=="##cutscene_borders"||std::string(label)=="##hd_textures"||std::string(label)=="##player one character"||std::string(label)=="##player two character"||std::string(label)=="##sound output");
+ bool observe=record_combo_text&&(std::string(label)=="##carry all weapons"||std::string(label)=="##fps"||std::string(label)=="##vsync"||std::string(label)=="##msaa"||std::string(label)=="##aniso"||std::string(label)=="##hd_ui"||std::string(label)=="##subtitles"||std::string(label)=="##cutscene_borders"||std::string(label)=="##hd_textures"||std::string(label)=="##forever_ragdolls"||std::string(label)=="##player one character"||std::string(label)=="##player two character"||std::string(label)=="##sound output");
  // A combo popup ends ImGui logging when it closes its window. Use the real
  // rendered-text file sink so that EndCombo cannot clear the observed options.
  if(observe){std::ofstream("fps-widget.log",std::ios::trunc).close();LogToFile(-1,"fps-widget.log");}
@@ -441,10 +441,16 @@ int main(){
  CHECK(g_view_draft.hd_textures&&darkwatch::view::Snapshot().hd_textures);
  darkwatch::gameplay_available=true;Frame();
  CHECK(!combo_disabled["##hd_textures"]&&combo_text["##hd_textures"].find("On")!=std::string::npos);
+ CHECK(!darkwatch::view::Snapshot().forever_ragdolls);
+ SelectQuality("##forever_ragdolls",1,"On");
+ CHECK(g_view_draft.forever_ragdolls&&!darkwatch::view::Snapshot().forever_ragdolls);
+ SelectQuality("##forever_ragdolls",0,"Off");CHECK(!g_view_draft.forever_ragdolls);
+ SelectQuality("##forever_ragdolls",1,"On");
  CHECK(slider_ranges["##fov"].second==200);
  ClickNamed("APPLY");CHECK(saves==1&&actual.render_percent>100&&!g_confirm);
  CHECK(!actual.vsync&&actual.fps_cap==144&&actual.msaa_samples==4&&actual.aniso==16);
  Poll();CHECK(subtitle_calls==1&&route.subtitles);
+ CHECK(darkwatch::view::Snapshot().forever_ragdolls&&darkwatch::view::Snapshot(1).forever_ragdolls);
  CHECK(darkwatch::view::Snapshot().fov_percent==g_view_draft.fov_percent&&darkwatch::view::Snapshot().reticle_percent==g_view_draft.reticle_percent&&darkwatch::view::Snapshot().show_fps&&!darkwatch::view::Snapshot().hd_ui);
  CHECK(darkwatch::view::Snapshot().viewmodel_fov_percent==g_view_draft.viewmodel_fov_percent&&!darkwatch::view::Snapshot().cutscene_borders);
  // Display confirmation is driven by real ImGui buttons, not direct helpers.
@@ -465,6 +471,7 @@ int main(){
   if(timeout)Frame(16);else ClickNamed("REVERT");
   CHECK(!g_confirm&&actual.display_mode==retained.display_mode&&actual.width==retained.width&&actual.height==retained.height&&displays==display_before+2&&saves==2);
   CHECK(actual.vsync==retained.vsync&&actual.fps_cap==retained.fps_cap&&actual.msaa_samples==retained.msaa_samples&&actual.aniso==retained.aniso);
+  CHECK(darkwatch::view::Snapshot().forever_ragdolls==retained_view.forever_ragdolls);
   CHECK(darkwatch::view::Snapshot().fov_percent==retained_view.fov_percent&&darkwatch::view::Snapshot().reticle_percent==retained_view.reticle_percent&&darkwatch::view::Snapshot().show_fps==retained_view.show_fps&&darkwatch::view::Snapshot().hd_ui==retained_view.hd_ui);
   CHECK(darkwatch::view::Snapshot().viewmodel_fov_percent==retained_view.viewmodel_fov_percent&&darkwatch::view::Snapshot().cutscene_borders==retained_view.cutscene_borders);
  }
@@ -972,9 +979,11 @@ int main(){
  Navigate(0,2,field_ids["##internal"]);const auto internal=g_draft.render_percent;
  PadTap(0,16);PadTap(0,8);CHECK(g_draft.render_percent>internal);
  PadTap(0,32);CHECK(g_open&&!g_leave); // B finishes slider editing before leaving its page.
- for(const char* field:{"##fov","##weapon_fov","##reticle","##cutscene_borders","##fps","##vsync","##cap","##msaa","##aniso","##hd_ui","##subtitles","##brightness","##hd_textures"})
+ for(const char* field:{"##fov","##weapon_fov","##reticle","##cutscene_borders","##fps","##vsync","##cap","##msaa","##aniso","##hd_ui","##subtitles","##brightness","##hd_textures","##forever_ragdolls"})
   Navigate(0,2,field_ids[field]);
  CHECK(ImGui::FindWindowByName("Graphics")->DC.ChildWindows[0]->Scroll.y>0);
+ CHECK(!g_view_draft.forever_ragdolls);
+ PadTap(0,16);PadTap(0,2);PadTap(0,16);CHECK(g_view_draft.forever_ragdolls);
  Navigate(0,2,button_ids["APPLY"]);
  Navigate(0,1,field_ids["##display"]);
  CHECK(field_bounds["##display"].y>=ImGui::FindWindowByName("Graphics")->DC.ChildWindows[0]->InnerRect.Min.y);
@@ -1302,7 +1311,8 @@ int main(){
   const auto old_saves=saves,old_displays=displays;
   ClickField("##fov",player?.2f:.9f);
   ClickField("##weapon_fov",player?.15f:.85f);
-  ClickField("##reticle",player?.9f:.2f);
+  CHECK(slider_ranges["##reticle"].first==0&&slider_ranges["##reticle"].second==200);
+  ClickField("##reticle",.001f);CHECK(g_view_draft.reticle_percent==0);
   CHECK(!SameView(g_view_draft,before));
   CHECK(SameView(view::Snapshot(player),before)&&SameView(view::Snapshot(1-player),other));
   SelectFps(player==0);ClickField("##brightness",player?.8f:.2f);

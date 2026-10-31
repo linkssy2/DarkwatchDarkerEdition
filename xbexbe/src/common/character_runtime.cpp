@@ -1,4 +1,5 @@
 #include "character_runtime.h"
+#include "coop_respawn_weapons.h"
 #include "character_secondary.h"
 #include "character_selection.h"
 #include "kernel/kernel.h"
@@ -271,10 +272,11 @@ void DarkwatchReferenceMapHeap(X86Context& ctx, uint8_t* base) {
 }
 
 void DarkwatchCharacterMissionEnd(X86Context& ctx, uint8_t* base) {
-    if (ctx.ecx == owner) Reset(ctx, base);
+    if (ctx.ecx == owner) { DarkwatchResetRespawnWeapons(); Reset(ctx, base); }
 }
 
 void DarkwatchCharacterMissionBegin(X86Context& ctx, uint8_t* base) {
+    DarkwatchResetRespawnWeapons();
     Reset(ctx, base);
     if (!held.empty()) return;
     uint32_t count, mode;

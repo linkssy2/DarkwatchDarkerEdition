@@ -12,6 +12,7 @@
 #include "common/hd_ui.h"
 #include "common/settings_skin.h"
 #include "common/shader_preparation.h"
+#include "common/render_shaders.h"
 #include "common/language.h"
 #include "kernel/kernel.h"
 
@@ -62,6 +63,7 @@ const app::GameInfo app::kGame = {
 
 namespace {
 void InitDirectMouse() {
+    gpu::g_shader_hooks = &darkwatch::RenderShaders();
     darkwatch::language::Initialize(app::ExeDir());
     kernel::SetGameFileOverlay(darkwatch::language::Spanish()
         ? (app::ExeDir()/"language"/"es"/"assets").string() : std::string{});
@@ -130,8 +132,30 @@ bool ActiveVehicleCamera(const uint8_t* base, uint32_t rider, uint32_t& camera) 
            AimField(base, component, 0x3C, linked_rider) && linked_rider == rider;
 }
 
-uint32_t ZoomSensitivity(const uint8_t* base, uint32_t actor, uint32_t percent) {
-    if (percent == 100) return 100;
+double MouseZoomScale(const uint8_t* base, uint32_t actor) {
+    uint32_t component = 0, personal = 0, stack = 0, list = 0, active = 0, camera = 0, type = 0, owner = 0;
+    uint16_t count = 0;
+    float normal = 0, current = 0;
+    // Original 12084..12204 zoom only the active personal camera. BD091 sends
+    // its interpolated angle to 216B7C; match its tan(FOV/2) projection, not degrees.
+    if (!AimComponent(base, actor, 0x416444, component) ||
+        !AimField(base, component, 0x70, personal) ||
+        !AimField(base, personal, 0, type) || type != 0x423990 ||
+        !AimField(base, personal, 0x18C, owner) || owner != actor ||
+        !AimField(base, component, 0x80, stack) || !AimField(base, stack, 4, count) ||
+        !count || count > 64 || !AimField(base, stack, 8, list) || !list ||
+        !AimRead(base, uint64_t(list) + uint64_t(count - 1) * 4, active) || active != personal ||
+        !AimField(base, stack, 0xC, camera) || !AimField(base, camera, 0, type) || type != 0x43F97C ||
+        !AimField(base, personal, 0x16C, normal) || !AimField(base, camera, 0x44, current) ||
+        !std::isfinite(normal) || normal <= 0 || normal >= 180 ||
+        !std::isfinite(current) || current <= 0 || current >= normal) return 1;
+    constexpr double half_radians = 0.008726646259971648;
+    return std::tan(double(current) * half_radians) / std::tan(double(normal) * half_radians);
+}
+
+double ZoomSensitivity(const uint8_t* base, uint32_t actor, uint32_t percent) {
+    const double normal = 100.0 * MouseZoomScale(base, actor);
+    if (percent == 100) return normal;
     uint32_t inventory = 0, categories = 0, slots = 0, slot = 0, weapon = 0, type = 0;
     uint16_t category_count = 0, slot_count = 0;
     int32_t primary = -1;
@@ -144,15 +168,15 @@ uint32_t ZoomSensitivity(const uint8_t* base, uint32_t actor, uint32_t percent) 
         !AimField(base, inventory, 0x8C, slots) || !slots ||
         !AimRead(base, uint64_t(slots) + uint64_t(primary) * 4, slot) ||
         !AimField(base, slot, 0, type) || type != 0x41F570 ||
-        !AimField(base, slot, 0xC, weapon)) return 100;
+        !AimField(base, slot, 0xC, weapon)) return normal;
     // Base and derived weapon handlers all delegate zoom to 211D6 (214A8/214B4).
     for (uint32_t vtable : {0x418390u, 0x417E90u, 0x417F78u, 0x418098u, 0x418150u, 0x418208u}) {
         uint32_t component = 0;
         uint8_t zoom = 0;
         if (AimComponent(base, weapon, vtable, component))
-            return AimField(base, component, 0x23C, zoom) && zoom == 1 ? percent : 100;
+            return AimField(base, component, 0x23C, zoom) && zoom == 1 ? normal * percent / 100.0 : normal;
     }
-    return 100;
+    return normal;
 }
 
 const char* ReadMouseTarget(const X86Context& ctx, const uint8_t* base, unsigned axis, MouseTarget& t) {
@@ -207,7 +231,7 @@ struct MousePair {
     unsigned used = 3;
     bool pitch_active = false;
     uint32_t millidegrees = 50;
-    uint32_t zoom_percent = 100;
+    double zoom_percent = 100;
 };
 MousePair g_mouse_pair;
 MousePair g_horse_mouse_pair;

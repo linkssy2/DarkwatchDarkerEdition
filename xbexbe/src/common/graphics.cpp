@@ -670,16 +670,17 @@ void ControlsContent(float scale, bool just_opened) {
       int zoom = int(g_controls_draft.zoom_sensitivity_percent);
       if (ImGui::SliderInt("##zoom sensitivity", &zoom, 10, 200, "%d%%", ImGuiSliderFlags_AlwaysClamp))
           g_controls_draft.zoom_sensitivity_percent = uint32_t(zoom);
-      if (ImGui::IsItemHovered()) ImGui::SetTooltip(language::Text("Mouse speed while zoomed. 100%% keeps your normal speed."));
+      ImGui::SetCursorPos({88 * scale, 110 * scale});
+      Hint("Mouse speed after zoom compensation. 100% matches normal aiming near the crosshair.");
     }
-    { MenuRow row("AIMING ASSISTANCE", 120, scale); Toggle("##aim assistance", g_controls_draft.aim_assistance); }
-    { MenuRow row("LOOK CENTERING", 176, scale); Toggle("##look centering", g_controls_draft.aim_centering); }
-    ImGui::SetCursorPos({88 * scale, 232 * scale});
+    { MenuRow row("AIMING ASSISTANCE", 180, scale); Toggle("##aim assistance", g_controls_draft.aim_assistance); }
+    { MenuRow row("LOOK CENTERING", 236, scale); Toggle("##look centering", g_controls_draft.aim_centering); }
+    ImGui::SetCursorPos({88 * scale, 292 * scale});
     ImGui::PushTextWrapPos(900 * scale);
     Hint("Aiming assistance attracts the view near targets. Look centering recenters your view.");
     ImGui::PopTextWrapPos();
     }
-    const float controller_y = player_two ? 8.f : 292.f;
+    const float controller_y = player_two ? 8.f : 352.f;
     ImGui::BeginDisabled(!g_original_draft.controls_available);
     { MenuRow row("INVERT LOOK", controller_y, scale); Toggle("##invert look", g_original_draft.invert);
       if (player_two && just_opened) ImGui::SetItemDefaultFocus(); }
@@ -689,7 +690,7 @@ void ControlsContent(float scale, bool just_opened) {
                       g_original_draft.sensitivity_min, g_original_draft.sensitivity_max); }
     ImGui::EndDisabled();
     ImGui::SetCursorPos({88 * scale, (controller_y + 172) * scale});
-    if (!g_original_draft.controls_available) ImGui::TextDisabled(language::Text("Original settings are unavailable on this page."));
+    if (!g_original_draft.controls_available) ImGui::TextDisabled("%s", language::Text("Original settings are unavailable on this page."));
     if (g_layout_returned) {ImGui::SetKeyboardFocusHere(); g_layout_returned = false;}
     if (MenuButton("CONTROLLER LAYOUT...")) {
         ControlsCancelCapture(); g_capture_action = -1;
@@ -707,7 +708,7 @@ void ControlsContent(float scale, bool just_opened) {
         Hint("Player 2 settings. Use Controller Layout to change buttons.");
         ImGui::PopTextWrapPos();
     }
-    const float cheats_y = player_two ? 300.f : 530.f;
+    const float cheats_y = player_two ? 300.f : 590.f;
     ImGui::SetCursorPos({88 * scale, cheats_y * scale});
     ImGui::TextUnformatted(language::Text("GAMEPLAY CHEATS"));
     { MenuRow row("CARRY ALL WEAPONS", cheats_y + 38, scale);
@@ -717,7 +718,7 @@ void ControlsContent(float scale, bool just_opened) {
     Hint("Both players. Turning this off keeps weapons already carried.");
     ImGui::PopTextWrapPos();
     if (!player_two) {
-    ImGui::SetCursorPos({88 * scale, 700 * scale});
+    ImGui::SetCursorPos({88 * scale, 760 * scale});
     ImGui::BeginGroup(); ImGui::PushTextWrapPos(912 * scale);
     ImGui::TextUnformatted(language::Text("KEYBOARD AND MOUSE BINDINGS"));
     Hint("Select a binding, then press a key, mouse button, or scroll the wheel. Escape cancels; Backspace clears.");
@@ -1427,27 +1428,29 @@ void DarkwatchGraphicsUi(double fps) {
     }
     { MenuRow row("RETICLE SIZE", 443, scale);
     int reticle = int(g_view_draft.reticle_percent);
-    if (ImGui::SliderInt("##reticle", &reticle, 50, 200, "%d%%", ImGuiSliderFlags_AlwaysClamp)) g_view_draft.reticle_percent = uint32_t(reticle);
+    if (ImGui::SliderInt("##reticle", &reticle, 0, 200, "%d%%", ImGuiSliderFlags_AlwaysClamp)) g_view_draft.reticle_percent = uint32_t(reticle);
+    ImGui::SetCursorPos({430 * scale, 489 * scale});
+    Hint("0% = off. 100% = original size.");
     }
-    { MenuRow row("CUTSCENE BORDERS", 499, scale);
+    { MenuRow row("CUTSCENE BORDERS", 532, scale);
     Toggle("##cutscene_borders", g_view_draft.cutscene_borders);
-    ImGui::SetCursorPos({430 * scale, 545 * scale});
+    ImGui::SetCursorPos({430 * scale, 578 * scale});
     Hint("Level cutscenes only.");
-    ImGui::SetCursorPos({430 * scale, 588 * scale});
+    ImGui::SetCursorPos({430 * scale, 621 * scale});
     if (MenuButton("RESET VIEW DEFAULTS", {482 * scale, 39 * scale})) {
         g_view_draft.fov_percent = g_view_draft.reticle_percent = g_view_draft.viewmodel_fov_percent = 100;
         g_view_draft.cutscene_borders = true;
     }
     }
-    { MenuRow row("FPS COUNTER", 644, scale);
+    { MenuRow row("FPS COUNTER", 677, scale);
     int fps_enabled = g_view_draft.show_fps ? 1 : 0;
     if (Choice("##fps", &fps_enabled, "Off\0On\0")) g_view_draft.show_fps = fps_enabled != 0;
     }
-    { MenuRow row("VERTICAL SYNC", 700, scale);
+    { MenuRow row("VERTICAL SYNC", 733, scale);
     int vsync = g_draft.vsync ? 1 : 0;
     if (Choice("##vsync", &vsync, "Off\0On\0")) g_draft.vsync = vsync != 0;
     }
-    { MenuRow row("FPS LIMIT", 756, scale);
+    { MenuRow row("FPS LIMIT", 789, scale);
     if (g_draft.fps_cap) std::snprintf(text, sizeof(text), "%u FPS", g_draft.fps_cap);
     else std::snprintf(text, sizeof(text), "%s", language::Text("Unlimited"));
     if (ImGui::BeginCombo("##cap", text)) {
@@ -1462,47 +1465,52 @@ void DarkwatchGraphicsUi(double fps) {
         ImGui::EndCombo();
     }
     }
-    { MenuRow row("MSAA", 812, scale);
+    { MenuRow row("MSAA", 845, scale);
     int msaa = g_draft.msaa_samples == 4 ? 2 : g_draft.msaa_samples == 2 ? 1 : 0;
     if (Choice("##msaa", &msaa, "Off\0" "2x\0" "4x\0")) g_draft.msaa_samples = 1u << msaa;
-    ImGui::SetCursorPos({430 * scale, 858 * scale});
+    ImGui::SetCursorPos({430 * scale, 891 * scale});
     const uint32_t active_samples = gpu::MsaaSamples();
     std::snprintf(text, sizeof(text), language::Text("Active: %s - GPU support required"), active_samples == 4 ? "4x" : active_samples == 2 ? "2x" : language::Text("Off")); Hint(text);
     }
-    { MenuRow row("TEXTURE FILTERING", 901, scale);
+    { MenuRow row("TEXTURE FILTERING", 934, scale);
     constexpr uint32_t aniso_values[]{0, 1, 2, 4, 8, 16};
     int aniso = 0;
     for (unsigned i = 0; i < std::size(aniso_values); ++i) if (g_draft.aniso == aniso_values[i]) aniso = int(i);
     if (Choice("##aniso", &aniso, "Original\0" "1x\0" "2x\0" "4x\0" "8x\0" "16x\0")) g_draft.aniso = aniso_values[aniso];
     }
-    { MenuRow row("HD ARTWORK", 957, scale);
+    { MenuRow row("HD ARTWORK", 990, scale);
     int hd_ui = g_view_draft.hd_ui ? 1 : 0;
     if (Choice("##hd_ui", &hd_ui, "Off\0On\0")) g_view_draft.hd_ui = hd_ui != 0;
-    ImGui::SetCursorPos({430 * scale, 1003 * scale});
+    ImGui::SetCursorPos({430 * scale, 1036 * scale});
     Hint("HD menus, fonts and HUD.");
     }
-    { MenuRow row("SUBTITLES", 1046, scale);
+    { MenuRow row("SUBTITLES", 1079, scale);
     ImGui::BeginDisabled(!g_subtitles_available);
     Toggle("##subtitles", g_subtitles_draft);
     ImGui::EndDisabled();
     }
-    { MenuRow row("BRIGHTNESS", 1102, scale);
+    { MenuRow row("BRIGHTNESS", 1135, scale);
     int brightness = int(g_draft.brightness_percent);
     if (ImGui::SliderInt("##brightness", &brightness, 50, 150, "%d%%", ImGuiSliderFlags_AlwaysClamp))
         g_draft.brightness_percent = uint32_t(brightness);
-    ImGui::SetCursorPos({430 * scale, 1148 * scale});
+    ImGui::SetCursorPos({430 * scale, 1181 * scale});
     Hint("100% = original. Lower is darker.");
     }
     { const bool available = GameplayTexturesAvailable();
     ImGui::BeginDisabled(!available);
-    { MenuRow row("HD TEXTURES", 1191, scale);
+    { MenuRow row("HD TEXTURES", 1224, scale);
     bool enabled = available && g_view_draft.hd_textures;
     Toggle("##hd_textures", enabled);
     if (available) g_view_draft.hd_textures = enabled;
     }
     ImGui::EndDisabled();
-    ImGui::SetCursorPos({430 * scale, 1237 * scale});
+    ImGui::SetCursorPos({430 * scale, 1270 * scale});
     Hint(available ? "Installed gameplay textures. UI unchanged." : "Install the HD texture pack in the launcher.");
+    }
+    { MenuRow row("FOREVER RAGDOLLS", 1313, scale);
+    Toggle("##forever_ragdolls", g_view_draft.forever_ragdolls);
+    ImGui::SetCursorPos({430 * scale, 1359 * scale});
+    Hint("Keep bodies interactive until level changes. May reduce performance.");
     }
     ImGui::Dummy({1, 12 * scale});
     EndSettingsChild();

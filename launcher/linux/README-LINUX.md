@@ -1,8 +1,11 @@
-# Darkwatch: Darker Edition 0.7 — Experimental Linux / Proton
+# Darkwatch: Darker Edition 0.7.1 — Experimental Linux / Proton
 
 This package runs the Windows port through Proton. Darkwatch's Linux graphics,
 audio, movies and controls still need live testing. Co-op remains beta. Supply
 your own supported original Xbox Darkwatch ISO or XISO.
+
+Keep using the existing separate 0.7 HD texture pack; this update does not need
+a new pack or reinstallation of an already installed pack.
 
 Both the Steam shortcut below and the native `Darkwatch.sh` launcher support
 automatic first-time setup from one supported Xbox ISO/XISO in `assets/`.
@@ -162,7 +165,7 @@ for this new import path.
 
 ## Optional HD textures
 
-**The existing 0.6 HD pack still works. The new separate 0.7 pack is recommended
+**The existing 0.6 HD pack still works. The separate 0.7 pack is recommended
 for expanded coverage and a smaller lossless download.** It preserves texture
 detail, alpha and distance mipmaps; installed textures need the same disk space.
 The expanded optional pack adds
@@ -181,7 +184,7 @@ then temporarily change the same Steam shortcut's Launch Options to:
 Click Play, wait for the completion dialog, then restore the `--play` command.
 The installer reads the other parts automatically. Enable **Graphics → HD
 Textures** in the game, then choose **Apply**. Do not extract or install each numbered part separately.
-The command above uses the earlier 0.6 pack as an example. For the new 0.7 pack,
+The command above uses the earlier 0.6 pack as an example. For the 0.7 pack,
 replace the filename with its first `.zip.001` part. The updated launcher also
 accepts the complete texture ZIP. Do not mix parts from different pack versions.
 The compact 0.7 download requires the updated launcher; `parts.json` is unnecessary.

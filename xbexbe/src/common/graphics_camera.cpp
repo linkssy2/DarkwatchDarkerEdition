@@ -213,20 +213,29 @@ void DarkwatchBeginPowerView(X86Context& ctx, uint8_t* base) {
     // B851D binds rune overlays to their player's camera. Both authored resources
     // contain a fixed 2.1 x 1.1 rectangle; world FOV must not shrink it.
     // +50 is the original CRC32 of the resolved resource path, not the body aura.
-    if (g_power_view.frame || !Span(base, ctx.ecx, 0x70) ||
-        (Read(base, ctx.ecx + 0x50) != 0x9EA613DE &&  // FX/BloodFrenzyView
-         Read(base, ctx.ecx + 0x50) != 0xC541E482) || // FX/SilverBrandView
-        !base[ctx.ecx + 0x62] ||
-        Read(base, ctx.ecx + 0x54) != 1 || !Span(base, ctx.ebp, 12) ||
+    if (g_power_view.frame || !Span(base, ctx.ecx, 0x70)) return;
+    const uint32_t resource = Read(base, ctx.ecx + 0x50);
+    const bool blast = resource == 0x6DBE010D; // FX/MoEExplodeBlast
+    if ((!blast && resource != 0x9EA613DE && resource != 0xC541E482) ||
+        !base[ctx.ecx + 0x62] || Read(base, ctx.ecx + 0x54) != (blast ? 0u : 1u) ||
+        !Span(base, ctx.ebp, 12) ||
         !Span(base, ctx.esi, 4) || Read(base, ctx.esi) != ctx.ecx) return;
     const PlayerCamera player = FindPlayer(Read(base, ctx.ebp + 8), false);
+    const uint32_t binding = Read(base, ctx.ecx + 0x68);
     float scale;
     if (!PlayerValid(base, player) ||
-        Read(base, ctx.ecx + 0x68) != player.raster ||
+        (binding != player.raster && (!blast || binding)) ||
         !ScaleValid(base, player.camera, scale) ||
         !std::isfinite(player.aspect_scale) || player.aspect_scale <= 0) return;
-    const float factor = scale / player.aspect_scale;
-    if (!std::isfinite(factor) || factor < 0.5f || factor > 2.0f || factor == 1) return;
+    const float user_scale = scale / player.aspect_scale;
+    if (!std::isfinite(user_scale) || user_scale < 0.5f || user_scale > 2.0f) return;
+    // MoEExplodeBlast is an untextured, camera-relative square in the actor pass,
+    // separate from MoEExplode's world particles. Its original 2.0059 square at
+    // depth 1.46814 covers 4:3 even when rotated; widescreen/split aspect scaling
+    // also exposes its edges. Preserve that authored horizontal coverage in each
+    // player's viewport (up to 5.333x for split/FOV200), without changing zoom.
+    const float factor = blast ? scale : user_scale;
+    if (factor == 1) return;
     g_power_view = {ctx.ebp, ctx.esi, player.raster, factor};
 }
 

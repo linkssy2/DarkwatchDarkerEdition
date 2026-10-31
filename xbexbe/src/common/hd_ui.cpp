@@ -1,4 +1,5 @@
 #include "hd_ui.h"
+#include "render_shaders.h"
 #include "hd_ui_assets.h"
 #include "gameplay_textures.h"
 #include "spectral_hand_textures.h"
@@ -32,6 +33,7 @@ class HdUi final : public gpu::Extension {
     std::array<bool, std::size(hd::kAssets)> used_{};
 #endif
 public:
+    const gpu::ShaderHooks* Shaders() const override { return &RenderShaders(); }
     bool GameplayAvailable() const { return gameplay_.Available(); }
     ~HdUi() override {
         if (data_) UnmapViewOfFile(data_);

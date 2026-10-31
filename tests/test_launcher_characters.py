@@ -109,13 +109,15 @@ class CharacterConversionTests(unittest.TestCase):
         fourth = {name: archive.compose(data, roster[name]) for name, data in third.items()}
         revolver = {name: {'fixture/revolver.bin': b'fifth conversion'} for name in originals}
         revolver['LvlSingl.pck']['fixture/replaced.bin'] = b'final chapter table'
-        final = {name: archive.compose(data, revolver[name]) for name, data in fourth.items()}
+        corpses = {name: {'fixture/corpse.bin': b'sixth conversion'} for name in ('packfile.pck', 'LvlSingl.pck')}
+        corpses['LvlSingl.pck']['fixture/replaced.bin'] = b'final chapter corpse table'
+        final = {name: archive.compose(data, dict(revolver[name], **corpses.get(name, {}))) for name, data in fourth.items()}
         combined = {}
-        for stage in (groups, extension, spectral, roster, revolver):
+        for stage in (groups, extension, spectral, roster, revolver, corpses):
             combined.update(stage.get('LvlSingl.pck', {}))
         final['LvlSingl.pck'] = archive.compose(originals['LvlSingl.pck'], combined)
         # Compaction changes offsets, never the resource contents or original payload.
-        appended = archive.compose(fourth['LvlSingl.pck'], revolver['LvlSingl.pck'])
+        appended = archive.compose(fourth['LvlSingl.pck'], dict(revolver['LvlSingl.pck'], **corpses['LvlSingl.pck']))
         def resources(raw):
             return {row['name']: raw[row['offset']:row['offset'] + row['size']]
                     for row in archive.read(raw)['entries']}
@@ -142,6 +144,7 @@ class CharacterConversionTests(unittest.TestCase):
             with patch.object(content, 'INSTALLED', installed), patch.object(content, 'build_resources', return_value=(groups,extension,spectral)), \
                     patch.object(content.character_roster, 'prepare', return_value=(roster, {})), \
                     patch.object(content.revolver_content, 'prepare', return_value=revolver), \
+                    patch.object(content.player_corpses, 'prepare', return_value=corpses), \
                     patch.object(content.bonus_content, 'patch_pack', side_effect=lambda data:data):
                 with patch.object(content, 'CATALOG_SHA256', reset()):
                     content.prepare(assets,payload)
@@ -165,6 +168,11 @@ class CharacterConversionTests(unittest.TestCase):
                     content.prepare(assets, payload)
                 self.assertEqual({name: (assets/name).read_bytes() for name in originals}, originals)
                 revolver['audio.pck']['fixture/revolver.bin'] = b'fifth conversion'
+                corpses['LvlSingl.pck']['fixture/corpse.bin'] = b'wrong corpse output'
+                with patch.object(content, 'CATALOG_SHA256', reset()), self.assertRaisesRegex(ValueError, 'verification failed'):
+                    content.prepare(assets, payload)
+                self.assertEqual({name: (assets/name).read_bytes() for name in originals}, originals)
+                corpses['LvlSingl.pck']['fixture/corpse.bin'] = b'sixth conversion'
                 cancel_now = [False]
                 def cancel():
                     if cancel_now[0]: raise InterruptedError('cancelled')

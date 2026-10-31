@@ -9,6 +9,7 @@ void DarkwatchCharacterVoiceLocal(X86Context&, uint8_t*) {}
 void DarkwatchCharacterVoiceDispatch(X86Context&, uint8_t*) {}
 void DarkwatchCharacterVoiceCreated(X86Context&, uint8_t*) {}
 void DarkwatchCharacterVoiceMelee(X86Context&, uint8_t*) {}
+void DarkwatchCharacterVoiceThrow(X86Context&, uint8_t*, uint32_t, uint32_t) {}
 #else
 
 #include "character_runtime.h"
@@ -29,6 +30,7 @@ std::mutex trace_mutex;
 unsigned query_count = 0, dispatch_count = 0;
 unsigned result_count = 0, speaker_count = 0, melee_count = 0;
 unsigned local_count = 0, created_count = 0;
+unsigned throw_count = 0;
 
 const char* Output() {
     // Only the private session runner supplies this explicit output path.
@@ -154,6 +156,17 @@ void Record(const uint8_t* base, const char* phase, unsigned& count, uint32_t ac
     std::fclose(file);
 }
 } // namespace
+
+void DarkwatchCharacterVoiceThrow(X86Context& ctx, uint8_t* base, uint32_t weapon_component, uint32_t owner) {
+    if (!Output()) return;
+    uint32_t caller = 0; Text name{}, event{}, bank{}, cue{};
+    if (ctx.esi < 0x48 || !Read(base, ctx.esp, caller) ||
+        !Slot(base, uint64_t(ctx.esp) + 8, bank) || !Slot(base, uint64_t(ctx.esp) + 12, cue)) return;
+    Slot(base, uint64_t(owner) + 0x50, name);
+    Slot(base, ctx.edi, event);
+    Record(base, "throw", throw_count, owner, ctx.esi - 0x48, caller, name, event, bank, cue,
+           0, -1, "original request before character remap", weapon_component);
+}
 
 void DarkwatchCharacterVoiceQuery(X86Context& ctx, uint8_t* base) {
     if (!Output()) return;

@@ -143,3 +143,23 @@ for intermediate stages. Each intermediate and final archive remains hash-checke
 before installation commits. Regular Tala uses an authored glove repaint on the
 original first-person hand geometry and UVs; the other Tala variants retain
 their existing hand conversions.
+
+## Version 0.7.1 additions
+
+| Location | Purpose |
+| --- | --- |
+| `skin_palette.cpp` | Keeps the original skin palette inverse calculation consistent between ordinary and Blood Vision rendering without changing shared matrix flags. |
+| `ragdolls.cpp` | Scoped corpse retention, encounter admission/health-query integration and player contact corrections; original deletion and intentional death effects retain their native paths. |
+| `coop_respawn_weapons.*` | Preserves the affected player's weapons/ammunition during individual co-op respawn when Carry All is enabled, using native serialization and guarded fallback. |
+| `player_corpses.cpp`, `launcher/player_corpses.py` | Creates independent physical props from the selected model and final pose, with no player, inventory, health, script or network components. Original player removal always proceeds. |
+| `character_throw.cpp` | Scoped playable Cassidy/Tala TNT effort cue selection, preserving separate throw/fuse effects. |
+| `launcher/character_assets.py` | Bounded encoded resource-list selector/append path; fallback retains the general parser and exact output checks. |
+
+Blood Vision's unlit skin shader generation also follows the positional arithmetic
+of the normal lit pass. Shader preparation uses the same generator and source
+fingerprint, rather than a separate shader implementation.
+
+The new player-body resources are prepared locally as content revision v14.
+Already installed HD resources remain compatible; no new texture pixels are
+required. Original-instruction and captured-pose regression tests stay private.
+The exported resource-list test uses synthetic binary trees and malformed inputs.
