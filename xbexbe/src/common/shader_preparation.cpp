@@ -21,6 +21,7 @@
 namespace {
 using darkwatch::shaderprep::kShaderRecipes;
 using darkwatch::shaderprep::kObservedBuilderLayouts;
+using darkwatch::shaderprep::kObservedBuilderPrograms;
 using darkwatch::shaderprep::kStaticShaderRecipes;
 using darkwatch::shaderprep::kFixedShaderRecipes;
 using darkwatch::shaderprep::kPixelShaderRecipes;
@@ -33,8 +34,8 @@ constexpr uint32_t kHeadroom = 0xC000, kMaxInstructions = 124;
 struct Layout { uint16_t regs; uint64_t decode; };
 constexpr Layout kLayouts[] = {{0x002F, 0}, {0x003F, 0}, {0x003F, 0x4200}, {0x007F, 0}};
 constexpr size_t kTotal = std::size(kShaderRecipes) * std::size(kLayouts) +
-    std::size(kObservedBuilderLayouts) + std::size(kStaticShaderRecipes) + std::size(kFixedShaderRecipes) + std::size(kPixelShaderRecipes);
-static_assert(std::size(kShaderRecipes) == 1110 && kTotal == 4474);
+    std::size(kObservedBuilderLayouts) + std::size(kObservedBuilderPrograms) + std::size(kStaticShaderRecipes) + std::size(kFixedShaderRecipes) + std::size(kPixelShaderRecipes) + gpu::kBackendShaderCount;
+static_assert(std::size(kShaderRecipes) == 1110 && kTotal == 4507);
 std::atomic<bool> g_attempted{false};
 std::string g_compiler;
 
@@ -59,9 +60,10 @@ constexpr Pin kPins[] = {
     {0x004496F4, 28, "0edd8243c164a88ef5527f52646b37fc4def691adb722d7e94f2f04f269ef066"},
     {0x004496D8, 28, "168a4eb1651174ab1773425ac76eb1a35a96be61b2c023855e688a15e5266b79"},
     {0x00448E90, 4, "3f6b3b8c4f7288d1bd5b099f836f7409d262ef0978cd7ecfbc9c3fce4d42558f"},
-    {0x00448E98, 4, "16abf19fffe3807af1c3efad1e187f6eb032244e52967af75fa01716e392bcdd"},
+    {0x00448E98, 20, "b3051e0c2d77d0cbad94424c03857b9ef7049768813bef8f14fdf09ed34a11b4"},
     {0x0049FD04, 20, "d58dceb2ca895cb8a917ac179b9b4af5e4428f214869a9761741775c592fb03f"},
     {0x0049FD2C, 20, "8345b13772424ca8f27bf444fc1af664347e5bd5886d7880b5df424a721aad52"},
+    {0x0049FEDC, 20, "67b9724165923bce785df7ef07ec4462ee19dc9dcd8c28c1fbf4cd429cfd0e20"},
     {0x0049FF38, 116, "abfb9d4b8650490821c568cacb7fcd33d57e6ccef6c364a89cc8d71c2bc0b975"},
 };
 
@@ -110,7 +112,13 @@ int Error(const char* message) {
     return -1;
 }
 
-std::filesystem::path StampPath() { return app::ExeDir() / "cache" / "shader-preparation-v1.txt"; }
+std::filesystem::path StampPath() {
+    // Match the cache's long-path handling, including the atomic-write suffix.
+    auto path = std::filesystem::absolute(app::ExeDir() / "cache" / "shader-preparation-v1.txt")
+                    .lexically_normal().make_preferred().native();
+    if (path.starts_with(L"\\\\?\\")) return path;
+    return path.starts_with(L"\\\\") ? L"\\\\?\\UNC\\" + path.substr(2) : L"\\\\?\\" + path;
+}
 std::string StampPrefix() {
     return std::string("DARKWATCH_SHADERS_1\n") + kShaderPreparationBuild + '\n' + g_compiler + '\n';
 }
@@ -228,12 +236,14 @@ struct ShaderJob {
     Layout layout{};
     std::string source;
     const char* profile = "vs_5_0";
+    const char* entry = "main";
 };
 gpu::PixelKey MakePreparationPixelKey(const darkwatch::shaderprep::PixelShaderRecipe& recipe,
                                       const gpu::PixelShader& program) {
     gpu::TexInfo textures[4]{};
     textures[0].kind = recipe.kind0;
     textures[0].rect = recipe.rect0;
+    textures[0].flags = recipe.flags0;
     textures[1].kind = recipe.kind1;
     gpu::PixelKey key{};
     if (recipe.programmable) {
@@ -270,7 +280,7 @@ bool CompileJobs(const std::vector<ShaderJob>& jobs, std::vector<std::string>& k
                     const auto& job = jobs[i];
                     const bool ok = job.program
                         ? gpu::PrepareVertexShaderCache(*job.program, job.layout.regs, job.layout.decode, keys[i])
-                        : gpu::PrepareShaderCache(job.source, job.profile, keys[i]);
+                        : gpu::PrepareShaderCache(job.source, job.profile, keys[i], job.entry);
                     if (!ok || !HexDigest(keys[i])) { failed = true; break; }
                     std::lock_guard lock(progress);
                     ++completed;
@@ -291,21 +301,25 @@ bool PrepareCatalogue(const X86Context& entry, uint8_t* base) {
     const uint32_t owner = Read(base, 0x4A0014);
     std::vector<std::string> keys;
     std::vector<std::vector<uint32_t>> programs;
-    programs.reserve(std::size(kShaderRecipes) + std::size(kStaticShaderRecipes));
+    programs.reserve(std::size(kShaderRecipes) + std::size(kObservedBuilderPrograms) + std::size(kStaticShaderRecipes));
     std::vector<ShaderJob> jobs;
     jobs.reserve(kTotal);
-    for (const auto& recipe : kShaderRecipes) {
-        std::memcpy(base + workspace.descriptor, &recipe.descriptor, 4);
-        uint32_t raw = Guest(entry, kBuilder, workspace.descriptor);
-        auto& program = programs.emplace_back();
+    auto build = [&](uint32_t descriptor, const char* digest, std::vector<uint32_t>& program) {
+        std::memcpy(base + workspace.descriptor, &descriptor, 4);
+        const uint32_t raw = Guest(entry, kBuilder, workspace.descriptor);
         // A bad return is not a proven allocation: fail this isolated process without freeing it or resuming.
         if (!raw) return false;
-        if (!ReadProgram(base, raw, recipe.sha256, program) ||
+        if (!ReadProgram(base, raw, digest, program) ||
             std::memcmp(cache.data(), base + kCache, cache.size()) || Read(base, 0x4A0014) != owner) {
             Error("The original shader builder returned unexpected data. Please repair the installation.");
             app::FinishPreparation(1);
         }
         Guest(entry, kFree, raw);
+        return true;
+    };
+    for (const auto& recipe : kShaderRecipes) {
+        auto& program = programs.emplace_back();
+        if (!build(recipe.descriptor, recipe.sha256, program)) return false;
         for (const auto& layout : kLayouts) {
             jobs.push_back({&program, layout});
         }
@@ -313,6 +327,11 @@ bool PrepareCatalogue(const X86Context& entry, uint8_t* base) {
             if (layout.descriptor != recipe.descriptor) continue;
             jobs.push_back({&program, {layout.regs, layout.decode}});
         }
+    }
+    for (const auto& recipe : kObservedBuilderPrograms) {
+        auto& program = programs.emplace_back();
+        if (!build(recipe.descriptor, recipe.sha256, program)) return false;
+        jobs.push_back({&program, {recipe.regs, recipe.decode}});
     }
     for (const auto& recipe : kStaticShaderRecipes) {
         auto& program = programs.emplace_back();
@@ -333,6 +352,8 @@ bool PrepareCatalogue(const X86Context& entry, uint8_t* base) {
     std::memcpy(pixel.def, base + kPixelDefinition.address, sizeof(pixel.def));
     for (const auto& recipe : kPixelShaderRecipes)
         jobs.push_back({nullptr, {}, gpu::PixelHlsl(MakePreparationPixelKey(recipe, pixel)), "ps_5_0"});
+    for (auto& shader : gpu::BackendShaderSources())
+        jobs.push_back({nullptr, {}, std::move(shader.source), shader.profile, shader.entry});
     return CompileJobs(jobs, keys) && WriteStamp(keys);
 }
 } // namespace

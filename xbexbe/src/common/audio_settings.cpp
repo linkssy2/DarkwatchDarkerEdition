@@ -16,10 +16,22 @@ void SyncAudioDevice(uint8_t* base) {
 }
 void AudioLoad(const void* table) {
     const auto& t = *static_cast<const toml::table*>(table);
-    audio::SetSurroundEnabled(t["surround_sound"].is_boolean() && t["surround_sound"].value_or(false));
+    auto mode = audio::SoundOutput::Stereo;
+    if (t.contains("sound_output")) {
+        const auto value = t["sound_output"].value<std::string>();
+        if (value == "5.1") mode = audio::SoundOutput::Surround51;
+        else if (value == "7.1") mode = audio::SoundOutput::Surround71;
+    } else if (t["surround_sound"].is_boolean() && t["surround_sound"].value_or(false)) {
+        mode = audio::SoundOutput::Surround51;
+    }
+    audio::SetSoundOutput(mode);
 }
 void AudioSave(void* table) {
     auto& t = *static_cast<toml::table*>(table);
-    t.insert_or_assign("surround_sound", audio::SurroundEnabled());
+    const auto mode = audio::GetSoundOutput();
+    t.insert_or_assign("sound_output", mode == audio::SoundOutput::Surround71 ? "7.1" :
+                                     mode == audio::SoundOutput::Surround51 ? "5.1" : "stereo");
+    // Retain the old preference for users who roll back to a previous build.
+    t.insert_or_assign("surround_sound", mode != audio::SoundOutput::Stereo);
 }
 }

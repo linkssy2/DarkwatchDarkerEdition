@@ -82,7 +82,7 @@ int main(){using namespace darkwatch::view;
  const std::string legacy="field_of_view_scale=125\nreticle_size=80\nweapon_field_of_view_scale=140\nshow_fps=true\nhd_ui=false\ncutscene_borders=false\nhd_textures=false\nfps_cap=144\nbrightness=113\n";
  Write(legacy.c_str());app::Load();PlayerView(0,125,80,140);PlayerView(1,125,80,140);Shared(true,false,false,false);
  CHECK(app::Save());auto saved=toml::parse(Read());
- CHECK(saved["player2_view"].is_table()&&saved["player2_view"].as_table()->size()==3);
+ CHECK(saved["player2_view"].is_table()&&saved["player2_view"].as_table()->size()==8);
  CHECK(saved["field_of_view_scale"].value_or(0)==125&&saved["player2_view"]["field_of_view_scale"].value_or(0)==125);
 
  // A partial or malformed override inherits the loaded legacy view, never stale runtime values.
@@ -109,7 +109,7 @@ int main(){using namespace darkwatch::view;
  CHECK(app::Save());const auto original=Read();saved=toml::parse(original);
  CHECK(saved["field_of_view_scale"].value_or(0)==120&&saved["weapon_field_of_view_scale"].value_or(0)==140&&saved["reticle_size"].value_or(0)==90);
  CHECK(saved["player2_view"]["field_of_view_scale"].value_or(0)==165&&saved["player2_view"]["weapon_field_of_view_scale"].value_or(0)==65&&saved["player2_view"]["reticle_size"].value_or(0)==155);
- CHECK(saved["player2_view"].as_table()->size()==3&&saved["fps_cap"].value_or(0)==144&&saved["brightness"].value_or(0)==113);
+ CHECK(saved["player2_view"].as_table()->size()==8&&saved["fps_cap"].value_or(0)==144&&saved["brightness"].value_or(0)==113);
  Apply({},0);Apply({},1);app::Load();PlayerView(0,120,90,140);PlayerView(1,165,155,65);Shared(true,false,false,false);
  CHECK(app::Snapshot().fps_cap==144&&app::Snapshot().brightness_percent==113);
  toml::table callback_table{{"unrelated",123}};Save(&callback_table);CHECK(callback_table["unrelated"].value_or(0)==123);
@@ -140,6 +140,120 @@ int main(){using namespace darkwatch::view;
 
 
 class GraphicsViewTests(unittest.TestCase):
+    def test_camera_modes_persist_per_player_with_coherent_snapshots(self):
+        self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + r'''
+int main(){using namespace darkwatch::view;
+ Write("");app::Load();CHECK(Snapshot().camera_mode==CameraMode::FirstPerson&&Snapshot(1).camera_mode==CameraMode::FirstPerson);
+ for(unsigned player:{0u,1u})for(auto mode:{CameraMode::FirstPerson,CameraMode::Centered,CameraMode::Shoulder}){
+  const auto other=Snapshot(1-player);auto next=Snapshot(player);next.camera_mode=mode;Apply(next,player);
+  CHECK(Snapshot(player).camera_mode==mode&&Snapshot(1-player).camera_mode==other.camera_mode);
+  CHECK(app::Save());Apply({},player);app::Load();
+  CHECK(Snapshot(player).camera_mode==mode&&Snapshot(1-player).camera_mode==other.camera_mode);
+ }
+ Write("camera_mode=1\n");app::Load();CHECK(Snapshot().camera_mode==CameraMode::Centered&&Snapshot(1).camera_mode==CameraMode::Centered);
+ Write("camera_mode=1\n[player2_view]\ncamera_mode=2\n");app::Load();
+ CHECK(Snapshot().camera_mode==CameraMode::Centered&&Snapshot(1).camera_mode==CameraMode::Shoulder);
+ for(const char* invalid:{"-1","3","99999999999","'1'","1.0","true","[]"}){
+  Write((std::string("camera_mode=")+invalid+"\n").c_str());app::Load();
+  CHECK(Snapshot().camera_mode==CameraMode::FirstPerson&&Snapshot(1).camera_mode==CameraMode::FirstPerson);
+  Write((std::string("camera_mode=2\n[player2_view]\ncamera_mode=")+invalid+"\n").c_str());app::Load();
+  CHECK(Snapshot().camera_mode==CameraMode::Shoulder&&Snapshot(1).camera_mode==CameraMode::FirstPerson);
+ }
+ auto bad=Snapshot();bad.camera_mode=CameraMode(~0u);Apply(bad,99);
+ CHECK(Snapshot().camera_mode==CameraMode::FirstPerson&&Snapshot(99).camera_mode==CameraMode::FirstPerson);
+ Settings a,b;a.fov_percent=80;a.camera_mode=CameraMode::Centered;b.fov_percent=120;b.camera_mode=CameraMode::Shoulder;
+ Apply(a);Apply(b,1);std::atomic<unsigned> finished=0;
+ std::thread p1([&]{for(unsigned i=0;i<10000;++i)Apply(i&1?a:b,0);++finished;});
+ std::thread p2([&]{for(unsigned i=0;i<10000;++i)Apply(i&1?b:a,1);++finished;});
+ unsigned checked=0;do{for(unsigned player:{0u,1u}){const auto s=Snapshot(player);
+  CHECK((s.fov_percent==80&&s.camera_mode==CameraMode::Centered)||(s.fov_percent==120&&s.camera_mode==CameraMode::Shoulder));
+  CHECK(s.show_hud&&s.movie_aspect_fit&&s.hd_ui&&s.hd_textures&&!s.forever_ragdolls);
+ }++checked;}while(finished!=2||checked<1000);p1.join();p2.join();
+ CHECK(Snapshot().camera_mode==CameraMode::Centered&&Snapshot(1).camera_mode==CameraMode::Shoulder);
+ std::puts("camera modes: default first-person, independent persistence, migration, strict validation, fallback owner and coherent concurrent snapshots passed");
+}
+''')
+
+    def test_player_hud_and_reticle_colors_persist_independently(self):
+        self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + r'''
+int main(){using namespace darkwatch::view;
+ Write("");app::Load();
+ for(unsigned p:{0u,1u}){const auto s=Snapshot(p);CHECK(s.show_hud&&s.reticle_normal_color==kOriginalReticleColor&&s.reticle_enemy_color==kOriginalReticleColor&&s.reticle_friendly_color==kOriginalReticleColor);}
+ auto p1=Snapshot(),p2=Snapshot(1);p1.show_hud=false;p1.reticle_normal_color=0;p1.reticle_enemy_color=0x123456;p1.reticle_friendly_color=0xABCDEF;
+ p2.reticle_normal_color=0x102030;p2.reticle_enemy_color=0xFFFFFF;p2.reticle_friendly_color=0x0000FF;
+ Apply(p1);Apply(p2,1);CHECK(!Snapshot().show_hud&&Snapshot(1).show_hud&&Snapshot().reticle_normal_color==0&&Snapshot().reticle_enemy_color==0x123456&&Snapshot().reticle_friendly_color==0xABCDEF);
+ CHECK(app::Save());Apply({});Apply({},1);app::Load();
+ CHECK(!Snapshot().show_hud&&Snapshot(1).show_hud&&Snapshot().reticle_normal_color==0&&Snapshot(1).reticle_normal_color==0x102030&&Snapshot(1).reticle_enemy_color==0xFFFFFF&&Snapshot(1).reticle_friendly_color==0x0000FF);
+ Write("show_hud=false\nreticle_normal_color=1193046\n[player2_view]\nshow_hud=true\nreticle_friendly_color=16777215\n");app::Load();
+ CHECK(!Snapshot().show_hud&&Snapshot(1).show_hud&&Snapshot(1).reticle_normal_color==1193046&&Snapshot(1).reticle_friendly_color==0xFFFFFF);
+ for(const char* invalid:{"show_hud=1\nreticle_normal_color=-1\nreticle_enemy_color=99999999999\nreticle_friendly_color=16777217\n","show_hud='false'\nreticle_normal_color='red'\nreticle_enemy_color=false\nreticle_friendly_color=[]\n"}){
+  Write(invalid);app::Load();for(unsigned p:{0u,1u}){const auto s=Snapshot(p);CHECK(s.show_hud&&s.reticle_normal_color==kOriginalReticleColor&&s.reticle_enemy_color==kOriginalReticleColor&&s.reticle_friendly_color==kOriginalReticleColor);}
+ }
+ auto invalid=Snapshot();invalid.reticle_normal_color=~0u;invalid.reticle_enemy_color=0x1000001;invalid.reticle_friendly_color=0xFFFFFF;
+ Apply(invalid,99);CHECK(Snapshot().reticle_normal_color==kOriginalReticleColor&&Snapshot().reticle_enemy_color==kOriginalReticleColor&&Snapshot().reticle_friendly_color==0xFFFFFF&&Snapshot(1).reticle_friendly_color==kOriginalReticleColor);
+ CHECK(app::Save());const auto original=Read();HANDLE held=CreateFileW(L"view.toml",GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);CHECK(held!=INVALID_HANDLE_VALUE);
+ Apply(p1);Apply(p2,1);CHECK(!app::Save()&&Read()==original);CloseHandle(held);
+ std::puts("HUD and RGB settings: native defaults, black/white/custom colors, per-player isolation, migration, validation, persistence and atomic save failure passed");
+}
+''')
+
+    def test_menu_aspect_shared_persistence_and_isolation(self):
+        self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + r'''
+int main(){using namespace darkwatch::view;
+ CHECK(!Snapshot().original_ui_aspect&&!Snapshot(1).original_ui_aspect);
+ for(const char* invalid:{"", "original_ui_aspect='true'\n", "original_ui_aspect=1\n", "original_ui_aspect=[]\n",
+                         "[player2_view]\noriginal_ui_aspect=true\n"}){
+  auto s=Snapshot();s.original_ui_aspect=true;Apply(s);
+  Write(invalid);app::Load();CHECK(!Snapshot().original_ui_aspect&&!Snapshot(1).original_ui_aspect);
+ }
+ Write("original_ui_aspect=true\nmovie_aspect_fit=false\ncamera_mode=2\nshow_hud=false\n[player2_view]\noriginal_ui_aspect=false\nfield_of_view_scale=130\ncamera_mode=1\nshow_hud=true\n");
+ app::Load();CHECK(Snapshot().original_ui_aspect&&Snapshot(1).original_ui_aspect);CHECK(app::Save());
+ const auto saved=Read();auto table=toml::parse(saved);
+ CHECK(table["original_ui_aspect"].value_or(false)&&!table["player2_view"]["original_ui_aspect"]);
+ Apply({});app::Load();CHECK(Snapshot().original_ui_aspect&&!Snapshot().movie_aspect_fit);
+ auto p2=Snapshot(1);p2.original_ui_aspect=false;Apply(p2,1);
+ CHECK(!Snapshot().original_ui_aspect&&!Snapshot(1).original_ui_aspect);
+ CHECK(Snapshot().fov_percent==100&&Snapshot(1).fov_percent==130);
+ CHECK(Snapshot().camera_mode==CameraMode::Shoulder&&Snapshot(1).camera_mode==CameraMode::Centered);
+ CHECK(!Snapshot().show_hud&&Snapshot(1).show_hud&&!Snapshot().movie_aspect_fit);
+ HANDLE held=CreateFileW(L"view.toml",GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);
+ CHECK(held!=INVALID_HANDLE_VALUE);CHECK(!app::Save()&&Read()==saved);CloseHandle(held);
+ CHECK(app::Save());Apply({});app::Load();CHECK(!Snapshot().original_ui_aspect&&!Snapshot(1).original_ui_aspect);
+ for(unsigned flags=0;flags<128;++flags){
+  auto s=Snapshot(1);s.original_ui_aspect=flags&1;s.movie_aspect_fit=flags&2;s.forever_ragdolls=flags&4;
+  s.hd_textures=flags&8;s.cutscene_borders=flags&16;s.hd_ui=flags&32;s.show_fps=flags&64;Apply(s,1);
+  for(unsigned player:{0u,1u}){const auto a=Snapshot(player);
+   CHECK(a.original_ui_aspect==s.original_ui_aspect&&a.movie_aspect_fit==s.movie_aspect_fit&&a.forever_ragdolls==s.forever_ragdolls);
+   CHECK(a.hd_textures==s.hd_textures&&a.cutscene_borders==s.cutscene_borders&&a.hd_ui==s.hd_ui&&a.show_fps==s.show_fps);
+   CHECK(a.camera_mode==(player?CameraMode::Centered:CameraMode::Shoulder)&&a.show_hud==bool(player));
+  }
+ }
+ std::puts("menu aspect: legacy/default widescreen, strict bool, shared player flag, atomic roundtrip/failure and all packed flag combinations passed");
+}
+''')
+
+    def test_movie_fit_shared_persistence(self):
+        self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + r'''
+int main(){using namespace darkwatch::view;
+ CHECK(Snapshot().movie_aspect_fit&&Snapshot(1).movie_aspect_fit);
+ for(const char* invalid:{"", "movie_aspect_fit='false'\n", "movie_aspect_fit=0\n"}){
+  Write(invalid);app::Load();CHECK(Snapshot().movie_aspect_fit&&Snapshot(1).movie_aspect_fit);
+ }
+ Write("movie_aspect_fit=false\n");app::Load();CHECK(!Snapshot().movie_aspect_fit);
+ CHECK(app::Save());Apply({});app::Load();CHECK(!Snapshot().movie_aspect_fit&&!Snapshot(1).movie_aspect_fit);
+ auto p2=Snapshot(1);p2.movie_aspect_fit=true;Apply(p2,1);
+ CHECK(Snapshot().movie_aspect_fit&&Snapshot(1).movie_aspect_fit);CHECK(app::Save());
+ auto table=toml::parse(Read());CHECK(table["movie_aspect_fit"].value_or(false));
+ CHECK(!table["player2_view"]["movie_aspect_fit"]);
+ for(bool fit:{false,true})for(bool bodies:{false,true}){
+  auto s=Snapshot();s.movie_aspect_fit=fit;s.forever_ragdolls=bodies;Apply(s);
+  CHECK(Snapshot().movie_aspect_fit==fit&&Snapshot(1).movie_aspect_fit==fit);
+  CHECK(Snapshot().forever_ragdolls==bodies&&Snapshot().hd_ui&&Snapshot().hd_textures);
+ }
+ std::puts("movie fit defaults, validation, shared persistence and flag isolation passed");
+}
+''')
+
     def test_reticle_zero_and_original_size_for_each_player(self):
         self.run_fixture(COOP_FIXTURE[:COOP_FIXTURE.index("int main(){")] + r'''
 int main(){using namespace darkwatch::view;

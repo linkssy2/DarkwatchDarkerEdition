@@ -1,4 +1,5 @@
 #include "cri_diagnostic.h"
+#ifndef XBE_RELEASE
 #include <array>
 #include <cstring>
 #include <mutex>
@@ -243,3 +244,5 @@ CRI_HOOK(DarkwatchCriDecoderCallback, DecoderCallback)
 CRI_HOOK(DarkwatchCriDecoderCleared, DecoderCleared)
 CRI_HOOK(DarkwatchCriDecoderPublished, DecoderPublished)
 #undef CRI_HOOK
+
+#endif

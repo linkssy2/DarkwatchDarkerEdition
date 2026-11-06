@@ -250,6 +250,7 @@ def retarget(data, params):
     if flags & 32 or len(params) != 22:
         raise ValueError('Retargeting requires expanded rotations and 22 bones')
     output, changed = bytearray(data), 0
+    additive = bool(flags & 0x10000000)
     for bit in (4, 8):
         if bit not in parts:
             continue
@@ -259,6 +260,7 @@ def retarget(data, params):
                 continue
             stop = min([v for v in section['indices'] if index < v < 0xffffffff] + [section['count']])
             offset, old_t, new_t, scale = params[bone]
+            inverse = _inverse(offset) if additive and bit == 4 else None
             for k in range(index, stop):
                 key = section['keys'] + k * section['stride']
                 if bit == 4:
@@ -269,22 +271,162 @@ def retarget(data, params):
                     if not .99 < length < 1.01:
                         raise ValueError('Unexpected animation quaternion')
                     q = tuple(v / length for v in q)
-                    mapped = _to_quaternion(_multiply(_quaternion_matrix(q), offset))
+                    rotation = _multiply(_quaternion_matrix(q), offset)
+                    # Native 231B30 applies additive rotations after the base
+                    # pose. Change their basis without adding the bind pose twice.
+                    if additive:
+                        rotation = _multiply(inverse, rotation)
+                    mapped = _to_quaternion(rotation)
                     if sum(a * b for a, b in zip(mapped, q)) < 0:
                         mapped = tuple(-v for v in mapped)
                     values = [max(-32768, min(32767, round(v * 32768))) for v in mapped]
                     struct.pack_into('<4h', output, key + 4, *values)
                 else:
-                    if old_t == new_t and scale == 1:
+                    if scale == 1 and (additive or old_t == new_t):
                         continue
                     values = struct.unpack_from('<3f', data, key + 4)
-                    mapped = tuple(b + (v - a) * scale for a, b, v in zip(old_t, new_t, values))
+                    mapped = (tuple(v * scale for v in values) if additive else
+                              tuple(b + (v - a) * scale for a, b, v in zip(old_t, new_t, values)))
                     if not all(math.isfinite(v) and abs(v) <= 3.4028234663852886e38 for v in mapped):
                         raise ValueError('Invalid retarget translation')
                     struct.pack_into('<3f', output, key + 4, *mapped)
                 changed += 1
     verify_preserved(data, output)
     return bytes(output), changed
+
+
+def arm_parameters(source, target, source_grip, target_grip, *, left_grips=None):
+    """Map arm rotations through their parent bases, retaining the authored grip.
+
+    Row-vector global poses map as G'=A*G. Hence a local pose becomes
+    A*Q*inverse(A_parent), and a right-applied delta uses A_parent*D*inverse(A_parent).
+    Weapon-joint tracks remain untouched; the wrist carries the grip alignment.
+    """
+    parameters(source, target)  # Validate both hierarchies and rigid bind bases.
+    parents = {row['frame']: bone for bone, row in source.items()}
+    parent = {bone: parents.get(row['parent']) for bone, row in source.items()}
+    def world(rows):
+        result = {}
+        def resolve(bone):
+            if bone not in result:
+                q = tuple(tuple(rows[bone]['rotation'][i:i+3]) for i in (0, 3, 6))
+                p = parent[bone]
+                result[bone] = q if p is None else _multiply(q, resolve(p))
+            return result[bone]
+        for bone in range(22):
+            resolve(bone)
+        return result
+    old, new = world(source), world(target)
+    maps = {bone: _multiply(new[bone], _inverse(old[bone])) for bone in range(22)}
+    source_weapon = tuple(tuple(source[16]['rotation'][i:i+3]) for i in (0, 3, 6))
+    target_weapon = tuple(tuple(target[16]['rotation'][i:i+3]) for i in (0, 3, 6))
+    weapon_map = _multiply(_inverse(target_grip), source_grip)
+    maps[15] = _multiply(_multiply(_inverse(target_weapon), weapon_map), source_weapon)
+    bones = (12, 13, 14, 15)
+    if left_grips is not None:
+        (source_left, source_joint), (target_left, target_joint) = left_grips
+        if source_joint not in (20, 21) or target_joint not in (20, 21):
+            raise ValueError('Unsupported left-pistol attachment parent')
+        source_weapon = tuple(tuple(source[21]['rotation'][i:i+3]) for i in (0, 3, 6)) if source_joint == 21 else IDENTITY
+        target_weapon = tuple(tuple(target[21]['rotation'][i:i+3]) for i in (0, 3, 6)) if target_joint == 21 else IDENTITY
+        weapon_map = _multiply(_inverse(target_left), source_left)
+        maps[20] = _multiply(_multiply(_inverse(target_weapon), weapon_map), source_weapon)
+        bones += (17, 18, 19, 20)
+    return {bone: (maps[bone], maps[parent[bone]]) for bone in bones}
+
+
+def retarget_arms(source, adapted, params):
+    """Correct only arm rotation keys; preserve accepted translations and grip tracks."""
+    verify_preserved(source, adapted)
+    flags, parts = sections(source)
+    if flags & 32 or set(params) not in ({12, 13, 14, 15}, {12, 13, 14, 15, 17, 18, 19, 20}):
+        raise ValueError('Arm correction requires expanded, witnessed player tracks')
+    if all(abs(matrix[i][j]-IDENTITY[i][j]) <= 1e-10
+           for pair in params.values() for matrix in pair for i in range(3) for j in range(3)):
+        return adapted
+    if 4 not in parts:
+        return adapted
+    result = bytearray(adapted)
+    section = parts[4]
+    additive = bool(flags & 0x10000000)
+    for bone, (left, parent) in params.items():
+        index = section['indices'][bone]
+        if index == 0xffffffff:
+            continue
+        end = min([v for v in section['indices'] if index < v < 0xffffffff] + [section['count']])
+        left = parent if additive else left
+        right = _inverse(parent)
+        for key in range(index, end):
+            at = section['keys'] + key * section['stride'] + 4
+            q = tuple(v / 32768 for v in struct.unpack_from('<4h', source, at))
+            length = math.sqrt(sum(v*v for v in q))
+            if not .99 < length < 1.01:
+                raise ValueError('Unexpected arm animation quaternion')
+            q = tuple(v / length for v in q)
+            mapped = _to_quaternion(_multiply(_multiply(left, _quaternion_matrix(q)), right))
+            if sum(a*b for a, b in zip(mapped, q)) < 0:
+                mapped = tuple(-v for v in mapped)
+            struct.pack_into('<4h', result, at, *[max(-32768, min(32767, round(v*32768))) for v in mapped])
+    verify_preserved(adapted, result)
+    return bytes(result)
+
+
+def player_arm_parameters(read, decode, target, locator, *, dual=False, dual_locators=None):
+    """Use the actual held-gun locator and each native player animation basis."""
+    def grip(path, name='loc_RightHand'):
+        rows = [n['attributes'] for n in decode(path if isinstance(path, bytes) else read(path))['children']
+                if n['attributes'].get('name') == name]
+        parents = {'weaponJoint_RightHand': 16} if name == 'loc_RightHand' else {'LeftHand': 20, 'weaponJoint_LeftHand': 21}
+        if len(rows) != 1 or rows[0]['parent'] not in parents:
+            raise ValueError('Unexpected player weapon attachment')
+        q = tuple(float(v) for v in rows[0]['rot'].split(','))
+        if len(q) != 4 or not all(math.isfinite(v) for v in q) or abs(sum(v*v for v in q)-1) > 1e-5:
+            raise ValueError('Invalid player weapon attachment rotation')
+        return _quaternion_matrix(q), parents[rows[0]['parent']]
+    target_grip = grip(locator)[0]
+    if dual_locators is not None and (not dual or set(dual_locators) != {STORM, CHAZ}):
+        raise ValueError('Missing per-mode dual-pistol locators')
+    result = {}
+    for basis in (STORM, CHAZ):
+        path = basis[:-4] + ('_coop.bllist' if basis == STORM else '.bllist')
+        left = (grip(path, 'loc_LeftHandDualWield'),
+                grip(dual_locators[basis] if dual_locators else locator, 'loc_LeftHandDualWield')) if dual else None
+        result[basis] = arm_parameters(frames(read(basis)), target, grip(path)[0], target_grip, left_grips=left)
+    return result
+
+
+def pistol_aim_clips(table):
+    """Grounded one-hand aiming only; keep reload/fanning and interactions native."""
+    groups = {'Movement UB Pistol', 'Crouch Alert Poses', 'Crouch Movement Pistol',
+              'Alert Poses UB', 'Pistol Aim'}
+    result = set()
+    for group in table['children']:
+        if group['name'] != 'AnimationGroup' or group['attributes'].get('ToolName') not in groups:
+            continue
+        for node in group['children']:
+            if node['name'] != 'KeyframeAnimation':
+                continue
+            flags = {c['attributes'].get('Flag') for c in node['children'] if c['name'] == 'Modifier'}
+            if flags & {'PISTOL', 'REVOLVER'} and flags & {'STAND', 'CROUCH'} and 'OUT_OF_VEHICLE' in flags:
+                result.add(_norm(node['attributes']['Name'])+'.sanm')
+    return result
+
+
+def dual_aim_clips(table):
+    """Keep both dual-pistol grips aligned without changing shared action clips."""
+    groups = {'Movement UB Double Pistol', 'Crouch Movement Double Pistol',
+              'Alert Poses UB', 'Crouch Alert Poses', 'Double Pistol Aim'}
+    result = set()
+    for group in table['children']:
+        if group['name'] != 'AnimationGroup' or group['attributes'].get('ToolName') not in groups:
+            continue
+        for node in group['children']:
+            if node['name'] != 'KeyframeAnimation':
+                continue
+            flags = {c['attributes'].get('Flag') for c in node['children'] if c['name'] == 'Modifier'}
+            if 'DOUBLEPISTOL' in flags and flags & {'STAND', 'CROUCH'} and 'OUT_OF_VEHICLE' in flags:
+                result.add(_norm(node['attributes']['Name'])+'.sanm')
+    return result
 
 
 def verify_preserved(original, adapted):
@@ -337,8 +479,8 @@ def _witness(tree):
 
 
 def prepare(read, decode, encode, model=CASSIDY, character="cassidy",
-            cancel=lambda: None, progress=lambda message: None):
-    """Return 619 adapted clips, five maps and their preload references.
+            cancel=lambda: None, progress=lambda message: None, *, arm_maps=None, dual_arm_maps=None):
+    """Return 606 adapted clips, five maps and their preload references.
 
     The importer supplies a source-hash-verifying read(path) function. BXML
     decode/encode are supplied to share the importer's validated format parser.
@@ -346,6 +488,10 @@ def prepare(read, decode, encode, model=CASSIDY, character="cassidy",
     cancel()
     models = {path: frames(read(path)) for path in (STORM, CHAZ, model)}
     params = {path: parameters(models[path], models[model]) for path in (STORM, CHAZ)}
+    if arm_maps is not None and set(arm_maps) != {STORM, CHAZ}:
+        raise ValueError('Missing player arm animation basis')
+    if dual_arm_maps is not None and set(dual_arm_maps) != {STORM, CHAZ}:
+        raise ValueError('Missing dual-pistol animation basis')
     outputs, tables, reusable = {}, [], {}
     for alias, source, destination, basis, witness, count in TABLES:
         cancel()
@@ -354,6 +500,8 @@ def prepare(read, decode, encode, model=CASSIDY, character="cassidy",
         progress(f'{label} animations: 0/{count}')
         destination = destination.replace('cassidy', character)
         table = decode(read(source))
+        arm_clips = pistol_aim_clips(table) if arm_maps is not None and alias == 'Multi' else set()
+        dual_clips = dual_aim_clips(table) if dual_arm_maps is not None and alias == 'Multi' else set()
         witnessed = _witness(decode(read(witness)))
         if (source[:-5], 'AnimatedCharacterResource') not in witnessed:
             raise ValueError('Animation table resource-type witness missing')
@@ -369,7 +517,12 @@ def prepare(read, decode, encode, model=CASSIDY, character="cassidy",
                 if not all((original[:-5], kind) in witnessed for kind in KINDS):
                     raise ValueError('Animation clip resource-type witness missing')
                 raw = read(original)
-                data, _ = retarget(expand(raw), params[basis])
+                expanded = expand(raw)
+                data, _ = retarget(expanded, params[basis])
+                if original in arm_clips:
+                    data = retarget_arms(expanded, data, arm_maps[basis])
+                elif original in dual_clips:
+                    data = retarget_arms(expanded, data, dual_arm_maps[basis])
                 verify_preserved(raw, data)
                 key = (original, hashlib.sha256(data).hexdigest())
                 target = reusable.get(key)
@@ -396,6 +549,8 @@ def prepare(read, decode, encode, model=CASSIDY, character="cassidy",
                            resource_witness=witness, clips=refs, resource_types=list(KINDS)))
     source = 'characters/multiplayer/multiplayeranimation.bxml'
     table = decode(read(source))
+    arm_clips = pistol_aim_clips(table) if arm_maps is not None else set()
+    dual_clips = dual_aim_clips(table) if dual_arm_maps is not None else set()
     clips = sorted({_norm(n['attributes']['Name']) + '.sanm' for n in _walk(table)
                     if n['name'] == 'KeyframeAnimation'})
     if len(clips) != 291:
@@ -410,6 +565,10 @@ def prepare(read, decode, encode, model=CASSIDY, character="cassidy",
         if sections(raw)[0] & 32:
             raise ValueError('Unsupported solo packed animation')
         data, changed = retarget(raw, params[CHAZ])
+        if original in arm_clips:
+            data = retarget_arms(raw, data, arm_maps[CHAZ])
+        elif original in dual_clips:
+            data = retarget_arms(raw, data, dual_arm_maps[CHAZ])
         sha = hashlib.sha256(data).hexdigest()
         target = reusable.get((original, sha), 'characters/player_two/' + character + 'animations/solo/' + original)
         if target in outputs and outputs[target] != data:
@@ -427,7 +586,11 @@ def prepare(read, decode, encode, model=CASSIDY, character="cassidy",
     if decode(data) != table:
         raise ValueError('Solo animation table roundtrip failed')
     outputs['characters/player_two/' + character + 'solomultiplayeranimation.bxml'] = data
-    if len(outputs) != 624:
+    referenced = {row['output'] for table in tables for row in table['clips']}
+    referenced.update(row['output'] for row in solo_clips)
+    referenced.update(table['output'] for table in tables)
+    referenced.add('characters/player_two/' + character + 'solomultiplayeranimation.bxml')
+    if set(outputs) != referenced or (arm_maps is None and len(outputs) != 611):
         raise ValueError('Incomplete character animation output')
     cancel()
     return outputs, tables, solo_clips

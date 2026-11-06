@@ -14,6 +14,7 @@ FIXTURE = r'''
 #define NOMINMAX
 #include <windows.h>
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -35,6 +36,8 @@ int main(){
  constexpr auto fire=size_t(PcAction::RightTrigger),forward=size_t(PcAction::MoveForward);
  input::Init();input::SetActive(true);app::Load();auto defaults=ControlsSnapshot();
  CHECK(defaults.zoom_sensitivity_percent==100);
+ CHECK(defaults.sight_toggle[0]&&defaults.sight_toggle[1]);
+ CHECK(!defaults.keep_starting_revolver&&!GetKeepStartingRevolver());
  CHECK(defaults.aim_assistance&&defaults.aim_centering&&defaults.mouse_millidegrees==50);
  CHECK(defaults.bindings[size_t(PcAction::Start)].keys[0]==VK_ESCAPE&&defaults.bindings[size_t(PcAction::Start)].keys[1]==VK_RETURN);
  CHECK(defaults.bindings[size_t(PcAction::B)].keys[0]=='B');
@@ -45,6 +48,7 @@ int main(){
  input::Mouse(8,-4);input::AdvanceFrame(16667);CHECK(!input::Poll(0).rx&&!input::Poll(0).ry);
  auto s=ControlsSnapshot();CHECK(s.mouse_millidegrees==75&&s.bindings[fire].keys[0]==VK_LBUTTON);
  CHECK(s.zoom_sensitivity_percent==100);s.zoom_sensitivity_percent=35;
+ CHECK(s.sight_toggle==defaults.sight_toggle);s.sight_toggle={false,true};
  s.aim_assistance=false;s.aim_centering=false;s.mouse_millidegrees=87;
  s.bindings[fire].keys[0]='P';s.bindings[fire].keys[1]=VK_XBUTTON1;
  s.bindings[forward].keys[0]='I';CHECK(ControlsApply(s));
@@ -58,6 +62,7 @@ int main(){
  CHECK(app::Save());auto saved=Read();CHECK(saved.find("direct_mouse")==std::string::npos);CHECK(saved.find("key_bindings")!=std::string::npos);
  CHECK(ControlsApply(defaults));app::Load();auto restored=ControlsSnapshot();
  CHECK(restored.zoom_sensitivity_percent==35);
+ CHECK(restored.sight_toggle==s.sight_toggle);
  CHECK(!restored.aim_assistance&&!restored.aim_centering&&restored.mouse_millidegrees==87);
  CHECK(restored.bindings[fire].keys[0]=='P'&&restored.bindings[fire].keys[1]==VK_XBUTTON1&&restored.bindings[forward].keys[0]=='I');
  CHECK(app::Snapshot().width==2560&&app::Snapshot().height==1440);
@@ -140,8 +145,114 @@ int main(){
   // An existing custom bracket assignment remains intact instead of resetting every key.
   Write("[key_bindings]\nright_trigger=[221,0]\n");app::Load();
   CHECK(ControlsSnapshot().bindings[fire].keys[0]==221&&!ControlsSnapshot().bindings[size_t(PcAction::NextWeapon)].keys[0]);
+  CHECK(!ControlsSnapshot().carry_all_weapons&&!GetCarryAllWeapons());
   CHECK(ControlsApply(restored));
  }
+ // Walk uses the game's analog path, separate per-player modes and a consumable pad override.
+ {
+  CHECK(defaults.bindings[size_t(PcAction::Walk)].keys[0]==VK_CAPITAL);
+  CHECK(!defaults.walk_toggle[0]&&!defaults.walk_toggle[1]&&defaults.walk_buttons[0]==-1&&defaults.walk_buttons[1]==-1);
+  auto walk=defaults;walk.walk_toggle[1]=true;walk.walk_buttons={6,8};walk.keep_starting_revolver=true;
+  CHECK(ControlsApply(walk)&&app::Save());CHECK(GetKeepStartingRevolver());
+  CHECK(ControlsApply(defaults));app::Load();auto loaded=ControlsSnapshot();
+  CHECK(loaded.walk_toggle==walk.walk_toggle&&loaded.walk_buttons==walk.walk_buttons&&loaded.keep_starting_revolver);
+  for(int invalid:{-2,4,5,16}){auto bad=walk;bad.walk_buttons[0]=invalid;CHECK(!ControlsApply(bad));}
+  auto bad=walk;bad.weapon_buttons[1][0]=8;CHECK(!ControlsApply(bad));
+  uint64_t now=5000000;
+  auto frame=[&]{input::AdvanceFrame(now+=16667);};
+  auto sample=[&](int port,bool on_foot=true,bool right=false,uint32_t owner=10){
+   auto p=input::Poll(port);ControlsWalkInput(port,p,on_foot,right,owner);return p;};
+  input::SetActive(true);frame();sample(0);
+  input::Key('W',true);frame();CHECK(sample(0).ly==32767);
+  input::Key(VK_CAPITAL,true);frame();CHECK(sample(0).ly==16384);
+  input::Key('D',true);frame();auto p=sample(0);CHECK(p.lx>0&&p.ly>0&&std::abs(std::hypot(p.lx,p.ly)-16384)<1);
+  for(int i=0;i<10;++i)CHECK(sample(0).ly==p.ly);
+  CHECK(sample(0,false).ly==23170); // Menu/vehicle/cutscene callback must not alter analog input.
+  input::Key('D',false);input::Key(VK_CAPITAL,false);frame();CHECK(sample(0).ly==32767);
+  // PC walk is owned by port zero. Toggle can use a separately bound physical button on port one.
+  p={};p.connected=true;p.ly=32767;p.rx=30000;ControlsWalkInput(1,p,true,false,20);CHECK(p.ly==32767);
+  p.physical_buttons=1u<<8;p.analog[0]=255;ControlsWalkInput(1,p,true,false,20);
+  CHECK(p.ly==16384&&p.rx==30000&&!p.analog[0]);
+  p.ly=32767;ControlsWalkInput(1,p,true,false,20);CHECK(p.ly==16384); // Repeated queries do not toggle twice.
+  p.physical_buttons=0;p.ly=32767;ControlsWalkInput(1,p,true,false,20);CHECK(p.ly==16384);
+  p.physical_buttons=1u<<8;p.ly=32767;ControlsWalkInput(1,p,true,false,20);CHECK(p.ly==32767);
+  // Physical overrides clear the mapped logical action, but retain independently held keyboard buttons.
+  p={};p.physical_buttons=1u<<6;p.buttons=1u<<6;p.ly=32767;ControlsWalkInput(0,p,true,false,10);CHECK(!p.buttons&&p.ly==16384);
+  input::Key('C',true);frame();p.buttons=1u<<6;ControlsWalkInput(0,p,true,false,10);CHECK(p.buttons==(1u<<6));
+  input::Key('C',false);input::Key('W',false);frame();
+  // Lefty moves on the right stick; smaller analog motion and its aim stick remain unchanged.
+  p={};p.physical_buttons=1u<<6;p.lx=32767;p.ry=32767;ControlsWalkInput(0,p,true,true,10);CHECK(p.ry==16384&&p.lx==32767);
+  p.rx=3000;p.ry=8000;ControlsWalkInput(0,p,true,true,10);CHECK(p.rx==3000&&p.ry==8000);
+  // Focus/menu changes and a new local actor clear toggle state instead of inheriting an old press.
+  walk.walk_toggle[0]=true;CHECK(ControlsApply(walk));frame();sample(0);
+  input::Key('W',true);input::Key(VK_CAPITAL,true);frame();CHECK(sample(0).ly==16384);
+  input::Key(VK_CAPITAL,false);frame();CHECK(sample(0).ly==16384);
+  CHECK(sample(0,true,false,11).ly==32767);
+  input::Key(VK_CAPITAL,true);frame();CHECK(sample(0,true,false,11).ly==16384);
+  input::SetMenuMode(true);frame();sample(0);input::SetMenuMode(false);frame();
+  input::Key('W',true);frame();CHECK(sample(0).ly==32767);
+  input::Key(VK_CAPITAL,true);frame();CHECK(sample(0).ly==16384);
+  input::SetActive(false);input::SetActive(true);frame();input::Key('W',true);frame();CHECK(sample(0).ly==32767);
+  Write("[key_bindings]\nright_trigger=[20,0]\n");app::Load();
+  CHECK(ControlsSnapshot().bindings[fire].keys[0]==VK_CAPITAL&&!ControlsSnapshot().bindings[size_t(PcAction::Walk)].keys[0]);
+  Write("walk_toggle=[true,false]\nwalk_buttons=[4,99]\n");app::Load();
+  CHECK(ControlsSnapshot().walk_buttons==defaults.walk_buttons&&ControlsSnapshot().walk_toggle[0]&&!GetKeepStartingRevolver());
+  CHECK(ControlsApply(restored));
+ }
+ // Shoulder swapping has a free PC default and independent, unbound pad overrides.
+ {
+  constexpr auto action=size_t(PcAction::SwapShoulder);
+  CHECK(defaults.bindings[action].keys[0]=='V'&&!defaults.bindings[action].keys[1]);
+  CHECK(defaults.shoulder_buttons[0]==-1&&defaults.shoulder_buttons[1]==-1);
+  auto shoulder=defaults;shoulder.shoulder_buttons={6,8};shoulder.walk_buttons={7,9};
+  shoulder.weapon_buttons[0]={2,3};shoulder.weapon_buttons[1]={12,13};
+  shoulder.bindings[action]={{'H',VK_XBUTTON2}};
+  CHECK(ControlsApply(shoulder)&&app::Save());CHECK(Read().find("swap_shoulder")!=std::string::npos);
+  CHECK(ControlsApply(defaults));app::Load();auto loaded=ControlsSnapshot();
+  CHECK(loaded.shoulder_buttons==shoulder.shoulder_buttons&&loaded.walk_buttons==shoulder.walk_buttons&&loaded.weapon_buttons==shoulder.weapon_buttons);
+  CHECK(loaded.bindings[action].keys[0]=='H'&&loaded.bindings[action].keys[1]==VK_XBUTTON2&&!loaded.carry_all_weapons);
+  for(unsigned port:{0u,1u})for(int invalid:{-2,4,5,16,shoulder.walk_buttons[port],shoulder.weapon_buttons[port][0],shoulder.weapon_buttons[port][1]}){
+   auto bad=shoulder;bad.shoulder_buttons[port]=invalid;CHECK(!ControlsApply(bad));
+   CHECK(ControlsSnapshot().shoulder_buttons==shoulder.shoulder_buttons&&input::GetPcBindings()[action].keys[0]=='H');
+  }
+  // Extra actions are visible to the camera without also emitting an original game button.
+  uint64_t now=7000000;input::SetActive(true);
+  for(uint32_t key:{uint32_t('H'),uint32_t(VK_XBUTTON2)}){
+   input::Key(key,true);input::AdvanceFrame(now+=16667);CHECK(input::PcActionDown(PcAction::SwapShoulder));
+   auto pad=input::Poll(0);CHECK(!pad.buttons);for(auto value:pad.analog)CHECK(!value);
+   input::Key(key,false);input::AdvanceFrame(now+=16667);CHECK(!input::PcActionDown(PcAction::SwapShoulder));
+  }
+  input::Key('H',true);input::SetMenuMode(true);input::AdvanceFrame(now+=16667);CHECK(!input::PcActionDown(PcAction::SwapShoulder));
+  input::SetMenuMode(false);input::AdvanceFrame(now+=16667);CHECK(!input::PcActionDown(PcAction::SwapShoulder));
+  input::Key('H',true);input::SetActive(false);input::SetActive(true);input::AdvanceFrame(now+=16667);CHECK(!input::PcActionDown(PcAction::SwapShoulder));
+  // Existing V remaps win when an older configuration has no new action entry.
+  Write("[key_bindings]\nright_trigger=[86,0]\n");app::Load();
+  CHECK(ControlsSnapshot().bindings[fire].keys[0]=='V'&&!ControlsSnapshot().bindings[action].keys[0]);
+  for(const char* bad:{"shoulder_buttons=1\n","shoulder_buttons=[6]\n","shoulder_buttons=[6,8,9]\n","shoulder_buttons=['a',false]\n","shoulder_buttons=[4,5]\n"}){
+   Write(bad);app::Load();CHECK(ControlsSnapshot().shoulder_buttons==defaults.shoulder_buttons);
+  }
+  Write("walk_buttons=[6,9]\nshoulder_buttons=[6,8]\n");app::Load();
+  CHECK(ControlsSnapshot().shoulder_buttons[0]==-1&&ControlsSnapshot().shoulder_buttons[1]==8&&ControlsSnapshot().walk_buttons[0]==6);
+  Write("shoulder_buttons=[2,9]\n[weapon_cycle_buttons]\nplayer_1=[2,3]\nplayer_2=[9,10]\n");app::Load();
+  CHECK(ControlsSnapshot().shoulder_buttons==defaults.shoulder_buttons&&ControlsSnapshot().weapon_buttons[1][0]==9);
+  CHECK(ControlsApply(restored));
+ }
+ // Sight modes persist independently without changing legacy bindings or accepting malformed values.
+ for(const auto modes:{std::array<bool,2>{false,false},std::array<bool,2>{false,true},
+                       std::array<bool,2>{true,false},std::array<bool,2>{true,true}}){
+  auto sight=restored;sight.sight_toggle=modes;CHECK(ControlsApply(sight)&&app::Save());
+  CHECK(ControlsApply(defaults));app::Load();auto loaded=ControlsSnapshot();
+  CHECK(loaded.sight_toggle==modes&&loaded.zoom_sensitivity_percent==restored.zoom_sensitivity_percent);
+  for(size_t action=0;action<restored.bindings.size();++action)for(size_t slot=0;slot<2;++slot)
+   CHECK(loaded.bindings[action].keys[slot]==restored.bindings[action].keys[slot]);
+ }
+ for(const char* bad:{"sight_toggle=1\n","sight_toggle=[false]\n","sight_toggle=[false,true,false]\n",
+                      "sight_toggle=['hold','toggle']\n"}){
+  Write(bad);app::Load();CHECK(ControlsSnapshot().sight_toggle==defaults.sight_toggle);
+ }
+ Write("sight_toggle=[false,17]\n");app::Load();
+ CHECK(!ControlsSnapshot().sight_toggle[0]&&ControlsSnapshot().sight_toggle[1]);
+ CHECK(ControlsApply(restored));
  // Invalid live draft must leave both controls and actual input unchanged.
  s=restored;s.bindings[fire].keys[0]='I';CHECK(!ControlsApply(s));
  CHECK(ControlsSnapshot().bindings[fire].keys[0]=='P'&&input::GetPcBindings()[fire].keys[0]=='P');

@@ -76,7 +76,7 @@ int main(){
  for(unsigned held=0;held<4;++held){Poll(0,255);Frame();CHECK(g_open&&!g_pad&&!g_character_ready);}
  Poll();Frame();CHECK(g_released&&g_character_ready);
  CHECK(std::find(rendered_text.begin(),rendered_text.end(),"CHOOSE CHARACTER")!=rendered_text.end());
- CHECK(std::find(rendered_text.begin(),rendered_text.end(),"Continue to choose a chapter or resume your save.")!=rendered_text.end());
+ CHECK(std::find(rendered_text.begin(),rendered_text.end(),"Continue to chapter selection.")!=rendered_text.end());
  CHECK((characters()==std::array{J,J}));
  ClickNamed("PREVIOUS");CHECK(g_character_draft==Character::BossTala);ClickNamed("NEXT");CHECK(g_character_draft==J);
  Frame();CHECK(darkwatch::preview::drawn==J);Frame(1);CHECK(darkwatch::preview::elapsed>=1);

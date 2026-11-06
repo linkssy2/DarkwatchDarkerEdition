@@ -1,6 +1,7 @@
 #pragma once
 #include "hd_ui_assets.h"
 #include "hd_ui_filter.h"
+#include "portuguese_font.h"
 #include <imgui.h>
 #include <algorithm>
 #include <array>
@@ -20,8 +21,11 @@ struct State {
     ImFontAtlas* atlas = nullptr;
     Fonts fonts;
     std::array<Region, 3> art;
+    Fonts original_fonts;
+    std::array<Region, 3> original_art;
     std::vector<Letter> letters;
     bool ready = false;
+    bool hd = true;
 };
 inline State state;
 inline bool Read(std::ifstream& f, uint64_t offset, void* out, size_t bytes) {
@@ -52,7 +56,7 @@ struct Pack {
         valid = next == h.bytes;
     }
 };
-inline bool Load(Pack& pack, std::ifstream& original, uint32_t offset, Image& out) {
+inline bool Load(Pack& pack, std::ifstream& original, uint32_t offset, Image& out, bool hd = true) {
     const auto it = std::find_if(std::begin(hd::kAssets), std::end(hd::kAssets),
                                  [offset](const auto& a) { return a.offset == offset; });
     if (it == std::end(hd::kAssets)) return false;
@@ -61,7 +65,7 @@ inline bool Load(Pack& pack, std::ifstream& original, uint32_t offset, Image& ou
     const bool packed = pack.valid && Read(pack.file, pack.entries[i].native_offset, native.data(), native.size()) &&
                         hd::Hash(native) == a.native_hash;
     if (!packed && (!Read(original, a.offset, native.data(), native.size()) || hd::Hash(native) != a.native_hash)) return false;
-    if (packed && pack.entries[i].pixels_offset) {
+    if (hd && packed && pack.entries[i].pixels_offset) {
         std::vector<uint8_t> pixels(size_t(hd::PixelBytes(a)));
         if (Read(pack.file, pack.entries[i].pixels_offset, pixels.data(), pixels.size()) && hd::Hash(pixels) == pack.entries[i].pixels_hash) {
             out = {a.width * 4, a.height * 4, std::move(pixels)}; return true;
@@ -141,7 +145,7 @@ inline void Density(Image& image, float logical_height) {
     if (!pixels.empty()) image = {image.width * 4, image.height * 4, std::move(pixels)};
 }
 inline ImFont* Font(ImFontAtlas* atlas, float cap, const Image& image, const Metadata& meta,
-                    const Image& body_image, const Metadata& body_meta) {
+                    const Image& body_image, const Metadata& body_meta, ImFont* same_layout = nullptr) {
     // A single fallback glyph supplies ImGui's required font source. Every
     // printable glyph is replaced below with original game artwork.
     static const ImWchar fallback[]{'?', '?', 0};
@@ -151,17 +155,34 @@ inline ImFont* Font(ImFontAtlas* atlas, float cap, const Image& image, const Met
     ImFont* font = atlas->AddFontDefault(&config);
     std::vector<unsigned> codes;
     for (unsigned code = 32; code < 127; ++code) codes.push_back(code);
-    for (unsigned code : {0xA1u, 0xBFu, 0xC1u, 0xC9u, 0xCDu, 0xD1u, 0xD3u, 0xDAu, 0xDCu,
-                          0xE1u, 0xE9u, 0xEDu, 0xF1u, 0xF3u, 0xFAu, 0xFCu}) codes.push_back(code);
+    // German sharp-s is a real native glyph, not an uppercase/lowercase pair.
+    for (unsigned code : {0xA1u, 0xBFu, 0xDFu}) codes.push_back(code);
+    for (unsigned upper : {0xC0u,0xC1u,0xC2u,0xC3u,0xC4u,0xC7u,0xC8u,0xC9u,0xCAu,0xCBu,
+                           0xCCu,0xCDu,0xCEu,0xCFu,0xD1u,0xD2u,0xD3u,0xD4u,0xD5u,0xD6u,
+                           0xD9u,0xDAu,0xDBu,0xDCu}) {
+        codes.push_back(upper);codes.push_back(upper+32);
+    }
     for (unsigned code : codes) {
         const unsigned mapped = (code >= 'a' && code <= 'z') || code >= 0xE0 ? code - 32 : code;
         const Metadata* selected = &meta; const Image* pixels = &image;
         const Metrics* m = &metrics;
-        const uint8_t* glyph = Glyph(meta, mapped);
-        if (!glyph) { selected = &body_meta; pixels = &body_image; m = &body_metrics; glyph = Glyph(body_meta, mapped); }
+        const bool tilde=mapped==0xC3||mapped==0xD5;
+        const unsigned source_code=tilde?(mapped==0xC3?'A':'O'):mapped;
+        // The body font supplies the original extended alphabet, including N-tilde.
+        const uint8_t* glyph = tilde?nullptr:Glyph(meta, source_code);
+        if (!glyph) { selected = &body_meta; pixels = &body_image; m = &body_metrics; glyph = Glyph(body_meta, source_code); }
         if (!glyph) glyph = Glyph(body_meta, '?');
         Letter letter{}; letter.font = font; letter.code = code;
         if (!glyph || !LetterImage(*pixels, glyph, letter.region.image)) continue;
+        if(tilde) {
+            auto cell=[&](const uint8_t* g) { return portuguese_font::Cell{Float(g)*pixels->width,
+                Float(g+4)*pixels->height,Float(g+8)*pixels->width,Float(g+12)*pixels->height}; };
+            const auto* n=Glyph(*selected,'N');const auto* nt=Glyph(*selected,0xD1);
+            portuguese_font::Image composed;
+            if(!n||!nt||!portuguese_font::Compose(pixels->width,pixels->height,pixels->bgra,pixels->bgra,
+                                                 cell(glyph),cell(n),cell(nt),composed))continue;
+            letter.region.image={composed.width,composed.height,std::move(composed.bgra)};
+        }
         const auto ink = Ink(letter.region.image, 1);
         letter.advance = ((Float(glyph + 16) + selected->spacing) * m->cell_height - m->padding) * m->scale;
         if (code == ' ') letter.advance = cap * .5f;
@@ -170,7 +191,15 @@ inline ImFont* Font(ImFontAtlas* atlas, float cap, const Image& image, const Met
         letter.y = ink.Empty() ? 0 : (float(ink.top) - m->top) * m->scale + (line_height - cap) * .5f;
         letter.width = ink.Empty() ? 0 : (ink.right - ink.left) * m->scale;
         letter.height = ink.Empty() ? 0 : (ink.bottom - ink.top) * m->scale;
-        Trim(letter.region.image, ink); Density(letter.region.image, letter.height);
+        Trim(letter.region.image, ink);
+        if (same_layout) {
+            // Artwork quality must not change line wrapping, hitboxes or navigation.
+            const auto layout = std::find_if(state.letters.begin(), state.letters.end(),
+                [&](const auto& other) { return other.font == same_layout && other.code == code; });
+            if (layout == state.letters.end()) continue;
+            letter.x = layout->x; letter.y = layout->y; letter.width = layout->width;
+            letter.height = layout->height; letter.advance = layout->advance;
+        } else Density(letter.region.image, letter.height);
         for (size_t i = 0; i < letter.region.image.bgra.size(); i += 4) {
             const auto* p = letter.region.image.bgra.data() + i;
             if (p[3] && (p[0] != p[1] || p[1] != p[2])) letter.colored = true;
@@ -181,8 +210,8 @@ inline ImFont* Font(ImFontAtlas* atlas, float cap, const Image& image, const Met
     }
     return font;
 }
-inline void Arrows(ImFontAtlas* atlas, ImFont* font, float cap) {
-    const unsigned side = unsigned(std::ceil(cap * 4));
+inline void Arrows(ImFontAtlas* atlas, ImFont* font, float cap, bool hd = true) {
+    const unsigned side = hd ? unsigned(std::ceil(cap * 4)) : 18;
     for (unsigned direction = 0; direction < 4; ++direction) {
         Letter letter{}; letter.font = font; letter.code = 0x2190 + direction;
         letter.y = 3; letter.width = letter.height = cap; letter.advance = cap + 6;
@@ -221,9 +250,11 @@ inline Fonts Initialize(ImFontAtlas* atlas, const std::filesystem::path& pack_pa
         atlas->Fonts.contains(detail::state.fonts.body)) return detail::state.fonts;
     detail::state = {};
     detail::Pack pack(pack_path); std::ifstream original(original_path, std::ios::binary);
-    detail::Image body, title;
+    detail::Image body, title, original_body, original_title;
     detail::Metadata body_meta, title_meta;
     if (!detail::Load(pack, original, 94020788, body) || !detail::Load(pack, original, 93423668, title) ||
+        !detail::Load(pack, original, 94020788, original_body, false) ||
+        !detail::Load(pack, original, 93423668, original_title, false) ||
         !detail::Meta(original, 94200708, 2806, 0xA04471FF903BEAD8ull, body_meta) ||
         !detail::Meta(original, 93493633, 937, 0x38B7E4E87907F30Eull, title_meta)) return {};
     for (auto* image : {&body, &title}) if (image->width == 256) {
@@ -233,7 +264,8 @@ inline Fonts Initialize(ImFontAtlas* atlas, const std::filesystem::path& pack_pa
     }
     constexpr uint32_t art[]{101214580, 101206260, 101924596};
     for (size_t i = 0; i < std::size(art); ++i)
-        if (!detail::Load(pack, original, art[i], detail::state.art[i].image)) return {};
+        if (!detail::Load(pack, original, art[i], detail::state.art[i].image) ||
+            !detail::Load(pack, original, art[i], detail::state.original_art[i].image, false)) return {};
     detail::state.atlas = atlas;
     // ImGui's font-only width heuristic ignores these larger artwork cells.
     atlas->TexDesiredWidth = std::max(atlas->TexDesiredWidth, 4096);
@@ -241,7 +273,19 @@ inline Fonts Initialize(ImFontAtlas* atlas, const std::filesystem::path& pack_pa
     detail::state.fonts.body = detail::Font(atlas, body_size, body, body_meta, body, body_meta);
     detail::state.fonts.title = detail::Font(atlas, title_size, title, title_meta, body, body_meta);
     detail::Arrows(atlas, detail::state.fonts.body, body_size);
+    for (auto& r : detail::state.original_art) r.rectangle = atlas->AddCustomRectRegular(r.image.width, r.image.height);
+    detail::state.original_fonts.body = detail::Font(atlas, body_size, original_body, body_meta,
+        original_body, body_meta, detail::state.fonts.body);
+    detail::state.original_fonts.title = detail::Font(atlas, title_size, original_title, title_meta,
+        original_body, body_meta, detail::state.fonts.title);
+    detail::Arrows(atlas, detail::state.original_fonts.body, body_size, false);
     return detail::state.fonts;
+}
+
+inline Fonts Select(bool hd) {
+    detail::state.hd = hd;
+    if (!ImGui::GetCurrentContext() || detail::state.atlas != ImGui::GetIO().Fonts) return {};
+    return hd ? detail::state.fonts : detail::state.original_fonts;
 }
 
 inline bool Finalize() {
@@ -263,6 +307,7 @@ inline bool Finalize() {
         atlas->CalcCustomRectUV(rect, &r.uv0, &r.uv1); return true;
     };
     for (auto& r : state.art) if (!fill(r)) return false;
+    for (auto& r : state.original_art) if (!fill(r)) return false;
     for (auto& letter : state.letters) {
         if (!fill(letter.region)) return false;
         auto* glyph = const_cast<ImFontGlyph*>(letter.font->FindGlyphNoFallback(ImWchar(letter.code)));
@@ -272,14 +317,16 @@ inline bool Finalize() {
         glyph->AdvanceX = letter.advance; glyph->Colored = letter.colored;
         letter.font->DirtyLookupTables = true;
     }
-    for (auto* font : {state.fonts.body, state.fonts.title}) { font->FallbackChar = '?'; font->BuildLookupTable(); }
+    for (auto* font : {state.fonts.body, state.fonts.title, state.original_fonts.body, state.original_fonts.title}) {
+        font->FallbackChar = '?'; font->BuildLookupTable();
+    }
     atlas->TexPixelsUseColors = true; state.ready = true; return true;
 }
 
 inline void Frame(ImDrawList* draw, ImVec2 pos, ImVec2 size) {
     if (!draw || size.x <= 0 || size.y <= 0) return;
     if (!detail::Ready()) { draw->AddRectFilled(pos, {pos.x + size.x, pos.y + size.y}, IM_COL32(8, 8, 8, 245)); return; }
-    const auto& r = detail::state.art[0];
+    const auto& r = (detail::state.hd ? detail::state.art : detail::state.original_art)[0];
     const float natural_height = size.x * r.image.height / r.image.width;
     const float fixed_scale = std::min(1.f, size.y / (natural_height * .47f));
     const float top = natural_height * .14f * fixed_scale, bottom = natural_height * .33f * fixed_scale;
@@ -297,7 +344,7 @@ inline void Frame(ImDrawList* draw, ImVec2 pos, ImVec2 size) {
 inline void Row(ImDrawList* draw, ImVec2 a, ImVec2 b, bool selected) {
     if (!draw || b.x <= a.x || b.y <= a.y) return;
     if (!detail::Ready()) { draw->AddRectFilled(a, b, selected ? IM_COL32(115, 5, 8, 255) : IM_COL32(16, 16, 16, 255)); return; }
-    const auto& r = detail::state.art[selected ? 2 : 1];
+    const auto& r = (detail::state.hd ? detail::state.art : detail::state.original_art)[selected ? 2 : 1];
     draw->AddImage(detail::state.atlas->TexID, a, b, r.uv0, r.uv1);
 }
 } // namespace darkwatch::skin

@@ -52,6 +52,29 @@ namespace DarkwatchDarkerEdition
             }
         }
 
+        static bool RecoveryReady(string path, uint pid)
+        {
+            if (!RealPath(path, false, true)) return false;
+            const int maximum = 4096;
+            try {
+                using (var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete)) {
+                    if (input.Length > maximum) throw new IOException("The update recovery readiness record is too large.");
+                    using (var reader = new StreamReader(input, new UTF8Encoding(false, true), true)) {
+                        var json = new JavaScriptSerializer { MaxJsonLength = maximum, RecursionLimit = 4 };
+                        var value = json.DeserializeObject(reader.ReadToEnd()) as Dictionary<string, object>;
+                        object identity;
+                        if (value == null || !value.TryGetValue("pid", out identity)) throw new ArgumentException();
+                        return (identity is int && (int)identity > 0 && (uint)(int)identity == pid) ||
+                            (identity is long && (long)identity > 0 && (ulong)(long)identity == pid);
+                    }
+                }
+            } catch (ArgumentException error) {
+                throw new IOException("The update recovery readiness record is invalid.", error);
+            } catch (InvalidOperationException error) {
+                throw new IOException("The update recovery readiness record is invalid.", error);
+            }
+        }
+
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         struct StartupInfo {
             public uint cb;
@@ -69,6 +92,22 @@ namespace DarkwatchDarkerEdition
             ref StartupInfo startup, out ProcessInfo process);
         [DllImport("kernel32.dll")]
         static extern bool CloseHandle(IntPtr handle);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool GetExitCodeProcess(IntPtr process, out uint code);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool TerminateProcess(IntPtr process, uint code);
+
+        static void WaitForRecovery(IntPtr process, uint milliseconds)
+        {
+            uint result = WaitForSingleObject(process, milliseconds);
+            if (result == 258) return;
+            uint code;
+            if (result == 0 && GetExitCodeProcess(process, out code))
+                throw new IOException("Update recovery stopped before it was ready (exit 0x" + code.ToString("X8") + "). Keep this folder intact and try again.");
+            throw new IOException("Could not check update recovery.", new Win32Exception(Marshal.GetLastWin32Error()));
+        }
 
         public static bool TryRecover(string package)
         {
@@ -87,6 +126,8 @@ namespace DarkwatchDarkerEdition
                     if (directory) folders.Push(entry);
                 }
             }
+            string ready = Path.Combine(package, ".launcher-update", "worker-ready.json");
+            if (RealPath(ready, false, true)) File.Delete(ready);
             string arguments = Quote(python) + " -B " + Quote(script) + " --recover " + Quote(package)
                 + " --wait-pid " + Process.GetCurrentProcess().Id + " --restart";
             var startup = new StartupInfo { cb = (uint)Marshal.SizeOf(typeof(StartupInfo)) };
@@ -96,8 +137,30 @@ namespace DarkwatchDarkerEdition
                     0x08000000, IntPtr.Zero, runner, ref startup, out process))
                 throw new IOException("Could not start update recovery. Keep this folder intact and try again.",
                     new Win32Exception(Marshal.GetLastWin32Error()));
-            CloseHandle(process.thread); CloseHandle(process.process);
-            return true;
+            bool accepted = false;
+            try {
+                var timer = Stopwatch.StartNew();
+                while (timer.ElapsedMilliseconds < 10000) {
+                    WaitForRecovery(process.process, 50);
+                    if (!RecoveryReady(ready, process.pid)) continue;
+                    WaitForRecovery(process.process, 0);
+                    // The worker writes this before waiting for us; never wait for recovery completion here.
+                    accepted = true; return true;
+                }
+                throw new IOException("Update recovery did not become ready. Keep this folder intact and try again.");
+            } finally {
+                try {
+                    // An unacknowledged worker cannot mutate the package while this launcher is still alive.
+                    if (!accepted && WaitForSingleObject(process.process, 0) == 258) {
+                        if (!TerminateProcess(process.process, 1) && WaitForSingleObject(process.process, 0) == 258)
+                            throw new IOException("Could not stop the unready update recovery process.", new Win32Exception(Marshal.GetLastWin32Error()));
+                        if (WaitForSingleObject(process.process, 1000) != 0)
+                            throw new IOException("The unready update recovery process did not stop.");
+                    }
+                } finally {
+                    CloseHandle(process.thread); CloseHandle(process.process);
+                }
+            }
         }
 
         public static string Quote(string value)

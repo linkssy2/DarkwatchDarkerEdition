@@ -146,7 +146,9 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
                      'character_repaint.py', 'character_content.py', 'character_boss.py',
                      'character_boss_effects.py', 'character_spectral_hands.py', 'character_hand_seams.py',
                      'character_secondary.py', 'character_preview.py', 'character_roster.py', 'character_tala.py',
-                     'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py',
+                     'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'character_cinematic.py',
+                     'third_person_animation.py', 'character_reload.py', 'character_weapon_pose.py', 'character_weapon_hold.py', 'character_starter_reload.py',
+                     'body_weapon_grips.inc',
                      'character-catalog.json'):
             shutil.copyfile(ROOT / 'launcher' / name, self.payload / name)
         (self.payload / 'character-art').mkdir()
@@ -528,6 +530,30 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
                 break
             time.sleep(.02)
         self.assertEqual((current / "worker-ran.txt").read_text(), "harmless launcher fixture")
+
+    def test_opt_in_session_and_setup_diagnostics(self):
+        self.assertFalse(self.backend.diagnostic_logging())
+        state = self.backend.set_diagnostics('on')
+        self.assertTrue(state['diagnostic_logging'])
+        self.assertFalse(state['installed'])
+        setup.start_diagnostics(self.install, '--verify')
+        self.addCleanup(setattr, setup, '_diagnostic_path', None)
+        setup.emit('error', 'controlled setup failure')
+        self.assertIn('controlled setup failure', setup._diagnostic_path.read_text())
+        current = self.install_disc()
+        popen = subprocess.Popen
+        with patch.object(subprocess, 'Popen', wraps=popen) as launched:
+            self.backend.play()
+        environment = launched.call_args.kwargs['env']
+        self.assertEqual(environment['XBE_SESSION_LOG'], '1')
+        self.assertEqual(environment['XBE_SESSION_LOG_DIR'], str(self.install/'logs'))
+        self.backend.set_diagnostics('off')
+        setup.start_diagnostics(self.install, '--verify')
+        self.assertIsNone(setup._diagnostic_path)
+        with patch.object(subprocess, 'Popen', wraps=popen) as launched, patch.dict(os.environ, {'XBE_SESSION_LOG':'1'}):
+            self.backend.play()
+        self.assertNotIn('XBE_SESSION_LOG', launched.call_args.kwargs['env'])
+        self.assertTrue(self.backend.status()['ready'])
 
     def test_old_spanish_is_preserved_but_requires_ps2_import(self):
         current, legacy, ps2, iso = self.spanish_variants()
@@ -1374,6 +1400,46 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
                     for name, data in self.installed_data.items():
                         self.assertEqual((current / 'assets' / name).read_bytes(), data)
                     self.assertEqual(json.loads((current / 'install.json').read_text())['partition_offset'], offset)
+
+    def test_missing_active_record_blocks_duplicate_import_and_recovers_selected_version(self):
+        current = self.install_disc()
+        (current / 'hdd').mkdir(exist_ok=True)
+        (current / 'hdd/save.bin').write_bytes(b'keep this progress')
+        (self.install / 'active.json').unlink()
+        before = self.snapshot(current)
+        assets = self.package / 'assets'
+        assets.mkdir()
+        shutil.copyfile(self.iso, assets / 'disc.iso')
+        for action in (self.backend.status, lambda: self.backend.use_drop_in_iso(assets),
+                       lambda: self.backend.use_iso(self.iso), lambda: self.backend.import_iso(self.iso)):
+            with self.assertRaisesRegex(setup.SetupError, 'active installation record is missing'):
+                action()
+        self.assertEqual(list((self.install / 'versions').iterdir()), [current])
+        self.assertEqual(self.snapshot(current), before)
+        result = self.backend.use_installation(current)
+        self.assertTrue(result['ready'])
+        self.assertEqual(self.backend.active(), current)
+        self.assertEqual(self.snapshot(current), before)
+        self.update_fixture(current)
+        self.backend.update()
+        self.assertEqual(self.backend.active(), current)
+        self.assertEqual(list((self.install / 'versions').iterdir()), [current])
+        self.assertEqual((current / 'hdd/save.bin').read_bytes(), b'keep this progress')
+
+    def test_explicit_version_selection_honors_choice_and_rejects_wrong_disc(self):
+        previous = self.install_disc()
+        current = self.install_disc()
+        before = self.snapshot(current)
+        self.assertEqual(self.backend.active(), current)
+        self.backend.use_installation(previous)
+        self.assertEqual(self.backend.active(), previous)
+        self.assertEqual(self.snapshot(current), before)
+        metadata = setup.read_json(current / 'install.json')
+        metadata['disc_sha256'] = '0' * 64
+        setup.write_json(current / 'install.json', metadata)
+        with self.assertRaisesRegex(setup.SetupError, 'different disc revision'):
+            self.backend.use_installation(current)
+        self.assertEqual(self.backend.active(), previous)
 
     def test_package_damage_and_escaped_active_pointer_rejected(self):
         (self.payload / "runtime" / setup.EXE).write_bytes(b"corrupt")

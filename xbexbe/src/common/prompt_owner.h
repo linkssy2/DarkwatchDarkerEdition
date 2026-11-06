@@ -19,9 +19,11 @@ template<class T = uint32_t> inline T Read(const uint8_t* base, uint32_t address
 inline int Resolve(const uint8_t* base, uint32_t root) {
     if (!Span(base, root, 0x58) || Read(base, root) != 0x427740 || !Span(base, 0x4AC9A0, 4)) return -1;
     const uint32_t actor = Read(base, root + 0x54), game = Read(base, 0x4AC9A0);
-    if (!Span(base, actor, 4) || !Span(base, game, 0x58) || Read(base, game + 0x44) != 2) return -1;
+    if (!Span(base, actor, 4) || !Span(base, game, 0x58) || Read(base, game + 0x44) != 2 ||
+        Read(base, game + 0x4C) != 2) return -1;
     const uint32_t capacity = Read<uint16_t>(base, game + 0x50), records = Read(base, game + 0x54);
     // DACC6 binds the HUD actor, then F9D95/F9A4D resolve its player record.
+    // Only split-screen pins prompts per port; one local online player uses last-device prompts.
     // Record +114 is the original input port, not the viewport/player ordinal.
     if (capacity < 2 || capacity > 64 || !Span(base, records, capacity * 0x130)) return -1;
     unsigned seen = 0; int port = -1;

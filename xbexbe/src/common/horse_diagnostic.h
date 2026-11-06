@@ -2,8 +2,16 @@
 #include <cstdint>
 struct X86Context;
 
+#ifdef XBE_RELEASE
+inline void DarkwatchHorseBegin(X86Context&, uint8_t*) {}
+inline void DarkwatchHorseEnd(X86Context&, uint8_t*) {}
+inline void DarkwatchHorseReject57(X86Context&, uint8_t*) {}
+inline void DarkwatchHorseReject3(X86Context&, uint8_t*) {}
+inline void DarkwatchHorseReject2(X86Context&, uint8_t*) {}
+#else
 void DarkwatchHorseBegin(X86Context&, uint8_t*);
 void DarkwatchHorseEnd(X86Context&, uint8_t*);
 void DarkwatchHorseReject57(X86Context&, uint8_t*);
 void DarkwatchHorseReject3(X86Context&, uint8_t*);
 void DarkwatchHorseReject2(X86Context&, uint8_t*);
+#endif

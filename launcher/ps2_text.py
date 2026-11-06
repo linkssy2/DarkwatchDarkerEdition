@@ -1,4 +1,4 @@
-"""Derive Spanish text from a supplied PS2 disc, retaining native Xbox identities."""
+"""Derive localized text from a supplied PS2 PAL disc, retaining Xbox identities."""
 from collections import Counter
 import hashlib
 import json
@@ -11,9 +11,21 @@ import character_archive
 
 MAGIC = b'DWES0003'
 CONTEXT_SHA256 = '9104a01248dfcf5c47e4dc7c6dead796d4f804ca6e03087da61c6701241a9408'
-ACCENTS = str.maketrans('áéíóúüñ\xa0', 'ÁÉÍÓÚÜÑ ')
-# Standard's extended glyph map contains uppercase Spanish accents only.
-EXTENDED = set('¡¿ÁÉÍÓÚÜÑ©®')
+ACCENTS = str.maketrans('àáâäçèéêëìíîïñòóôöùúûü\xa0', 'ÀÁÂÄÇÈÉÊËÌÍÎÏÑÒÓÔÖÙÚÛÜ ')
+# Verified against all 29 extended mappings in the native Standard/Small fonts.
+EXTENDED = set('¡©\xad®°¿ÀÁÂÄÇÈÉÊËÌÍÎÏÑÒÓÔÖÙÚÛÜß')
+LOCALES = {
+    'es': {'name':'Spanish', 'suffix':'s', 'stream':0xc4},
+    'fr': {'name':'French', 'suffix':'f', 'stream':0xc1},
+    'de': {'name':'German', 'suffix':'g', 'stream':0xc2},
+    'it': {'name':'Italian', 'suffix':'i', 'stream':0xc3},
+}
+
+
+def locale(language):
+    if not isinstance(language,str) or language not in LOCALES:
+        raise ValueError('Unsupported PS2 disc language')
+    return LOCALES[language]
 
 
 def context_id(key, english):
@@ -28,9 +40,9 @@ def context_id(key, english):
 def normalized(value):
     value = value.translate(ACCENTS)
     if not value or '\0' in value or len(value.encode('latin1')) >= 4096:
-        raise ValueError('Invalid Spanish string length or terminator')
+        raise ValueError('Invalid localized string length or terminator')
     if any(not (32 <= ord(c) < 127 or c in '\r\n\t' or c in EXTENDED) for c in value):
-        raise ValueError('Spanish string contains an unsupported native glyph')
+        raise ValueError('Localized string contains an unsupported native glyph')
     return value
 
 
@@ -134,7 +146,8 @@ def tables(raw):
             and entry['name'].endswith('.bxml')}
 
 
-def corrections(raw):
+def corrections(raw, language='es'):
+    locale(language)
     document = json.loads(raw)
     if not isinstance(document, dict) or set(document) != {'schema', 'contexts'} or document['schema'] != 1:
         raise ValueError('Unsupported PS2 text corrections')
@@ -148,12 +161,13 @@ def corrections(raw):
     return result
 
 
-def catalogue(original, ps2, edits):
+def catalogue(original, ps2, edits, language='es'):
+    selected = locale(language)
     result, uses, seen_edits, per_table, contexts = {}, Counter(), set(), {}, {}
     for path, english_rows in sorted(original.items()):
         if not path.endswith('_e.bxml'):
             continue
-        spanish_rows = ps2.get(path[:-6] + 's.bxml', {})
+        spanish_rows = ps2.get(path[:-6] + selected['suffix'] + '.bxml', {})
         count = 0
         for key, english in english_rows.items():
             if not english:
@@ -176,9 +190,9 @@ def catalogue(original, ps2, edits):
             spanish = next(iter(candidates))
             source = 'ps2_same_table'
         elif candidates:
-            raise ValueError('Conflicting Spanish for identical English context: ' + key)
+            raise ValueError('Conflicting ' + selected['name'] + ' for identical English context: ' + key)
         else:
-            raise ValueError('Missing Spanish context: ' + key)
+            raise ValueError('Missing ' + selected['name'] + ' context: ' + key)
         if tokens(english) != tokens(spanish):
             raise ValueError('Changed semantic tokens: ' + key)
         result[key, english] = spanish
@@ -213,13 +227,14 @@ def inventory(original):
     return hashlib.sha256(json.dumps(contexts, ensure_ascii=True, separators=(',', ':')).encode('ascii')).hexdigest()
 
 
-def convert(ps2_pack, xbox_pack_bytes):
+def convert(ps2_pack, xbox_pack_bytes, language='es'):
     """Build text locally; the caller verifies the supported PS2 archive hash."""
+    selected_locale = locale(language)
     original = tables(xbox_pack_bytes)
     if inventory(original) != CONTEXT_SHA256:
         raise ValueError('The installed Xbox text does not match this language import.')
-    selected = {path[:-6] + 's.bxml' for path in original if path.endswith('_e.bxml')}
+    selected = {path[:-6] + selected_locale['suffix'] + '.bxml' for path in original if path.endswith('_e.bxml')}
     ps2 = {path: read_table(ps2_pack.read(path)) for path in sorted(selected) if path in ps2_pack.entries}
-    edits = corrections(Path(__file__).with_name('ps2-spanish-corrections.json').read_text(encoding='utf8'))
-    return catalogue(original, ps2, edits)[0]
+    edits = corrections(Path(__file__).with_name('ps2-' + selected_locale['name'].lower() + '-corrections.json').read_text(encoding='utf8'), language)
+    return catalogue(original, ps2, edits, language)[0]
 

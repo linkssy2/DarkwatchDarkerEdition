@@ -1,16 +1,7 @@
 #include "character_voice_diagnostic.h"
 
-#ifdef XBE_RELEASE
-// Public builds cannot enable private observers through inherited environment variables.
-void DarkwatchCharacterVoiceQuery(X86Context&, uint8_t*) {}
-void DarkwatchCharacterVoiceQueryResult(X86Context&, uint8_t*) {}
-void DarkwatchCharacterVoiceSpeaker(X86Context&, uint8_t*) {}
-void DarkwatchCharacterVoiceLocal(X86Context&, uint8_t*) {}
-void DarkwatchCharacterVoiceDispatch(X86Context&, uint8_t*) {}
-void DarkwatchCharacterVoiceCreated(X86Context&, uint8_t*) {}
-void DarkwatchCharacterVoiceMelee(X86Context&, uint8_t*) {}
-void DarkwatchCharacterVoiceThrow(X86Context&, uint8_t*, uint32_t, uint32_t) {}
-#else
+#ifndef XBE_RELEASE
+
 
 #include "character_runtime.h"
 #include "cpu/x86_context.h"

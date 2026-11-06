@@ -113,7 +113,8 @@ int main(){
  out=Frame();for(unsigned c=0;c<6;++c)Near(out[c],2.f*(c+1)/32.f);
  CHECK(R32(0x740)==12&&R32(0x744)==0&&v->packets.size()==1);
  CHECK(Call(GUEST(CDirectSoundStream_Release),{obj})==0);CHECK(g_voices.empty());
- audio::SetOutputChannels(8);CHECK(audio::OutputChannels()==2&&!audio::SurroundAvailable());
+ audio::SetOutputChannels(8);CHECK(audio::OutputChannels()==8&&audio::SurroundAvailable());
+ audio::SetOutputChannels(7);CHECK(audio::OutputChannels()==2&&!audio::SurroundAvailable());
  std::puts("discrete bins, stereo fallback, live switching, 3D direction, PCM, ADPCM and stream boundary passed");
 }
 '''
@@ -136,9 +137,9 @@ int main(){
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             # The former stereo-only routing must fail the independent speaker-isolation cases.
             mixer = (SDK / "xdk/dsound.cpp").read_text()
-            gate = "const bool surround = output_channels == 6 && audio::SurroundEnabled();"
+            gate = "const auto sound_output = audio::ActiveSoundOutput();"
             self.assertEqual(mixer.count(gate), 1)
-            (folder / "stereo-only.cpp").write_text(mixer.replace(gate, "const bool surround = false;"))
+            (folder / "stereo-only.cpp").write_text(mixer.replace(gate, "const auto sound_output = audio::SoundOutput::Stereo;"))
             path.write_text(source.replace('#include "xdk/dsound.cpp"', '#include "stereo-only.cpp"'))
             result = subprocess.run(command, capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

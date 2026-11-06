@@ -10,10 +10,12 @@ import os
 from pathlib import Path, PureWindowsPath
 import queue
 import re
+import shutil
 import signal
 import subprocess
 import sys
 import threading
+import time
 import uuid
 
 
@@ -23,6 +25,22 @@ class LauncherError(Exception):
 
 class UpdateCancelled(LauncherError):
     pass
+
+
+def diagnostic(root, message):
+    try:
+        if not (root / "GameData/.diagnostic-logging").is_file():
+            return
+        folder = root / "GameData/logs"
+        path = folder / "linux-launcher.log"
+        if any(p.is_symlink() for p in (root / "GameData", folder, path)):
+            return
+        folder.mkdir(parents=True, exist_ok=True)
+        if not path.exists() or path.stat().st_size < 8 * 1024 * 1024:
+            with path.open("a", encoding="utf-8") as stream:
+                stream.write(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + " " + str(message) + "\n")
+    except (OSError, LauncherError):
+        pass
 
 
 def package_version(root):
@@ -123,6 +141,21 @@ def steam_tools(steam_root=None, proton_path=None):
                         required[0] + "). Nothing was downloaded or installed by this launcher.")
 
 
+def umu_tools(proton_path=None):
+    executable = shutil.which("umu-run")
+    if executable is None:
+        raise LauncherError("Install umu-launcher so umu-run is available on PATH, or use the Steam route.")
+    selected = proton_path or os.environ.get("PROTONPATH")
+    if not selected:
+        raise LauncherError("Select your installed GE-Proton folder with --proton for --umu.")
+    proton = resolve_path(selected)
+    if proton.is_dir():
+        proton /= "proton"
+    if not proton.is_file() or not os.access(proton, os.X_OK):
+        raise LauncherError("Choose an installed Proton folder or executable with --proton. Nothing was installed.")
+    return None, resolve_path(proton), resolve_path(executable)
+
+
 def mount_paths(paths):
     values = []
     for path in paths:
@@ -164,13 +197,13 @@ def existing_installation(path):
     path = Path(path).expanduser().absolute()
     if (path / "GameData").is_dir():
         path /= "GameData"
-    elif (path / "install.json").is_file() and path.parent.name == "versions":
-        path = path.parent.parent
-    if not path.is_dir() or not (path / "active.json").is_file():
+    explicit_version = path.parent.name == "versions" and re.fullmatch("[0-9a-f]{32}", path.name)
+    if not path.is_dir() or not (path / ("install.json" if explicit_version else "active.json")).is_file():
         raise LauncherError("Choose an existing launcher folder, its GameData folder, or its active version folder.")
-    if (path / "installation-location.json").exists():
+    data = path.parent.parent if explicit_version else path
+    if (data / "installation-location.json").exists():
         raise LauncherError("Choose the original GameData folder, not another linked launcher.")
-    check_native_links(path)
+    check_native_links(data)
     return resolve_path(path)
 
 
@@ -206,14 +239,17 @@ def saved_iso_path(installation):
     # The backend owns installation validation; this bounded read only exposes the
     # retained disc to Proton's container before that validation can run.
     try:
-        pointer = installation / "active.json"
-        if not pointer.is_file() or pointer.stat().st_size > 65536:
-            return None
-        active = json.loads(pointer.read_text(encoding="utf-8-sig"))
-        version = active.get("version") if isinstance(active, dict) else None
-        if not isinstance(version, str) or not re.fullmatch("[0-9a-f]{32}", version):
-            return None
-        record = installation / "versions" / version / "install.json"
+        if installation.parent.name == "versions" and re.fullmatch("[0-9a-f]{32}", installation.name):
+            record = installation / "install.json"
+        else:
+            pointer = installation / "active.json"
+            if not pointer.is_file() or pointer.stat().st_size > 65536:
+                return None
+            active = json.loads(pointer.read_text(encoding="utf-8-sig"))
+            version = active.get("version") if isinstance(active, dict) else None
+            if not isinstance(version, str) or not re.fullmatch("[0-9a-f]{32}", version):
+                return None
+            record = installation / "versions" / version / "install.json"
         if not record.is_file() or record.stat().st_size > 8 * 1024 * 1024:
             return None
         metadata = json.loads(record.read_text(encoding="utf-8-sig"))
@@ -359,11 +395,10 @@ def launch_environment(root, steam, proton, runtime, input_path=None, installati
     writable = [root, proton.parent]
     if installation and not any(installation == path or path in installation.parents for path in writable):
         writable.append(installation)
-    readonly = [steam, runtime.parent] + [path.parent for path in (input_path, saved_iso) if path]
+    readonly = ([steam, runtime.parent] if steam is not None else []) + [path.parent for path in (input_path, saved_iso) if path]
     readonly = [path for path in readonly if not any(path == parent or parent in path.parents for parent in writable)]
     env.update({
         "STEAM_COMPAT_DATA_PATH": str(root / ".proton"),
-        "STEAM_COMPAT_CLIENT_INSTALL_PATH": str(steam),
         "STEAM_COMPAT_INSTALL_PATH": str(root / "windows"),
         "PYTHONIOENCODING": "utf-8", "PYTHONDONTWRITEBYTECODE": "1",
         "XDG_CACHE_HOME": str(root / ".proton/cache"),
@@ -372,6 +407,13 @@ def launch_environment(root, steam, proton, runtime, input_path=None, installati
         "PRESSURE_VESSEL_FILESYSTEMS_RW": mount_paths(writable),
         "PRESSURE_VESSEL_FILESYSTEMS_RO": mount_paths(readonly),
     })
+    if steam is None:
+        env.pop("STEAM_COMPAT_CLIENT_INSTALL_PATH", None)
+        # umu manages its own pfx link; leave an existing Steam/Proton prefix untouched.
+        env.update({"WINEPREFIX": str(root / ".proton/umu"), "PROTONPATH": str(proton.parent),
+                    "GAMEID": "umu-default", "STORE": "none", "PROTON_VERB": "waitforexitandrun"})
+    else:
+        env["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = str(steam)
     # Keep ordinary launches quiet without discarding explicit Proton/driver
     # troubleshooting options supplied by the player.
     for name, value in (("PROTON_LOG", "0"), ("WINEDEBUG", "-all"),
@@ -380,7 +422,16 @@ def launch_environment(root, steam, proton, runtime, input_path=None, installati
     return env
 
 
+def require_display(action):
+    if (action in ("--import-iso", "--use-iso", "--play") and
+            not any(os.environ.get(name, "").strip() for name in ("DISPLAY", "WAYLAND_DISPLAY"))):
+        raise LauncherError("Setup and play need an active desktop display for shader preparation. "
+                            "Open a terminal in your desktop session and retry; a headless SSH session cannot prepare shaders. "
+                            "No installation files were changed.")
+
+
 def run_action(root, tools, action, input_path=None, output=print, status=None):
+    require_display(action)
     root = resolve_path(root)
     package = root / "windows"
     for folder in (package, root / "GameData"):
@@ -391,10 +442,10 @@ def run_action(root, tools, action, input_path=None, output=print, status=None):
     for path in (python, backend, package / "package-manifest.json", adapter):
         if not path.is_file():
             raise LauncherError("The Windows payload is incomplete. Extract the entire Linux package again: " + str(path))
-    language = input_path if action == "--set-language" else None
+    language = input_path if action in ("--set-language", "--set-diagnostics") else None
     if language is not None:
-        if language not in ("en", "es"):
-            raise LauncherError("Choose en or es.")
+        if language not in (("on", "off") if action == "--set-diagnostics" else ("en", "es", "fr", "de", "it", "pt-BR")):
+            raise LauncherError("Choose on or off." if action == "--set-diagnostics" else "Choose en, es, fr, de, it or pt-BR.")
         input_path = None
     if input_path:
         if action == "--use-installation":
@@ -406,20 +457,26 @@ def run_action(root, tools, action, input_path=None, output=print, status=None):
     elif action == "--use-installation":
         raise LauncherError("Choose an existing installation folder.")
     installation = input_path if action == "--use-installation" else installation_root(root)
+    if installation.parent.name == "versions" and re.fullmatch("[0-9a-f]{32}", installation.name):
+        installation = installation.parent.parent
     for folder in (root / "GameData", root / ".proton", root / ".proton/cache"):
         portable_directory(folder)
     steam, proton, runtime = tools
+    if steam is None:
+        portable_directory(root / ".proton/umu")
     cancel = root / "GameData" / (".cancel-" + uuid.uuid4().hex)
     env = launch_environment(root, steam, proton, runtime,
                              None if action == "--use-installation" else input_path, installation,
-                             None if action in ("--use-iso", "--import-iso") else saved_iso_path(installation))
-    command = [str(runtime), "--verb=run", "--", str(proton), "run", wine_path(python), "-B",
+                             None if action in ("--use-iso", "--import-iso") else saved_iso_path(input_path if action == "--use-installation" else installation))
+    runner = [str(runtime)] if steam is None else [str(runtime), "--verb=run", "--", str(proton), "run"]
+    command = runner + [wine_path(python), "-B",
                wine_path(adapter), "--package", wine_path(package), "--install-root", wine_path(root / "GameData"),
                "--cancel-file", wine_path(cancel), action]
     if input_path:
         command.append(wine_path(input_path))
     elif language is not None:
         command.append(language)
+    diagnostic(root, "Action=" + action + " command=" + repr(command))
     cancelled = False
     playing = False
 
@@ -446,6 +503,7 @@ def run_action(root, tools, action, input_path=None, output=print, status=None):
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                               encoding="utf-8", errors="replace", start_new_session=True) as process:
             for line in process.stdout:
+                diagnostic(root, line.rstrip())
                 try:
                     event = json.loads(line)
                 except ValueError:
@@ -468,7 +526,14 @@ def run_action(root, tools, action, input_path=None, output=print, status=None):
                            ". HD textures: " + ("installed" if event.get("hd_textures_installed") else "not installed") +
                            ". Language: " + str(event.get("language", "en")) +
                            ". Spanish text: " + ("available" if event.get("spanish_installed") else "unavailable") +
+                           ". Portuguese text: " + ("available" if event.get("portuguese_installed") else "unavailable") +
+                           ". French: " + ("available" if event.get("french_installed") else "unavailable") +
+                           ". German: " + ("available" if event.get("german_installed") else "unavailable") +
+                           ". Italian: " + ("available" if event.get("italian_installed") else "unavailable") +
                            ". Spanish voices: " + ("installed" if event.get("spanish_audio_installed") else "not installed") + ".")
+                    if "diagnostic_logging" in event:
+                        output("Diagnostic logging: " + ("on" if event["diagnostic_logging"] else "off") +
+                               ". Logs: " + str(root / "GameData/logs"))
                     if event.get("source_mode") == "iso":
                         output("Game source: ISO (keep it in place). Disc available: " +
                                ("yes" if event.get("iso_available") else "no; select the ISO again") + ".")
@@ -476,6 +541,7 @@ def run_action(root, tools, action, input_path=None, output=print, status=None):
                 failed |= kind == "error"
                 playing |= action == "--play" and kind == "result" and bool(event.get("pid"))
             code = process.wait()
+        diagnostic(root, "Action=" + action + " exit=" + str(code))
         if cancelled:
             return 130
         if failed or code or not terminal:
@@ -514,13 +580,19 @@ def detect_assets_iso(root, tools, output=print):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Darkwatch: Darker Edition — experimental Linux / Proton")
     parser.add_argument("--proton", type=Path, help="installed Proton folder or proton executable")
+    parser.add_argument("--umu", action="store_true", help="use installed umu-run and Proton without Steam")
     parser.add_argument("--steam-root", type=Path, help="native Linux Steam installation folder")
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument("--import-iso", type=Path, metavar="FILE")
     actions.add_argument("--use-iso", type=Path, metavar="FILE", help="play from an Xbox ISO kept in its current location")
     actions.add_argument("--install-hd-textures", type=Path, metavar="FILE")
     actions.add_argument("--install-spanish", type=Path, metavar="FILE")
-    actions.add_argument("--set-language", choices=("en", "es"))
+    actions.add_argument("--install-french", type=Path, metavar="FILE")
+    actions.add_argument("--install-german", type=Path, metavar="FILE")
+    actions.add_argument("--install-italian", type=Path, metavar="FILE")
+    actions.add_argument("--install-portuguese", action="store_true")
+    actions.add_argument("--set-language", choices=("en", "es", "fr", "de", "it", "pt-BR"))
+    actions.add_argument("--set-diagnostics", choices=("on", "off"))
     actions.add_argument("--use-installation", type=Path, metavar="FOLDER", help="reuse existing game data in place")
     actions.add_argument("--update", action="store_true", help="update installed game data without importing the ISO again")
     actions.add_argument("--check-updates", action="store_true", help="check GitHub for a newer Linux release without installing it")
@@ -529,14 +601,17 @@ def main(argv=None):
     actions.add_argument("--play", action="store_true")
     actions.add_argument("--status", action="store_true")
     args = parser.parse_args(argv)
+    if args.umu and args.steam_root:
+        parser.error("Use either --umu or --steam-root.")
     if not sys.platform.startswith("linux"):
         parser.error("Run this launcher on Linux. Use the Windows launcher on Windows.")
     try:
         root = resolve_path(__file__).parents[1]
+        diagnostic(root, "Linux launcher start Python=" + sys.version + " arguments=" + repr(argv))
         if recover_update(root):
             restart_launcher(root, list(sys.argv[1:] if argv is None else argv))
             return 0
-        restart_options = []
+        restart_options = ["--umu"] if args.umu else []
         for option in ("steam_root", "proton"):
             if getattr(args, option):
                 restart_options += ["--" + option.replace("_", "-"), str(getattr(args, option))]
@@ -547,15 +622,15 @@ def main(argv=None):
         if args.check_updates:
             print(release_text(check_releases(root)))
             return 0
-        tools = steam_tools(args.steam_root, args.proton)
-        for name in ("import_iso", "use_iso", "install_hd_textures", "install_spanish", "set_language", "use_installation", "update", "verify", "play", "status"):
+        tools = umu_tools(args.proton) if args.umu else steam_tools(args.steam_root, args.proton)
+        for name in ("import_iso", "use_iso", "install_hd_textures", "install_spanish", "install_french", "install_german", "install_italian", "install_portuguese", "set_language", "set_diagnostics", "use_installation", "update", "verify", "play", "status"):
             value = getattr(args, name)
             if value:
                 return run_action(root, tools, "--" + name.replace("_", "-"), value if isinstance(value, (Path, str)) else None)
         if not sys.stdin.isatty():
             parser.error("Choose an action such as --status, --update, --use-installation FOLDER, --use-iso FILE, --import-iso FILE, or --play.")
         choices = {"1": "--import-iso", "2": "--use-installation", "3": "--verify", "4": "--status",
-                   "5": "--update", "6": "--install-hd-textures", "7": "--install-spanish", "8": "--set-language"}
+                   "5": "--update", "6": "--install-hd-textures", "7": "--install-spanish", "8": "--set-language", "9": "--set-diagnostics", "10": "--install-portuguese"}
         menu = "home"
         pending_release = start_release_check(root)
         if detect_assets_iso(root, tools):
@@ -575,10 +650,14 @@ def main(argv=None):
                       "Already installed elsewhere? Manage installation → Use Existing Install.\n\n"
                       "1 Play\n2 Manage installation\n3 Check / Install Updates\n0 Exit")
             elif menu == "manage":
-                print("\nManage installation\nChoose your game source. Updates reuse your installed setup.\n\n"
-                      "1 Select Game\n2 Use Existing Install\n3 Verify files\n4 Status\n"
-                      "5 Update Installation\n6 Install HD texture pack\n7 Install Spanish from PS2 ISO\n"
-                      "8 Language / Idioma\n0 Back")
+                print("\nManage installation\nChoose an action below. Updates reuse your installed setup.\n\n"
+                      "GAME FILES\n"
+                      "1 Select Game\n2 Use Existing Install\n3 Verify files\n4 Status\n\n"
+                      "TEXTURES & LANGUAGES\n"
+                      "6 Install HD texture pack\n7 Install language from PS2 ISO\n"
+                      "8 Language / Idioma\n10 Install Portuguese translation (HNNEWGAMES)\n\n"
+                      "UPDATES & SUPPORT\n"
+                      "5 Update Installation\n9 Diagnostic logging\n\n0 Back")
             elif menu == "source":
                 print("\nSelect Game\n\n"
                       "1 Use ISO directly — keep the ISO in place for future launches\n"
@@ -608,6 +687,7 @@ def main(argv=None):
                         restart_launcher(root, restart_options + (["--update"] if installed else []))
                         return 0
                     except (LauncherError, OSError, ValueError) as error:
+                        diagnostic(root, repr(error))
                         print(str(error), file=sys.stderr)
                 continue
             elif menu == "source":
@@ -620,11 +700,21 @@ def main(argv=None):
             if action is None:
                 continue
             path = None
-            if action == "--set-language":
-                path = input("English: en / Español: es (blank to cancel): ").strip().lower()
-                if path not in ("en", "es"):
+            if action == "--install-spanish":
+                choice = input("PS2 language: Español es / Français fr / Deutsch de / Italiano it (blank to cancel): ").strip().lower()
+                action = {"es": "--install-spanish", "fr": "--install-french", "de": "--install-german", "it": "--install-italian"}.get(choice)
+                if action is None:
                     continue
-            if action in ("--import-iso", "--use-iso", "--install-hd-textures", "--install-spanish", "--use-installation"):
+            if action == "--set-diagnostics":
+                path = input("Diagnostic logging on / off (next session; local logs only; blank to cancel): ").strip().lower()
+                if path not in ("on", "off"):
+                    continue
+            if action == "--set-language":
+                path = input("English en / Español es / Français fr / Deutsch de / Italiano it / Português (Brasil) pt-BR (blank to cancel): ").strip()
+                path = "pt-BR" if path.lower() == "pt-br" else path.lower()
+                if path not in ("en", "es", "fr", "de", "it", "pt-BR"):
+                    continue
+            if action in ("--import-iso", "--use-iso", "--install-hd-textures", "--install-spanish", "--install-french", "--install-german", "--install-italian", "--use-installation"):
                 value = input(("Installation folder" if action == "--use-installation" else "File path") + " (blank to cancel): ").strip()
                 if not value:
                     continue
@@ -634,11 +724,14 @@ def main(argv=None):
             try:
                 run_action(root, tools, action, path)
             except (LauncherError, OSError) as error:
+                diagnostic(root, repr(error))
                 print(str(error), file=sys.stderr)
     except UpdateCancelled as error:
         print(str(error), file=sys.stderr)
         return 130
     except (LauncherError, OSError, ValueError) as error:
+        if "root" in locals():
+            diagnostic(root, repr(error))
         print(str(error), file=sys.stderr)
         return 1
     except (EOFError, KeyboardInterrupt):

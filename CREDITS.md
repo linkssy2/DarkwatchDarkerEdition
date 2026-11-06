@@ -1,5 +1,7 @@
 # Credits
 
+- **[BitJager-dev](https://github.com/BitJager-dev/DarkwatchDarkerEdition/tree/linux-umu-no-steam/launcher/linux/umu):** Linux gameplay testing and umu-launcher setup notes that informed the optional no-Steam launcher integration. See [issue #53](https://github.com/linkssy2/DarkwatchDarkerEdition/issues/53).
+
 - **[XboxXBERecomp — TGP482](https://github.com/TGP482/Xbox-XBERecomp):** the
   static recompilation toolchain and Direct3D 12 runtime powering Darker Edition.
   The exact revision and maintained patch are recorded in the source snapshot.
@@ -21,7 +23,13 @@ Character adaptations and optional texture matching are prepared locally from
 the supported disc. Original models, animations and voices remain the property
 of their creators and are excluded from this source and the launcher download.
 
-Spanish language data is now imported locally from the player's supported PAL
-PS2 disc, with project-authored compatibility and presentation corrections.
-No original Spanish text table, audio, movie or community translation package
-is distributed. The former community-pack integration is retired.
+Spanish, French, German and Italian language data is imported locally from
+the player's supported PAL PS2 disc, with project-authored compatibility and
+presentation corrections. Original disc language tables, voices and movies are
+not distributed in this source snapshot.
+
+The included optional Brazilian Portuguese text adaptation credits HNNEWGAMES
+v1.1. See `licenses/PORTUGUESE-TRANSLATION.txt` and
+`launcher/portuguese-catalog.json` for provenance and attribution. The original
+fan patch supplied no explicit redistribution license; no Portuguese dubbing
+or original English text table is included.

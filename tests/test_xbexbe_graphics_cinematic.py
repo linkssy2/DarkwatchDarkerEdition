@@ -25,13 +25,17 @@ static uint8_t memory[0x500000], saved[sizeof(memory)];
 static std::set<uint32_t> blocked;
 static darkwatch::view::Settings settings;
 static bool wide;
+static float display_aspect;
 namespace darkwatch::view { Settings Snapshot(uint32_t) { return settings; } }
-namespace app { bool Widescreen() { return wide; } }
+namespace app {
+bool Widescreen() { return wide; }
+float RenderAspect() { return display_aspect > 0 ? display_aspect : wide ? 16.f/9.f : 4.f/3.f; }
+}
 namespace mem { bool IsCommitted(uint32_t p) { ++reads; return p < sizeof(memory) && !blocked.contains(p); } }
 static void W(uint32_t p, uint32_t v) { std::memcpy(memory+p,&v,4); }
 static constexpr uint32_t effect=0x10FF0;
 static X86Context Setup() {
-    settings={};settings.cutscene_borders=false;wide=false;reads=0;blocked.clear();
+    settings={};settings.cutscene_borders=false;wide=false;display_aspect=0;reads=0;blocked.clear();
     std::memset(memory,0,sizeof(memory));
     W(0x4B7A4C,2);W(0x4B7A68,effect);W(effect,0x478244);
     X86Context ctx;std::memset(&ctx,0x5A,sizeof(ctx));ctx.esi=effect+0x29;return ctx;
@@ -82,6 +86,18 @@ int main() {
         auto ctx=ProjectionSetup(target_expected.first,amount);
         ProjectionCheck(ctx,memory,true,target_expected.second*amount);
     }
+    // At 16:10, the authored mask keeps the correct physical proportions.
+    for(unsigned phase:{1u,2u,3u})for(float amount:{0.f,.25f,1.f}) {
+        auto ctx=ProjectionSetup(.775f,amount);display_aspect=16.f/10.f;
+        W(0x4B7A4C,phase);ProjectionCheck(ctx,memory,true,.17f*amount);
+    }
+    // Ultrawide retains the same vertical composition and interpolation as 16:9;
+    // the camera expands horizontally rather than shrinking the authored shot.
+    for(float aspect:{21.f/9.f,2560.f/1080.f,3440.f/1440.f,5120.f/1440.f})
+    for(unsigned phase:{1u,2u,3u})for(float amount:{0.f,.25f,1.f}) {
+        auto ctx=ProjectionSetup(.775f,amount);display_aspect=aspect;
+        W(0x4B7A4C,phase);ProjectionCheck(ctx,memory,true,(2.f/15.f)*amount);
+    }
     for(unsigned bad=0;bad<28;++bad) {
         auto ctx=ProjectionSetup();uint8_t* base=memory;
         switch(bad) {
@@ -116,8 +132,8 @@ int main() {
         }
         ProjectionCheck(ctx,base,false);
     }
-    CHECK(cases==49);
-    std::puts("49 cinematic border framing, interpolation, movie and memory guards passed");
+    CHECK(cases==94);
+    std::puts("94 cinematic border framing, 16:10/ultrawide, interpolation, movie and memory guards passed");
 }
 '''
 
@@ -186,7 +202,7 @@ class CinematicTests(unittest.TestCase):
 
     def test_widescreen_bar_projection_changes_only_local_thickness(self):
         compile_and_run(self, PREFIX+PROJECTION_DRIVER,
-                        "49 cinematic border framing, interpolation, movie and memory guards passed")
+                        "94 cinematic border framing, 16:10/ultrawide, interpolation, movie and memory guards passed")
         config = tomllib.loads((ROOT/"xbexbe/config/game.toml").read_text())
         self.assertEqual([h for h in config["hook"] if h["call"] == "DarkwatchCinematicBorderProjection"],
                          [{"at": 0x326CF3, "call": "DarkwatchCinematicBorderProjection"}])

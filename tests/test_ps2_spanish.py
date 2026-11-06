@@ -10,7 +10,7 @@ import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "launcher"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import ps2_spanish as spanish
-from test_ps2_disc import disc, record
+from tests.test_ps2_disc import disc, record
 
 
 class SpanishDiscTests(unittest.TestCase):
@@ -44,8 +44,8 @@ class SpanishDiscTests(unittest.TestCase):
         self.movies = patch.object(spanish.ps2_movies, "convert", return_value=b"Spanish movie").start()
         self.text = patch.object(spanish.ps2_text, "convert", return_value=b"PS2 Spanish text").start()
 
-    def run_import(self, cancel=lambda: None):
-        spanish.prepare(self.iso, self.assets, self.out, cancel, lambda *a, **k: None)
+    def run_import(self, cancel=lambda: None, language='es'):
+        spanish.prepare(self.iso, self.assets, self.out, cancel, lambda *a, **k: None, language=language)
 
     def test_output_contains_only_requested_resources_and_sources_unchanged(self):
         before = {p: p.read_bytes() for p in (self.iso, self.assets / "audioDlg.pck", self.assets / "Movies1.pck")}
@@ -54,7 +54,7 @@ class SpanishDiscTests(unittest.TestCase):
             self.assertEqual(set(bundle.namelist()), {"language_text.bin", "assets/audioDlg.pck", "assets/Movies1.pck"})
             self.assertEqual(bundle.read("assets/audioDlg.pck"), b"Spanish dialogue")
             self.assertEqual(bundle.read("language_text.bin"), b"PS2 Spanish text")
-        self.text.assert_called_once_with("PACKFILE.PCK", b"original Xbox text contexts")
+        self.text.assert_called_once_with("PACKFILE.PCK", b"original Xbox text contexts", language='es')
         for path, raw in before.items():
             self.assertEqual(path.read_bytes(), raw)
 
@@ -110,6 +110,34 @@ class SpanishDiscTests(unittest.TestCase):
         self.assertFalse(self.out.exists())
         self.assertEqual((self.assets / "packfile.pck").read_bytes(), b"original Xbox text contexts")
         self.dialogue.assert_not_called()
+
+    def test_each_language_routes_all_converters_without_changing_source_validation(self):
+        before = self.iso.read_bytes()
+        for language in ('es','fr','de','it'):
+            with self.subTest(language=language):
+                self.out = self.root/(language+'.zip')
+                self.run_import(language=language)
+                for converter in (self.text,self.dialogue,self.movies):
+                    self.assertEqual(converter.call_args.kwargs,{'language':language})
+                self.assertEqual(self.iso.read_bytes(),before)
+        for language in ('en','pt-BR','../../fr','FR',None):
+            with self.subTest(unsupported=language):
+                self.out = self.root/'rejected.zip'
+                self.text.reset_mock()
+                with self.assertRaisesRegex(ValueError,'Unsupported PS2 disc language'):
+                    self.run_import(language=language)
+                self.assertFalse(self.out.exists())
+                self.text.assert_not_called()
+
+    def test_new_locales_cannot_bypass_pristine_disc_hashes(self):
+        raw=bytearray(self.iso.read_bytes())
+        raw[24*2048] ^= 1
+        self.iso.write_bytes(raw)
+        for language in ('fr','de','it'):
+            with self.subTest(language=language), self.assertRaisesRegex(ValueError,'damaged or unsupported'):
+                self.run_import(language=language)
+        self.text.assert_not_called()
+        self.assertFalse(self.out.exists())
 
 
 if __name__ == "__main__":

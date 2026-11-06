@@ -19,8 +19,12 @@ def collect_manifest(root: Path, configuration: str, release: bool = False) -> t
     root = root.resolve()
     profile_directory = "xbexbe-release" if release else "xbexbe"
     output = root / "build" / profile_directory
-    if release and "DARKWATCH_RELEASE:BOOL=TRUE" not in (output / "CMakeCache.txt").read_text(encoding="utf-8"):
-        raise ProvenanceError("Release build must enable DARKWATCH_RELEASE")
+    if release:
+        cache = (output / "CMakeCache.txt").read_text(encoding="utf-8")
+        if "DARKWATCH_RELEASE:BOOL=TRUE" not in cache:
+            raise ProvenanceError("Release build must enable DARKWATCH_RELEASE")
+        if "DARKWATCH_GRENADE_PAIR_FIXTURE:BOOL=OFF" not in cache:
+            raise ProvenanceError("Release build must disable private test fixtures")
     project = root / "xbexbe"
     pin, pin_file = read_json(root, root / "config/xbexbe-toolchain.json")
     xbe = file_record(root, root / "game_files/default.xbe")
@@ -71,6 +75,7 @@ def collect_manifest(root: Path, configuration: str, release: bool = False) -> t
     host_paths += [p for p in (project / "config").rglob("*") if p.is_file()]
     checked_file(project / "src/common/game_info.cpp")
     host_paths += [project / "CMakeLists.txt", output / "darkwatch_xbe_xbe.cpp", output / "CMakeCache.txt"]
+    host_paths.extend(root / name for name in ("launcher/body_weapon_grips.inc", "launcher/assets/insignia.ico"))
 
     dependencies = []
     for name in ("zydis", "tomlplusplus", "imgui", "sdl3"):

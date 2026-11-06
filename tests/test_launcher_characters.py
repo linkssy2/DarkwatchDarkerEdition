@@ -103,21 +103,33 @@ class CharacterConversionTests(unittest.TestCase):
         extension = {name: {'fixture/added.bin': b'second conversion'} for name in ('packfile.pck', 'LvlSingl.pck')}
         first = {name: archive.compose(data, groups[name]) for name, data in originals.items()}
         base = {name: archive.compose(data, extension[name]) if name in extension else data for name, data in first.items()}
-        spectral = {'packfile.pck': {'fixture/spectral.bin': b'third conversion'}}
+        reference_model = content.character_boss.MODEL + '.rx1'
+        tala_model = content.character_tala.MODEL + '.rx1'
+        spectral = {'packfile.pck': {reference_model: b'third conversion'}}
         third = {name: archive.compose(data, spectral[name]) if name in spectral else data for name, data in base.items()}
         roster = {name: {'fixture/roster.bin': b'fourth conversion'} for name in originals}
+        roster['packfile.pck'][tala_model] = b'native model for derivation'
         fourth = {name: archive.compose(data, roster[name]) for name, data in third.items()}
         revolver = {name: {'fixture/revolver.bin': b'fifth conversion'} for name in originals}
         revolver['LvlSingl.pck']['fixture/replaced.bin'] = b'final chapter table'
         corpses = {name: {'fixture/corpse.bin': b'sixth conversion'} for name in ('packfile.pck', 'LvlSingl.pck')}
         corpses['LvlSingl.pck']['fixture/replaced.bin'] = b'final chapter corpse table'
         final = {name: archive.compose(data, dict(revolver[name], **corpses.get(name, {}))) for name, data in fourth.items()}
+        fanning = {'fixture/fanning.bin': b'seventh conversion', 'fixture/revolver.bin': b'fanning weapon'}
+        cinematic = {'packfile.pck': {'fixture/cinematic.bin': b'eighth conversion'},
+                     'LvlSingl.pck': {'fixture/replaced.bin': b'final cinematic chapter table'}}
+        third_person = {'packfile.pck': {'fixture/onfoot.bin': b'full body animation'},
+                        'LvlSingl.pck': {'fixture/replaced.bin': b'full body preload'}}
+        presentation = b'final presentation model'
+        final['packfile.pck'] = archive.compose(fourth['packfile.pck'],
+            {**revolver['packfile.pck'], **corpses['packfile.pck'], **fanning, **cinematic['packfile.pck'], **third_person['packfile.pck'], tala_model: presentation})
         combined = {}
-        for stage in (groups, extension, spectral, roster, revolver, corpses):
+        for stage in (groups, extension, spectral, roster, revolver, corpses, cinematic, third_person):
             combined.update(stage.get('LvlSingl.pck', {}))
         final['LvlSingl.pck'] = archive.compose(originals['LvlSingl.pck'], combined)
         # Compaction changes offsets, never the resource contents or original payload.
-        appended = archive.compose(fourth['LvlSingl.pck'], dict(revolver['LvlSingl.pck'], **corpses['LvlSingl.pck']))
+        appended = archive.compose(fourth['LvlSingl.pck'],
+            {**revolver['LvlSingl.pck'], **corpses['LvlSingl.pck'], **cinematic['LvlSingl.pck'], **third_person['LvlSingl.pck']})
         def resources(raw):
             return {row['name']: raw[row['offset']:row['offset'] + row['size']]
                     for row in archive.read(raw)['entries']}
@@ -144,11 +156,16 @@ class CharacterConversionTests(unittest.TestCase):
             with patch.object(content, 'INSTALLED', installed), patch.object(content, 'build_resources', return_value=(groups,extension,spectral)), \
                     patch.object(content.character_roster, 'prepare', return_value=(roster, {})), \
                     patch.object(content.revolver_content, 'prepare', return_value=revolver), \
+                    patch.object(content.revolver_content, 'prepare_fanning', return_value=fanning), \
                     patch.object(content.player_corpses, 'prepare', return_value=corpses), \
+                    patch.object(content.character_cinematic, 'prepare', return_value=cinematic), \
+                    patch.object(content.third_person_animation, 'prepare', return_value=third_person), \
+                    patch.object(content.character_tala, 'presentation', return_value=presentation) as finish, \
                     patch.object(content.bonus_content, 'patch_pack', side_effect=lambda data:data):
                 with patch.object(content, 'CATALOG_SHA256', reset()):
                     content.prepare(assets,payload)
                 self.assertEqual({name:(assets/name).read_bytes() for name in final},final)
+                finish.assert_called_once_with(b'native model for derivation', b'third conversion')
                 self.assertEqual(set(p.name for p in assets.iterdir()),set(final))
                 # A later bad output cannot leave an earlier archive installed.
                 metadata['v7_archives']['audio.pck']['sha256'] = '0'*64
@@ -173,6 +190,16 @@ class CharacterConversionTests(unittest.TestCase):
                     content.prepare(assets, payload)
                 self.assertEqual({name: (assets/name).read_bytes() for name in originals}, originals)
                 corpses['LvlSingl.pck']['fixture/corpse.bin'] = b'sixth conversion'
+                third_person['LvlSingl.pck']['fixture/replaced.bin'] = b'wrong animation output'
+                with patch.object(content, 'CATALOG_SHA256', reset()), self.assertRaisesRegex(ValueError, 'verification failed'):
+                    content.prepare(assets, payload)
+                self.assertEqual({name: (assets/name).read_bytes() for name in originals}, originals)
+                third_person['LvlSingl.pck']['fixture/replaced.bin'] = b'full body preload'
+                finish.return_value = b'wrong presentation output'
+                with patch.object(content, 'CATALOG_SHA256', reset()), self.assertRaisesRegex(ValueError, 'verification failed'):
+                    content.prepare(assets, payload)
+                self.assertEqual({name: (assets/name).read_bytes() for name in originals}, originals)
+                finish.return_value = presentation
                 cancel_now = [False]
                 def cancel():
                     if cancel_now[0]: raise InterruptedError('cancelled')
@@ -185,7 +212,7 @@ class CharacterConversionTests(unittest.TestCase):
 
     def test_catalog_and_authored_pixels_match_shipped_pins(self):
         metadata = content.catalog(ROOT/'launcher')
-        self.assertEqual(len(metadata['v7_outputs']),835)
+        self.assertEqual(len(metadata['v7_outputs']),820)
         for character, pins in (('cassidy', content.REPAINT), ('tala', content.TALA_REPAINT)):
             for size,digest in pins.items():
                 self.assertEqual(pin((ROOT/'launcher/assets'/f'{character}-hands-{size}.dds').read_bytes())['sha256'],digest)

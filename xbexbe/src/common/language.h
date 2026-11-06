@@ -9,7 +9,13 @@ namespace darkwatch::language {
 void Load(const void* table);
 void Save(void* table);
 bool Initialize(const std::filesystem::path& executable_directory);
+// Validated requested locale; a missing catalogue still falls back to English text.
+const char* Code();
+// Only a successfully loaded locale may supply optional localized game media.
+std::filesystem::path MediaDirectory(const std::filesystem::path& executable_directory);
 bool Spanish();
+bool Portuguese();
+bool Translated();
 const char* Text(const char* english);
 const char* Guest(const char* english);
 // Native localized-text objects store CRC32 of the uppercase ASCII text ID.

@@ -1,14 +1,18 @@
 """Package boundary checks use synthetic disc bytes and never launch the game."""
 from pathlib import Path
 import ast
+import hashlib
 import importlib.util
 import json
 import re
 import shutil
+import stat
+import struct
 import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -90,17 +94,49 @@ class LauncherPackageTests(unittest.TestCase):
                 ('language_text.bin', 'assets/audioDlg.pck', 'assets/Movies2.pck', 'assets/Movies3.pck', 'assets/Movies4.pck')})
             catalog.write_text(json.dumps(data))
             plan = {'payload/ps2-spanish-catalog.json': catalog}
-            package.check_spanish_text(plan, build)
+            package.check_ps2_text(plan, build, 'es', 'spanish')
             for name in ('payload/spanish-catalog.json', 'payload/spanish-text-catalog.json', 'payload/language/es/language_text.bin'):
                 with self.assertRaisesRegex(ValueError, 'Bundled game translations'):
-                    package.check_spanish_text(dict(plan, **{name: root / 'old.bin'}), build)
+                    package.check_ps2_text(dict(plan, **{name: root / 'old.bin'}), build, 'es', 'spanish')
             catalog.write_text(json.dumps(dict(data, files={'language_text.bin': row})))
             with self.assertRaisesRegex(ValueError, 'complete PS2 Spanish'):
-                package.check_spanish_text(plan, build)
+                package.check_ps2_text(plan, build, 'es', 'spanish')
             catalog.write_text(json.dumps(data))
             source.write_bytes(b'different reader')
             with self.assertRaisesRegex(ValueError, 'reader differs'):
-                package.check_spanish_text(plan, build)
+                package.check_ps2_text(plan, build, 'es', 'spanish')
+
+    def test_additional_disc_languages_are_catalogued_without_bundled_media(self):
+        with patch.object(package, 'hd_sources', return_value={}):
+            sources = package.sources()
+        for language, name in (('fr', 'french'), ('de', 'german'), ('it', 'italian')):
+            with self.subTest(language=language), tempfile.TemporaryDirectory() as folder, patch.object(package, 'REPO', Path(folder)):
+                root = Path(folder)
+                for kind in ('catalog', 'corrections'):
+                    self.assertIn(f'payload/ps2-{name}-{kind}.json', sources)
+                self.assertFalse(any(key.startswith(f'payload/language/{language}/') for key in sources))
+                recorded = []
+                for filename in ('language.cpp', f'language_{name}.h'):
+                    path = root / 'xbexbe/src/common' / filename
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text('compiled ' + filename)
+                    recorded.append(dict(path=path.relative_to(root).as_posix(), sha256=package.sha(path)))
+                build = {'host_sources': {'files': recorded}}
+                catalog = root / f'ps2-{name}-catalog.json'
+                data = dict(schema_version=1, language=language, files={file: dict(size=32, sha256='a' * 64) for file in
+                    ('language_text.bin', 'assets/audioDlg.pck', 'assets/Movies2.pck', 'assets/Movies3.pck', 'assets/Movies4.pck')})
+                catalog.write_text(json.dumps(data))
+                plan = {f'payload/ps2-{name}-catalog.json': catalog}
+                package.check_ps2_text(plan, build, language, name)
+                catalog.write_text(json.dumps(dict(data, language='es')))
+                with self.assertRaisesRegex(ValueError, 'complete PS2'):
+                    package.check_ps2_text(plan, build, language, name)
+                catalog.write_text(json.dumps(data))
+                with self.assertRaisesRegex(ValueError, 'Bundled game translations'):
+                    package.check_ps2_text(dict(plan, **{f'payload/language/{language}/language_text.bin': root/'text.bin'}), build, language, name)
+                (root / f'xbexbe/src/common/language_{name}.h').write_text('changed after compilation')
+                with self.assertRaisesRegex(ValueError, 'menu copy differs'):
+                    package.check_ps2_text(plan, build, language, name)
 
     def test_only_recorded_release_runtime_can_be_packaged(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(package, 'REPO', Path(folder)):
@@ -117,6 +153,12 @@ class LauncherPackageTests(unittest.TestCase):
             plan = {'payload/runtime/darkwatch_xbe.exe': exe}
             manifest.write_text(json.dumps(info))
             self.assertEqual(package.check_sources(plan), package.sha(exe))
+            for experimental in (['kawaii-secondary-motion'], {'private_fixture': True}, 'private'):
+                manifest.write_text(json.dumps(dict(info, experimental_features=experimental)))
+                with self.assertRaisesRegex(ValueError, 'Experimental runtime features'):
+                    package.check_sources(plan)
+            manifest.write_text(json.dumps(dict(info, experimental_features=[])))
+            self.assertEqual(package.check_sources(plan), package.sha(exe))
             for invalid in (None, {'name': 'diagnostic'}, dict(package.RELEASE_PROFILE, diagnostics=True),
                             dict(package.RELEASE_PROFILE, strict_assets=False)):
                 manifest.write_text(json.dumps(dict(info, release_profile=invalid)))
@@ -126,6 +168,126 @@ class LauncherPackageTests(unittest.TestCase):
             exe.write_bytes(b'different runtime')
             with self.assertRaisesRegex(ValueError, 'Runtime differs'):
                 package.check_sources(plan)
+
+    def test_portuguese_package_is_text_only_and_pinned_to_compiled_reader(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(package, 'REPO', Path(folder)):
+            root = Path(folder)
+            sources = ('xbexbe/src/common/language.cpp', 'xbexbe/src/common/language_portuguese.h')
+            for name in sources:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('compiled fixture ' + name)
+            build = {'host_sources': {'files': [{'path':name, 'sha256':package.sha(root/name)} for name in sources]}}
+            catalog, archive = root / 'portuguese-catalog.json', root / 'portuguese-text.zip'
+            payload = b'DWES0003' + struct.pack('<I',1) + struct.pack('<QI',42,3) + b'Ola'
+            row = {'size':len(payload),'sha256':hashlib.sha256(payload).hexdigest()}
+            good = {'schema_version':1,'language':'pt-BR','files':{'language_text.bin':row}}
+            plan = {'payload/portuguese-catalog.json':catalog,'payload/portuguese-text.zip':archive}
+            catalog.write_text(json.dumps(good))
+            with zipfile.ZipFile(archive,'w',compression=zipfile.ZIP_DEFLATED) as output:
+                output.writestr('language_text.bin',payload)
+            package.check_portuguese_text(plan,build)
+
+            for changed in (dict(good, language='es'), dict(good, language='pt'),
+                            dict(good, schema_version=2), dict(good, files={}),
+                            dict(good, files=dict(good['files'], **{'assets/audioDlg.pck':row})),
+                            dict(good, files={'../language_text.bin':row})):
+                with self.subTest(catalog=changed):
+                    catalog.write_text(json.dumps(changed))
+                    with self.assertRaises(ValueError):
+                        package.check_portuguese_text(plan,build)
+            catalog.write_text(json.dumps(good))
+            for name in sources:
+                with self.subTest(compiled_source=name):
+                    path = root/name
+                    original = path.read_bytes()
+                    path.write_bytes(original + b' changed after compile')
+                    with self.assertRaisesRegex(ValueError,'reader differs from the runtime build'):
+                        package.check_portuguese_text(plan,build)
+                    path.write_bytes(original)
+                    missing = {'host_sources':{'files':[r for r in build['host_sources']['files'] if r['path'] != name]}}
+                    with self.assertRaisesRegex(ValueError,'reader differs from the runtime build'):
+                        package.check_portuguese_text(plan,missing)
+
+    def test_portuguese_archive_rejects_extra_entries_tampering_and_wrong_format(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(package,'REPO',Path(folder)):
+            root = Path(folder)
+            catalog, archive = root/'catalog.json', root/'text.zip'
+            payload = b'DWES0003' + struct.pack('<I',1) + struct.pack('<QI',42,3) + b'Ola'
+            row = {'size':len(payload),'sha256':hashlib.sha256(payload).hexdigest()}
+            data = {'schema_version':1,'language':'pt-BR','files':{'language_text.bin':row}}
+            plan = {'payload/portuguese-catalog.json':catalog,'payload/portuguese-text.zip':archive}
+            for entries, error in (([], 'Unexpected Portuguese translation payload'),
+                                   ([('wrong.bin',payload)], 'Unexpected Portuguese translation payload'),
+                                   ([('language_text.bin',payload),('extra.bin',b'extra')], 'Unexpected Portuguese translation payload'),
+                                   ([('language_text.bin',payload[:-1])], 'Unexpected Portuguese translation payload'),
+                                   ([('language_text.bin',payload[:-1]+b'x')], 'differs from its reviewed catalog')):
+                with self.subTest(entries=[name for name,_ in entries]):
+                    catalog.write_text(json.dumps(data))
+                    with zipfile.ZipFile(archive,'w') as output:
+                        for name,value in entries:
+                            output.writestr(name,value)
+                    with self.assertRaisesRegex(ValueError,error):
+                        package.check_portuguese_text(plan,{})
+            with zipfile.ZipFile(archive,'w') as output:
+                output.writestr('language_text.bin',payload)
+                with self.assertWarnsRegex(UserWarning,'Duplicate name'):
+                    output.writestr('language_text.bin',payload)
+            with self.assertRaisesRegex(ValueError,'Unexpected Portuguese translation payload'):
+                package.check_portuguese_text(plan,{})
+            # A fresh matching hash still cannot admit an older/unrelated binary format.
+            wrong = b'DWES0002' + payload[8:]
+            catalog.write_text(json.dumps(dict(data, files={'language_text.bin':dict(row,sha256=hashlib.sha256(wrong).hexdigest())})))
+            with zipfile.ZipFile(archive,'w') as output:
+                output.writestr('language_text.bin',wrong)
+            with self.assertRaisesRegex(ValueError,'differs from its reviewed catalog'):
+                package.check_portuguese_text(plan,{})
+            catalog.write_text(json.dumps(data))
+            for kind in ('symlink','directory','compressed','encrypted'):
+                with self.subTest(entry_type=kind):
+                    entry = zipfile.ZipInfo('language_text.bin')
+                    entry.external_attr = ((stat.S_IFLNK if kind == 'symlink' else
+                        stat.S_IFDIR if kind == 'directory' else stat.S_IFREG) | 0o644) << 16
+                    entry.compress_type = zipfile.ZIP_BZIP2 if kind == 'compressed' else zipfile.ZIP_STORED
+                    with zipfile.ZipFile(archive,'w') as output:
+                        output.writestr(entry,payload)
+                    if kind == 'encrypted':
+                        # Mark both ZIP headers encrypted; no decryption should be attempted.
+                        raw = bytearray(archive.read_bytes())
+                        local, central = raw.index(b'PK\x03\x04'), raw.index(b'PK\x01\x02')
+                        raw[local+6] |= 1
+                        raw[central+8] |= 1
+                        archive.write_bytes(raw)
+                    with self.assertRaisesRegex(ValueError,'Unsupported Portuguese translation entry'):
+                        package.check_portuguese_text(plan,{})
+
+    def test_shipped_portuguese_catalog_and_text_archive_pass_admission(self):
+        with patch.object(package,'hd_sources',return_value={}):
+            plan = package.sources()
+        for name in ('portuguese-catalog.json','portuguese-text.zip'):
+            self.assertEqual(plan['payload/'+name],ROOT/'launcher'/name)
+        # Exercise the actual payload; this synthetic manifest checks packaging consistency,
+        # not whether an executable was compiled or a live game displays the text correctly.
+        sources = ('xbexbe/src/common/language.cpp','xbexbe/src/common/language_portuguese.h')
+        build = {'host_sources':{'files':[{'path':name,'sha256':package.sha(ROOT/name)} for name in sources]}}
+        package.check_portuguese_text(plan,build)
+        with zipfile.ZipFile(plan['payload/portuguese-text.zip']) as archive:
+            self.assertEqual(archive.namelist(),['language_text.bin'])
+            raw = archive.read('language_text.bin')
+        count, = struct.unpack_from('<I',raw,8)
+        at, identities = 12, set()
+        for _ in range(count):
+            identity,length = struct.unpack_from('<QI',raw,at)
+            at += 12
+            self.assertNotIn(identity,identities)
+            identities.add(identity)
+            self.assertGreater(length,0)
+            self.assertLess(length,4096)
+            self.assertEqual(len(raw[at:at+length]),length)
+            self.assertNotIn(b'\0',raw[at:at+length])
+            at += length
+        self.assertEqual(at,len(raw))
+        self.assertEqual(count,2813)
 
     def test_current_sdk_patch_must_match_recorded_runtime_build(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(package, 'REPO', Path(folder)):
@@ -182,7 +344,8 @@ class LauncherPackageTests(unittest.TestCase):
         self.assertIn('payload/gameplay_hd.py', plan)
         self.assertIn('payload/gameplay-hd-catalog.json', plan)
         self.assertTrue(all(Path(name).suffix.lower() not in ('.dwt', '.pack') for name in plan))
-        self.assertEqual([name for name in plan if name.endswith('.zip')], ['payload/python/python312.zip'])
+        self.assertEqual({name for name in plan if name.endswith('.zip')},
+                         {'payload/python/python312.zip','payload/portuguese-text.zip'})
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             file = root / 'replacement.dwt'
@@ -225,7 +388,9 @@ class LauncherPackageTests(unittest.TestCase):
     def test_character_archive_pins_and_authored_art_match_runtime(self):
         import character_content
         plan = package.sources()
-        for name in ('revolver_content.py', 'revolver_scripts.py', 'player_corpses.py'):
+        for name in ('revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'character_cinematic.py',
+                     'third_person_animation.py', 'character_reload.py', 'character_weapon_pose.py', 'character_weapon_hold.py', 'character_starter_reload.py',
+                     'body_weapon_grips.inc'):
             self.assertEqual(plan['payload/' + name], ROOT / 'launcher' / name)
         with tempfile.TemporaryDirectory() as folder, patch.object(package,'REPO',Path(folder)):
             root = Path(folder)

@@ -3,7 +3,7 @@ from pathlib import Path
 import struct
 import sys
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'launcher'))
@@ -71,6 +71,53 @@ def contents(raw):
 
 
 class Ps2MovieTests(unittest.TestCase):
+    def test_selective_demux_retains_every_stream_identity(self):
+        for movie in films():
+            complete = media.elementary(movie)
+            for selected in complete:
+                with self.subTest(stream=selected):
+                    filtered = media.elementary(movie, selected)
+                    self.assertEqual(filtered.keys(), complete.keys())
+                    self.assertEqual(filtered[selected], complete[selected])
+                    self.assertTrue(all(not data for sid, data in filtered.items() if sid != selected))
+
+    def test_selective_conversion_matches_all_stream_demux_for_every_locale(self):
+        xbox, ps2 = films()
+        demux = media.elementary
+        for language in ('es', 'fr', 'de', 'it'):
+            with self.subTest(language=language):
+                with patch.object(media, 'elementary', side_effect=lambda raw, selected=None: demux(raw)):
+                    previous = media.convert_movie(xbox, ps2, language=language)
+                self.assertEqual(media.convert_movie(xbox, ps2, language=language), previous)
+
+    def test_ignored_stream_packet_headers_are_still_validated(self):
+        xbox, ps2 = films()
+        for language, selected in (('es', 0xc4), ('fr', 0xc1), ('de', 0xc2), ('it', 0xc3)):
+            ignored = next(sid for sid in range(0xc0, 0xc5) if sid != selected)
+            for sid in (0xe0, ignored):
+                damaged = bytearray(ps2)
+                stamp_at = next(pts for stream, start, end, pts, dts in media.packets(ps2) if stream == sid)
+                damaged[stamp_at] &= 0xfe
+                with self.subTest(language=language, stream=sid), self.assertRaisesRegex(ValueError, 'timestamp markers'):
+                    media.convert_movie(xbox, damaged, language=language)
+        damaged = bytearray(xbox)
+        stamp_at = next(pts for sid, start, end, pts, dts in media.packets(xbox) if sid == 0xe0)
+        damaged[stamp_at] &= 0xfe
+        with self.assertRaisesRegex(ValueError, 'timestamp markers'):
+            media.convert_movie(damaged, ps2)
+        with self.assertRaisesRegex(ValueError, 'PES extent'):
+            media.convert_movie(xbox, ps2[:-1])
+
+    def test_selective_conversion_rejects_missing_and_extra_ignored_streams(self):
+        xbox, ps2 = films()
+        no_video = b''.join(pes(sid, data) for sid, data in media.elementary(ps2).items() if sid != 0xe0)
+        for original, translated in ((xbox + pes(0xc0, b'extra'), ps2),
+                                     (xbox, ps2 + pes(0xc5, b'extra')),
+                                     (xbox, no_video)):
+            with self.subTest(original_size=len(original), translated_size=len(translated)):
+                with self.assertRaisesRegex(ValueError, 'language stream layout'):
+                    media.convert_movie(original, translated)
+
     def test_only_audio_payload_changes_and_spanish_four_selected(self):
         xbox, ps2 = films()
         output = media.convert_movie(xbox, ps2)
@@ -99,6 +146,30 @@ class Ps2MovieTests(unittest.TestCase):
         self.assertEqual(normalized[4:32], original[4:32])
         self.assertEqual(normalized[40:], original[288:])
         self.assertEqual(media.normalized_adx(normalized), normalized)
+
+    def test_pal_locale_streams_preserve_video_and_timestamps(self):
+        original,ps2=films()
+        outputs=set()
+        for language,stream in (('es',0xc4),('fr',0xc1),('de',0xc2),('it',0xc3)):
+            with self.subTest(language=language):
+                output=media.convert_movie(original,ps2,language=language)
+                outputs.add(output)
+                tracks=media.adx_tracks(media.elementary(output)[0xc1])
+                self.assertEqual(tracks[0],media.normalized_adx(media.elementary(ps2)[stream]))
+                self.assertEqual(media.elementary(output)[0xe0],media.elementary(original)[0xe0])
+                cursor=0
+                for sid,start,end,pts,dts in media.packets(original):
+                    if sid==0xc1:
+                        self.assertEqual(output[cursor:start],original[cursor:start])
+                        cursor=end
+                self.assertEqual(output[cursor:],original[cursor:])
+                for track in tracks[1:]:
+                    start,end=media.adx_extent(track)
+                    self.assertFalse(any(track[24:32]+track[start:end]))
+        self.assertEqual(len(outputs),4)
+        for language in ('en','pt-BR','../fr',None):
+            with self.assertRaisesRegex(ValueError,'Unsupported PS2 disc language'):
+                media.convert_movie(original,ps2,language=language)
 
     def test_timeline_mismatch_rejected_not_retimed(self):
         xbox, ps2 = films(samples=96)

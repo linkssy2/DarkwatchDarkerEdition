@@ -74,6 +74,9 @@ class ProtocolFixture {
                 Console.WriteLine("{\"event\":\"release_ready\",\"message\":\"Update prepared. Restarting launcher.\",\"version\":\"0.7\"}");
                 return 0;
             }
+            if(mode=="download-pt-reset") {
+                Console.WriteLine("{\"event\":\"error\",\"message\":\"Fixture update failed\",\"installed\":false,\"ready\":false}");return 1;
+            }
             if(mode=="download-failure") {
                 Console.WriteLine("{\"event\":\"error\",\"message\":\"Download fixture failed\",\"ready\":false}");return 1;
             }
@@ -134,7 +137,30 @@ class ProtocolFixture {
             Console.WriteLine("{\"event\":\"result\",\"message\":\"Spanish fixture installed\",\"installed\":true,\"ready\":true,\"spanish_installed\":true,\"language\":\"en\"}");
             return 0;
         }
-        if(mode=="language-es"||mode=="language-en") {
+        if(mode=="portuguese-install") {
+            if(Array.IndexOf(args,"--install-portuguese")<0||token==null||Array.IndexOf(args,"--install-spanish")>=0) return 22;
+            Console.WriteLine("{\"event\":\"result\",\"message\":\"Portuguese fixture installed\",\"installed\":true,\"ready\":true,\"portuguese_installed\":true}");
+            return 0;
+        }
+        if(mode=="disc-fr"||mode=="disc-de"||mode=="disc-it") {
+            string name=mode=="disc-fr"?"french":mode=="disc-de"?"german":"italian";
+            int at=Array.IndexOf(args,"--install-"+name);
+            if(at<0||at+1>=args.Length||args[at+1]!=@"C:\My Games\PS2 Français 🦇.iso"||token==null)return 24;
+            Console.WriteLine("{\"event\":\"result\",\"message\":\"Disc language installed\",\"installed\":true,\"ready\":true,\""+name+"_installed\":true}");return 0;
+        }
+        if(mode=="language-pt-BR") {
+            int at=Array.IndexOf(args,"--set-language");
+            if(at<0||at+1>=args.Length||args[at+1]!="pt-BR") return 23;
+            Console.WriteLine("{\"event\":\"result\",\"message\":\"Idioma: português do Brasil.\",\"installed\":true,\"ready\":true,\"portuguese_installed\":true,\"language\":\"pt-BR\"}");
+            return 0;
+        }
+        if(mode=="diagnostics-on"||mode=="diagnostics-off") {
+            int at=Array.IndexOf(args,"--set-diagnostics");bool enabled=mode=="diagnostics-on";
+            if(at<0||at+1>=args.Length||args[at+1]!=(enabled?"on":"off"))return 19;
+            Console.WriteLine(new JavaScriptSerializer().Serialize(new { @event="result",message="Diagnostic logging changed",diagnostic_logging=enabled }));
+            return 0;
+        }
+        if(mode=="language-es"||mode=="language-en"||mode=="language-fr"||mode=="language-de"||mode=="language-it") {
             int at=Array.IndexOf(args,"--set-language");
             string language=mode.Substring(9);
             if(at<0||at+1>=args.Length||args[at+1]!=language) return 13;
@@ -199,6 +225,37 @@ class LauncherUiHarness {
         return true;
     }
     static bool Visible(Launcher l,string name) {return Visible(Element<FrameworkElement>(l,name));}
+    static bool InManageScroll(Launcher l,FrameworkElement element) {
+        var scroll=Element<ScrollViewer>(l,"ManageScroll");
+        for(DependencyObject current=element;current!=null;current=VisualTreeHelper.GetParent(current))
+            if(current==scroll)return true;
+        return false;
+    }
+    static Rect Bounds(FrameworkElement element,Visual root) {
+        return element.TransformToAncestor(root).TransformBounds(new Rect(new Point(),element.RenderSize));
+    }
+    static Rect ReachableBounds(Launcher l,FrameworkElement element,FrameworkElement root) {
+        if(InManageScroll(l,element)) {
+            var scroll=Element<ScrollViewer>(l,"ManageScroll");
+            var content=(FrameworkElement)scroll.Content;
+            scroll.ScrollToVerticalOffset(Bounds(element,content).Top);
+            root.UpdateLayout();
+            var viewport=Bounds(scroll,root);var bounds=Bounds(element,root);
+            Check(bounds.Top>=viewport.Top-1&&bounds.Bottom<=viewport.Bottom+1,
+                  "Action cannot be reached by scrolling: "+element.Name);
+        }
+        return Bounds(element,root);
+    }
+    static void PeerSizes(Launcher l) {
+        foreach(var pair in new[]{new[]{"ExistingInstallButton","RepairIsoButton"},new[]{"VerifyButton","FolderButton"},new[]{"DiagnosticsButton","LogsButton"}}) {
+            var a=Element<Button>(l,pair[0]);var b=Element<Button>(l,pair[1]);
+            if(!Visible(a)||!Visible(b))continue;
+            Check(Math.Abs(a.ActualWidth-b.ActualWidth)<1&&Math.Abs(a.ActualHeight-b.ActualHeight)<1,
+                  "Peer action sizes differ: "+pair[0]);
+        }
+        var cover=Element<System.Windows.Controls.Image>(l,"Cover");
+        Check(cover.Stretch==Stretch.Uniform,"Cover art is cropped or stretched");
+    }
     static void Manage(Launcher l) {
         Check(Visible(l,"ManageButton")&&Element<Button>(l,"ManageButton").IsEnabled,"Manage is unreachable");
         Click(l,"ManageButton");
@@ -251,9 +308,10 @@ class LauncherUiHarness {
         Check(Element<Button>(l,"ImportButton").IsEnabled,"Fresh import disabled");
         Check(Visible(l,"ImportButton")&&!Visible(l,"HomeExistingButton")&&(string)Element<Button>(l,"ImportButton").Content=="SELECT GAME","Fresh home lacks a simple source chooser");
         Check(!Visible(l,"ManagePanel")&&!Visible(l,"PlayButton"),"Fresh home contains management or Play actions");
-        foreach(string name in new[]{"PlayButton","VerifyButton","FolderButton","TextureButton","SpanishButton"})
+        foreach(string name in new[]{"PlayButton","VerifyButton","FolderButton","TextureButton","SpanishButton","PortugueseButton"})
             Check(!Element<Button>(l,name).IsEnabled,"Fresh "+name+" enabled");
         Check(!Element<ComboBox>(l,"LanguageChoice").IsEnabled&&!Element<ComboBoxItem>(l,"SpanishChoice").IsEnabled,"Fresh language controls enabled");
+        Check(!Element<ComboBoxItem>(l,"PortugueseChoice").IsEnabled,"Fresh Portuguese choice enabled");
         State(l,new Dictionary<string,object>{{"installed",true},{"ready",true},{"install_dir",@"C:\Fixture\Version"},{"message","Ready – fixture"},{"percent",120}});
         Check((string)Field(l,"gameDirectory")==@"C:\Fixture\Version","Backend install_dir was ignored");
         Check(Element<TextBlock>(l,"StatusText").Text=="Ready – fixture","Unicode status changed");
@@ -323,7 +381,7 @@ class LauncherUiHarness {
         Check(Visible(l,"VerifyButton"),"Verification is hidden in Manage");
         Click(l,"VerifyButton");
         Check((bool)Field(l,"busy"),"Verify button did not start operation");
-        foreach(string name in new[]{"ImportButton","PlayButton","VerifyButton","FolderButton","TextureButton","ExistingInstallButton","RepairIsoButton"})
+        foreach(string name in new[]{"ImportButton","PlayButton","VerifyButton","FolderButton","TextureButton","PortugueseButton","ExistingInstallButton","RepairIsoButton"})
             Check(!Element<Button>(l,name).IsEnabled,"Busy "+name+" enabled");
         string token=(string)Field(l,"cancelFile");
         Check(token!=null&&!File.Exists(token),"Cancellation was requested without a click");
@@ -337,6 +395,12 @@ class LauncherUiHarness {
         Check((bool)Field(l,"hdTexturesInstalled")&&Element<Button>(l,"PlayButton").IsEnabled,"Optional install result lost base readiness");
         Check((string)Element<Button>(l,"TextureButton").Content=="REINSTALL HD TEXTURES","Optional installer result did not refresh action");
         Evidence["optional_pack_protocol_and_state"]=true;
+        foreach(bool enabled in new[]{true,false}) {
+            Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE",enabled?"diagnostics-on":"diagnostics-off");
+            Click(l,"DiagnosticsButton");Pump(()=>!(bool)Field(l,"busy"));Idle(l);
+            Check((bool)Field(l,"diagnosticLogging")==enabled,"Diagnostic toggle did not persist response");
+            Check(((string)Element<Button>(l,"DiagnosticsButton").Content).EndsWith(enabled?"ON":"OFF"),"Diagnostic toggle label stale");
+        }
         Evidence["real_helper_and_verify_event"]=true;
     }
 
@@ -344,7 +408,7 @@ class LauncherUiHarness {
         var l=new Launcher(true);
         Check(Visible(l,"HomePanel")&&!Visible(l,"ManagePanel"),"Fresh launcher does not open home");
         Manage(l);
-        foreach(string name in new[]{"RepairIsoButton","ExistingInstallButton","VerifyButton","FolderButton","TextureButton","LanguageChoice","SpanishButton","CheckUpdatesButton"})
+        foreach(string name in new[]{"RepairIsoButton","ExistingInstallButton","VerifyButton","FolderButton","TextureButton","LanguageChoice","SpanishButton","PortugueseButton","CheckUpdatesButton","DiagnosticsButton","LogsButton"})
             Check(Visible(l,name),"Management control is unreachable: "+name);
         Check(!Visible(l,"ImportButton")&&!Visible(l,"PlayButton")&&!Visible(l,"HomeExistingButton"),"Manage retains home actions");
         Click(l,"BackButton");
@@ -577,9 +641,9 @@ class LauncherUiHarness {
         Check(Element<ComboBox>(l,"LanguageChoice").IsEnabled&&!Element<ComboBoxItem>(l,"SpanishChoice").IsEnabled,"Missing pack must disable Spanish only");
         Element<ComboBox>(l,"LanguageChoice").SelectedIndex=1;
         Check(Element<ComboBox>(l,"LanguageChoice").SelectedIndex==0&&!(bool)Field(l,"busy"),"Missing pack selection reached backend");
-        Check((string)Element<Button>(l,"SpanishButton").Content=="INSTALL SPANISH","Spanish install action missing");
+        Check((string)Element<Button>(l,"SpanishButton").Content=="INSTALL PS2 LANGUAGE","Disc language install action missing");
         Check(((string)Element<Button>(l,"SpanishButton").ToolTip).Contains("PS2 Darkwatch ISO (SLES-53564)"),"Supported own-disc import is not explained");
-        Check(Element<TextBlock>(l,"LanguageStatus").Text.Contains("requires your PS2 ISO"),"Missing import is not explained");
+        Check(Element<TextBlock>(l,"LanguageStatus").Text.Contains("require your PS2 ISO"),"Missing import is not explained");
         Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","spanish-iso");
         Finish((Task)Call(l,"Run","--install-spanish",@"C:\My Games\PS2 Español 🦇.iso")); Idle(l);
         Check(Element<ComboBoxItem>(l,"SpanishChoice").IsEnabled,"Installed Spanish still disabled");
@@ -593,7 +657,7 @@ class LauncherUiHarness {
         Check(!(bool)Field(l,"busy")&&Element<ComboBox>(l,"LanguageChoice").SelectedIndex==1,"Programmatic language refresh started an operation");
         Check((string)Element<Button>(l,"PlayButton").Content=="JUGAR","Spanish action missing");
         Check((bool)Field(l,"manageOpen")&&Visible(l,"ManagePanel"),"Language change left Manage");
-        Check(((string)Element<Button>(l,"SpanishButton").Content).Contains("ESPAÑOL"),"Spanish accent lost");
+        Check(((string)Element<Button>(l,"SpanishButton").Content).Contains("IDIOMA DE PS2"),"Spanish disc-language action missing");
         foreach(var example in new[]{
             new[]{"Preparing shaders — 12 of 4440","Preparando shaders — 12 de 4440"},
             new[]{"Verifying data/audioDlg.pck","Verificando data/audioDlg.pck"},
@@ -627,18 +691,103 @@ class LauncherUiHarness {
         Evidence["language_selection_install_rollback_and_no_reentrancy"]=true;
     }
 
+    static void PortugueseLanguage() {
+        var l=new Launcher(true);
+        State(l,new Dictionary<string,object>{{"installed",true},{"ready",true},{"language","en"},{"spanish_installed",false},{"portuguese_installed",false}});
+        Manage(l);
+        Check(Visible(l,"PortugueseButton")&&Element<Button>(l,"PortugueseButton").IsEnabled,"Ready game cannot install Portuguese");
+        Check(!Element<ComboBoxItem>(l,"PortugueseChoice").IsEnabled,"Uninstalled Portuguese choice is enabled");
+        Element<ComboBox>(l,"LanguageChoice").SelectedIndex=2;
+        Check(Element<ComboBox>(l,"LanguageChoice").SelectedIndex==0&&!(bool)Field(l,"busy"),"Uninstalled Portuguese reached backend");
+        string hint=(string)Element<Button>(l,"PortugueseButton").ToolTip;
+        Check(hint.Contains("HNNEWGAMES")&&hint.Contains("English")&&hint.Contains("PS2 ISO"),"Portuguese attribution or voice requirements missing");
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","error");
+        Click(l,"PortugueseButton");Pump(()=>!(bool)Field(l,"busy"));Idle(l);
+        Check(!(bool)Field(l,"portugueseInstalled")&&!Element<ComboBoxItem>(l,"PortugueseChoice").IsEnabled,"Failed install advertised Portuguese");
+        Check((bool)Field(l,"ready")&&(string)Field(l,"language")=="en","Failed install altered existing English game");
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","portuguese-install");
+        Click(l,"PortugueseButton");
+        Check((bool)Field(l,"busy")&&!Element<Button>(l,"PortugueseButton").IsEnabled&&!Element<ComboBox>(l,"LanguageChoice").IsEnabled,"Portuguese install allowed another mutation");
+        Pump(()=>!(bool)Field(l,"busy"));Idle(l);
+        Check((bool)Field(l,"portugueseInstalled")&&Element<ComboBoxItem>(l,"PortugueseChoice").IsEnabled,"Installed Portuguese is unavailable");
+        Check(!(bool)Field(l,"spanishInstalled")&&(string)Field(l,"language")=="en","Text-only install enabled Spanish or changed selected language");
+        Check(((string)Element<Button>(l,"PortugueseButton").Content).StartsWith("REINSTALL"),"Portuguese action did not refresh after install");
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","language-pt-BR");
+        Element<ComboBox>(l,"LanguageChoice").SelectedIndex=2;
+        Pump(()=>!(bool)Field(l,"busy"));Idle(l);
+        Check((string)Field(l,"language")=="pt-BR"&&Element<ComboBox>(l,"LanguageChoice").SelectedIndex==2,"Portuguese selection lost its canonical locale");
+        Check(Visible(l,"ManagePanel")&&Element<TextBlock>(l,"LanguageStatus").Text.Contains("Vozes em inglês"),"Portuguese text-only voice status incorrect");
+        State(l,new Dictionary<string,object>{{"spanish_installed",true},{"spanish_audio_installed",true},{"language","pt-BR"}});
+        Check(!(bool)Field(l,"busy")&&Element<TextBlock>(l,"LanguageStatus").Text.Contains("Vozes em espanhol"),"Spanish audio status did not refresh independently");
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","error");
+        Click(l,"PortugueseButton");Pump(()=>!(bool)Field(l,"busy"));Idle(l);
+        Check((bool)Field(l,"portugueseInstalled")&&(bool)Field(l,"spanishInstalled")&&(string)Field(l,"language")=="pt-BR","Failed reinstall lost working locales");
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","language-en");
+        Element<ComboBox>(l,"LanguageChoice").SelectedIndex=0;Pump(()=>!(bool)Field(l,"busy"));Idle(l);
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","error");
+        Element<ComboBox>(l,"LanguageChoice").SelectedIndex=2;Pump(()=>!(bool)Field(l,"busy"));Idle(l);
+        Check((string)Field(l,"language")=="en"&&Element<ComboBox>(l,"LanguageChoice").SelectedIndex==0,"Failed Portuguese selection changed the preference");
+        State(l,new Dictionary<string,object>{{"language","pt-BR"}});
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","download-pt-reset");
+        Finish(Run(l,"--download-update"));Idle(l);
+        Check((bool)Field(l,"ready")&&(bool)Field(l,"portugueseInstalled")&&(bool)Field(l,"spanishInstalled")&&(string)Field(l,"language")=="pt-BR","Failed update lost Portuguese or prior media state");
+        Check(Element<ComboBoxItem>(l,"PortugueseChoice").IsEnabled&&Element<ComboBox>(l,"LanguageChoice").SelectedIndex==2,"Update rollback left Portuguese unselectable");
+        State(l,new Dictionary<string,object>{{"installed",false},{"ready",false}});
+        Check(!(bool)Field(l,"portugueseInstalled")&&!Element<ComboBoxItem>(l,"PortugueseChoice").IsEnabled&&!Element<Button>(l,"PortugueseButton").IsEnabled,"Fresh installation retained stale Portuguese availability");
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","success");
+        Evidence["portuguese_install_select_failure_and_update_preservation"]=true;
+        Evidence["portuguese_optional_spanish_voice_status"]=true;
+    }
+
+    static void DiscLanguages() {
+        var l=new Launcher(true);
+        State(l,new Dictionary<string,object>{{"installed",true},{"ready",true},{"language","en"}});Manage(l);
+        var menu=Element<Button>(l,"SpanishButton").ContextMenu;
+        Check(menu!=null&&menu.Items.Count==4,"Disc importer should offer exactly the four verified disc languages");
+        Check(menu.Items.Cast<MenuItem>().Select(x=>(string)x.Header).SequenceEqual(new[]{"Español","Français","Deutsch","Italiano"}),"Disc language names are not native or ordered");
+        Check(menu.Items.Cast<MenuItem>().Select(x=>(string)x.Tag).SequenceEqual(new[]{"--install-spanish","--install-french","--install-german","--install-italian"}),"Disc import actions do not match the backend");
+        int index=3;
+        foreach(var choice in new[]{new[]{"fr","FrenchChoice","frenchInstalled","--install-french"},new[]{"de","GermanChoice","germanInstalled","--install-german"},new[]{"it","ItalianChoice","italianInstalled","--install-italian"}}) {
+            int previous=Element<ComboBox>(l,"LanguageChoice").SelectedIndex;
+            Check(!Element<ComboBoxItem>(l,choice[1]).IsEnabled,"Uninstalled disc language enabled");
+            Element<ComboBox>(l,"LanguageChoice").SelectedIndex=index;
+            Check(Element<ComboBox>(l,"LanguageChoice").SelectedIndex==previous&&!(bool)Field(l,"busy"),"Missing disc language reached backend");
+            Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","disc-"+choice[0]);
+            Finish((Task)Call(l,"Run",choice[3],@"C:\My Games\PS2 Français 🦇.iso"));Idle(l);
+            Check((bool)Field(l,choice[2])&&Element<ComboBoxItem>(l,choice[1]).IsEnabled,"Disc import did not enable its language");
+            Check(Element<ComboBox>(l,"LanguageChoice").SelectedIndex==previous,"Disc import changed selected language");
+            Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","language-"+choice[0]);
+            Element<ComboBox>(l,"LanguageChoice").SelectedIndex=index;
+            Pump(()=>!(bool)Field(l,"busy"));Idle(l);
+            Check((string)Field(l,"language")==choice[0]&&Element<ComboBox>(l,"LanguageChoice").SelectedIndex==index,"Disc language selection used wrong locale");
+            Check(Element<TextBlock>(l,"LanguageStatus").Text.Contains("Text, subtitles and voices"),"Disc language media guidance missing");
+            ++index;
+        }
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","error");
+        Element<ComboBox>(l,"LanguageChoice").SelectedIndex=3;Pump(()=>!(bool)Field(l,"busy"));Idle(l);
+        Check((string)Field(l,"language")=="it"&&Element<ComboBox>(l,"LanguageChoice").SelectedIndex==5,"Failed selection did not restore installed Italian");
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","download-pt-reset");
+        Finish(Run(l,"--download-update"));Idle(l);
+        Check((bool)Field(l,"frenchInstalled")&&(bool)Field(l,"germanInstalled")&&(bool)Field(l,"italianInstalled")&&(string)Field(l,"language")=="it","Update failure lost disc language state");
+        State(l,new Dictionary<string,object>{{"installed",false},{"ready",false}});
+        Check(!Element<ComboBoxItem>(l,"FrenchChoice").IsEnabled&&!Element<ComboBoxItem>(l,"GermanChoice").IsEnabled&&!Element<ComboBoxItem>(l,"ItalianChoice").IsEnabled,"Fresh install retained disc language state");
+        Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE","success");
+        Evidence["disc_language_import_selection_unicode_isolation_and_failure_preservation"]=true;
+    }
+
     static void Preview(string destination) {
         Directory.CreateDirectory(destination);
-        foreach(string state in new[]{"fresh","source","spanish-source","ready","hd-installed","importing","shaders","spanish-ready","spanish-shaders","update","spanish-update","new-release","spanish-offline","manage","spanish-manage","fresh-manage"}) {
+        foreach(string state in new[]{"fresh","source","spanish-source","ready","hd-installed","importing","shaders","spanish-ready","portuguese-ready","spanish-shaders","update","spanish-update","new-release","spanish-offline","manage","spanish-manage","portuguese-manage","french-manage","german-manage","italian-manage","fresh-manage"}) {
             var l=state.EndsWith("shaders")?Launcher.Preparing(()=>{}):new Launcher(true);string path=Path.Combine(destination,"launcher-"+state+".png");
             Call(l,"FitToWorkArea",new Rect(0,0,1920,1080));
-            var root=(Visual)l.Window.Content;
+            var root=(FrameworkElement)l.Window.Content;
             l.RenderPreview(path,state);
             Check(!l.Window.IsVisible,"Preview showed a desktop window");
-            foreach(string name in new[]{"ImportButton","PlayButton","VerifyButton","FolderButton","TextureButton","SpanishButton","ExistingInstallButton","RepairIsoButton","CancelButton","ReleaseButton","ManageButton","BackButton","HomeExistingButton","CheckUpdatesButton","UseIsoButton","ExtractIsoButton","SourceBackButton"}) {
+            PeerSizes(l);
+            foreach(string name in new[]{"ImportButton","PlayButton","VerifyButton","FolderButton","TextureButton","SpanishButton","PortugueseButton","ExistingInstallButton","RepairIsoButton","CancelButton","ReleaseButton","ManageButton","BackButton","HomeExistingButton","CheckUpdatesButton","UseIsoButton","ExtractIsoButton","SourceBackButton","DiagnosticsButton","LogsButton"}) {
                 var button=Element<Button>(l,name);
                 if(!Visible(button)||button.RenderSize.Width==0)continue;
-                var bounds=button.TransformToAncestor(root).TransformBounds(new Rect(new Point(),button.RenderSize));
+                var bounds=ReachableBounds(l,button,root);
                 Check(bounds.Left>=0&&bounds.Top>=0&&bounds.Bottom<=720&&bounds.Right<=1060,"Clipped "+name+" in "+state);
             }
             BitmapFrame frame;
@@ -654,6 +803,13 @@ class LauncherUiHarness {
             }
             Check(opaque>700000&&bright>20000&&colors.Count>2000,"Blank or incomplete offscreen preview: "+state);
             Evidence["preview_"+state]=new {width=frame.PixelWidth,height=frame.PixelHeight,opaque=opaque,bright=bright,colors=colors.Count};
+            var manage=Element<ScrollViewer>(l,"ManageScroll");
+            if(Visible(manage)&&manage.ScrollableHeight>0) {
+                manage.ScrollToEnd();root.UpdateLayout();
+                var bottom=new RenderTargetBitmap(1060,720,96,96,PixelFormats.Pbgra32);bottom.Render(root);
+                var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bottom));
+                using(var output=File.Create(Path.Combine(destination,"launcher-"+state+"-bottom.png")))encoder.Save(output);
+            }
         }
     }
 
@@ -667,38 +823,43 @@ class LauncherUiHarness {
         Check(type.GetMethod("RenderPreview")==null,"Release launcher exposes preview diagnostics");
         Check(type.GetConstructors().All(c=>c.GetParameters().Length==0),"Release launcher accepts testing mode");
         foreach(var area in new[]{new Rect(0,0,1280,680),new Rect(0,0,960,520),new Rect(0,0,800,560)}) {
-            foreach(string state in new[]{"fresh","source","spanish-source","ready","manage","spanish-manage","fresh-manage","manage-error","update","broken"}) {
+            foreach(string state in new[]{"fresh","source","spanish-source","ready","portuguese-ready","manage","spanish-manage","portuguese-manage","fresh-manage","manage-error","portuguese-manage-error","update","broken"}) {
                 var l=new Launcher(true);Call(l,"FitToWorkArea",area);
                 if(!state.StartsWith("fresh"))State(l,new Dictionary<string,object>{
                     {"installed",true},{"ready",state!="update"&&state!="broken"},{"update_available",state=="update"},
-                    {"hd_textures_installed",true},{"spanish_installed",true},{"language",state.StartsWith("spanish-")?"es":"en"}});
-                if(state.EndsWith("manage")||state=="manage-error")Manage(l);
+                    {"hd_textures_installed",true},{"spanish_installed",true},{"portuguese_installed",true},{"language",state.StartsWith("spanish-")?"es":state.StartsWith("portuguese-")?"pt-BR":"en"}});
+                if(state.EndsWith("manage")||state.EndsWith("manage-error"))Manage(l);
                 if(state.EndsWith("source"))Call(l,"ShowSource",true);
-                if(state=="manage-error")Call(l,"Error",new string('E',500));
+                if(state.EndsWith("manage-error"))Call(l,"Error",new string('E',500));
                 Check(l.Window.Width<=area.Width-24&&l.Window.Height<=area.Height-24,"Launcher exceeds desktop work area");
                 var content=(FrameworkElement)l.Window.Content;
                 content.Measure(new Size(l.Window.Width,l.Window.Height));
                 content.Arrange(new Rect(0,0,l.Window.Width,l.Window.Height));content.UpdateLayout();
-                var active=new List<Rect>();
-                foreach(string name in new[]{"ImportButton","PlayButton","VerifyButton","FolderButton","TextureButton","SpanishButton","ExistingInstallButton","RepairIsoButton","ReleaseButton","CloseButton","ManageButton","BackButton","HomeExistingButton","CheckUpdatesButton","UseIsoButton","ExtractIsoButton","SourceBackButton"}) {
+                PeerSizes(l);
+                var active=new List<Rect>();var scrolled=new List<Rect>();
+                foreach(string name in new[]{"ImportButton","PlayButton","VerifyButton","FolderButton","TextureButton","SpanishButton","PortugueseButton","ExistingInstallButton","RepairIsoButton","ReleaseButton","CloseButton","ManageButton","BackButton","HomeExistingButton","CheckUpdatesButton","UseIsoButton","ExtractIsoButton","SourceBackButton","DiagnosticsButton","LogsButton"}) {
                     var button=Element<Button>(l,name);
                     if(!Visible(button))continue;
                     Check(button.RenderSize.Width>0&&button.RenderSize.Height>0,"Visible control has no layout: "+name);
-                    var bounds=button.TransformToAncestor(content).TransformBounds(new Rect(new Point(0,0),button.RenderSize));
+                    bool inScroll=InManageScroll(l,button);
+                    var local=inScroll?Bounds(button,(Visual)Element<ScrollViewer>(l,"ManageScroll").Content):Bounds(button,content);
+                    var bounds=ReachableBounds(l,button,content);
                     Check(bounds.Left>=0&&bounds.Top>=0&&bounds.Right<=l.Window.Width+1&&bounds.Bottom<=l.Window.Height+1,
                           "Clipped launcher button "+name+" in "+state+" on small/high-DPI desktop");
-                    foreach(var previous in active) {
-                        var intersection=Rect.Intersect(bounds,previous);
+                    foreach(var previous in inScroll?scrolled:active) {
+                        var intersection=Rect.Intersect(local,previous);
                         Check(intersection.IsEmpty||intersection.Width<1||intersection.Height<1,"Overlapping action: "+name+" in "+state);
                     }
-                    active.Add(bounds);
+                    (inScroll?scrolled:active).Add(local);
                 }
+                var manage=Element<ScrollViewer>(l,"ManageScroll");
+                if(Visible(manage))active.Add(Bounds(manage,content));
                 var description=Element<TextBlock>(l,"StateDescription").TransformToAncestor(content).TransformBounds(new Rect(new Point(),Element<TextBlock>(l,"StateDescription").RenderSize));
                 var status=Element<TextBlock>(l,"StatusText").TransformToAncestor(content).TransformBounds(new Rect(new Point(),Element<TextBlock>(l,"StatusText").RenderSize));
                 Check(description.Bottom<=status.Top+1,"Status overlaps launcher description in "+state);
                 foreach(var button in active) {
                     var intersection=Rect.Intersect(status,button);
-                    Check(intersection.IsEmpty||intersection.Width<1||intersection.Height<1,"Status overlaps a management action in "+state);
+                    Check(intersection.IsEmpty||intersection.Width<1||intersection.Height<1,"Status "+status+" overlaps action "+button+" in "+state+" on "+area);
                 }
                 Check(!l.Window.IsVisible,"Small desktop check showed a window");
             }
@@ -713,7 +874,7 @@ class LauncherUiHarness {
         try {
             var app=new Application {ShutdownMode=ShutdownMode.OnExplicitShutdown};
             SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext());
-            Quote(); ResourcesAndState(); SourceSelection(); ProcessEvents(); Navigation(); ReuseAndUpdate(); ReleaseChecks(); DownloadUpdates(); DropInIso(); Cancellation(); Language(); Preview(args[0]); ReleaseAndSmallDesktop(args[1],args[2]);
+            Quote(); ResourcesAndState(); SourceSelection(); ProcessEvents(); Navigation(); ReuseAndUpdate(); ReleaseChecks(); DownloadUpdates(); DropInIso(); Cancellation(); Language(); PortugueseLanguage(); DiscLanguages(); Preview(args[0]); ReleaseAndSmallDesktop(args[1],args[2]);
             Evidence["shown_windows"]=0; Evidence["real_backend_or_game_started"]=false;
             Console.WriteLine(Json.Serialize(Evidence)); return 0;
         } catch(Exception ex) {Console.Error.WriteLine(ex);return 1;}
@@ -760,6 +921,9 @@ class LauncherUiTests(unittest.TestCase):
             (evidence / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
             self.assertTrue(report["cancel_event_and_locked_token_recovery"])
             self.assertTrue(report["home_manage_navigation_busy_cancel_and_repair"])
+            self.assertTrue(report["portuguese_install_select_failure_and_update_preservation"])
+            self.assertTrue(report["portuguese_optional_spanish_voice_status"])
+            self.assertTrue(report["disc_language_import_selection_unicode_isolation_and_failure_preservation"])
             self.assertEqual(report["shown_windows"], 0)
             self.assertFalse(report["real_backend_or_game_started"])
             self.assertEqual(report["release_version"], version)

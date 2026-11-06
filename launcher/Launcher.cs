@@ -17,9 +17,9 @@ using Microsoft.Win32;
 #if !DIRECT_PLAY
 [assembly: AssemblyTitle("Darkwatch: Darker Edition")]
 [assembly: AssemblyProduct("Darkwatch: Darker Edition")]
-[assembly: AssemblyVersion("0.7.1.0")]
-[assembly: AssemblyFileVersion("0.7.1.0")]
-[assembly: AssemblyInformationalVersion("0.7.1")]
+[assembly: AssemblyVersion("0.7.7.0")]
+[assembly: AssemblyFileVersion("0.7.7.0")]
+[assembly: AssemblyInformationalVersion("0.7.7")]
 #endif
 
 namespace DarkwatchDarkerEdition
@@ -33,9 +33,10 @@ namespace DarkwatchDarkerEdition
         readonly string package = AppDomain.CurrentDomain.BaseDirectory;
         readonly string installRoot = SetupProcess.InstallRoot(AppDomain.CurrentDomain.BaseDirectory);
         readonly JavaScriptSerializer json = new JavaScriptSerializer();
-        bool busy, installed, ready, updateAvailable, closing, cancelRequested, hdTexturesInstalled, spanishInstalled, spanishAudioInstalled, updatingLanguage;
+        bool busy, installed, ready, updateAvailable, closing, cancelRequested, hdTexturesInstalled, spanishInstalled, spanishAudioInstalled, portugueseInstalled, frenchInstalled, germanInstalled, italianInstalled, updatingLanguage;
         string language = "en", sourceMode = "extracted";
-        string cancelFile, gameDirectory;
+        bool diagnosticLogging;
+        string cancelFile, gameDirectory, diagnosticsDirectory;
         readonly Action cancelPreparation;
         bool checkingRelease, startupStarted, windowClosed, completeUpdate, manageOpen, sourceOpen, releaseRequested, freshStatus;
         string releaseStatus = "idle", latestRelease, releaseUrl;
@@ -69,6 +70,7 @@ namespace DarkwatchDarkerEdition
                 case "Select the original GameData folder, not another linked launcher.":
                 case "Choose the original GameData folder, not another linked launcher.": return "Selecciona la carpeta GameData original, no otro lanzador vinculado.";
                 case "Choose the previous Darkwatch folder or its GameData folder.": return "Selecciona la carpeta anterior de Darkwatch o su carpeta GameData.";
+                case "Existing game folders were found, but the active installation record is missing. Choose Use Existing Install and select the folder inside GameData/versions that you want to keep using. No files were changed.": return "Hay archivos del juego, pero falta el registro de instalación activa. Elige Usar instalación existente y selecciona la carpeta dentro de GameData/versions que quieras seguir usando. No se modificó ningún archivo.";
                 case "The selected installation uses a different disc revision.": return "La instalación seleccionada usa una versión diferente del disco.";
                 case "The selected installation is incomplete. Keep its saves and repair it from your disc.": return "La instalación seleccionada está incompleta. Conserva sus partidas y repárala desde tu disco.";
                 case "Choose Use Existing Install or import your Xbox ISO once.": return "Elige Usar instalación existente o importa tu ISO de Xbox una vez.";
@@ -174,20 +176,41 @@ namespace DarkwatchDarkerEdition
                 var dialog = new OpenFileDialog { Title = Copy("Select the HD texture ZIP or its first part (.001)", "Selecciona el ZIP de texturas HD o su primera parte (.001)"), Filter = TexturePackFilter, CheckFileExists = true, Multiselect = false };
                 if (dialog.ShowDialog(window) == true) await Run("--install-hd-textures", dialog.FileName);
             };
-            Get<Button>("SpanishButton").Click += async delegate {
-                var dialog = new OpenFileDialog { Title = Copy("Select your PS2 Darkwatch ISO (SLES-53564)", "Selecciona tu ISO de Darkwatch para PS2 (SLES-53564)"), Filter = SpanishPackFilter, CheckFileExists = true, Multiselect = false };
-                if (dialog.ShowDialog(window) == true) await Run("--install-spanish", dialog.FileName);
+            var discLanguages = new ContextMenu { Background = new SolidColorBrush(Color.FromRgb(21,24,29)), Foreground = window.Foreground };
+            foreach (var entry in new[] { new[] { "Español", "--install-spanish" }, new[] { "Français", "--install-french" }, new[] { "Deutsch", "--install-german" }, new[] { "Italiano", "--install-italian" } }) {
+                var languageName = entry[0]; var action = entry[1];
+                var choice = new MenuItem { Header = languageName, Tag = action };
+                choice.Click += async delegate {
+                    var dialog = new OpenFileDialog { Title = Copy("Select your PS2 Darkwatch ISO (SLES-53564)", "Selecciona tu ISO de Darkwatch para PS2 (SLES-53564)") + " — " + languageName, Filter = SpanishPackFilter, CheckFileExists = true, Multiselect = false };
+                    if (dialog.ShowDialog(window) == true) await Run(action, dialog.FileName);
+                };
+                discLanguages.Items.Add(choice);
+            }
+            Get<Button>("SpanishButton").ContextMenu = discLanguages;
+            Get<Button>("SpanishButton").Click += delegate {
+                if (busy || !ready) return;
+                discLanguages.PlacementTarget = Get<Button>("SpanishButton"); discLanguages.IsOpen = true;
             };
+            Get<Button>("PortugueseButton").Click += async delegate { await Run("--install-portuguese", null); };
             Get<ComboBox>("LanguageChoice").SelectionChanged += async delegate {
                 if (updatingLanguage || busy || !installed) return;
                 var selected = Get<ComboBox>("LanguageChoice").SelectedItem as ComboBoxItem;
                 string choice = selected == null ? null : selected.Tag as string;
-                if (choice == language || (choice != "en" && choice != "es")) return;
+                if (choice == language || (choice != "en" && choice != "es" && choice != "pt-BR" && choice != "fr" && choice != "de" && choice != "it")) return;
                 if (choice == "es" && !spanishInstalled) { SetButtons(); return; }
+                if (choice == "pt-BR" && !portugueseInstalled) { SetButtons(); return; }
+                if ((choice == "fr" && !frenchInstalled) || (choice == "de" && !germanInstalled) || (choice == "it" && !italianInstalled)) { SetButtons(); return; }
                 await Run("--set-language", choice);
             };
             Get<Button>("VerifyButton").Click += async delegate { await Run("--verify", null); };
             Get<Button>("PlayButton").Click += async delegate { await Run("--play", null); };
+            Get<Button>("DiagnosticsButton").Click += async delegate { await Run("--set-diagnostics", diagnosticLogging ? "off" : "on"); };
+            Get<Button>("LogsButton").Click += delegate {
+                try {
+                    string logs = diagnosticsDirectory ?? Path.Combine(installRoot, "logs");
+                    Process.Start(new ProcessStartInfo { FileName = Directory.Exists(logs) ? logs : installRoot, UseShellExecute = true });
+                } catch (Exception ex) { Error(ex.Message); }
+            };
             Get<Button>("CancelButton").Click += delegate { Cancel(); };
             Get<Button>("FolderButton").Click += delegate {
                 try { Process.Start(new ProcessStartInfo { FileName = Directory.Exists(gameDirectory) ? gameDirectory : installRoot, UseShellExecute = true }); }
@@ -214,6 +237,7 @@ namespace DarkwatchDarkerEdition
             if (busy || cancelPreparation != null) return;
             manageOpen = show;
             SetButtons();
+            if (show) Get<ScrollViewer>("ManageScroll").ScrollToTop();
             Get<Button>(show ? "BackButton" : "ManageButton").Focus();
         }
 
@@ -228,7 +252,7 @@ namespace DarkwatchDarkerEdition
         async Task UseExistingInstall()
         {
             using (var dialog = new System.Windows.Forms.FolderBrowserDialog {
-                Description = Copy("Select your previous Darkwatch folder or its GameData folder. Files stay in that folder.", "Selecciona la carpeta anterior de Darkwatch o su carpeta GameData. Los archivos permanecerán allí."),
+                Description = Copy("Select your previous Darkwatch folder, GameData, or a specific folder inside GameData/versions. Files stay in place.", "Selecciona tu carpeta anterior de Darkwatch, GameData o una carpeta concreta dentro de GameData/versions. Los archivos permanecerán allí."),
                 ShowNewFolderButton = false
             }) {
                 if (dialog.ShowDialog(new FolderDialogOwner(window)) == System.Windows.Forms.DialogResult.OK)
@@ -381,10 +405,16 @@ namespace DarkwatchDarkerEdition
 
         void SetButtons()
         {
+            Get<Button>("DiagnosticsButton").IsEnabled = !busy;
+            Get<Button>("DiagnosticsButton").Content = Copy("DIAGNOSTIC LOGGING: ", "REGISTRO DIAGNÓSTICO: ") + (diagnosticLogging ? "ON" : "OFF");
+            Get<Button>("DiagnosticsButton").ToolTip = Copy("For the next session. Saves local logs for troubleshooting; nothing is uploaded. May reduce performance. Turn off afterward.", "Para la próxima sesión. Guarda registros locales; no se suben. Puede reducir el rendimiento. Desactívalo después.");
+            Get<Button>("LogsButton").IsEnabled = !busy;
+            Get<Button>("LogsButton").Content = Copy("OPEN LOGS", "ABRIR REGISTROS");
             bool idle = !busy && cancelPreparation == null;
             bool showManage = idle && manageOpen && !sourceOpen;
             bool showSource = idle && sourceOpen;
             Get<StackPanel>("HomePanel").Visibility = showManage || showSource ? Visibility.Collapsed : Visibility.Visible;
+            Get<Grid>("ManageContainer").Visibility = showManage ? Visibility.Visible : Visibility.Collapsed;
             Get<StackPanel>("ManagePanel").Visibility = showManage ? Visibility.Visible : Visibility.Collapsed;
             Get<StackPanel>("SourcePanel").Visibility = showSource ? Visibility.Visible : Visibility.Collapsed;
             Get<Grid>("LaunchActions").Visibility = idle ? Visibility.Visible : Visibility.Collapsed;
@@ -397,7 +427,9 @@ namespace DarkwatchDarkerEdition
             Get<Button>("BackButton").Content = Copy("← BACK", "← VOLVER");
             Get<TextBlock>("ManageTitle").Text = Copy("MANAGE GAME", "ADMINISTRAR JUEGO");
             Get<TextBlock>("FilesTitle").Text = Copy("GAME FILES", "ARCHIVOS DEL JUEGO");
-            Get<TextBlock>("ContentTitle").Text = Copy("TEXTURES & LANGUAGE", "TEXTURAS E IDIOMA");
+            Get<TextBlock>("ContentTitle").Text = Copy("TEXTURES & LANGUAGES", "TEXTURAS E IDIOMAS");
+            Get<TextBlock>("LanguageTitle").Text = Copy("GAME LANGUAGE", "IDIOMA DEL JUEGO");
+            Get<TextBlock>("SupportTitle").Text = Copy("UPDATES & SUPPORT", "ACTUALIZACIONES Y AYUDA");
             Get<Button>("ImportButton").IsEnabled = !busy;
             Get<Button>("HomeExistingButton").IsEnabled = !busy;
             Get<Button>("UseIsoButton").IsEnabled = !busy;
@@ -413,19 +445,30 @@ namespace DarkwatchDarkerEdition
                 ? Copy("Gameplay textures installed · Toggle in Graphics", "Texturas instaladas · Actívalas en Gráficos")
                 : Copy("Optional download · Gameplay textures not installed", "Descarga opcional · Texturas del juego no instaladas");
             Get<Button>("SpanishButton").IsEnabled = !busy && ready;
-            Get<Button>("SpanishButton").Content = Copy("INSTALL SPANISH", "INSTALAR ESPAÑOL");
+            Get<Button>("SpanishButton").Content = Copy("INSTALL PS2 LANGUAGE", "INSTALAR IDIOMA DE PS2");
+            Get<Button>("PortugueseButton").IsEnabled = !busy && ready;
+            Get<Button>("PortugueseButton").Content = portugueseInstalled
+                ? Copy("REINSTALL PORTUGUESE TRANSLATION", "REINSTALAR TRADUCCIÓN AL PORTUGUÉS")
+                : Copy("INSTALL PORTUGUESE TRANSLATION", "INSTALAR TRADUCCIÓN AL PORTUGUÉS");
+            Get<Button>("PortugueseButton").ToolTip = "Portuguese text and subtitles by HNNEWGAMES, adapted for Darker Edition. Optional Spanish voices require your European PS2 ISO; otherwise voices remain English.";
             Get<ComboBox>("LanguageChoice").IsEnabled = !busy && installed;
             Get<ComboBoxItem>("SpanishChoice").IsEnabled = spanishInstalled;
+            Get<ComboBoxItem>("PortugueseChoice").IsEnabled = portugueseInstalled;
+            Get<ComboBoxItem>("FrenchChoice").IsEnabled = frenchInstalled;
+            Get<ComboBoxItem>("GermanChoice").IsEnabled = germanInstalled;
+            Get<ComboBoxItem>("ItalianChoice").IsEnabled = italianInstalled;
             // Backend status refreshes must not start another language-change operation.
             updatingLanguage = true;
-            try { Get<ComboBox>("LanguageChoice").SelectedIndex = language == "es" ? 1 : 0; }
+            try { Get<ComboBox>("LanguageChoice").SelectedIndex = language == "es" ? 1 : language == "pt-BR" ? 2 : language == "fr" ? 3 : language == "de" ? 4 : language == "it" ? 5 : 0; }
             finally { updatingLanguage = false; }
             Get<TextBlock>("LanguageStatus").Text = spanishInstalled
                 ? Copy("Game language · Spanish installed · Next launch", "Idioma del juego · Español instalado · Próximo inicio")
-                : Copy("Game language · Spanish requires your PS2 ISO", "Idioma del juego · Español requiere tu ISO de PS2");
+                : Copy("Game language · Disc languages require your PS2 ISO", "Idioma del juego · Los idiomas del disco requieren tu ISO de PS2");
+            if (language == "pt-BR") Get<TextBlock>("LanguageStatus").Text = "Português (Brasil) · HNNEWGAMES · " + (spanishAudioInstalled ? "Vozes em espanhol" : "Vozes em inglês; espanhol opcional com ISO de PS2");
+            else if (language == "fr" || language == "de" || language == "it") Get<TextBlock>("LanguageStatus").Text = (language == "fr" ? "Français" : language == "de" ? "Deutsch" : "Italiano") + " · Text, subtitles and voices · Next launch";
             System.Windows.Automation.AutomationProperties.SetName(Get<ComboBox>("LanguageChoice"), Copy("Game language", "Idioma del juego"));
-            Get<ComboBox>("LanguageChoice").ToolTip = Copy("Choose English or installed Español, then start the game. Close the game before changing languages.", "Elige English o Español instalado e inicia el juego. Cierra el juego antes de cambiar de idioma.");
-            Get<Button>("SpanishButton").ToolTip = Copy("Install Spanish text, subtitles and voices from your European PS2 Darkwatch ISO (SLES-53564). Set up the Xbox game first. Your disc, saves and settings are kept.", "Instala textos, subtítulos y voces de tu ISO europea de Darkwatch para PS2 (SLES-53564). Prepara primero el juego de Xbox. Se conservan tu disco, partidas y ajustes.");
+            Get<ComboBox>("LanguageChoice").ToolTip = Copy("Choose an installed language, then start the game. Close the game before changing languages.", "Elige un idioma instalado e inicia el juego. Cierra el juego antes de cambiar de idioma.");
+            Get<Button>("SpanishButton").ToolTip = Copy("Choose Español, Français, Deutsch or Italiano, then import text, subtitles and voices from your European PS2 Darkwatch ISO (SLES-53564). Set up the Xbox game first. Your disc, saves and settings are kept.", "Elige Español, Français, Deutsch o Italiano e importa textos, subtítulos y voces de tu ISO europea de Darkwatch para PS2 (SLES-53564). Se conservan tu disco, partidas y ajustes.");
             Get<Button>("CancelButton").Visibility = busy && (cancelFile != null || cancelPreparation != null) ? Visibility.Visible : Visibility.Collapsed;
             Get<Button>("CancelButton").IsEnabled = busy && !cancelRequested;
             Get<Button>("CancelButton").Content = Copy("CANCEL", "CANCELAR");
@@ -461,14 +504,20 @@ namespace DarkwatchDarkerEdition
             if (item.TryGetValue("event", out kind) && Object.Equals(kind, "status"))
                 freshStatus = item.TryGetValue("installed", out statusInstalled) && Object.Equals(statusInstalled, false);
             if (item.TryGetValue("installed", out value)) installed = Convert.ToBoolean(value);
+            if (item.TryGetValue("diagnostic_logging", out value)) diagnosticLogging = Convert.ToBoolean(value);
+            if (item.TryGetValue("diagnostics_dir", out value)) diagnosticsDirectory = Convert.ToString(value);
             if (item.TryGetValue("ready", out value)) ready = Convert.ToBoolean(value);
             if (item.TryGetValue("update_available", out value)) updateAvailable = Convert.ToBoolean(value);
             if (item.TryGetValue("hd_textures_installed", out value)) hdTexturesInstalled = Convert.ToBoolean(value);
             if (item.TryGetValue("spanish_installed", out value)) spanishInstalled = Convert.ToBoolean(value);
             if (item.TryGetValue("spanish_audio_installed", out value)) spanishAudioInstalled = Convert.ToBoolean(value);
-            if (item.TryGetValue("language", out value)) language = Object.Equals(value, "es") ? "es" : "en";
+            if (item.TryGetValue("portuguese_installed", out value)) portugueseInstalled = Convert.ToBoolean(value);
+            if (item.TryGetValue("french_installed", out value)) frenchInstalled = Convert.ToBoolean(value);
+            if (item.TryGetValue("german_installed", out value)) germanInstalled = Convert.ToBoolean(value);
+            if (item.TryGetValue("italian_installed", out value)) italianInstalled = Convert.ToBoolean(value);
+            if (item.TryGetValue("language", out value)) language = Object.Equals(value, "es") ? "es" : Object.Equals(value, "pt-BR") ? "pt-BR" : Object.Equals(value, "fr") ? "fr" : Object.Equals(value, "de") ? "de" : Object.Equals(value, "it") ? "it" : "en";
             if (item.TryGetValue("source_mode", out value)) sourceMode = Object.Equals(value, "iso") ? "iso" : "extracted";
-            if (!installed) { updateAvailable = false; hdTexturesInstalled = false; spanishInstalled = false; spanishAudioInstalled = false; }
+            if (!installed) { updateAvailable = false; hdTexturesInstalled = false; spanishInstalled = false; spanishAudioInstalled = false; portugueseInstalled = false; frenchInstalled = false; germanInstalled = false; italianInstalled = false; }
             if (item.TryGetValue("install_dir", out value)) gameDirectory = Convert.ToString(value);
             if (item.TryGetValue("message", out value)) Get<TextBlock>("StatusText").Text = Localize(Convert.ToString(value), language);
             if (item.TryGetValue("percent", out value) && value != null) {
@@ -500,6 +549,15 @@ namespace DarkwatchDarkerEdition
 
         void Error(string message)
         {
+            try {
+                if (File.Exists(Path.Combine(installRoot, ".diagnostic-logging"))) {
+                    string logs = Path.Combine(installRoot, "logs");
+                    Directory.CreateDirectory(logs);
+                    string path = Path.Combine(logs, "launcher-ui.log");
+                    if (!File.Exists(path) || new FileInfo(path).Length < 4 * 1024 * 1024)
+                        File.AppendAllText(path, DateTime.UtcNow.ToString("o") + " " + message + Environment.NewLine);
+                }
+            } catch (IOException) { } catch (UnauthorizedAccessException) { }
             Get<TextBlock>("StatusText").Text = Localize(message, language);
             Get<TextBlock>("StatusText").Foreground = new SolidColorBrush(Color.FromRgb(229, 153, 139));
         }
@@ -532,7 +590,9 @@ namespace DarkwatchDarkerEdition
             var previousInstallation = action == "--download-update" ? new Dictionary<string, object> {
                 { "installed", installed }, { "ready", ready }, { "update_available", updateAvailable },
                 { "hd_textures_installed", hdTexturesInstalled }, { "spanish_installed", spanishInstalled },
-                { "spanish_audio_installed", spanishAudioInstalled }, { "language", language }, { "install_dir", gameDirectory }, { "source_mode", sourceMode }
+                { "spanish_audio_installed", spanishAudioInstalled }, { "portuguese_installed", portugueseInstalled },
+                { "french_installed", frenchInstalled }, { "german_installed", germanInstalled }, { "italian_installed", italianInstalled },
+                { "language", language }, { "install_dir", gameDirectory }, { "source_mode", sourceMode }
             } : null;
             Get<TextBlock>("StatusText").Foreground = new SolidColorBrush(Color.FromRgb(184, 183, 181));
             Get<TextBlock>("StatusText").Text = action == "--play" ? Copy("Verifying your copy before launch…", "Verificando tu copia antes de iniciar…")
@@ -541,7 +601,7 @@ namespace DarkwatchDarkerEdition
                 : action == "--download-update" ? Copy("Downloading and preparing the update…", "Descargando y preparando la actualización…")
                 : action == "--use-installation" ? Copy("Checking the selected installation…", "Comprobando la instalación seleccionada…")
                 : action == "--install-hd-textures" ? Copy("Checking your HD texture pack…", "Comprobando el paquete de texturas HD…")
-                : action == "--install-spanish" ? Copy("Checking your PS2 disc…", "Comprobando tu disco de PS2…")
+                : action == "--install-spanish" || action == "--install-french" || action == "--install-german" || action == "--install-italian" ? Copy("Checking your PS2 disc…", "Comprobando tu disco de PS2…")
                 : action == "--set-language" ? Copy("Changing language…", "Cambiando el idioma…")
                 : Copy("Checking installation…", "Comprobando la instalación…");
             Get<ProgressBar>("Progress").Value = 0;
@@ -602,9 +662,13 @@ namespace DarkwatchDarkerEdition
                 language = state == "spanish-source" ? "es" : "en";
                 state = "fresh";
             }
-            manageOpen = state == "manage" || state == "spanish-manage" || state == "fresh-manage";
+            manageOpen = state == "manage" || state == "spanish-manage" || state == "portuguese-manage" || state == "french-manage" || state == "german-manage" || state == "italian-manage" || state == "fresh-manage";
             if (state == "manage") state = "hd-installed";
             if (state == "spanish-manage") state = "spanish-ready";
+            if (state == "portuguese-manage") state = "portuguese-ready";
+            if (state == "french-manage") state = "french-ready";
+            if (state == "german-manage") state = "german-ready";
+            if (state == "italian-manage") state = "italian-ready";
             if (state == "shaders" || state == "spanish-shaders") { busy = true; cancelFile = "preview"; }
             if (state == "new-release" || state == "spanish-offline") {
                 language = state == "spanish-offline" ? "es" : "en";
@@ -613,7 +677,9 @@ namespace DarkwatchDarkerEdition
                 releaseUrl = "https://github.com/linkssy2/DarkwatchDarkerEdition/releases/tag/v0.7";
                 state = state == "spanish-offline" ? "spanish-ready" : "ready";
             }
-            if (state == "spanish-ready") ApplyState(new Dictionary<string, object> { { "installed", true }, { "ready", true }, { "hd_textures_installed", true }, { "spanish_installed", true }, { "language", "es" }, { "message", "Instalación verificada. Todo listo para jugar." }, { "percent", 100 } });
+            if (state == "french-ready" || state == "german-ready" || state == "italian-ready") ApplyState(new Dictionary<string, object> { { "installed", true }, { "ready", true }, { "hd_textures_installed", true }, { "french_installed", true }, { "german_installed", true }, { "italian_installed", true }, { "language", state == "french-ready" ? "fr" : state == "german-ready" ? "de" : "it" }, { "message", "Disc language installed. Text, subtitles and voices are ready." }, { "percent", 100 } });
+            else if (state == "portuguese-ready") ApplyState(new Dictionary<string, object> { { "installed", true }, { "ready", true }, { "hd_textures_installed", true }, { "portuguese_installed", true }, { "spanish_installed", false }, { "spanish_audio_installed", false }, { "language", "pt-BR" }, { "message", "Tradução em português instalada. Pronto para jogar." }, { "percent", 100 } });
+            else if (state == "spanish-ready") ApplyState(new Dictionary<string, object> { { "installed", true }, { "ready", true }, { "hd_textures_installed", true }, { "spanish_installed", true }, { "language", "es" }, { "message", "Instalación verificada. Todo listo para jugar." }, { "percent", 100 } });
             else if (state == "update" || state == "spanish-update") ApplyState(new Dictionary<string, object> { { "installed", true }, { "ready", false }, { "update_available", true }, { "language", state == "spanish-update" ? "es" : "en" }, { "message", "Update available. Choose Update Game; your installed data, saves and add-ons will be reused without the ISO." } });
             else if (state == "spanish-shaders") ApplyState(new Dictionary<string, object> { { "event", "shader_prepare" }, { "language", "es" }, { "message", "Preparando shaders — 2.220 de 4.440" }, { "percent", 50 } });
             else if (state == "ready" || state == "hd-installed") ApplyState(new Dictionary<string, object> { { "installed", true }, { "ready", true }, { "hd_textures_installed", state == "hd-installed" }, { "message", "Installation verified. Ready to play." }, { "percent", 100 } });

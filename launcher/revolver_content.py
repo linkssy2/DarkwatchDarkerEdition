@@ -15,6 +15,10 @@ WEAPON_DIRECTORIES = dict(dwpistol=27, dwrevolver=35, doublepistol=17,
                           dwcrossbow=22, dwrailrocket=23)
 EFFECTS = ('arrow_swoosh', 'Rail_Rocket_Exhaust', 'explosionRocket',
            'ExplosionBolt', 'fuse01', 'dustcloud')
+FANNING_TABLES = ('characters/player_first/chazhands.bxml',
+                  'characters/multiplayercoop/multiplayercoopanimation.bxml',
+                  'characters/multiplayer/multiplayeranimation.bxml')
+PISTOL_ANIMATION = 'accessories/weapons/dwpistol/firstpersonpistol.bxml'
 # These authored on-foot starts deliberately replace the previous inventory.
 # Keep their story reset, then return the retained gun alongside the authored kit.
 RESTORE_LOADOUTS = {
@@ -105,6 +109,80 @@ def tune_projectiles(raw):
     art.named(clone, 'coneAperture')['value'] = '0.000000'
     rows.append(clone)
     return art.encode(tree)
+
+
+def fanning_animation(raw, weapon=False):
+    """Reuse compatible resident clips; keep each character's retargeted poses."""
+    tree = art.decode(raw)
+    matches = []
+    for group in tree['children']:
+        if group['name'] != 'AnimationGroup':
+            continue
+        for row in group['children']:
+            flags = [n['attributes'].get('Flag') for n in row['children'] if n['name'] == 'Modifier']
+            if (row['name'] == 'KeyframeAnimation' and
+                    row['attributes'].get('AnimationID') == ('SHOOT' if weapon else 'ALT_SHOOT') and
+                    (not flags and group['attributes'].get('ToolName') == 'Group 0'
+                     if weapon else flags == ['REVOLVER'])):
+                matches.append((group, row))
+    if len(matches) != 1:
+        raise ValueError('Unsupported revolver fanning animation')
+    group, original = matches[0]
+    if any(n['attributes'].get('AnimationID') == 'ALT_SHOOT' and
+           (weapon or any(c['name'] == 'Modifier' and c['attributes'].get('Flag') == 'PISTOL'
+                          for c in n['children'])) for n in group['children']):
+        raise ValueError('Pistol fanning animation already exists')
+    clone = copy.deepcopy(original)
+    clone['attributes']['AnimationID'] = 'ALT_SHOOT'
+    if weapon:
+        clone['children'] = [dict(name='PoseIn', attributes={}, children=[], value=None),
+                             dict(name='Block', attributes={'AnimationID': 'ANIM_ALL'}, children=[], value=None)]
+    else:
+        next(n for n in clone['children'] if n['name'] == 'Modifier')['attributes']['Flag'] = 'PISTOL'
+    group['children'].append(clone)
+    group['attributes']['KeyedAnimationCount'] = str(int(group['attributes']['KeyedAnimationCount']) + 1)
+    return art.encode(tree)
+
+
+def prepare_fanning(source, *stages):
+    """Final overlay leaves previous conversion proofs and weapon identities intact."""
+    composed = {}
+    for stage in stages:
+        composed.update(stage.get('packfile.pck', {}))
+    def read(path):
+        return composed[path] if path in composed else source.read(path)
+    tree = art.decode(read(WEAPONS))
+    pistol = art.child(tree, 'BasicPistol')
+    weapon = art.child(pistol, 'WeaponComponent')
+    redeemer = art.child(art.child(tree, 'Revolver'), 'WeaponComponent')
+    settings = dict(m_autoFire='true', m_specialDelay='0.500000', m_specialAnimLoops='true',
+                    m_kickbackRampTime='1.000000', m_specialRateOfFire='6.000000',
+                    m_specialKickback='1.100000', m_specialBump='0.500000')
+    for name, expected in settings.items():
+        value = art.child(redeemer, name)
+        if (value['attributes']['value'] != expected or
+                any(n['attributes'].get('name') == name for n in weapon['children'])):
+            raise ValueError('Unsupported revolver fanning tuning')
+        weapon['children'].append(copy.deepcopy(value))
+    sounds = art.child(art.child(pistol, 'SpeakerComponent'), 'm_speakerMap')['children']
+    if any(n['attributes'].get('key') == 'ALTFIRE' for n in sounds):
+        raise ValueError('Pistol alternate sound already exists')
+    fire = copy.deepcopy(next(n for n in sounds if n['attributes'].get('key') == 'FIRE'))
+    fire['attributes']['key'] = 'ALTFIRE'
+    sounds.append(fire)
+    result = {WEAPONS: art.encode(tree), PISTOL_ANIMATION: fanning_animation(read(PISTOL_ANIMATION), True)}
+    tables = set(FANNING_TABLES)
+    # Adapted co-op tables already contain the model-specific hammer-fan clip.
+    for path, raw in composed.items():
+        if path.startswith('characters/') and path.endswith('animation.bxml'):
+            table = art.decode(raw)
+            if any(n['attributes'].get('AnimationID') == 'ALT_SHOOT' and
+                   any(c['name'] == 'Modifier' and c['attributes'].get('Flag') == 'REVOLVER'
+                       for c in n['children']) for n in art.walk(table)):
+                tables.add(path)
+    for path in sorted(tables):
+        result[path] = fanning_animation(read(path))
+    return result
 
 
 def campaign_dependencies(preloads, effects_raw):

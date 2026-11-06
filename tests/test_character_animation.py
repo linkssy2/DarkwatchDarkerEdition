@@ -1,4 +1,4 @@
-"""Launcher animation conversion: synthetic contracts without game resources.
+"""Launcher animation conversion: synthetic conversion contracts.
 
 No game is launched and no generated resource is saved by these tests.
 """

@@ -74,7 +74,7 @@ double g_character_preview_started = 0;
 bool g_character_ready = false;
 bool g_page_graphics = false;
 bool g_audio = false, g_open_audio = false;
-bool g_surround_draft = false;
+int g_sound_output_draft = 0;
 AudioSettings g_audio_draft;
 struct AudioRequest { uint32_t options = 0; AudioSettings settings; };
 AudioRequest g_audio_request;
@@ -88,6 +88,7 @@ bool g_subtitles_draft = false;
 app::Settings g_draft, g_previous;
 view::Settings g_view_draft, g_view_previous;
 uint32_t g_view_player = 0;
+int g_reticle_color_target = 0;
 double g_confirm_until = 0;
 const char* g_notice = "";
 ImFont *g_body = nullptr, *g_title = nullptr;
@@ -96,6 +97,26 @@ std::vector<app::Mode> g_modes;
 ControlsSettings g_controls_draft;
 darkwatch::GraphicsRouteState g_original_controls, g_original_draft;
 std::mutex g_original_lock;
+bool MenuPadReleased(const input::Pad& pad) {
+    // Match the input button threshold and menu stick deadzone; exact zero can lock out keyboards too.
+    return !pad.buttons &&
+        std::all_of(std::begin(pad.analog), std::end(pad.analog), [](uint8_t value) {return value <= 30;}) &&
+        std::abs(int(pad.lx)) <= 16000 && std::abs(int(pad.ly)) <= 16000 &&
+        std::abs(int(pad.rx)) <= 16000 && std::abs(int(pad.ry)) <= 16000;
+}
+std::vector<app::Mode> ResolutionModes(app::DisplayMode mode) {
+    auto modes = g_modes;
+    // Window sizes need not be advertised by the monitor. Exclusive fullscreen
+    // still offers only real display modes so it cannot request unsupported timings.
+    if (mode == app::DisplayMode::Windowed) {
+        for (auto size : {app::Mode{1280,540}, {1280,800}, {1920,540}, {1920,810}, {1920,1200}, {2560,1080}, {2560,1600},
+                          {3440,1440}, {3840,1080}, {3840,1600}, {5120,1440}})
+            if (std::none_of(modes.begin(), modes.end(), [size](auto m) {return m.width == size.width && m.height == size.height;}))
+                modes.push_back(size);
+        std::sort(modes.begin(), modes.end(), [](auto a, auto b) {return a.width == b.width ? a.height < b.height : a.width < b.width;});
+    }
+    return modes;
+}
 float MenuScale() {
     const auto display = ImGui::GetIO().DisplaySize;
     float scale = std::min(display.x / 1280.f, display.y / 720.f);
@@ -127,7 +148,7 @@ int g_capture_action = -1, g_capture_slot = 0, g_conflict_action = -1;
 constexpr const char* kActions[] = {"D-PAD UP", "D-PAD DOWN", "D-PAD LEFT", "D-PAD RIGHT",
     "START", "BACK", "LEFT STICK CLICK", "RIGHT STICK CLICK", "A BUTTON", "B BUTTON",
     "X BUTTON", "Y BUTTON", "BLACK BUTTON", "WHITE BUTTON", "LEFT TRIGGER", "RIGHT TRIGGER",
-    "MOVE FORWARD", "MOVE BACKWARD", "MOVE LEFT", "MOVE RIGHT", "NEXT WEAPON", "PREVIOUS WEAPON"};
+    "MOVE FORWARD", "MOVE BACKWARD", "MOVE LEFT", "MOVE RIGHT", "NEXT WEAPON", "PREVIOUS WEAPON", "WALK", "SWAP SHOULDER"};
 constexpr const char* kDescriptions[] = {"Navigate up with the original D-pad.", "Navigate down with the original D-pad.",
     "Navigate left with the original D-pad.", "Navigate right with the original D-pad.",
     "Open the original pause menu.", "Send the original Xbox Back action.",
@@ -138,7 +159,11 @@ constexpr const char* kDescriptions[] = {"Navigate up with the original D-pad.",
     "Send the original left-trigger action.", "Send the original right-trigger action.",
     "Move forward with the left stick.", "Move backward with the left stick.",
     "Strafe left with the left stick.", "Strafe right with the left stick.",
-    "Equip the next carried weapon.", "Equip the previous carried weapon."};
+    "Equip the next carried weapon.", "Equip the previous carried weapon.",
+    "Hold or toggle slower movement using Walk Mode.", "Switch camera shoulder."};
+bool WeaponCycleAction(unsigned action) {
+    return action == unsigned(input::PcAction::NextWeapon) || action == unsigned(input::PcAction::PreviousWeapon);
+}
 constexpr const char* kPresetNames[]{"Default", "Chieftain", "Lefty", "Hopalong", "Hoss"};
 enum ActionMeaning {Unknown, Talk, Cycle, LeanLeft, LeanRight, Pause, Score, Crouch, Sight,
     Interact, Reload, Melee, Jump, SelectPower, ActivatePower, Throw, Shoot, CycleGrenades};
@@ -228,6 +253,11 @@ void Close() {
 
 bool PlayerTwoControls() { return g_original_draft.paused && g_original_draft.input_port == 1; }
 int ControlsPort() { return PlayerTwoControls() ? 1 : 0; }
+int& ExtraPadButton(unsigned action) {
+    if (action == unsigned(input::PcAction::SwapShoulder)) return g_controls_draft.shoulder_buttons[ControlsPort()];
+    return action == unsigned(input::PcAction::Walk) ? g_controls_draft.walk_buttons[ControlsPort()]
+        : g_controls_draft.weapon_buttons[ControlsPort()][action - unsigned(input::PcAction::NextWeapon)];
+}
 
 void ApplyControls() {
     const bool player_two = PlayerTwoControls();
@@ -236,7 +266,16 @@ void ApplyControls() {
     auto pending = player_two ? current : g_controls_draft;
     pending.weapon_buttons[ControlsPort()] = g_controls_draft.weapon_buttons[ControlsPort()];
     pending.weapon_buttons[1 - ControlsPort()] = current.weapon_buttons[1 - ControlsPort()];
+    pending.walk_toggle[ControlsPort()] = g_controls_draft.walk_toggle[ControlsPort()];
+    pending.walk_buttons[ControlsPort()] = g_controls_draft.walk_buttons[ControlsPort()];
+    pending.walk_toggle[1 - ControlsPort()] = current.walk_toggle[1 - ControlsPort()];
+    pending.walk_buttons[1 - ControlsPort()] = current.walk_buttons[1 - ControlsPort()];
+    pending.shoulder_buttons[ControlsPort()] = g_controls_draft.shoulder_buttons[ControlsPort()];
+    pending.shoulder_buttons[1 - ControlsPort()] = current.shoulder_buttons[1 - ControlsPort()];
+    pending.sight_toggle[ControlsPort()] = g_controls_draft.sight_toggle[ControlsPort()];
+    pending.sight_toggle[1 - ControlsPort()] = current.sight_toggle[1 - ControlsPort()];
     pending.carry_all_weapons = g_controls_draft.carry_all_weapons;
+    pending.keep_starting_revolver = g_controls_draft.keep_starting_revolver;
     if (!ControlsApply(pending)) {
         g_notice = "Cannot apply these bindings. Check for duplicate or reserved keys.";
         return;
@@ -435,7 +474,7 @@ std::string BindingLabel(uint32_t key) {
 }
 
 bool Choice(const char* id, int* selected, const char* english) {
-    if (!language::Spanish()) return ImGui::Combo(id, selected, english);
+    if (!language::Translated()) return ImGui::Combo(id, selected, english);
     std::string choices;
     for (const char* item = english; *item; item += std::strlen(item) + 1) {
         choices += language::Text(item); choices += '\0';
@@ -535,9 +574,12 @@ void ControllerLayoutContent(float scale) {
                 if (result <= 16) {
                     if (extra) {
                         auto& buttons = g_controls_draft.weapon_buttons[ControlsPort()];
-                        const unsigned action = unsigned(g_pad_capture_action - 20);
-                        if (buttons[1 - action] == int(result - 1)) buttons[1 - action] = -1;
-                        buttons[action] = int(result - 1);
+                        for (auto& button : buttons) if (button == int(result - 1)) button = -1;
+                        auto& walk = g_controls_draft.walk_buttons[ControlsPort()];
+                        if (walk == int(result - 1)) walk = -1;
+                        auto& shoulder = g_controls_draft.shoulder_buttons[ControlsPort()];
+                        if (shoulder == int(result - 1)) shoulder = -1;
+                        ExtraPadButton(unsigned(g_pad_capture_action)) = int(result - 1);
                         g_notice = "Gameplay button assigned. Apply from Controls to save.";
                     } else {
                         auto old = std::find(g_pad_draft.begin(), g_pad_draft.end(), uint8_t(result - 1));
@@ -566,12 +608,13 @@ void ControllerLayoutContent(float scale) {
     ImGui::SetCursorPos({0, 160 * scale});
     ImGui::BeginChild("Controller layout scroll", {938 * scale, 280 * scale + extra_height}, ImGuiChildFlags_NavFlattened);
     ImGui::BeginDisabled(capturing);
-    constexpr unsigned order[]{8,9,10,11,14,15,13,12,6,7,0,1,2,3,4,5,16,17,20,21};
+    constexpr unsigned order[]{8,9,10,11,14,15,13,12,6,7,0,1,2,3,4,5,16,17,20,21,22,23};
     for (unsigned index : order) {
         const bool stick = index == 16 || index == 17;
         const bool extra = index >= 20;
-        ImGui::BeginDisabled(extra && !g_controls_draft.carry_all_weapons);
-        const int button = extra ? g_controls_draft.weapon_buttons[ControlsPort()][index - 20] : stick ? -1 : g_pad_draft[index];
+        const bool available = !WeaponCycleAction(index) || g_controls_draft.carry_all_weapons;
+        ImGui::BeginDisabled(!available);
+        const int button = extra ? ExtraPadButton(index) : stick ? -1 : g_pad_draft[index];
         const bool left = index == 16;
         const bool look = (g_original_draft.controller_preset == 2) == left;
         auto prompt = stick ? ControllerPrompt{left ? "L" : "R", left ? ControllerPromptSymbol::LeftStick : ControllerPromptSymbol::RightStick}
@@ -580,7 +623,7 @@ void ControllerLayoutContent(float scale) {
         const char* description = stick ? "Move the stick in the direction you want to go."
                                         : ActionDescription(index);
         if (stick && look) description = "Turn and aim with this stick.";
-        if (extra) description = "Gameplay override; menus unchanged.";
+        if (extra && index != unsigned(input::PcAction::SwapShoulder)) description = "Gameplay override; menus unchanged.";
         if (!KnownPreset() && !extra) {
             name = stick ? (left ? "LEFT STICK" : "RIGHT STICK") : "BUTTON ACTION";
             description = "Choose a known layout to see this action.";
@@ -589,7 +632,7 @@ void ControllerLayoutContent(float scale) {
         auto* draw = ImGui::GetWindowDrawList();
         ImDrawListSplitter layers; layers.Split(draw, 2); layers.SetCurrentChannel(draw, 1);
         if (!capturing && g_pad_binding_focus == int(index)) {
-            if (!extra || g_controls_draft.carry_all_weapons) ImGui::SetKeyboardFocusHere();
+            if (available) ImGui::SetKeyboardFocusHere();
             g_pad_binding_focus = -1;
         }
         if (ImGui::Selectable("##layout row", false, ImGuiSelectableFlags_NoPadWithHalfSpacing |
@@ -614,12 +657,13 @@ void ControllerLayoutContent(float scale) {
             ImGui::SetCursorScreenPos({b.x + 8 * scale, a.y + 7 * scale});
             ImGui::BeginDisabled(button < 0);
             if (MenuButton("UNBIND", {118 * scale, 38 * scale}))
-                g_controls_draft.weapon_buttons[ControlsPort()][index - 20] = -1;
+                ExtraPadButton(index) = -1;
             ImGui::EndDisabled(); ImGui::SetCursorPos(next);
         }
         ImGui::PopID();
         ImGui::EndDisabled();
     }
+    ImGui::Dummy({1, 16 * scale});
     ImGui::EndDisabled(); EndSettingsChild();
     ImGui::SetCursorPos({220 * scale, 455 * scale + extra_height});
     Hint(capturing ? "Press a controller button. Start + Back or Escape cancels."
@@ -639,6 +683,8 @@ void ControllerLayoutContent(float scale) {
     if (MenuButton("RESET BUTTONS", {300 * scale, 39 * scale})) {
         g_pad_draft = input::DefaultPadBindings();
         g_controls_draft.weapon_buttons[ControlsPort()] = {-1, -1};
+        g_controls_draft.walk_buttons[ControlsPort()] = -1;
+        g_controls_draft.shoulder_buttons[ControlsPort()] = -1;
         g_notice = "Controller buttons reset in this draft. Apply from Controls to save.";
     }
     ImGui::SetCursorPos({720 * scale, 542 * scale + extra_height});
@@ -673,17 +719,27 @@ void ControlsContent(float scale, bool just_opened) {
       ImGui::SetCursorPos({88 * scale, 110 * scale});
       Hint("Mouse speed after zoom compensation. 100% matches normal aiming near the crosshair.");
     }
-    { MenuRow row("AIMING ASSISTANCE", 180, scale); Toggle("##aim assistance", g_controls_draft.aim_assistance); }
-    { MenuRow row("LOOK CENTERING", 236, scale); Toggle("##look centering", g_controls_draft.aim_centering); }
-    ImGui::SetCursorPos({88 * scale, 292 * scale});
+    }
+    const float sight_y = player_two ? 8.f : 180.f;
+    { MenuRow row("SIGHT MODE", sight_y, scale);
+      int mode = g_controls_draft.sight_toggle[ControlsPort()] ? 1 : 0;
+      if (Choice("##sight mode", &mode, "Hold\0Toggle\0"))
+          g_controls_draft.sight_toggle[ControlsPort()] = mode != 0;
+      if (player_two && just_opened) ImGui::SetItemDefaultFocus();
+    }
+    ImGui::SetCursorPos({88 * scale, (sight_y + 48) * scale});
+    Hint("Hold to aim while pressed. Toggle to cycle sight mode with each press.");
+    if (!player_two) {
+    { MenuRow row("AIMING ASSISTANCE", 292, scale); Toggle("##aim assistance", g_controls_draft.aim_assistance); }
+    { MenuRow row("LOOK CENTERING", 348, scale); Toggle("##look centering", g_controls_draft.aim_centering); }
+    ImGui::SetCursorPos({88 * scale, 404 * scale});
     ImGui::PushTextWrapPos(900 * scale);
     Hint("Aiming assistance attracts the view near targets. Look centering recenters your view.");
     ImGui::PopTextWrapPos();
     }
-    const float controller_y = player_two ? 8.f : 352.f;
+    const float controller_y = player_two ? 120.f : 464.f;
     ImGui::BeginDisabled(!g_original_draft.controls_available);
-    { MenuRow row("INVERT LOOK", controller_y, scale); Toggle("##invert look", g_original_draft.invert);
-      if (player_two && just_opened) ImGui::SetItemDefaultFocus(); }
+    { MenuRow row("INVERT LOOK", controller_y, scale); Toggle("##invert look", g_original_draft.invert); }
     { MenuRow row("PAD VIBRATION", controller_y + 56, scale); Toggle("##vibration", g_original_draft.vibration); }
     { MenuRow row("PAD SENSITIVITY", controller_y + 112, scale);
       ImGui::SliderInt("##controller sensitivity", &g_original_draft.sensitivity,
@@ -703,22 +759,36 @@ void ControlsContent(float scale, bool just_opened) {
     }
     if (KnownPreset()) {ImGui::SameLine(); ImGui::TextDisabled(language::Text("Current: %s"), language::Text(kPresetNames[g_original_draft.controller_preset]));}
     if (player_two) {
-        ImGui::SetCursorPos({88 * scale, 240 * scale});
+        ImGui::SetCursorPos({88 * scale, 352 * scale});
         ImGui::PushTextWrapPos(900 * scale);
         Hint("Player 2 settings. Use Controller Layout to change buttons.");
         ImGui::PopTextWrapPos();
     }
-    const float cheats_y = player_two ? 300.f : 590.f;
-    ImGui::SetCursorPos({88 * scale, cheats_y * scale});
-    ImGui::TextUnformatted(language::Text("GAMEPLAY CHEATS"));
-    { MenuRow row("CARRY ALL WEAPONS", cheats_y + 38, scale);
+    const float walk_y = player_two ? 412.f : 702.f;
+    { MenuRow row("WALK MODE", walk_y, scale);
+      int mode = g_controls_draft.walk_toggle[ControlsPort()] ? 1 : 0;
+      if (Choice("##walk mode", &mode, "Hold to Walk\0Toggle\0"))
+          g_controls_draft.walk_toggle[ControlsPort()] = mode != 0;
+    }
+    ImGui::SetCursorPos({88 * scale, (walk_y + 48) * scale});
+    Hint("Assign Walk below or in Controller Layout. On-foot movement only.");
+    const float gameplay_y = walk_y + 112;
+    ImGui::SetCursorPos({88 * scale, gameplay_y * scale});
+    ImGui::TextUnformatted(language::Text("GAMEPLAY OPTIONS"));
+    { MenuRow row("CARRY ALL WEAPONS", gameplay_y + 38, scale);
       Toggle("##carry all weapons", g_controls_draft.carry_all_weapons); }
-    ImGui::SetCursorPos({88 * scale, (cheats_y + 94) * scale});
+    ImGui::SetCursorPos({88 * scale, (gameplay_y + 94) * scale});
     ImGui::PushTextWrapPos(900 * scale);
-    Hint("Both players. Turning this off keeps weapons already carried.");
+    Hint("Both players. Extra weapons stay stored until this is on.");
+    ImGui::PopTextWrapPos();
+    { MenuRow row("KEEP STARTING REVOLVER", gameplay_y + 150, scale);
+      Toggle("##keep starting revolver", g_controls_draft.keep_starting_revolver); }
+    ImGui::SetCursorPos({88 * scale, (gameplay_y + 198) * scale});
+    ImGui::PushTextWrapPos(900 * scale);
+    Hint("Both players. Keep the starting revolver after receiving the Redeemer. Applies at weapon changes and chapter starts.");
     ImGui::PopTextWrapPos();
     if (!player_two) {
-    ImGui::SetCursorPos({88 * scale, 760 * scale});
+    ImGui::SetCursorPos({88 * scale, 1092 * scale});
     ImGui::BeginGroup(); ImGui::PushTextWrapPos(912 * scale);
     ImGui::TextUnformatted(language::Text("KEYBOARD AND MOUSE BINDINGS"));
     Hint("Select a binding, then press a key, mouse button, or scroll the wheel. Escape cancels; Backspace clears.");
@@ -727,9 +797,10 @@ void ControlsContent(float scale, bool just_opened) {
         ImGui::TableSetupColumn(language::Text("PRIMARY"), ImGuiTableColumnFlags_WidthFixed, 180 * scale);
         ImGui::TableSetupColumn(language::Text("ALT KEY"), ImGuiTableColumnFlags_WidthFixed, 180 * scale);
         ImGui::TableHeadersRow();
-        constexpr unsigned order[]{16,17,18,19,20,21,15,14,8,9,10,11,12,13,6,7,4,5,0,1,2,3};
+        constexpr unsigned order[]{16,17,18,19,22,23,20,21,15,14,8,9,10,11,12,13,6,7,4,5,0,1,2,3};
         for (unsigned action : order) {
-            ImGui::BeginDisabled(action >= 20 && !g_controls_draft.carry_all_weapons);
+            const bool available = !WeaponCycleAction(action) || g_controls_draft.carry_all_weapons;
+            ImGui::BeginDisabled(!available);
             ImGui::PushID(int(action)); ImGui::TableNextRow(); ImGui::TableNextColumn();
             ImGui::PushTextWrapPos(0); ImGui::TextUnformatted(language::Text(ActionName(action)));
             const float row_font_scale = ImGui::GetCurrentWindow()->FontWindowScale;
@@ -741,7 +812,7 @@ void ControlsContent(float scale, bool just_opened) {
                 auto label = BindingLabel(g_controls_draft.bindings[action].keys[slot]);
                 bool waiting = capturing && g_capture_action == int(action) && g_capture_slot == slot;
                 if (!capturing && g_conflict_action < 0 && g_binding_focus == int(action) * 2 + slot) {
-                    if (action < 20 || g_controls_draft.carry_all_weapons) ImGui::SetKeyboardFocusHere();
+                    if (available) ImGui::SetKeyboardFocusHere();
                     g_binding_focus = -1;
                 }
                 if (MenuButton(waiting ? "PRESS A KEY..." : label.c_str(), {-1, 38 * scale})) {
@@ -789,8 +860,16 @@ void ControlsContent(float scale, bool just_opened) {
         ImGui::SameLine(450 * scale);
         if (MenuButton("RESET DEFAULTS", {250 * scale, 39 * scale})) {
             const auto other_buttons = g_controls_draft.weapon_buttons[1];
+            const auto other_walk_toggle = g_controls_draft.walk_toggle[1];
+            const auto other_walk_button = g_controls_draft.walk_buttons[1];
+            const auto other_shoulder_button = g_controls_draft.shoulder_buttons[1];
+            const auto other_sight_toggle = g_controls_draft.sight_toggle[1];
             g_controls_draft = ControlsDefaults();
             g_controls_draft.weapon_buttons[1] = other_buttons;
+            g_controls_draft.walk_toggle[1] = other_walk_toggle;
+            g_controls_draft.walk_buttons[1] = other_walk_button;
+            g_controls_draft.shoulder_buttons[1] = other_shoulder_button;
+            g_controls_draft.sight_toggle[1] = other_sight_toggle;
             g_notice = "PC defaults restored in this draft. Select Apply to save.";
         }
     }
@@ -816,11 +895,17 @@ void AudioContent(float scale, bool just_opened) {
       ImGui::SliderInt("##speech", &g_audio_draft.speech, 0, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput); }
     ImGui::EndDisabled();
     { MenuRow row("SOUND OUTPUT", 176, scale);
-      int output = g_surround_draft ? 1 : 0;
-      if (Choice("##sound output", &output, "Stereo\0Surround\0")) g_surround_draft = output != 0; }
+      Choice("##sound output", &g_sound_output_draft, "Stereo\0" "5.1 Surround\0" "7.1 Surround\0"); }
     ImGui::SetCursorPos({88 * scale, 236 * scale});
-    Hint(audio::SurroundAvailable() ? "Surround uses your device's 5.1 or 7.1 speakers."
-        : "Surround unavailable. Set up 5.1 or 7.1 speakers, then restart.");
+    ImGui::BeginGroup();
+    const auto active_output = audio::ActiveSoundOutput();
+    Hint(active_output == audio::SoundOutput::Surround71 ? "Active output: 7.1 Surround." :
+         active_output == audio::SoundOutput::Surround51 ? "Active output: 5.1 Surround." : "Active output: Stereo.");
+    if (g_sound_output_draft != 0 && audio::OutputChannels() < 6)
+        Hint("Surround unavailable. Set up 5.1 or 7.1 speakers, then restart.");
+    else if (g_sound_output_draft == 2 && audio::OutputChannels() < 8)
+        Hint("7.1 unavailable on this device; playback will use 5.1.");
+    ImGui::EndGroup();
     EndSettingsChild();
     ImGui::SetCursorPos({220 * scale, 490 * scale}); Hint(g_notice);
     ImGui::SetCursorPos({220 * scale, 541 * scale});
@@ -829,13 +914,13 @@ void AudioContent(float scale, bool just_opened) {
             std::lock_guard lock(g_original_lock);
             g_audio_request = {g_options, g_audio_draft};
         }
-        audio::SetSurroundEnabled(g_surround_draft);
+        audio::SetSoundOutput(static_cast<audio::SoundOutput>(g_sound_output_draft));
         g_notice = app::Save() ? "Audio applied. Profile volumes save when you leave Options."
                               : "Could not save settings. Changes will last for this session only.";
     }
     ImGui::SameLine(450 * scale);
     if (MenuButton("RESET DEFAULTS", {250 * scale, 39 * scale})) {
-        g_audio_draft = {}; g_surround_draft = false;
+        g_audio_draft = {}; g_sound_output_draft = 0;
         g_notice = "Audio defaults restored in this draft. Select Apply to save.";
     }
     ImGui::SameLine(720 * scale);
@@ -992,10 +1077,10 @@ void CharactersContent(float scale, bool just_opened) {
         g_character_preview_started = ImGui::GetTime();
     }
     ImGui::SetCursorPos({490 * scale, 330 * scale});
-    Hint("Choose your single-player character.");
+    Hint("Choose your character.");
     ImGui::SetCursorPos({490 * scale, 385 * scale});
-    Hint("Continue to choose a chapter or resume your save.");
-    if (g_character_choice.load() == -2) g_notice = "Could not open Single Player. Try again.";
+    Hint("Continue to chapter selection.");
+    if (g_character_choice.load() == -2) g_notice = "Could not open chapter selection. Try again.";
     ImGui::SetCursorPos({220 * scale, 490 * scale}); Hint(g_notice);
     ImGui::SetCursorPos({220 * scale, 541 * scale});
     if (MenuButton("CONTINUE", {230 * scale, 39 * scale})) g_character_choice = int(g_character_draft);
@@ -1023,7 +1108,7 @@ void DarkwatchDesktopQuitOpen(uint32_t owner) {
 void DarkwatchGraphicsInit() {
     std::error_code error;
     if (!std::filesystem::exists(app::ExeDir() / app::kGame.settings, error))
-        app::Get().aspect_ratio = app::AspectRatio::Wide16x9;
+        app::Get().aspect_ratio = app::AspectRatio::Auto;
 }
 
 void DarkwatchGraphicsWindow(void* window) {
@@ -1154,7 +1239,7 @@ void DarkwatchGraphicsPad(int port, input::Pad& pad) {
         if (g_leave && !visual) g_leave = false;
     }
     if (g_coop_owner && port >= 0 && port < 2) {
-        uint32_t keys = (pad.buttons & 15) | (pad.analog[0] ? 16 : 0) | (pad.analog[1] ? 32 : 0);
+        uint32_t keys = (pad.buttons & 15) | (pad.analog[0] > 30 ? 16 : 0) | (pad.analog[1] > 30 ? 32 : 0);
         if (pad.ly > 16000) keys |= 1;
         if (pad.ly < -16000) keys |= 2;
         if (pad.lx < -16000) keys |= 4;
@@ -1168,9 +1253,7 @@ void DarkwatchGraphicsPad(int port, input::Pad& pad) {
     }
     // Either player may have pressed Ready last; release both before chapter navigation.
     if (port >= 0 && port < 2 && g_coop_block_release[port] && !g_coop_owner) {
-        if (!pad.buttons && std::all_of(std::begin(pad.analog), std::end(pad.analog), [](uint8_t value) {return value == 0;}) &&
-            std::abs(int(pad.lx)) < 8000 && std::abs(int(pad.ly)) < 8000 &&
-            std::abs(int(pad.rx)) < 8000 && std::abs(int(pad.ry)) < 8000) g_coop_block_release[port] = false;
+        if (MenuPadReleased(pad)) g_coop_block_release[port] = false;
         const bool connected = pad.connected; pad = {}; pad.connected = connected;
         input::SetActive(false);
         return;
@@ -1179,7 +1262,7 @@ void DarkwatchGraphicsPad(int port, input::Pad& pad) {
     // Port-zero polling still owns guest UI publication and queued mutations.
     if (port == int(g_navigation_port.load())) {
         const bool visual = g_visual.load();
-        uint32_t keys = (pad.buttons & 15) | (pad.analog[0] ? 16 : 0) | (pad.analog[1] ? 32 : 0);
+        uint32_t keys = (pad.buttons & 15) | (pad.analog[0] > 30 ? 16 : 0) | (pad.analog[1] > 30 ? 32 : 0);
         if (pad.ly > 16000) keys |= 1;
         if (pad.ly < -16000) keys |= 2;
         if (pad.lx < -16000) keys |= 4;
@@ -1188,9 +1271,7 @@ void DarkwatchGraphicsPad(int port, input::Pad& pad) {
             if (!keys) g_released = true;
             g_pad = g_released ? keys : 0;
         } else { g_pad = 0; g_released = false; }
-        if (!visual && g_block_release && !pad.buttons &&
-            std::all_of(std::begin(pad.analog), std::end(pad.analog), [](uint8_t value) {return value == 0;}) &&
-            std::abs(int(pad.lx)) < 8000 && std::abs(int(pad.ly)) < 8000) g_block_release = false;
+        if (!visual && g_block_release && MenuPadReleased(pad)) g_block_release = false;
     }
     if (g_visual || g_leave || g_block_release) {
         bool connected = pad.connected;
@@ -1202,6 +1283,8 @@ void DarkwatchGraphicsPad(int port, input::Pad& pad) {
 
 bool DarkwatchGraphicsVisible() {return g_visual && !g_leave && !g_configuring;}
 void DarkwatchGraphicsUi(double fps) {
+    const auto fonts = skin::Select(view::Snapshot().hd_ui);
+    if (fonts.body && fonts.title) { g_body = fonts.body; g_title = fonts.title; }
     FpsCounter(fps);
     CharacterNotice();
     PadNavigation();
@@ -1239,6 +1322,7 @@ void DarkwatchGraphicsUi(double fps) {
     bool just_opened = !g_open || g_view_player != view_player || g_open_coop != g_coop || g_open_quit != g_quit || g_open_controls != g_controls || g_open_audio != g_audio || g_open_characters != g_characters || g_open_options != g_options ||
                        g_open_page != state.page || g_open_pause_entry != pause_entry;
     if (just_opened) {
+        LOGI("menu: opened page=%u player=%u paused=%u controls=%u audio=%u characters=%u coop=%u", unsigned(state.page), view_player + 1, unsigned(state.paused), unsigned(g_controls), unsigned(g_audio), unsigned(g_characters), unsigned(g_coop));
         g_controller_layout = false;
         g_layout_returned = false;
         ControlsCancelCapture(); g_capture_action = -1; g_conflict_action = -1;
@@ -1250,7 +1334,7 @@ void DarkwatchGraphicsUi(double fps) {
         g_open_coop = g_coop; g_coop_ui_ready = false;
         g_open_quit = g_quit; g_quit_ready = false;
         g_open_audio = g_audio;
-        g_audio_draft = state.audio; g_surround_draft = audio::SurroundEnabled();
+        g_audio_draft = state.audio; g_sound_output_draft = static_cast<int>(audio::GetSoundOutput());
         if (g_characters) {
             g_character_draft = settings::configured_character(0);
             g_character_preview_started = ImGui::GetTime();
@@ -1337,7 +1421,7 @@ void DarkwatchGraphicsUi(double fps) {
     if (title_width > title_room) ImGui::SetWindowFontScale(ImGui::GetCurrentWindow()->FontWindowScale * title_room / title_width);
     // The original accent artwork extends above the capitals; reserve that ink.
     float title_inset = 0;
-    if (language::Spanish()) for (const auto& glyph : ImGui::GetFont()->Glyphs)
+    if (language::Translated()) for (const auto& glyph : ImGui::GetFont()->Glyphs)
         title_inset = std::max(title_inset, -glyph.Y0);
     title_inset *= ImGui::GetFontSize() / ImGui::GetFont()->FontSize;
     ImGui::SetCursorPos({96 * scale, title_inset});
@@ -1393,7 +1477,7 @@ void DarkwatchGraphicsUi(double fps) {
     std::snprintf(text, sizeof(text), "%u x %u%s", resolution.width, resolution.height, borderless ? language::Text("  (Desktop)") : "");
     ImGui::BeginDisabled(borderless);
     if (ImGui::BeginCombo("##resolution", text)) {
-        for (auto item : g_modes) {
+        for (auto item : ResolutionModes(g_draft.display_mode)) {
             std::snprintf(text, sizeof(text), "%u x %u", item.width, item.height);
             bool selected = resolution.width == item.width && resolution.height == item.height;
             if (ImGui::Selectable(text, selected)) {g_draft.width = item.width; g_draft.height = item.height;}
@@ -1405,7 +1489,7 @@ void DarkwatchGraphicsUi(double fps) {
     }
     { MenuRow row("ASPECT RATIO", 120, scale);
     int aspect = int(g_draft.aspect_ratio);
-    if (Choice("##aspect", &aspect, "Automatic\0Widescreen 16:9\0Original 4:3\0")) g_draft.aspect_ratio = app::AspectRatio(aspect);
+    if (Choice("##aspect", &aspect, "Automatic\0Widescreen 16:9\0Original 4:3\0Ultrawide 21:9\0Super Ultrawide 32:9\0Widescreen 16:10\0")) g_draft.aspect_ratio = app::AspectRatio(aspect);
     }
     { MenuRow row("RENDER RESOLUTION", 176, scale);
     int percent = int(g_draft.render_percent);
@@ -1414,43 +1498,53 @@ void DarkwatchGraphicsUi(double fps) {
     ImGui::SetCursorPos({430 * scale, 222 * scale});
     std::snprintf(text, sizeof(text), language::Text("%u x %u rendering"), render.width, render.height); Hint(text);
     }
-    { MenuRow row("FIELD OF VIEW", 265, scale);
+    { MenuRow row("CAMERA VIEW", 265, scale);
+    int camera_mode = int(g_view_draft.camera_mode);
+    if (Choice("##camera_mode", &camera_mode, "First Person\0Third Person - Centered\0Third Person - Shoulder\0"))
+        g_view_draft.camera_mode = view::CameraMode(camera_mode);
+    ImGui::SetCursorPos({88 * scale, 311 * scale});
+    Hint("On-foot camera. Each player chooses their own view.");
+    }
+    { MenuRow row("FIELD OF VIEW", 354, scale);
     int fov = int(g_view_draft.fov_percent);
     if (ImGui::SliderInt("##fov", &fov, 50, 200, "%d%%", ImGuiSliderFlags_AlwaysClamp)) g_view_draft.fov_percent = uint32_t(fov);
-    ImGui::SetCursorPos({430 * scale, 311 * scale});
+    ImGui::SetCursorPos({430 * scale, 400 * scale});
     Hint("100% = original view. Zoom is preserved.");
     }
-    { MenuRow row("WEAPON FOV", 354, scale);
+    { MenuRow row("WEAPON FOV", 443, scale);
     int weapon_fov = int(g_view_draft.viewmodel_fov_percent);
     if (ImGui::SliderInt("##weapon_fov", &weapon_fov, 50, 150, "%d%%", ImGuiSliderFlags_AlwaysClamp)) g_view_draft.viewmodel_fov_percent = uint32_t(weapon_fov);
-    ImGui::SetCursorPos({430 * scale, 400 * scale});
+    ImGui::SetCursorPos({430 * scale, 489 * scale});
     Hint("Changes gun and hand framing.");
     }
-    { MenuRow row("RETICLE SIZE", 443, scale);
+    { MenuRow row("RETICLE SIZE", 532, scale);
     int reticle = int(g_view_draft.reticle_percent);
     if (ImGui::SliderInt("##reticle", &reticle, 0, 200, "%d%%", ImGuiSliderFlags_AlwaysClamp)) g_view_draft.reticle_percent = uint32_t(reticle);
-    ImGui::SetCursorPos({430 * scale, 489 * scale});
+    ImGui::SetCursorPos({430 * scale, 578 * scale});
     Hint("0% = off. 100% = original size.");
     }
-    { MenuRow row("CUTSCENE BORDERS", 532, scale);
+    { MenuRow row("CUTSCENE BORDERS", 621, scale);
     Toggle("##cutscene_borders", g_view_draft.cutscene_borders);
-    ImGui::SetCursorPos({430 * scale, 578 * scale});
+    ImGui::SetCursorPos({430 * scale, 667 * scale});
     Hint("Level cutscenes only.");
-    ImGui::SetCursorPos({430 * scale, 621 * scale});
+    ImGui::SetCursorPos({430 * scale, 710 * scale});
     if (MenuButton("RESET VIEW DEFAULTS", {482 * scale, 39 * scale})) {
         g_view_draft.fov_percent = g_view_draft.reticle_percent = g_view_draft.viewmodel_fov_percent = 100;
+        g_view_draft.camera_mode = view::CameraMode::FirstPerson;
         g_view_draft.cutscene_borders = true;
+        g_view_draft.show_hud = true;
+        g_view_draft.reticle_normal_color = g_view_draft.reticle_enemy_color = g_view_draft.reticle_friendly_color = 0x1000000;
     }
     }
-    { MenuRow row("FPS COUNTER", 677, scale);
+    { MenuRow row("FPS COUNTER", 766, scale);
     int fps_enabled = g_view_draft.show_fps ? 1 : 0;
     if (Choice("##fps", &fps_enabled, "Off\0On\0")) g_view_draft.show_fps = fps_enabled != 0;
     }
-    { MenuRow row("VERTICAL SYNC", 733, scale);
+    { MenuRow row("VERTICAL SYNC", 822, scale);
     int vsync = g_draft.vsync ? 1 : 0;
     if (Choice("##vsync", &vsync, "Off\0On\0")) g_draft.vsync = vsync != 0;
     }
-    { MenuRow row("FPS LIMIT", 789, scale);
+    { MenuRow row("FPS LIMIT", 878, scale);
     if (g_draft.fps_cap) std::snprintf(text, sizeof(text), "%u FPS", g_draft.fps_cap);
     else std::snprintf(text, sizeof(text), "%s", language::Text("Unlimited"));
     if (ImGui::BeginCombo("##cap", text)) {
@@ -1465,57 +1559,104 @@ void DarkwatchGraphicsUi(double fps) {
         ImGui::EndCombo();
     }
     }
-    { MenuRow row("MSAA", 845, scale);
+    { MenuRow row("MSAA", 934, scale);
     int msaa = g_draft.msaa_samples == 4 ? 2 : g_draft.msaa_samples == 2 ? 1 : 0;
     if (Choice("##msaa", &msaa, "Off\0" "2x\0" "4x\0")) g_draft.msaa_samples = 1u << msaa;
-    ImGui::SetCursorPos({430 * scale, 891 * scale});
+    ImGui::SetCursorPos({430 * scale, 980 * scale});
     const uint32_t active_samples = gpu::MsaaSamples();
     std::snprintf(text, sizeof(text), language::Text("Active: %s - GPU support required"), active_samples == 4 ? "4x" : active_samples == 2 ? "2x" : language::Text("Off")); Hint(text);
     }
-    { MenuRow row("TEXTURE FILTERING", 934, scale);
+    { MenuRow row("TEXTURE FILTERING", 1023, scale);
     constexpr uint32_t aniso_values[]{0, 1, 2, 4, 8, 16};
     int aniso = 0;
     for (unsigned i = 0; i < std::size(aniso_values); ++i) if (g_draft.aniso == aniso_values[i]) aniso = int(i);
     if (Choice("##aniso", &aniso, "Original\0" "1x\0" "2x\0" "4x\0" "8x\0" "16x\0")) g_draft.aniso = aniso_values[aniso];
     }
-    { MenuRow row("HD ARTWORK", 990, scale);
+    { MenuRow row("HD ARTWORK", 1079, scale);
     int hd_ui = g_view_draft.hd_ui ? 1 : 0;
     if (Choice("##hd_ui", &hd_ui, "Off\0On\0")) g_view_draft.hd_ui = hd_ui != 0;
-    ImGui::SetCursorPos({430 * scale, 1036 * scale});
+    ImGui::SetCursorPos({430 * scale, 1125 * scale});
     Hint("HD menus, fonts and HUD.");
     }
-    { MenuRow row("SUBTITLES", 1079, scale);
+    { MenuRow row("SUBTITLES", 1168, scale);
     ImGui::BeginDisabled(!g_subtitles_available);
     Toggle("##subtitles", g_subtitles_draft);
     ImGui::EndDisabled();
     }
-    { MenuRow row("BRIGHTNESS", 1135, scale);
+    { MenuRow row("BRIGHTNESS", 1224, scale);
     int brightness = int(g_draft.brightness_percent);
     if (ImGui::SliderInt("##brightness", &brightness, 50, 150, "%d%%", ImGuiSliderFlags_AlwaysClamp))
         g_draft.brightness_percent = uint32_t(brightness);
-    ImGui::SetCursorPos({430 * scale, 1181 * scale});
+    ImGui::SetCursorPos({430 * scale, 1270 * scale});
     Hint("100% = original. Lower is darker.");
     }
     { const bool available = GameplayTexturesAvailable();
     ImGui::BeginDisabled(!available);
-    { MenuRow row("HD TEXTURES", 1224, scale);
+    { MenuRow row("HD TEXTURES", 1313, scale);
     bool enabled = available && g_view_draft.hd_textures;
     Toggle("##hd_textures", enabled);
     if (available) g_view_draft.hd_textures = enabled;
     }
     ImGui::EndDisabled();
-    ImGui::SetCursorPos({430 * scale, 1270 * scale});
+    ImGui::SetCursorPos({430 * scale, 1359 * scale});
     Hint(available ? "Installed gameplay textures. UI unchanged." : "Install the HD texture pack in the launcher.");
     }
-    { MenuRow row("FOREVER RAGDOLLS", 1313, scale);
+    { MenuRow row("FOREVER RAGDOLLS", 1402, scale);
     Toggle("##forever_ragdolls", g_view_draft.forever_ragdolls);
-    ImGui::SetCursorPos({430 * scale, 1359 * scale});
+    ImGui::SetCursorPos({430 * scale, 1448 * scale});
     Hint("Keep bodies interactive until level changes. May reduce performance.");
     }
+    { MenuRow row("FMV SCALING", 1491, scale);
+    int fit = g_view_draft.movie_aspect_fit ? 0 : 1;
+    if (Choice("##movie_scaling", &fit, "Original Aspect Ratio\0Fill Screen\0"))
+        g_view_draft.movie_aspect_fit = fit == 0;
+    ImGui::SetCursorPos({430 * scale, 1537 * scale});
+    Hint("Fill enlarges the picture without stretching or cutting it off.");
+    }
+    { MenuRow row("MENU ASPECT RATIO", 1580, scale);
+    int original_ui = g_view_draft.original_ui_aspect ? 1 : 0;
+    if (Choice("##ui_aspect", &original_ui, "Widescreen\0Original 4:3\0"))
+        g_view_draft.original_ui_aspect = original_ui != 0;
+    ImGui::SetCursorPos({88 * scale, 1628 * scale});
+    Hint("Menus, logos and loading artwork. Gameplay and movies are unchanged.");
+    }
+    { MenuRow row("SHOW HUD", 1692, scale);
+    Toggle("##show_hud", g_view_draft.show_hud);
+    ImGui::SetCursorPos({88 * scale, 1740 * scale});
+    Hint("This player's gameplay HUD and reticle. Menus and subtitles stay visible.");
+    }
+    { MenuRow row("RETICLE COLOR", 1804, scale);
+    Choice("##reticle target", &g_reticle_color_target, "Normal\0Enemy\0Friendly\0");
+    }
+    uint32_t& color = g_reticle_color_target == 1 ? g_view_draft.reticle_enemy_color :
+        g_reticle_color_target == 2 ? g_view_draft.reticle_friendly_color : g_view_draft.reticle_normal_color;
+    const uint32_t original = g_reticle_color_target == 1 ? 0xD0100Bu : g_reticle_color_target == 2 ? 0x00CE00u : 0xFFFFFFu;
+    { MenuRow row("COLOR MODE", 1860, scale);
+    int custom = color <= 0xFFFFFF ? 1 : 0;
+    if (Choice("##reticle color mode", &custom, "Original\0Custom\0")) color = custom ? original : 0x1000000;
+    }
+    int rgb[]{int(((color <= 0xFFFFFF ? color : original) >> 16) & 255),
+              int(((color <= 0xFFFFFF ? color : original) >> 8) & 255),
+              int((color <= 0xFFFFFF ? color : original) & 255)};
+    ImGui::BeginDisabled(color > 0xFFFFFF);
+    constexpr const char* channels[]{"RED", "GREEN", "BLUE"};
+    constexpr const char* color_ids[]{"##reticle red", "##reticle green", "##reticle blue"};
+    for (unsigned channel = 0; channel < 3; ++channel) {
+        MenuRow row(channels[channel], 1916 + channel * 56, scale);
+        if (ImGui::SliderInt(color_ids[channel], &rgb[channel], 0, 255, "%d", ImGuiSliderFlags_AlwaysClamp))
+            color = uint32_t(rgb[0] << 16 | rgb[1] << 8 | rgb[2]);
+    }
+    ImGui::EndDisabled();
+    ImGui::SetCursorPos({88 * scale, 2084 * scale});
+    ImGui::BeginGroup();
+    Hint("Edit each target color separately. Original keeps the game's colors and effects.");
+    if (MenuButton("RESET RETICLE COLORS", {482 * scale, 39 * scale}))
+        g_view_draft.reticle_normal_color = g_view_draft.reticle_enemy_color = g_view_draft.reticle_friendly_color = 0x1000000;
+    ImGui::EndGroup();
     ImGui::Dummy({1, 12 * scale});
     EndSettingsChild();
     ImGui::SetCursorPos({220 * scale, 507 * scale + extra_height});
-    Hint("Restart after changing aspect ratio.");
+    Hint("Restart after changing display aspect ratio.");
     ImGui::EndDisabled();
     ImGui::SetCursorPos({220 * scale, 450 * scale + extra_height});
     Hint(g_notice);

@@ -1,7 +1,13 @@
 cmake_minimum_required(VERSION 3.25)
 project(darkwatch_xbe LANGUAGES C CXX)
 option(DARKWATCH_RELEASE "Build a quiet runtime for the own-ISO launcher" OFF)
+# The accepted secondary-motion solver is part of every build. Clear the retired
+# comparison option when reusing an older build directory.
+unset(DARKWATCH_KAWAII_PROTOTYPE CACHE)
 option(DARKWATCH_GRENADE_PAIR_FIXTURE "Build the private 2026-10-29 grenade pickup test" OFF)
+if(DARKWATCH_RELEASE AND DARKWATCH_GRENADE_PAIR_FIXTURE)
+    message(FATAL_ERROR "Private test fixtures cannot be enabled in a release build")
+endif()
 if(DARKWATCH_GRENADE_PAIR_FIXTURE)
     set_property(SOURCE src/common/character_content.cpp APPEND PROPERTY
         COMPILE_DEFINITIONS DARKWATCH_GRENADE_PAIR_FIXTURE=20261029)
@@ -26,11 +32,20 @@ set(XBE_HOST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/common/game_info.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/coop_respawn_weapons.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/grenade_switch.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/weapon_input.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/camera_input.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/audio_settings.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/menu_cursor.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/native_menu.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/desktop_quit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/coop.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/online_session_probe.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/online_named_events.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/online_campaign_barrier.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/online_story_events.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/online_encounter_authority.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/online_cinematics.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/online_area_travel.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/online_characters.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/coop_characters.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/campaign_replay.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/coop_saves.cpp"
@@ -49,6 +64,10 @@ set(XBE_HOST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/common/game_info.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/graphics.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/graphics_route.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/graphics_camera.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/third_person_visibility.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/third_person_aim.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/third_person_body.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/starter_grip.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/graphics_cinematic.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/graphics_presentation.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/graphics_view.cpp"
@@ -69,6 +88,13 @@ if(NOT GAME_PARTITIONS)
     message(FATAL_ERROR "game.toml must declare the generated partition count")
 endif()
 add_xbe_image(darkwatch_xbe default.xbe game.toml ${GAME_PARTITIONS} game)
+if(WIN32)
+    enable_language(RC)
+    set(DARKWATCH_ICON "${CMAKE_CURRENT_SOURCE_DIR}/../launcher/assets/insignia.ico")
+    configure_file(src/common/game.rc.in "${CMAKE_CURRENT_BINARY_DIR}/game.rc" @ONLY)
+    target_sources(darkwatch_xbe PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/game.rc")
+    set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/game.rc" APPEND PROPERTY OBJECT_DEPENDS "${DARKWATCH_ICON}")
+endif()
 # Any shader-generation/cache change invalidates the portable preparation stamp.
 set(SHADER_PREPARATION_INPUTS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/render_shaders.cpp"
@@ -116,6 +142,8 @@ add_dependencies(darkwatch_xbe darkwatch_hd_ui_assets)
 # Keep diagnostic and release binaries separate; symbols stay local for crash triage.
 if(DARKWATCH_RELEASE)
     target_compile_definitions(darkwatch_xbe PRIVATE XBE_RELEASE)
+    # Generated hook declarations must see the inline, inert release observers.
+    target_compile_options(darkwatch_xbe PRIVATE "SHELL:-include common/release_diagnostics.h")
     # Keep private symbols useful without embedding a developer's workspace path.
     target_link_options(darkwatch_xbe PRIVATE -Wl,/pdbaltpath:darkwatch_xbe.pdb)
     target_link_options(darkwatch_hd_ui_builder PRIVATE -Wl,/pdbaltpath:darkwatch_hd_ui_builder.pdb)

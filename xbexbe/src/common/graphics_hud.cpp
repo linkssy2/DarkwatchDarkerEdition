@@ -1,4 +1,6 @@
 #include "graphics_hud.h"
+#include "graphics_reticle.h"
+#include "graphics_view.h"
 #include <array>
 #include <atomic>
 #include <cmath>
@@ -84,6 +86,22 @@ bool ExpiredCheckpoint(uint8_t* base, uint32_t text) {
 
 bool DarkwatchHudSplitView() {return g_split_view.load(std::memory_order_relaxed);}
 
+float DarkwatchHudHorizontalScale(uint8_t* base, uint32_t camera) {
+    if (!Active(base) || g_hud.camera != camera) return 1;
+    const float scale = (4.f / 3.f) / app::RenderAspect();
+    return std::isfinite(scale) && scale > 0 ? scale : 1;
+}
+
+bool DarkwatchHideGameplayHud(X86Context& ctx, uint8_t* base) {
+    // At 1EC67F only skip visual contents. The rest of 1EC5F4 must still
+    // finish fades and apply deferred focus/visibility through 1E8E9F;
+    // bypassing the whole pass leaves the resumed HUD unable to open Pause.
+    const HudScope scope{base, ctx.esi, ctx.ebx, 0};
+    if (!Camera(scope)) return false;
+    const uint32_t player = Read(base, scope.camera + 0x5C) ? 1u : 0u;
+    return !darkwatch::view::Snapshot(player).show_hud;
+}
+
 X86_FUNC(sub_001EE8BE) {
     const HudScope previous = g_hud;
     g_hud = Scope(ctx, base);
@@ -125,6 +143,8 @@ void DarkwatchCoopHudMargins(X86Context& ctx, uint8_t* base) {
 }
 
 void DarkwatchHudQuad(X86Context& ctx, uint8_t* base) {
+    // Color is independent of the widescreen-only HUD geometry correction.
+    DarkwatchReticleColor(ctx, base);
     if (!Active(base) || !Span(base, ctx.esi, 0x24) ||
         Read(base, ctx.esi + 0x20) != g_hud.camera ||
         !Span(base, ctx.esp, 12) || Read(base, ctx.esp) != 4 || Read(base, ctx.esp + 8) != 4)
@@ -137,11 +157,12 @@ void DarkwatchHudQuad(X86Context& ctx, uint8_t* base) {
     if (!Span(base, raster, 0x14)) return;
     const uint32_t width = Read(base, raster + 0xC), height = Read(base, raster + 0x10);
     if (!width || !height || width > 16384 || height > 16384) return;
+    const float scale = (4.f / 3.f) / app::RenderAspect();
     std::array<float, 4> x;
     for (unsigned i = 0; i < x.size(); ++i) {
         x[i] = Float(base, vertices + 28 * i);
         if (!std::isfinite(x[i])) return;
-        x[i] = x[i] * 0.75f + float(width) * g_hud.anchor * 0.25f;
+        x[i] = x[i] * scale + float(width) * g_hud.anchor * (1 - scale);
         if (!std::isfinite(x[i])) return;
     }
     for (unsigned i = 0; i < x.size(); ++i) Store(base, vertices + 28 * i, x[i]);
@@ -157,6 +178,7 @@ void DarkwatchHudFont(X86Context&, uint8_t* base) {
     if (!index || index >= 32 || !Span(base, 0x4E3730 + index * 4, 4)) return;
     const uint32_t matrix = Read(base, 0x4E3730 + index * 4);
     if (!Span(base, matrix, 0x40)) return;
+    const float scale = (4.f / 3.f) / app::RenderAspect();
     std::array<float, 4> x;
     for (unsigned i = 0; i < x.size(); ++i) {
         x[i] = Float(base, matrix + 0x10 * i);
@@ -164,8 +186,8 @@ void DarkwatchHudFont(X86Context&, uint8_t* base) {
     }
     // This HUD text path is axis aligned. Do not reinterpret rotated 3D text.
     if (x[1] != 0 || x[2] != 0) return;
-    for (float& value : x) value *= 0.75f;
-    x[3] += (2 * g_hud.anchor - 1) * 0.25f;
+    for (float& value : x) value *= scale;
+    x[3] += (2 * g_hud.anchor - 1) * (1 - scale);
     if (!std::isfinite(x[3])) return;
     for (unsigned i = 0; i < x.size(); ++i) Store(base, matrix + 0x10 * i, x[i]);
 }

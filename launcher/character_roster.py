@@ -51,6 +51,22 @@ def _trooper_locators(player, multiplayer, coop):
     return result
 
 
+def _dual_locators(read, identity):
+    """Use the same per-mode dual-gun attachment as the prepared player."""
+    chaz = art.decode(read('characters/player_third/base_chaz.bllist'))
+    coop = art.decode(read('characters/multiplayer/base_dwstormtrooper_coop.bllist'))
+    if identity >= 7:
+        npc = art.decode(read((TALA if identity == 7 else character_tala.VAMPIRE)+'.bllist'))
+        solo, multi = art.solo_locators(chaz, npc), art.adapt_locators(coop, npc)
+    elif identity == 3:
+        joints = set(read(ROSTER[3][1]+'.jlist').decode('ascii').split())
+        solo, multi = chaz, art.jericho_locators(chaz, coop, joints)
+    else:
+        npc = art.decode(read('characters/multiplayer/base_dwstormtrooper.bllist'))
+        solo, multi = _trooper_locators(chaz, npc, coop), _trooper_locators(coop, npc, coop)
+    return {animation.CHAZ: art.encode(solo), animation.STORM: art.encode(multi)}
+
+
 def _hands(original, tala, identity=7):
     """Transfer Tala's original arms/UVs onto the existing articulated POV rig."""
     source, target = skin._geometry(tala, 0), skin._geometry(original, 0)
@@ -246,17 +262,21 @@ def prepare(source, groups, extension, spectral, tala_variants=False, *, tala_pi
         return outputs[key] if key in outputs else merged[key] if key in merged else read(key)
 
     targets = (
-        ('civilianjericho', ROSTER[3][1] + '.rx1'),
-        ('trooper', animation.STORM),
-        ('colortrooper', ROSTER[5][1] + '.rx1'),
-        ('tala', TALA + '.rx1'),
+        ('civilianjericho', ROSTER[3][1] + '.rx1', 'characters/player_third/base_chaz.bllist'),
+        ('trooper', animation.STORM, 'characters/multiplayer/base_dwstormtrooper_coop.bllist'),
+        ('colortrooper', ROSTER[5][1] + '.rx1', 'characters/multiplayer/base_dwstormtrooper_coop.bllist'),
+        ('tala', TALA + '.rx1', TALA + '.bllist'),
     )
-    for character, model in targets:
+    for identity, (character, model, locator) in zip((3, 4, 5, 7), targets):
         label = {'civilianjericho': 'Civilian Jericho', 'trooper': 'Trooper',
                  'colortrooper': 'Blue and Red Troopers', 'tala': 'Tala'}[character]
         added, _, _ = animation.prepare(
             read, art.decode, art.encode, model, character, cancel=source.cancel,
-            progress=lambda message, label=label: source.report(f'Preparing {label} {message}'))
+            progress=lambda message, label=label: source.report(f'Preparing {label} {message}'),
+            arm_maps=animation.player_arm_parameters(read, art.decode,
+                animation.frames(read(model)), locator),
+            dual_arm_maps=animation.player_arm_parameters(read, art.decode,
+                animation.frames(read(model)), locator, dual=True, dual_locators=_dual_locators(read, identity)))
         outputs.update(added)
     source.report('Preparing Tala first-person hands...')
     outputs[TALA_HANDS + '.rx1'] = (
@@ -273,7 +293,13 @@ def prepare(source, groups, extension, spectral, tala_variants=False, *, tala_pi
         source.report('Preparing Vampire Tala animations...')
         added, _, _ = animation.prepare(read, art.decode, art.encode,
             character_tala.VAMPIRE + '.rx1', 'vampiretala', cancel=source.cancel,
-            progress=lambda message: source.report('Preparing Vampire Tala ' + message))
+            progress=lambda message: source.report('Preparing Vampire Tala ' + message),
+            arm_maps=animation.player_arm_parameters(read, art.decode,
+                animation.frames(read(character_tala.VAMPIRE + '.rx1')),
+                character_tala.VAMPIRE + '.bllist'),
+            dual_arm_maps=animation.player_arm_parameters(read, art.decode,
+                animation.frames(read(character_tala.VAMPIRE + '.rx1')),
+                character_tala.VAMPIRE + '.bllist', dual=True, dual_locators=_dual_locators(read, 8)))
         outputs.update(added)
         outputs.update(character_tala.animations(read, outputs[character_tala.MODEL + '.rx1'],
             cancel=source.cancel, progress=lambda message: source.report('Preparing Boss Tala ' + message)))
@@ -298,21 +324,11 @@ def prepare(source, groups, extension, spectral, tala_variants=False, *, tala_pi
     for identity, (prefix, model, hand_model) in roster.items():
         source.report(f'Preparing player equipment: {identity - 2}/{len(roster)}')
         joints = set(resource(model + '.jlist').decode('ascii').split())
-        chaz = art.decode(read('characters/player_third/base_chaz.bllist'))
-        coop = art.decode(read('characters/multiplayer/base_dwstormtrooper_coop.bllist'))
-        if identity >= 7:
-            npc = art.decode(read((TALA if identity == 7 else character_tala.VAMPIRE) + '.bllist'))
-        elif identity in (4, 5, 6):
-            npc = art.decode(read('characters/multiplayer/base_dwstormtrooper.bllist'))
+        locators = _dual_locators(read, identity)
         for solo in (True, False):
             source.cancel()
             player, hand_name, locator = _actor(original, identity, solo)
-            if identity >= 7:
-                loc = art.solo_locators(chaz, npc) if solo else art.adapt_locators(coop, npc)
-            elif identity == 3:
-                loc = chaz if solo else art.jericho_locators(chaz, coop, joints)
-            else:
-                loc = _trooper_locators(chaz if solo else coop, npc, coop)
+            loc = art.decode(locators[animation.CHAZ if solo else animation.STORM])
             if any((row['attributes']['parent'] not in joints | {'ORIGIN'} for row in loc['children'])):
                 raise ValueError('Missing character attachment bone')
             outputs[locator + '.bllist'] = art.encode(loc)

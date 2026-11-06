@@ -62,3 +62,9 @@ as the Cassidy repaint. DDS SHA256 values are
 and `2036c65069474ce6cab9bcba9db9396e59a3146416f90b1df5d629c0e75d479d`.
 The user's disc supplies the unchanged first-person geometry, UVs, rig and
 animations during setup; no original model or converted archive is bundled.
+
+## HD HUD glow correction
+
+`xbexbe/hd_ui/ActiveBrand_glow.png` is the approved enhanced glow artwork used by
+HD Artwork in the 0.7.4 and 0.7.5 runtime. The restored left tip and placement
+were accepted in gameplay; it is separate from the optional gameplay HD pack.

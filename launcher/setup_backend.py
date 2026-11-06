@@ -23,6 +23,7 @@ import threading
 import time
 import tomllib
 import uuid
+import traceback
 
 # Refuse mixed package imports after an interrupted self-update. The independent
 # runner is recovered by the launcher before this backend is used again.
@@ -56,7 +57,7 @@ PARTITIONS = (0, 0x18300000)
 EXE = "darkwatch_xbe.exe"
 SETTINGS = "darkwatch_xbe_settings.toml"
 DISC_SOURCE = "disc-source.toml"
-PACKAGE_VERSION = "0.7.1"
+PACKAGE_VERSION = "0.7.7"
 RELEASE_PROFILE = {"name": "release-candidate", "diagnostics": False, "strict_assets": True}
 # Maximum time without a completed shader, not a limit on the whole preparation.
 SHADER_PREPARE_TIMEOUT = 15 * 60
@@ -77,7 +78,41 @@ class Cancelled(SetupError):
 
 
 def emit(event, message, **fields):
-    print(json.dumps(dict(event=event, message=message, **fields)), flush=True)
+    line = json.dumps(dict(event=event, message=message, **fields))
+    diagnostic(line)
+    print(line, flush=True)
+
+
+_diagnostic_path = None
+
+
+def start_diagnostics(root, action):
+    global _diagnostic_path
+    _diagnostic_path = None
+    try:
+        if not safe_path(root, ".diagnostic-logging").is_file():
+            return
+        folder = safe_path(root, "logs")
+        folder.mkdir(parents=True, exist_ok=True)
+        prior = sorted(folder.glob("launcher-session-*.log"))
+        for old in prior[:-29]:
+            safe_path(root, "logs/" + old.name).unlink(missing_ok=True)
+        _diagnostic_path = safe_path(root, "logs/launcher-session-" + time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "-" + str(os.getpid()) + ".log")
+        diagnostic("Launcher version=" + PACKAGE_VERSION + " action=" + action + " Python=" + sys.version + " platform=" + sys.platform)
+    except (OSError, ValueError):
+        _diagnostic_path = None
+
+
+def diagnostic(message):
+    if _diagnostic_path is None:
+        return
+    try:
+        if _diagnostic_path.exists() and _diagnostic_path.stat().st_size >= 8 * 1024 * 1024:
+            return
+        with _diagnostic_path.open("a", encoding="utf-8") as output:
+            output.write(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + " " + str(message) + "\n")
+    except OSError:
+        pass  # A diagnostic write failure must not prevent playing or repairing the game.
 
 
 def safe_path(root, relative):
@@ -216,7 +251,10 @@ class Setup:
                      "payload/character_boss.py", "payload/character_boss_effects.py", "payload/character_spectral_hands.py",
                      "payload/character_hand_seams.py", "payload/character_secondary.py", "payload/character_preview.py",
                      "payload/character_roster.py", "payload/character_tala.py",
-                     "payload/revolver_content.py", "payload/revolver_scripts.py", "payload/player_corpses.py",
+                     "payload/revolver_content.py", "payload/revolver_scripts.py", "payload/player_corpses.py", "payload/character_cinematic.py",
+                     "payload/third_person_animation.py", "payload/character_reload.py", "payload/character_weapon_pose.py",
+                     "payload/character_weapon_hold.py", "payload/character_starter_reload.py",
+                     "payload/body_weapon_grips.inc",
                      "payload/character-art/cassidy-hands-1024.dds", "payload/character-art/cassidy-hands-256.dds",
                      "payload/character-art/tala-hands-1024.dds", "payload/character-art/tala-hands-256.dds",
                      "payload/runtime/" + EXE, "payload/runtime/darkwatch_hd_ui_builder.exe"):
@@ -249,12 +287,27 @@ class Setup:
         self.hd_warning = ""
         self.hd_verified = False
         self.ps2_language_catalog = None
-        ps2_catalog = "payload/ps2-spanish-catalog.json"
-        if ps2_catalog in self.files:
-            path = safe_path(self.package, ps2_catalog)
-            if self.digest(path) != self.files[ps2_catalog]:
-                raise SetupError("PS2 Spanish catalog is damaged. Extract a fresh launcher package.")
-            self.ps2_language_catalog = language_pack.Catalog(path.read_bytes())
+        self.disc_language_catalogs = {}
+        self.portuguese_catalog = None
+        for language, label in language_pack.DISC_LANGUAGES.items():
+            ps2_catalog = f"payload/ps2-{label.lower()}-catalog.json"
+            if ps2_catalog in self.files:
+                path = safe_path(self.package, ps2_catalog)
+                if self.digest(path) != self.files[ps2_catalog]:
+                    raise SetupError(f"PS2 {label} catalog is damaged. Extract a fresh launcher package.")
+                catalog = language_pack.Catalog(path.read_bytes())
+                if catalog.language != language:
+                    raise SetupError(f"Invalid {label} catalog language.")
+                self.disc_language_catalogs[language] = catalog
+        self.ps2_language_catalog = self.disc_language_catalogs.get("es")
+        portuguese_catalog = "payload/portuguese-catalog.json"
+        if portuguese_catalog in self.files:
+            path = safe_path(self.package, portuguese_catalog)
+            if self.digest(path) != self.files[portuguese_catalog]:
+                raise SetupError("Portuguese catalog is damaged. Extract a fresh launcher package.")
+            self.portuguese_catalog = language_pack.Catalog(path.read_bytes())
+            if self.portuguese_catalog.language != "pt-BR":
+                raise SetupError("Invalid Portuguese catalog language.")
 
     def check_cancel(self):
         if self.cancel_file and self.cancel_file.exists():
@@ -272,6 +325,11 @@ class Setup:
         root = self.root if root is None else root
         pointer = safe_path(root, "active.json")
         if not pointer.exists():
+            versions = safe_path(root, "versions")
+            if versions.is_dir() and any(re.fullmatch("[0-9a-f]{32}", path.name) and
+                                         safe_path(root, "versions/" + path.name + "/install.json").exists()
+                                         for path in versions.iterdir()):
+                raise SetupError("Existing game folders were found, but the active installation record is missing. Choose Use Existing Install and select the folder inside GameData/versions that you want to keep using. No files were changed.")
             return None
         version = read_json(pointer).get("version", "")
         if not isinstance(version, str) or not re.fullmatch("[0-9a-f]{32}", version):
@@ -417,9 +475,9 @@ class Setup:
         require_closed()
         folder = Path(folder).absolute()
         candidates = [folder, folder / "GameData"]
-        if folder.parent.name == "versions":
-            candidates.append(folder.parent.parent)
-        selected = next((path for path in candidates if safe_path(path, "active.json").is_file()), None)
+        explicit_version = folder.parent.name == "versions" and re.fullmatch("[0-9a-f]{32}", folder.name)
+        selected = (folder.parent.parent if explicit_version else
+                    next((path for path in candidates if safe_path(path, "active.json").is_file()), None))
         if selected is None:
             raise SetupError("Choose the previous Darkwatch folder or its GameData folder.")
         if selected != self.local_root and safe_path(selected, "installation-location.json").exists():
@@ -428,7 +486,7 @@ class Setup:
             locks.enter_context(exclusive(self.local_root))
             if selected != self.local_root:
                 locks.enter_context(exclusive(selected))
-            current = self.active(selected)
+            current = safe_path(selected, "versions/" + folder.name) if explicit_version else self.active(selected)
             metadata = read_json(safe_path(current, "install.json"))
             if metadata.get("disc_sha256") != self.files["payload/supported-disc.json"]:
                 raise SetupError("The selected installation uses a different disc revision.")
@@ -436,6 +494,8 @@ class Setup:
                 raise SetupError("The selected installation is incomplete. Keep its saves and repair it from your disc.")
             self.check_cancel()
             self.local_root.mkdir(parents=True, exist_ok=True)
+            if explicit_version:
+                write_json(safe_path(selected, "active.json"), dict(version=current.name))
             if selected == self.local_root:
                 safe_path(self.local_root, "installation-location.json").unlink(missing_ok=True)
             else:
@@ -444,6 +504,23 @@ class Setup:
         return self.status()
 
     def status(self):
+        return dict(self.installation_status(), diagnostic_logging=self.diagnostic_logging(), diagnostics_dir=str(self.local_root / "logs"))
+
+    def diagnostic_logging(self):
+        return safe_path(self.local_root, ".diagnostic-logging").is_file()
+
+    def set_diagnostics(self, value):
+        if value not in ("on", "off"):
+            raise SetupError("Choose diagnostic logging on or off.")
+        self.local_root.mkdir(parents=True, exist_ok=True)
+        path = safe_path(self.local_root, ".diagnostic-logging")
+        if value == "on":
+            path.touch()
+        else:
+            path.unlink(missing_ok=True)
+        return dict(self.status(), message="Diagnostic logging applies to the next game session. Logs are saved in the game's logs folder.")
+
+    def installation_status(self):
         current = self.active()
         if not current:
             return dict(installed=False, ready=False, hd_textures_installed=False,
@@ -482,15 +559,25 @@ class Setup:
                     **source_fields, **self.language_status(current))
 
     def language_status(self, current):
+        installed = {}
+        for language, label in language_pack.DISC_LANGUAGES.items():
+            try:
+                catalog = self.disc_catalog(language)
+                installed[label.lower() + "_installed"] = bool(catalog and catalog.validate(current, self.check_cancel, full=False))
+            except Cancelled:
+                raise
+            except (OSError, ValueError):
+                installed[label.lower() + "_installed"] = False
+        available = installed["spanish_installed"]
         try:
-            available = bool(self.ps2_language_catalog and
-                             self.ps2_language_catalog.validate(current, self.check_cancel, full=False))
+            catalog = getattr(self, "portuguese_catalog", None)
+            portuguese = bool(catalog and catalog.validate(current, self.check_cancel, full=False))
         except Cancelled:
             raise
         except (OSError, ValueError):
-            available = False
-        return dict(language=language_pack.selected(current), spanish_installed=available,
-                    spanish_audio_installed=available)
+            portuguese = False
+        return dict(language=language_pack.selected(current), **installed,
+                    spanish_audio_installed=available, portuguese_installed=portuguese)
 
     def prepare_previews(self, current):
         """Upgrade the local menu cache without requiring another ISO import."""
@@ -512,55 +599,101 @@ class Setup:
         return bool(self.ps2_language_catalog and
                     self.ps2_language_catalog.validate(current, self.check_cancel))
 
-    def install_spanish(self, archive):
+    def disc_catalog(self, language):
+        # Retain the Spanish attribute for older setup callers and fixtures.
+        return self.ps2_language_catalog if language == "es" else getattr(self, "disc_language_catalogs", {}).get(language)
+
+    def disc_language_valid(self, current, language):
+        catalog = self.disc_catalog(language)
+        return bool(catalog and catalog.validate(current, self.check_cancel))
+
+    def portuguese_valid(self, current):
+        catalog = getattr(self, "portuguese_catalog", None)
+        return bool(catalog and catalog.validate(current, self.check_cancel))
+
+    def install_portuguese(self):
         require_closed()
         current = self.active()
         if not current or not self.status()["ready"]:
-            raise SetupError("Import or repair your Darkwatch ISO before installing Spanish.")
+            raise SetupError("Import or repair your Darkwatch ISO before installing Portuguese.")
+        self.verify_package()
+        archive = "payload/portuguese-text.zip"
+        catalog = getattr(self, "portuguese_catalog", None)
+        if not catalog or archive not in self.files:
+            raise SetupError("This launcher does not include the Portuguese translation. Update the launcher.")
+        needed = 2 * sum(row["size"] for row in catalog.files.values()) + 16 * 1024 * 1024
+        if shutil.disk_usage(self.root).free < needed:
+            raise SetupError("Not enough free space to install the Portuguese translation.")
+        catalog.install(safe_path(self.package, archive), current, self.check_cancel, self.notify, require_closed)
+        return dict(installed=True, ready=True, update_available=False, install_dir=str(current),
+                    **self.language_status(current),
+                    message="Portuguese installed. Choose Português (Brasil) before starting. Spanish voices use the optional PS2 Spanish install.")
+
+    def install_spanish(self, archive):
+        return self.install_disc_language(archive)
+
+    def install_disc_language(self, archive, language="es"):
+        if language not in language_pack.DISC_LANGUAGES:
+            raise SetupError("Choose a supported PS2 disc language.")
+        label = language_pack.DISC_LANGUAGES[language]
+        catalog = self.disc_catalog(language)
+        require_closed()
+        current = self.active()
+        if not current or not self.status()["ready"]:
+            raise SetupError(f"Import or repair your Darkwatch ISO before installing {label}.")
         self.verify_package()
         archive = Path(archive).absolute()
         if archive.suffix.lower() != ".iso":
-            raise SetupError("Choose your supported PS2 Darkwatch ISO to install Spanish. Older language ZIPs are no longer supported.")
-        if not self.ps2_language_catalog or "payload/ps2_spanish.py" not in self.files:
-            raise SetupError("This launcher does not support Spanish from a PS2 ISO. Update the launcher.")
-        needed = 3 * sum(row["size"] for row in self.ps2_language_catalog.files.values()) + 128 * 1024 * 1024
+            raise SetupError(f"Choose your supported PS2 Darkwatch ISO to install {label}. Older language ZIPs are no longer supported.")
+        if not catalog or "payload/ps2_spanish.py" not in self.files:
+            raise SetupError(f"This launcher does not support {label} from a PS2 ISO. Update the launcher.")
+        needed = 3 * sum(row["size"] for row in catalog.files.values()) + 128 * 1024 * 1024
         if shutil.disk_usage(self.root).free < needed:
-            raise SetupError(f"Not enough free space. Keep at least {needed / (1024 ** 3):.1f} GB free to prepare Spanish.")
+            raise SetupError(f"Not enough free space. Keep at least {needed / (1024 ** 3):.1f} GB free to prepare {label}.")
         import ps2_spanish
         record = read_json(current / "install.json")
         if record.get("source_mode") == "iso":
             needed += sum(item["size"] for item in self.assets if item["path"] in ps2_spanish.XBOX)
             needed += character_content.INSTALLED["packfile.pck"][0]
             if shutil.disk_usage(self.root).free < needed:
-                raise SetupError(f"Not enough free space. Keep at least {needed / (1024 ** 3):.1f} GB free to prepare Spanish.")
-        with tempfile.TemporaryDirectory(prefix=".spanish-ps2-", dir=self.root) as temporary:
-            prepared = Path(temporary) / "Spanish.zip"
+                raise SetupError(f"Not enough free space. Keep at least {needed / (1024 ** 3):.1f} GB free to prepare {label}.")
+        with tempfile.TemporaryDirectory(prefix=f".{label.lower()}-ps2-", dir=self.root) as temporary:
+            prepared = Path(temporary) / (label + ".zip")
             assets = safe_path(current, "assets")
             if record.get("source_mode") == "iso":
                 assets = Path(temporary) / "assets"
                 with self.open_iso(record["iso_path"], record) as (source, _, entries, _):
                     self.read_iso_files(source, entries, assets, ps2_spanish.XBOX)
                 self.copy_file(safe_path(current, "assets/packfile.pck"), assets / "packfile.pck")
-            ps2_spanish.prepare(archive, assets, prepared,
-                                self.check_cancel, self.notify)
-            self.ps2_language_catalog.install(prepared, current, self.check_cancel, self.notify, require_closed)
+            options = {} if language == "es" else {"language": language}
+            ps2_spanish.prepare(archive, assets, prepared, self.check_cancel, self.notify, **options)
+            catalog.install(prepared, current, self.check_cancel, self.notify, require_closed)
         return dict(installed=True, ready=True, update_available=False, install_dir=str(current), **self.language_status(current),
-                    message="Spanish installed. Choose Español before starting the game.")
+                    message=("Spanish installed. Choose Español before starting the game." if language == "es" else
+                             f"{label} installed. Choose the language before starting the game."))
 
     def set_language(self, value):
         require_closed()
         current = self.active()
         if not current or not self.status()["ready"]:
             raise SetupError("Import or repair your Darkwatch ISO before choosing a language.")
-        if value == "es":
+        if value in language_pack.DISC_LANGUAGES:
             self.verify_package()
-            if not self.spanish_valid(current):
-                raise SetupError("Spanish needs a supported PS2 ISO import. Import Spanish again or choose English; previous files are kept.")
+            if not self.disc_language_valid(current, value):
+                label = language_pack.DISC_LANGUAGES[value]
+                raise SetupError(f"{label} needs a supported PS2 ISO import. Import {label} again or choose English; previous files are kept.")
+        elif value == "pt-BR":
+            self.verify_package()
+            if not self.portuguese_valid(current):
+                raise SetupError("Install the Portuguese translation first, or choose English; previous files are kept.")
         self.check_cancel()
         require_closed()
         language_pack.select(current, value)
         return dict(installed=True, ready=True, update_available=False, install_dir=str(current), **self.language_status(current),
-                    message="Idioma: español. Se aplicará al iniciar el juego." if value == "es" else "Language: English. Applies on the next game launch.")
+                    message=("Idioma: español. Se aplicará al iniciar el juego." if value == "es" else
+                             "Idioma: português do Brasil. Será aplicado ao iniciar o jogo." if value == "pt-BR" else
+                             f"Language: {language_pack.DISC_LANGUAGES[value]}. Applies on the next game launch." if value in language_pack.DISC_LANGUAGES else
+                             "Language: English. Applies on the next game launch."))
 
     def hd_status(self, current, full=False):
         self.hd_warning = ""
@@ -617,8 +750,11 @@ class Setup:
         self.prepare_previews(current)
         if optional:
             self.hd_verified = self.hd_status(current, full=True)
-            if safe_path(current, language_pack.DIRECTORY).exists() and not self.spanish_valid(current):
-                self.hd_warning = "Spanish needs a supported PS2 ISO import. Import Spanish again or choose English; previous files are kept."
+            for language, label in language_pack.DISC_LANGUAGES.items():
+                if safe_path(current, "language/" + language).exists() and not self.disc_language_valid(current, language):
+                    self.hd_warning = f"{label} needs a supported PS2 ISO import. Import {label} again or choose English; previous files are kept."
+            if safe_path(current, "language/pt-BR").exists() and not self.portuguese_valid(current):
+                self.hd_warning = "The Portuguese translation needs repair. Install Portuguese again; previous files are kept."
         self.notify("progress", "Installed files verified", percent=100)
         return current
 
@@ -779,6 +915,9 @@ class Setup:
                     process.kill()
                 process.wait()
                 reader.join(timeout=5)
+                if _diagnostic_path is not None:
+                    errors.seek(0)
+                    diagnostic("Shader preparation exit=" + str(process.returncode) + " stderr=" + errors.read(1024 * 1024).decode("utf-8", errors="replace"))
 
     def copy_file(self, source, destination):
         with Path(source).open("rb") as original, Path(destination).open("xb") as target:
@@ -957,8 +1096,13 @@ class Setup:
                           max(size for size, _ in character_content.INSTALLED.values()) + 512 * 1024 * 1024)
                 if previous and safe_path(previous, gameplay_hd.DIRECTORY).exists():
                     needed += self.hd_catalog.total
-                if previous and safe_path(previous, language_pack.DIRECTORY).exists():
-                    needed += sum(row["size"] for row in self.ps2_language_catalog.files.values()) if self.ps2_language_catalog else 0
+                for language in language_pack.DISC_LANGUAGES:
+                    catalog = self.disc_catalog(language)
+                    if previous and catalog and safe_path(previous, catalog.directory).exists():
+                        needed += sum(row["size"] for row in catalog.files.values())
+                portuguese = getattr(self, "portuguese_catalog", None)
+                if previous and portuguese and safe_path(previous, portuguese.directory).exists():
+                    needed += sum(row["size"] for row in portuguese.files.values())
                 if shutil.disk_usage(self.root).free < needed:
                     raise SetupError(f"Not enough free space. Keep at least {needed / (1024 ** 3):.1f} GB free for installation, plus space for your saved data and cache.")
                 self.read_iso_files(source, entries, stage / "assets", names, verify_all=True)
@@ -993,16 +1137,30 @@ class Setup:
             self.notify("progress", "Preserving saves, controls, and shader cache", percent=97)
             with self.user_data_source(previous) as user_data:
                 self.copy_user_data(user_data, stage)
-                if self.ps2_language_catalog:
+                for language, label in language_pack.DISC_LANGUAGES.items():
+                    catalog = self.disc_catalog(language)
+                    if not catalog:
+                        continue
                     try:
-                        preserved = self.ps2_language_catalog.preserve(user_data, stage, self.check_cancel, self.copy_file)
-                        if not preserved and user_data and safe_path(user_data, language_pack.DIRECTORY).exists():
-                            self.notify("progress", "Previous Spanish files were kept in the old installation. Import your PS2 ISO or choose English.", percent=97)
+                        preserved = catalog.preserve(user_data, stage, self.check_cancel, self.copy_file)
+                        if not preserved and user_data and safe_path(user_data, catalog.directory).exists():
+                            self.notify("progress", f"Previous {label} files were kept in the old installation. Import your PS2 ISO or choose English.", percent=97)
                     except Cancelled:
                         raise
                     except (OSError, ValueError):
-                        gameplay_hd.remove_tree(stage, language_pack.DIRECTORY)
-                        self.notify("progress", "Previous Spanish files were kept in the old installation. Import your PS2 ISO or choose English.", percent=97)
+                        gameplay_hd.remove_tree(stage, catalog.directory)
+                        self.notify("progress", f"Previous {label} files were kept in the old installation. Import your PS2 ISO or choose English.", percent=97)
+                portuguese = getattr(self, "portuguese_catalog", None)
+                if portuguese:
+                    try:
+                        preserved = portuguese.preserve(user_data, stage, self.check_cancel, self.copy_file)
+                        if not preserved and user_data and safe_path(user_data, portuguese.directory).exists():
+                            self.notify("progress", "Previous Portuguese files were kept in the old installation. Install Portuguese again or choose English.", percent=97)
+                    except Cancelled:
+                        raise
+                    except (OSError, ValueError):
+                        gameplay_hd.remove_tree(stage, portuguese.directory)
+                        self.notify("progress", "Previous Portuguese files were kept in the old installation. Install Portuguese again or choose English.", percent=97)
                 try:
                     self.hd_catalog.preserve(user_data, stage, self.check_cancel, self.notify, self.copy_file)
                 except Cancelled:
@@ -1042,15 +1200,27 @@ class Setup:
         if current and self.needs_update(current):
             self.update()
         current = self.verify(optional=False)
-        if language_pack.selected(current) == "es":
-            if not self.spanish_valid(current):
-                raise SetupError("Spanish needs a supported PS2 ISO import. Import Spanish again or choose English; previous files are kept.")
+        language = language_pack.selected(current)
+        if language in language_pack.DISC_LANGUAGES:
+            if not self.disc_language_valid(current, language):
+                label = language_pack.DISC_LANGUAGES[language]
+                raise SetupError(f"{label} needs a supported PS2 ISO import. Import {label} again or choose English; previous files are kept.")
+        elif language == "pt-BR":
+            if not self.portuguese_valid(current):
+                raise SetupError("The Portuguese translation needs repair. Install Portuguese again or choose English; previous files are kept.")
+            if safe_path(current, "language/es/assets").exists() and not self.spanish_valid(current):
+                raise SetupError("The optional Spanish voices need repair. Import Spanish again or choose English; previous files are kept.")
         self.prepare_shaders(current)
         self.check_cancel()
         require_closed()
+        environment = game_environment()
+        if self.diagnostic_logging():
+            environment["XBE_SESSION_LOG"] = "1"
+            environment["XBE_SESSION_LOG_DIR"] = str(safe_path(self.local_root, "logs"))
+            diagnostic("Game runtime=" + str(current / EXE) + " package_sha256=" + self.package_sha256)
         process = subprocess.Popen([str(current / EXE)], cwd=current,
                                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                   env=game_environment(),
+                                   env=environment,
                                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0)
         # Catch immediate loader/startup failures without imposing a play-session timer.
         try:
@@ -1071,6 +1241,7 @@ def main(argv=None):
     parser.add_argument("--cancel-file", type=Path)
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument("--status", action="store_true")
+    action.add_argument("--set-diagnostics", choices=("on", "off"))
     action.add_argument("--check-updates", action="store_true")
     action.add_argument("--download-update", action="store_true")
     parser.add_argument("--launcher-pid", type=int)
@@ -1082,10 +1253,15 @@ def main(argv=None):
     action.add_argument("--update", action="store_true")
     action.add_argument("--install-hd-textures", type=Path)
     action.add_argument("--install-spanish", type=Path)
-    action.add_argument("--set-language", choices=("en", "es"))
+    action.add_argument("--install-french", type=Path)
+    action.add_argument("--install-german", type=Path)
+    action.add_argument("--install-italian", type=Path)
+    action.add_argument("--install-portuguese", action="store_true")
+    action.add_argument("--set-language", choices=("en", *language_pack.LANGUAGES))
     action.add_argument("--verify", action="store_true")
     action.add_argument("--play", action="store_true")
     args = parser.parse_args(argv)
+    start_diagnostics(args.install_root, " ".join(sys.argv[1:] if argv is None else map(str, argv)))
     if args.auto_iso_folder and not args.play:
         parser.error("--auto-iso-folder is only available with --play.")
     try:
@@ -1130,8 +1306,16 @@ def main(argv=None):
                 result = setup.install_hd_textures(args.install_hd_textures)
             elif args.install_spanish:
                 result = setup.install_spanish(args.install_spanish)
+            elif args.install_french or args.install_german or args.install_italian:
+                language, archive = next((code, path) for code, path in
+                                         (("fr", args.install_french), ("de", args.install_german), ("it", args.install_italian)) if path)
+                result = setup.install_disc_language(archive, language)
+            elif args.install_portuguese:
+                result = setup.install_portuguese()
             elif args.set_language:
                 result = setup.set_language(args.set_language)
+            elif args.set_diagnostics:
+                result = setup.set_diagnostics(args.set_diagnostics)
             elif args.play:
                 if args.auto_iso_folder:
                     setup.use_drop_in_iso(args.auto_iso_folder)
@@ -1142,13 +1326,16 @@ def main(argv=None):
                               **setup.language_status(current),
                               message=setup.hd_warning or "All installed files verified.")
             current = setup.active()
+            result["diagnostic_logging"] = setup.diagnostic_logging()
+            result["diagnostics_dir"] = str(setup.local_root / "logs")
             if current:
                 result.update(setup.source_status(current))
             emit("result", **result, percent=100)
         return 0
     except (SetupError, intake.IntakeError, OSError, ValueError, KeyError, TypeError) as error:
+        diagnostic(traceback.format_exc())
         state = dict(ready=False)
-        if (args.install_hd_textures or args.install_spanish or args.set_language or args.download_update) and "setup" in locals():
+        if (args.install_hd_textures or args.install_spanish or args.install_french or args.install_german or args.install_italian or args.install_portuguese or args.set_language or args.download_update) and "setup" in locals():
             try:
                 # Optional artwork failure must not disable an otherwise playable install.
                 setup.cancel_file = None

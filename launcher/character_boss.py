@@ -358,6 +358,10 @@ def locators(player, boss, regular):
     return assets.encode(original)
 
 
+def _pistol_aim_clips(table):
+    return animation.pistol_aim_clips(table)
+
+
 def prepare(read):
     """Return private derived assets and typed animation references for import."""
     try:
@@ -378,9 +382,26 @@ def prepare(read):
     # Model and attachment resource names are distinct in the existing importer.
     outputs[MODEL+'.bllist'] = outputs[LOCATOR+'.bllist']
     parameters = {p:body_parameters(read(p),model) for p in (animation.STORM,animation.CHAZ)}
+    def grip(raw, name='loc_RightHand', parented=False):
+        row = assets.child(assets.decode(raw), name)['attributes']
+        parents = {'weaponJoint_RightHand': 16} if name == 'loc_RightHand' else {'LeftHand': 20, 'weaponJoint_LeftHand': 21}
+        if row['parent'] not in parents:
+            raise ValueError('Unexpected on-foot grip parent')
+        rotation = animation._quaternion_matrix(tuple(float(v) for v in row['rot'].split(',')))
+        return (rotation, parents[row['parent']]) if parented else rotation
+    arms = {p:animation.arm_parameters(animation.frames(read(p)), animation.frames(read(animation.CASSIDY)),
+        grip(read(p[:-4] + ('_coop.bllist' if p == animation.STORM else '.bllist'))), grip(regular_locators))
+        for p in (animation.STORM, animation.CHAZ)}
+    dual_arms = {p: animation.arm_parameters(animation.frames(read(p)), animation.frames(read(animation.CASSIDY)),
+        grip(read(p[:-4] + ('_coop.bllist' if p == animation.STORM else '.bllist'))), grip(regular_locators),
+        left_grips=(grip(read(p[:-4] + ('_coop.bllist' if p == animation.STORM else '.bllist')), 'loc_LeftHandDualWield', True),
+                    grip(outputs[(LOCATOR if p == animation.STORM else SOLO_LOCATOR)+'.bllist'], 'loc_LeftHandDualWield', True)))
+        for p in (animation.STORM, animation.CHAZ)}
     refs, reusable = [], {}
     for alias,source,destination,basis,witness,expected in animation.TABLES:
         table = assets.decode(read(source)); witnessed = animation._witness(assets.decode(read(witness)))
+        arm_clips = _pistol_aim_clips(table) if alias == 'Multi' else set()
+        dual_clips = animation.dual_aim_clips(table) if alias == 'Multi' else set()
         if (source[:-5],'AnimatedCharacterResource') not in witnessed:
             raise ValueError('Missing player animation table witness')
         mapping, clips = {}, []
@@ -391,7 +412,12 @@ def prepare(read):
             if original not in mapping:
                 if not all((original[:-5],kind) in witnessed for kind in animation.KINDS):
                     raise ValueError('Missing player animation clip witnesses')
-                data,_ = animation.retarget(animation.expand(read(original)),parameters[basis])
+                expanded = animation.expand(read(original))
+                data,_ = animation.retarget(expanded,parameters[basis])
+                if original in arm_clips:
+                    data = animation.retarget_arms(expanded, data, arms[basis])
+                elif original in dual_clips:
+                    data = animation.retarget_arms(expanded, data, dual_arms[basis])
                 data = expand_player(data)
                 key = (original,hashlib.sha256(data).hexdigest())
                 target = reusable.get(key)
@@ -410,12 +436,19 @@ def prepare(read):
         refs.append(dict(alias=alias,source=source,output=destination,clips=clips,resource_types=list(animation.KINDS)))
     source = 'characters/multiplayer/multiplayeranimation.bxml'
     table = assets.decode(read(source)); mapping, clips = {}, []
+    arm_clips = _pistol_aim_clips(table)
+    dual_clips = animation.dual_aim_clips(table)
     for node in assets.walk(table):
         if node['name'] != 'KeyframeAnimation':
             continue
         original = assets.norm(node['attributes']['Name'])+'.sanm'
         if original not in mapping:
-            data,_ = animation.retarget(animation.expand(read(original)),parameters[animation.CHAZ])
+            expanded = animation.expand(read(original))
+            data,_ = animation.retarget(expanded,parameters[animation.CHAZ])
+            if original in arm_clips:
+                data = animation.retarget_arms(expanded, data, arms[animation.CHAZ])
+            elif original in dual_clips:
+                data = animation.retarget_arms(expanded, data, dual_arms[animation.CHAZ])
             data = expand_player(data)
             key = (original,hashlib.sha256(data).hexdigest())
             target = reusable.get(key)

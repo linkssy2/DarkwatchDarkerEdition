@@ -53,6 +53,9 @@ class Process:
 
 class LinuxLauncherTests(unittest.TestCase):
     def setUp(self):
+        display = mock.patch.dict(os.environ, {"DISPLAY": ":fixture"})
+        display.start()
+        self.addCleanup(display.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = (Path(self.temp.name) / "Darker Edition café").resolve()
@@ -403,6 +406,19 @@ def check(version, platform):
         popen.return_value = Process([dict(event="result", ready=True, language="es")])
         self.assertEqual(linux.run_action(self.root, self.tools, "--set-language", "es", lambda _: None), 0)
         self.assertEqual(popen.call_args.args[0][-2:], ["--set-language", "es"])
+        popen.return_value = Process([dict(event="result", ready=True, language="pt-BR")])
+        self.assertEqual(linux.run_action(self.root, self.tools, "--install-portuguese", None, lambda _: None), 0)
+        self.assertEqual(popen.call_args.args[0][-1], "--install-portuguese")
+        popen.return_value = Process([dict(event="result", ready=True, language="pt-BR")])
+        self.assertEqual(linux.run_action(self.root, self.tools, "--set-language", "pt-BR", lambda _: None), 0)
+        self.assertEqual(popen.call_args.args[0][-2:], ["--set-language", "pt-BR"])
+        for language, action in (("fr", "--install-french"), ("de", "--install-german"), ("it", "--install-italian")):
+            popen.return_value = Process([dict(event="result", ready=True, language=language)])
+            self.assertEqual(linux.run_action(self.root, self.tools, action, disc, lambda _: None), 0)
+            self.assertEqual(popen.call_args.args[0][-2:], [action, WINE_PATH(linux_spelling(disc))])
+            popen.return_value = Process([dict(event="result", ready=True, language=language)])
+            self.assertEqual(linux.run_action(self.root, self.tools, "--set-language", language, lambda _: None), 0)
+            self.assertEqual(popen.call_args.args[0][-2:], ["--set-language", language])
         with self.assertRaises(linux.LauncherError):
             linux.run_action(self.root, self.tools, "--set-language", "../evil")
 
@@ -565,18 +581,44 @@ def check(version, platform):
                 popen.assert_called_once()
                 self.assertEqual(popen.call_args.args[0][-1], action)
 
-    def test_status_reports_installed_spanish_resources(self):
-        self.action_patches(Process([dict(event="status", message="Ready", ready=True,
-                                         language="es", spanish_installed=True, spanish_audio_installed=True)]))
-        messages = []
-        self.assertEqual(linux.run_action(self.root, self.tools, "--status", output=messages.append), 0)
-        self.assertIn("Language: es. Spanish text: available. Spanish voices: installed.", messages[-1])
+    def test_status_reports_language_text_and_voices_separately(self):
+        for language, portuguese, spanish_audio in (("es",False,True), ("pt-BR",True,False), ("pt-BR",True,True)):
+            with self.subTest(language=language, portuguese=portuguese, spanish_audio=spanish_audio):
+                self.action_patches(Process([dict(event="status", message="Ready", ready=True,
+                    language=language, spanish_installed=True, portuguese_installed=portuguese,
+                    spanish_audio_installed=spanish_audio)]))
+                messages = []
+                self.assertEqual(linux.run_action(self.root, self.tools, "--status", output=messages.append), 0)
+                self.assertIn("Language: " + language + ". Spanish text: available.", messages[-1])
+                self.assertIn("Portuguese text: " + ("available" if portuguese else "unavailable") + ".", messages[-1])
+                self.assertIn("Spanish voices: " + ("installed" if spanish_audio else "not installed") + ".", messages[-1])
+
+    def test_diagnostics_forward_literal_choice_and_capture_proton_failure(self):
+        log = self.root / "GameData/logs/linux-launcher.log"
+        linux.diagnostic(self.root, "disabled")
+        self.assertFalse(log.exists())
+        for value in ("on", "off"):
+            popen, _ = self.action_patches(Process([dict(event="result", ready=False)]))
+            self.assertEqual(linux.run_action(self.root, self.tools, "--set-diagnostics", value, lambda _: None), 0)
+            self.assertEqual(popen.call_args.args[0][-2:], ["--set-diagnostics", value])
+        self.write(self.root / "GameData/.diagnostic-logging", "")
+        process = Process(code=17)
+        process.stdout = io.StringIO("Proton fixture startup failure\n")
+        self.action_patches(process)
+        self.assertEqual(linux.run_action(self.root, self.tools, "--play", output=lambda _: None), 1)
+        text = log.read_text(encoding="utf-8")
+        self.assertIn("Proton fixture startup failure", text)
+        self.assertIn("exit=17", text)
+        self.assertIn("command=", text)
+        (self.root / "GameData/.diagnostic-logging").unlink()
+        linux.diagnostic(self.root, "disabled again")
+        self.assertEqual(log.read_text(encoding="utf-8"), text)
 
     def test_use_existing_installation_accepts_package_data_and_active_version(self):
         old = self.root.parent / "Previous café installation"
         data = old / "GameData"
-        active = data / "versions/installed"
-        self.write(data / "active.json", '{"version":"installed"}')
+        active = data / "versions" / ('a' * 32)
+        self.write(data / "active.json", json.dumps(dict(version=active.name)))
         self.write(active / "install.json", '{}')
         self.write(active / "save/profile", 'keep this save')
         # Attaching a replacement must remain possible if the old reference broke.
@@ -587,7 +629,7 @@ def check(version, platform):
                 messages = []
                 self.assertEqual(linux.run_action(self.root, self.tools, "--use-installation", folder, messages.append), 0)
                 command = popen.call_args.args[0]
-                self.assertEqual(command[-2:], ["--use-installation", WINE_PATH(linux_spelling(data))])
+                self.assertEqual(command[-2:], ["--use-installation", WINE_PATH(linux_spelling(active if folder == active else data))])
                 self.assertEqual(command[command.index("--install-root") + 1], WINE_PATH(linux_spelling(self.root / "GameData")))
                 env = popen.call_args.kwargs["env"]
                 self.assertIn(linux_spelling(data), env["PRESSURE_VESSEL_FILESYSTEMS_RW"].split(":"))
@@ -596,6 +638,16 @@ def check(version, platform):
                 self.assertNotIn("--update", command)
                 self.assertEqual((active / "save/profile").read_text(), 'keep this save')
                 self.assertEqual((self.root / "GameData/installation-location.json").read_text(), '{broken')
+
+        (data / 'active.json').unlink()
+        disc = self.root.parent / 'Original disc/disc.iso'
+        self.write(disc, 'fixture ISO')
+        self.write(active / 'install.json', json.dumps(dict(source_mode='iso', iso_path=WINE_PATH(linux_spelling(disc)))))
+        popen.return_value = Process([dict(event="result", ready=True)])
+        with mock.patch.object(linux, 'native_wine_path', return_value=disc):
+            self.assertEqual(linux.run_action(self.root, self.tools, '--use-installation', active, lambda _: None), 0)
+        self.assertEqual(popen.call_args.args[0][-1], WINE_PATH(linux_spelling(active)))
+        self.assertIn(linux_spelling(disc.parent), popen.call_args.kwargs['env']['PRESSURE_VESSEL_FILESYSTEMS_RO'].split(':'))
 
     def test_persistent_external_installation_is_writable_for_update_and_optional_actions(self):
         data = self.root.parent / "Old installation/GameData"
@@ -908,6 +960,15 @@ def check(version, platform):
         self.assertIn("Manage installation → Use Existing Install", home)
         self.assertNotIn("Install HD", home)
         self.assertNotIn("Install Spanish", home)
+        manage = output.call_args_list[1].args[0]
+        files, content = manage.split("GAME FILES\n", 1)[1].split("TEXTURES & LANGUAGES\n", 1)
+        content, support = content.split("UPDATES & SUPPORT\n", 1)
+        self.assertEqual([line.split()[0] for line in files.splitlines() if line[:1].isdigit()],
+                         ["1", "2", "3", "4"])
+        self.assertEqual([line.split()[0] for line in content.splitlines() if line[:1].isdigit()],
+                         ["6", "7", "8", "10"])
+        self.assertEqual([line.split()[0] for line in support.splitlines() if line[:1].isdigit()],
+                         ["5", "9", "0"])
 
     def test_direct_iso_cli_and_menu_keep_import_as_a_separate_choice(self):
         for arguments, answers in ((["--use-iso", "/tmp/My ISO.xiso"], []),
@@ -929,7 +990,11 @@ def check(version, platform):
     def test_manage_menu_keeps_verify_status_and_optional_installers_accessible(self):
         for answers, expected in ((["3"], ("--verify", None)), (["4"], ("--status", None)),
                                   (["6", "/tmp/HD.zip.001"], ("--install-hd-textures", Path("/tmp/HD.zip.001"))),
-                                  (["7", "/tmp/Spanish.iso"], ("--install-spanish", Path("/tmp/Spanish.iso")))):
+                                  (["7", "es", "/tmp/Spanish.iso"], ("--install-spanish", Path("/tmp/Spanish.iso"))),
+                                  (["7", "fr", "/tmp/French.iso"], ("--install-french", Path("/tmp/French.iso"))),
+                                  (["7", "de", "/tmp/German.iso"], ("--install-german", Path("/tmp/German.iso"))),
+                                  (["7", "it", "/tmp/Italian.iso"], ("--install-italian", Path("/tmp/Italian.iso"))),
+                                  (["10"], ("--install-portuguese", None))):
             with self.subTest(answers=answers), mock.patch.object(linux.sys, "platform", "linux"), \
                  mock.patch.object(linux.sys.stdin, "isatty", return_value=True), \
                  mock.patch.object(linux, "steam_tools", return_value=self.tools), \
@@ -942,13 +1007,15 @@ def check(version, platform):
                 self.assertEqual(run.call_args.args[2:], expected)
 
     def test_menu_language_saves_choice_without_play_and_cancel_does_nothing(self):
-        for language in ("es", "en", ""):
-            with self.subTest(language=language), \
+        for choice, language in (("es","es"),("en","en"),("pt-BR","pt-BR"),("fr","fr"),("de","de"),("it","it"),
+                                 (" PT-br ","pt-BR"),("PT-BR","pt-BR"),("",None),("zz",None),("../pt-BR",None)):
+            with self.subTest(choice=choice), \
                  mock.patch.object(linux.sys, "platform", "linux"), \
                  mock.patch.object(linux.sys.stdin, "isatty", return_value=True), \
                  mock.patch.object(linux, "steam_tools", return_value=self.tools), \
+                 mock.patch.object(linux, "start_release_check", return_value=queue.Queue()), \
                  mock.patch.object(linux, "run_action", return_value=0) as run, \
-                 mock.patch("builtins.input", side_effect=["2", "8", language, "0", "0"]), \
+                 mock.patch("builtins.input", side_effect=["2", "8", choice, "0", "0"]) as prompt, \
                  mock.patch("builtins.print"):
                 self.assertEqual(linux.main([]), 0)
                 if language:
@@ -956,6 +1023,17 @@ def check(version, platform):
                     self.assertEqual(run.call_args.args[2:], ("--set-language", language))
                 else:
                     run.assert_not_called()
+                self.assertIn("Português (Brasil) pt-BR",prompt.call_args_list[2].args[0])
+
+    def test_portuguese_cli_uses_shared_backend_without_importing_or_playing(self):
+        for arguments, expected in ((["--install-portuguese"],("--install-portuguese",None)),
+                                    (["--set-language","pt-BR"],("--set-language","pt-BR"))):
+            with self.subTest(arguments=arguments), mock.patch.object(linux.sys,"platform","linux"), \
+                 mock.patch.object(linux,"steam_tools",return_value=self.tools), \
+                 mock.patch.object(linux,"run_action",return_value=0) as run:
+                self.assertEqual(linux.main(arguments),0)
+                run.assert_called_once()
+                self.assertEqual(run.call_args.args[2:],expected)
 
     def test_cli_and_menu_update_and_attach_do_not_import_or_play(self):
         for arguments, expected in ((["--update"], ("--update", None)),
@@ -980,6 +1058,147 @@ def check(version, platform):
                     self.assertEqual(run.call_args.args[2:], expected)
                 else:
                     run.assert_not_called()
+
+
+class UmuLauncherTests(unittest.TestCase):
+    setUp = LinuxLauncherTests.setUp
+    write = LinuxLauncherTests.write
+    action_patches = LinuxLauncherTests.action_patches
+
+    def umu(self):
+        path = self.root / "installed tools/umu-run"
+        self.write(path, "installed executable")
+        path.chmod(0o755)
+        return path
+
+    def test_installed_proton_and_executable_are_resolved_without_steam(self):
+        umu = self.umu()
+        with mock.patch.object(linux.shutil, "which", return_value=str(umu)), \
+             mock.patch.object(linux, "steam_tools", side_effect=AssertionError("No Steam")):
+            for selected in (self.proton, self.proton.parent):
+                self.assertEqual(linux.umu_tools(selected), (None, self.proton.resolve(), umu.resolve()))
+            with mock.patch.dict(os.environ, {"PROTONPATH": str(self.proton.parent)}):
+                self.assertEqual(linux.umu_tools(), (None, self.proton.resolve(), umu.resolve()))
+
+    def test_missing_umu_or_proton_fails_without_downloading(self):
+        with mock.patch.object(linux.subprocess, "Popen") as process:
+            with mock.patch.object(linux.shutil, "which", return_value=None):
+                with self.assertRaisesRegex(linux.LauncherError, "Install umu-launcher"):
+                    linux.umu_tools(self.proton)
+            with mock.patch.object(linux.shutil, "which", return_value=str(self.umu())), \
+                 mock.patch.dict(os.environ, {}, clear=True):
+                for selected in (None, self.root / "absent", "GE-Proton"):
+                    with self.assertRaises(linux.LauncherError):
+                        linux.umu_tools(selected)
+            process.assert_not_called()
+
+    def test_windows_python_path_and_all_actions_reuse_the_backend(self):
+        umu = self.umu()
+        tools = (None, self.proton, umu)
+        disc = self.root.parent / "External café's $disc.iso"
+        self.write(disc, "unchanged disc")
+        popen, _ = self.action_patches(Process())
+        for action, value in (("--use-iso", disc), ("--import-iso", disc),
+                              ("--install-hd-textures", disc), ("--install-spanish", disc),
+                              ("--set-language", "es"), ("--set-diagnostics", "on"),
+                              ("--verify", None), ("--status", None), ("--update", None), ("--play", None)):
+            with self.subTest(action=action):
+                popen.return_value = Process([dict(event="result", ready=True)])
+                self.assertEqual(linux.run_action(self.root, tools, action, value, lambda _: None), 0)
+                command = popen.call_args.args[0]
+                self.assertEqual(command[:4], [str(umu), WINE_PATH(linux_spelling(self.root / "windows/payload/python/python.exe")),
+                                              "-B", WINE_PATH(linux_spelling(self.root / "linux/run_backend.py"))])
+                tail = [action] + ([WINE_PATH(linux_spelling(value)) if isinstance(value, Path) else value] if value else [])
+                self.assertEqual(command[-len(tail):], tail)
+                self.assertNotIn("shell", popen.call_args.kwargs)
+                self.assertEqual(popen.call_args.kwargs["cwd"], self.root / "windows")
+                self.assertFalse(list((self.root / "GameData").glob(".cancel-*")))
+        self.assertEqual(disc.read_text(), "unchanged disc")
+        self.assertFalse((self.root / "GameData/logs").exists())
+
+    def test_umu_owns_prefix_and_keeps_external_data_mounts_and_explicit_diagnostics(self):
+        umu = self.umu()
+        external = self.root.parent / "Other game data"
+        disc = self.root.parent / "Other disc/game.iso"
+        values = {"WINEPREFIX": "/wrong-prefix", "PROTONPATH": "/wrong-tool", "GAMEID": "another-game",
+                  "STORE": "steam", "PROTON_VERB": "runinprefix", "STEAM_COMPAT_CLIENT_INSTALL_PATH": "/wrong-steam",
+                  "PROTON_LOG": "1", "UMU_LOG": "debug", "DISPLAY": ":2", "WAYLAND_DISPLAY": "wayland-1"}
+        self.action_patches(Process())
+        with mock.patch.dict(os.environ, values, clear=True):
+            env = linux.launch_environment(self.root, None, self.proton, umu, installation=external, saved_iso=disc)
+        self.assertEqual(env["WINEPREFIX"], str(self.root / ".proton/umu"))
+        self.assertEqual(env["PROTONPATH"], str(self.proton.parent))
+        self.assertEqual(env["PROTON_VERB"], "waitforexitandrun")
+        self.assertEqual(env["GAMEID"], "umu-default")
+        self.assertEqual(env["STORE"], "none")
+        self.assertNotIn("STEAM_COMPAT_CLIENT_INSTALL_PATH", env)
+        self.assertIn(linux_spelling(external), env["PRESSURE_VESSEL_FILESYSTEMS_RW"].split(":"))
+        self.assertIn(linux_spelling(disc.parent), env["PRESSURE_VESSEL_FILESYSTEMS_RO"].split(":"))
+        for key in ("PROTON_LOG", "UMU_LOG", "DISPLAY", "WAYLAND_DISPLAY"):
+            self.assertEqual(env[key], values[key])
+
+    def test_umu_does_not_touch_existing_steam_prefix(self):
+        retained = self.root / ".proton/pfx/drive_c/keep.txt"
+        self.write(retained, "existing Steam prefix")
+        before = retained.stat().st_mtime_ns
+        self.action_patches(Process([dict(event="result", ready=True)]))
+        self.assertEqual(linux.run_action(self.root, (None, self.proton, self.umu()), "--play", output=lambda _: None), 0)
+        self.assertEqual(retained.read_text(), "existing Steam prefix")
+        self.assertEqual(retained.stat().st_mtime_ns, before)
+        self.assertTrue((self.root / ".proton/umu").is_dir())
+
+    def test_umu_failure_and_cancellation_use_existing_contract(self):
+        popen, signals = self.action_patches(Process([dict(event="error", message="Fixture failure")], 0))
+        tools = (None, self.proton, self.umu())
+        self.assertEqual(linux.run_action(self.root, tools, "--play", output=lambda _: None), 1)
+        cancelled = []
+        def events():
+            callback = next(row.args[1] for row in signals.call_args_list if row.args[0] == signal.SIGINT and callable(row.args[1]))
+            callback(signal.SIGINT, None)
+            cancelled.extend((self.root / "GameData").glob(".cancel-*"))
+            self.assertEqual(len(cancelled), 1)
+            yield json.dumps(dict(event="error", message="Setup cancelled")) + "\n"
+        process = Process(code=1)
+        process.stdout = events()
+        popen.return_value = process
+        signals.reset_mock()
+        self.assertEqual(linux.run_action(self.root, tools, "--import-iso", output=lambda _: None), 130)
+        self.assertFalse(cancelled[0].exists())
+
+    def test_umu_cli_never_discovers_steam_and_preserves_choice_after_update(self):
+        tools = (None, self.proton, self.umu())
+        with mock.patch.object(linux.sys, "platform", "linux"), \
+             mock.patch.object(linux, "__file__", str(self.root / "linux/launcher.py")), \
+             mock.patch.object(linux, "recover_update", return_value=False), \
+             mock.patch.object(linux, "steam_tools", side_effect=AssertionError("No Steam")), \
+             mock.patch.object(linux, "umu_tools", return_value=tools) as discover, \
+             mock.patch.object(linux, "run_action", return_value=0) as action, \
+             mock.patch.object(linux, "download_update", return_value=True), \
+             mock.patch.object(linux, "restart_launcher") as restart:
+            args = ["--umu", "--proton", str(self.proton.parent)]
+            self.assertEqual(linux.main(args + ["--play"]), 0)
+            discover.assert_called_once_with(self.proton.parent)
+            action.assert_called_once_with(self.root, tools, "--play", None)
+            self.assertEqual(linux.main(args + ["--download-update"]), 0)
+            restart.assert_called_once_with(self.root, args + ["--update"])
+            discover.assert_called_once()
+
+    @unittest.skipUnless(os.name == "posix", "Native Linux prefix symlink behavior")
+    def test_umu_prefix_links_are_allowed_but_prefix_root_link_is_rejected(self):
+        prefix = self.root / ".proton/umu"
+        prefix.mkdir(parents=True)
+        (prefix / "pfx").symlink_to(".", target_is_directory=True)
+        popen, _ = self.action_patches(Process([dict(event="result")]))
+        tools = (None, self.proton, self.umu())
+        self.assertEqual(linux.run_action(self.root, tools, "--status", output=lambda _: None), 0)
+        self.assertTrue((prefix / "pfx").is_symlink())
+        (prefix / "pfx").unlink()
+        prefix.rmdir()
+        prefix.symlink_to(self.root / "Native Steam", target_is_directory=True)
+        popen.reset_mock()
+        with self.assertRaises(linux.LauncherError):
+            linux.run_action(self.root, tools, "--status", output=lambda _: None)
+        popen.assert_not_called()
 
 
 if __name__ == "__main__":

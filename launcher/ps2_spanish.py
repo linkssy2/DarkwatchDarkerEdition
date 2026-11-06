@@ -1,4 +1,4 @@
-"""Prepare optional Spanish media from a verified, user-owned PS2 PAL disc."""
+"""Prepare optional language media from a verified, user-owned PS2 PAL disc."""
 import hashlib
 import os
 from pathlib import Path
@@ -30,19 +30,21 @@ def pinned_file(path, pin, cancel):
         while block := source.read(8 * 1024 ** 2):
             cancel()
             result.extend(block)
-            require(len(result) <= pin[0], "Xbox source changed during Spanish preparation.")
+            require(len(result) <= pin[0], "Xbox source changed during language preparation.")
             digest.update(block)
     require(len(result) == pin[0] and digest.hexdigest() == pin[1],
-            "Original Xbox file needs repair before Spanish import: " + path.name)
+            "Original Xbox file needs repair before language import: " + path.name)
     return bytes(result)
 
 
-def prepare(iso, original_assets, output_zip, cancel, notify):
+def prepare(iso, original_assets, output_zip, cancel, notify, language='es'):
     """Create a staging ZIP; the caller verifies its catalog and commits atomically."""
+    selected = ps2_text.locale(language)
+    label = selected['name']
     iso, output_zip = Path(iso).absolute(), Path(output_zip).absolute()
     source = checked(iso.parent, iso.name)
     assets = Path(original_assets)
-    require(not output_zip.exists(), "Spanish staging output already exists.")
+    require(not output_zip.exists(), label + " staging output already exists.")
     # Pin data archives rather than outer padding: valid dumps can have extra disc sectors.
     with Iso(source) as disc:
         initial = os.fstat(disc.stream.fileno())
@@ -54,16 +56,16 @@ def prepare(iso, original_assets, output_zip, cancel, notify):
             cancel()
             notify("progress", "Verifying PS2 " + name, percent=index * 100 // len(PS2))
             require(disc.size(name) == pin[0] and disc.digest(name, cancel) == pin[1],
-                    "PS2 Spanish disc data is damaged or unsupported: " + name)
+                    "PS2 " + label + " disc data is damaged or unsupported: " + name)
         audio, movies = (Pck(disc, name) for name in ("AUDIO.PCK", "MOVIES.PCK"))
         cancel()
-        notify("progress", "Preparing Spanish text and subtitles from your disc", percent=0)
+        notify("progress", "Preparing " + label + " text and subtitles from your disc", percent=0)
         # Character imports change the archive; the converter checks the original text contexts.
         with checked(assets, "packfile.pck").open("rb") as original:
             text_source = original.read(256 * 1024 ** 2 + 1)
         require(len(text_source) <= 256 * 1024 ** 2, "Xbox text archive exceeds the supported size.")
         cancel()
-        text = ps2_text.convert(Pck(disc, "PACKFILE.PCK"), text_source)
+        text = ps2_text.convert(Pck(disc, "PACKFILE.PCK"), text_source, language=language)
         del text_source
         created = False
         try:
@@ -77,15 +79,15 @@ def prepare(iso, original_assets, output_zip, cancel, notify):
                         notify("progress", "Verifying Xbox " + name, percent=0)
                         original = pinned_file(checked(assets, name), pin, cancel)
                         if name == "audioDlg.pck":
-                            converted = ps2_dialogue.convert(audio, original, cancel, notify)
+                            converted = ps2_dialogue.convert(audio, original, cancel, notify, language=language)
                         else:
-                            converted = ps2_movies.convert(movies, original, cancel, notify)
+                            converted = ps2_movies.convert(movies, original, cancel, notify, language=language)
                         cancel()
                         bundle.writestr("assets/" + name, converted)
                         del original, converted
             final = os.fstat(disc.stream.fileno())
             require((initial.st_size, initial.st_mtime_ns) == (final.st_size, final.st_mtime_ns),
-                    "PS2 disc changed during Spanish preparation. Try again with a stable copy.")
+                    "PS2 disc changed during language preparation. Try again with a stable copy.")
             cancel()
         except BaseException:
             if created:

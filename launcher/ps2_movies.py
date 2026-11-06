@@ -1,16 +1,17 @@
-"""Import PAL Spanish stereo FMV audio without changing Xbox video or clocks.
+"""Import PAL localized stereo FMV audio without changing Xbox video or clocks.
 
-The native Xbox AIX layout stays intact: Spanish replaces its front pair and the
-other pairs become silence. This is stereo movie audio, not a Spanish 5.1 mix.
+The native Xbox AIX layout stays intact: localized audio replaces its front pair
+and the other pairs become silence. This is stereo movie audio, not a 5.1 mix.
 All media comes from the user's verified discs; none is embedded here.
 """
 from collections import defaultdict
 import struct
 
 import character_archive
+import ps2_text
 from ps2_disc import require
 
-# The native PAL movie selector maps language S to stream index 4. Extras and
+# The native PAL selector maps F/G/I/S to stream indices 1/2/3/4. Extras and
 # single-track movies keep their original Xbox audio; Animatic2 has another edit.
 MOVIES = frozenset('movies/' + name + '.sfd' for name in (
     'intro', 'm01s1', 'm01s2', 'm01s4', 'm04s1', 'm05s1', 'm09s2',
@@ -78,11 +79,14 @@ def packets(raw):
         pos = end
 
 
-def elementary(raw):
+def elementary(raw, selected=None):
+    """Retain ignored stream IDs for layout validation without copying their payloads."""
     streams = defaultdict(bytearray)
     for sid, start, end, unused, unused2 in packets(raw):
         if 0xc0 <= sid <= 0xef:
-            streams[sid].extend(raw[start:end])
+            stream = streams[sid]
+            if selected is None or sid == selected:
+                stream.extend(raw[start:end])
     return {sid: bytes(data) for sid, data in streams.items()}
 
 
@@ -168,18 +172,19 @@ def replace_aix(raw, replacements, cancel):
     return bytes(result)
 
 
-def convert_movie(original, translated, cancel=lambda: None):
+def convert_movie(original, translated, cancel=lambda: None, language='es'):
+    selected = ps2_text.locale(language)
     cancel()
-    xbox, ps2 = elementary(original), elementary(translated)
+    xbox, ps2 = elementary(original, 0xc1), elementary(translated, selected['stream'])
     require(set(xbox) == {0xc1, 0xe0} and set(ps2) == {0xc0, 0xc1, 0xc2, 0xc3, 0xc4, 0xe0},
             'Unexpected movie language stream layout')
-    front = normalized_adx(ps2[0xc4])
+    front = normalized_adx(ps2[selected['stream']])
     tracks = adx_tracks(xbox[0xc1])
     require(len(tracks) == 3, 'Expected three Xbox movie audio components')
     for track in tracks:
         adx_extent(track)
     require(tracks[0][4:20] == front[4:20] and len(tracks[0]) == len(front),
-            'Spanish movie audio does not match the original timeline')
+            selected['name'] + ' movie audio does not match the original timeline')
     replacement = replace_aix(xbox[0xc1], [front, silent_adx(tracks[1]), silent_adx(tracks[2])], cancel)
     result, offset = bytearray(original), 0
     for sid, start, end, unused, unused2 in packets(original):
@@ -191,8 +196,9 @@ def convert_movie(original, translated, cancel=lambda: None):
     return bytes(result)
 
 
-def convert(ps2_movies, xbox_movie, cancel, notify):
+def convert(ps2_movies, xbox_movie, cancel, notify, language='es'):
     """Return a new Xbox MoviesN.pck, retaining unrelated resources verbatim."""
+    selected_locale = ps2_text.locale(language)
     cancel()
     parsed = character_archive.read(xbox_movie)
     selected = sorted((entry for entry in parsed['entries'] if entry['name'] in MOVIES),
@@ -203,14 +209,14 @@ def convert(ps2_movies, xbox_movie, cancel, notify):
     for index, entry in enumerate(selected):
         cancel()
         name = entry['name']
-        notify('progress', 'Preparing Spanish movie ' + name.split('/')[-1],
+        notify('progress', 'Preparing ' + selected_locale['name'] + ' movie ' + name.split('/')[-1],
                percent=100 * index // max(1, len(selected)))
         start, end = entry['offset'], entry['offset'] + entry['size']
         require(all(other is entry or end <= other['offset']
                     or start >= other['offset'] + other['size'] for other in parsed['entries']),
                 'Overlapping movie archive resources')
         original = xbox_movie[start:end]
-        replacement = convert_movie(original, ps2_movies.read(name), cancel)
+        replacement = convert_movie(original, ps2_movies.read(name), cancel, language)
         require(len(replacement) == end - start, 'Movie archive resource size changed')
         result[start:end] = replacement
     cancel()

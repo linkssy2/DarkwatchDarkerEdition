@@ -28,6 +28,7 @@ static std::map<std::string,std::string> combo_text;
 static std::map<std::string,bool> combo_disabled;
 static std::map<std::string,std::string> slider_formats;
 static std::map<std::string,std::pair<int,int>> slider_ranges;
+static std::map<std::string,bool> slider_disabled;
 static std::vector<std::string> rendered_text;
 static std::map<std::string,ImVec4> text_bounds;
 static std::map<std::string,ImVec4> text_clip_bounds;
@@ -100,7 +101,12 @@ bool ObservedCombo(const char* label,int* current,const char* items,int maximum=
  combo_disabled[label]=(GImGui->CurrentItemFlags&ImGuiItemFlags_Disabled)!=0;
  WidgetHighlightProbe highlight(label);
  auto p=GetCursorScreenPos();float width=CalcItemWidth(),height=GetFrameHeight();
- bool observe=record_combo_text&&(std::string(label)=="##carry all weapons"||std::string(label)=="##fps"||std::string(label)=="##vsync"||std::string(label)=="##msaa"||std::string(label)=="##aniso"||std::string(label)=="##hd_ui"||std::string(label)=="##subtitles"||std::string(label)=="##cutscene_borders"||std::string(label)=="##hd_textures"||std::string(label)=="##forever_ragdolls"||std::string(label)=="##player one character"||std::string(label)=="##player two character"||std::string(label)=="##sound output");
+ bool observe=record_combo_text&&(std::string(label)=="##carry all weapons"||std::string(label)=="##walk mode"||std::string(label)=="##show_hud"||std::string(label)=="##reticle target"||std::string(label)=="##reticle color mode"||std::string(label)=="##fps"||std::string(label)=="##vsync"||std::string(label)=="##msaa"||std::string(label)=="##aniso"||std::string(label)=="##hd_ui"||std::string(label)=="##subtitles"||std::string(label)=="##cutscene_borders"||std::string(label)=="##movie_scaling"||std::string(label)=="##hd_textures"||std::string(label)=="##forever_ragdolls"||std::string(label)=="##player one character"||std::string(label)=="##player two character"||std::string(label)=="##sound output");
+ observe|=record_combo_text&&std::string(label)=="##keep starting revolver";
+ observe|=record_combo_text&&std::string(label)=="##sight mode";
+ observe|=record_combo_text&&std::string(label)=="##aspect";
+ observe|=record_combo_text&&std::string(label)=="##camera_mode";
+ observe|=record_combo_text&&std::string(label)=="##ui_aspect";
  // A combo popup ends ImGui logging when it closes its window. Use the real
  // rendered-text file sink so that EndCombo cannot clear the observed options.
  if(observe){std::ofstream("fps-widget.log",std::ios::trunc).close();LogToFile(-1,"fps-widget.log");}
@@ -116,6 +122,7 @@ bool ObservedBeginCombo(const char* label,const char* preview,ImGuiComboFlags fl
 bool ObservedSliderInt(const char* label,int* value,int minimum,int maximum,const char* format="%d",ImGuiSliderFlags flags=0){
  field_ids[label]=GetCurrentWindow()->GetID(label);
  slider_formats[label]=format;slider_ranges[label]={minimum,maximum};
+ slider_disabled[label]=(GImGui->CurrentItemFlags&ImGuiItemFlags_Disabled)!=0;
  bool changed=SliderInt(label,value,minimum,maximum,format,flags);auto a=GetItemRectMin(),b=GetItemRectMax();
  field_bounds[label]={a.x,a.y,b.x,b.y};return changed;
 }
@@ -196,10 +203,17 @@ void darkwatch::SyncAudioDevice(uint8_t*){} // Native XACT speaker mode has its 
 namespace gpu {static uint32_t effective_samples=1;uint32_t MsaaSamples(){return effective_samples;}}
 namespace audio {
 static bool surround=false,surround_available=true;
+static SoundOutput requested=SoundOutput::Stereo;
+static uint32_t output_channels=6;
 static unsigned surround_changes=0;
-void SetSurroundEnabled(bool value){surround=value;++surround_changes;}
+void SetSoundOutput(SoundOutput value){requested=value;surround=value!=SoundOutput::Stereo;++surround_changes;}
+SoundOutput GetSoundOutput(){return requested;}
+SoundOutput ActiveSoundOutput(){return !surround_available||output_channels<6?SoundOutput::Stereo:
+ requested==SoundOutput::Surround71&&output_channels<8?SoundOutput::Surround51:requested;}
+void SetSurroundEnabled(bool value){SetSoundOutput(value?SoundOutput::Surround51:SoundOutput::Stereo);}
 bool SurroundEnabled(){return surround;}
 bool SurroundAvailable(){return surround_available;}
+uint32_t OutputChannels(){return surround_available?output_channels:2;}
 }
 namespace input {
 static DeviceSnapshot device;
@@ -248,14 +262,14 @@ static ControlsSettings controls;
 static uint32_t capture_result=0;
 static bool capture_active=false;
 static unsigned controls_applies=0,original_applies=0,configure_calls=0,preset_applies=0;
-ControlsSettings ControlsDefaults(){ControlsSettings s;s.bindings[1].keys[0]='J';s.bindings[1].keys[1]='K';s.bindings[16].keys[0]='W';s.bindings[17].keys[0]='S';s.bindings[20].keys[0]=']';s.bindings[21].keys[0]='[';return s;}
+ControlsSettings ControlsDefaults(){ControlsSettings s;s.bindings[1].keys[0]='J';s.bindings[1].keys[1]='K';s.bindings[16].keys[0]='W';s.bindings[17].keys[0]='S';s.bindings[20].keys[0]=']';s.bindings[21].keys[0]='[';s.bindings[22].keys[0]=VK_CAPITAL;s.bindings[23].keys[0]='V';return s;}
 ControlsSettings ControlsSnapshot(){return controls;}
 bool ControlsApply(const ControlsSettings& s){controls=s;++controls_applies;return true;}
 void ControlsBeginCapture(){capture_active=true;capture_result=0;}
 void ControlsCancelCapture(){capture_active=false;capture_result=0;input::CancelPadCapture();}
 bool ControlsCapturing(){return capture_active;}
 uint32_t ControlsTakeCapture(){auto result=capture_result;capture_result=0;return result;}
-std::string ControlsKeyName(uint32_t key){return key==input::kMouseWheel?"Mouse Wheel":key==input::kMouseWheelUp?"Wheel Up":key==input::kMouseWheelDown?"Wheel Down":key?std::string(1,char(key)):"Unbound";}
+std::string ControlsKeyName(uint32_t key){return key==VK_CAPITAL?"Caps Lock":key==input::kMouseWheel?"Mouse Wheel":key==input::kMouseWheelUp?"Wheel Up":key==input::kMouseWheelDown?"Wheel Down":key?std::string(1,char(key)):"Unbound";}
 GraphicsRouteState QueryGraphicsMenuRoute(const uint8_t*){return route;}
 bool SetGraphicsSubtitles(uint8_t*,uint32_t expected,bool enabled){
  CHECK(expected==route.options);++subtitle_calls;route.subtitles=enabled;return true;
@@ -330,7 +344,9 @@ static void ClickField(const char* name,float fraction=.5f){
  auto* parent=ImGui::FindWindowByName(g_characters?"Characters":g_audio?"Audio":g_controls?"Controls":"Graphics");CHECK(parent&&parent->DC.ChildWindows.Size);
  auto* child=parent->DC.ChildWindows[0];
  ImGui::SetScrollY(child,child->Scroll.y+(r.y+r.w)/2-(child->InnerRect.Min.y+child->InnerRect.Max.y)/2);
- Frame();Frame();r=field_bounds[name];CHECK(r.y>=child->InnerRect.Min.y&&r.w<=child->InnerRect.Max.y);
+ Frame();Frame();r=field_bounds[name];
+ if(r.y<child->InnerRect.Min.y||r.w>child->InnerRect.Max.y)std::fprintf(stderr,"field %s bounds %.1f..%.1f clip %.1f..%.1f scroll %.1f/%.1f\n",name,r.y,r.w,child->InnerRect.Min.y,child->InnerRect.Max.y,child->Scroll.y,child->ScrollMax.y);
+ CHECK(r.y>=child->InnerRect.Min.y&&r.w<=child->InnerRect.Max.y);
  Click(r.x+(r.z-r.x)*fraction,(r.y+r.w)/2);
 }
 static void ClickLayoutRow(unsigned row){
@@ -338,6 +354,7 @@ static void ClickLayoutRow(unsigned row){
  auto* child=ImGui::FindWindowByName("Controls")->DC.ChildWindows[0];
  ImGui::SetScrollY(child,child->Scroll.y+(r.y+r.w)/2-(child->InnerRect.Min.y+child->InnerRect.Max.y)/2);
  Frame();Frame();r=layout_rows[row].second;
+ if(r.y<child->InnerRect.Min.y||r.w>child->InnerRect.Max.y)std::fprintf(stderr,"layout row %u bounds %.1f..%.1f clip %.1f..%.1f scroll %.1f/%.1f focus %d\n",row,r.y,r.w,child->InnerRect.Min.y,child->InnerRect.Max.y,child->Scroll.y,child->ScrollMax.y,g_pad_binding_focus);
  CHECK(r.y>=child->InnerRect.Min.y&&r.w<=child->InnerRect.Max.y);
  Click((r.x+r.z)/2,(r.y+r.w)/2);Frame();
 }
@@ -388,6 +405,14 @@ int main(){
  CHECK(g_open&&ImGui::GetDrawData()->TotalVtxCount>100&&!io.MouseDrawCursor);
  Poll();Frame();CHECK(g_released);
  CheckNavigationOutline("main Graphics");
+ const char* aspects[]={"Automatic","Widescreen 16:9","Original 4:3","Ultrawide 21:9","Super Ultrawide 32:9","Widescreen 16:10"};
+ for(int i=0;i<6;++i){SelectQuality("##aspect",i,aspects[i]);CHECK(int(g_draft.aspect_ratio)==i);}
+ SelectQuality("##aspect",0,"Automatic");
+ auto exclusive=ResolutionModes(app::DisplayMode::Fullscreen),windowed=ResolutionModes(app::DisplayMode::Windowed);
+ CHECK(exclusive.size()==g_modes.size()&&windowed.size()==g_modes.size()+11);
+ CHECK(std::count_if(windowed.begin(),windowed.end(),[](auto m){return m.width==2560&&m.height==1600;})==1);
+ CHECK(std::count_if(windowed.begin(),windowed.end(),[](auto m){return m.width==3440&&m.height==1440;})==1);
+ g_modes.push_back({3440,1440});CHECK(ResolutionModes(app::DisplayMode::Windowed).size()==windowed.size());g_modes.pop_back();
  // Actual slider input edits a draft; it must not resize live targets on every drag.
  ClickField("##internal",.75f);CHECK(g_draft.render_percent>100&&actual.render_percent==100&&applies==0);
  // New settings are ordinary draft controls in the same bounded scroll area.
@@ -399,6 +424,8 @@ int main(){
  CHECK(std::find(rendered_text.begin(),rendered_text.end(),"Changes gun and hand framing.")!=rendered_text.end());
  CHECK(std::find(rendered_text.begin(),rendered_text.end(),"Level cutscenes only.")!=rendered_text.end());
  ClickField("##reticle",.8f);CHECK(g_view_draft.reticle_percent>100&&darkwatch::view::Snapshot().reticle_percent==100);
+ SelectQuality("##movie_scaling",1,"Fill Screen");CHECK(!g_view_draft.movie_aspect_fit&&darkwatch::view::Snapshot().movie_aspect_fit);
+ SelectQuality("##movie_scaling",0,"Original Aspect Ratio");CHECK(g_view_draft.movie_aspect_fit);
  SelectQuality("##cutscene_borders",0,"Off");CHECK(!g_view_draft.cutscene_borders&&darkwatch::view::Snapshot().cutscene_borders);
  SelectQuality("##cutscene_borders",1,"On");CHECK(g_view_draft.cutscene_borders);
  SelectQuality("##cutscene_borders",0,"Off");
@@ -677,6 +704,7 @@ int main(){
  CHECK(!button_centers.count("GRAPHICS")&&!button_centers.count("CONTROLS"));
  CheckNavigationOutline("pause Graphics");
  const auto pause_saved=darkwatch::view::Snapshot();
+ SelectQuality("##movie_scaling",1,"Fill Screen");CHECK(!g_view_draft.movie_aspect_fit);
  ClickField("##weapon_fov",.25f);SelectQuality("##cutscene_borders",0,"Off");
  CHECK(g_view_draft.viewmodel_fov_percent<100&&!g_view_draft.cutscene_borders&&darkwatch::view::Snapshot().viewmodel_fov_percent==pause_saved.viewmodel_fov_percent&&darkwatch::view::Snapshot().cutscene_borders==pause_saved.cutscene_borders);
  auto pause_displays=displays;ClickNamed("APPLY");CHECK(!g_confirm&&displays==pause_displays);
@@ -856,7 +884,7 @@ int main(){
   const auto other=input::maps[1-port];const auto pc=darkwatch::controls;
   const auto applied=input::pad_applies,saved=saves;
   ClickNamed("CONTROLLER LAYOUT...",port==0);Frame();CHECK(g_controller_layout&&g_layout_family==family);
-  CHECK(layout_rows.size()==20);
+  CHECK(layout_rows.size()==22);
   ClickLayoutRow(0);CHECK(g_pad_capture_action==8&&input::pad_capture&&input::pad_owner==int(port));
   // B is a valid gameplay binding and must not also close the layout.
   input::pad_capture_result=10;io.AddKeyEvent(ImGuiKey_GamepadFaceRight,true);Frame();
@@ -889,20 +917,34 @@ int main(){
   hidden();route.route=darkwatch::GraphicsMenuRoute::Audio;route.options=0x611100;route.page=0x611200;
   route.audio_available=true;route.audio={80,70,60};Poll();Poll();Frame();Frame();CHECK(g_open&&g_audio&&!g_controls);
  };
- audio::surround=false;open_audio();
+ audio::SetSoundOutput(audio::SoundOutput::Stereo);open_audio();
+ CHECK(std::find(rendered_text.begin(),rendered_text.end(),"Active output: Stereo.")!=rendered_text.end());
+ audio::output_channels=8;Frame();
+ CHECK(std::find(rendered_text.begin(),rendered_text.end(),"Active output: Stereo.")!=rendered_text.end());
+ audio::output_channels=6;Frame();
  for(const char* field:{"##music","##effects","##speech"})CHECK(slider_ranges[field]==std::make_pair(0,100)&&slider_formats[field]=="%d%%");
  CHECK(GImGui->NavId==field_ids["##music"]);
  const auto native=darkwatch::audio_applies,saved=saves;
  CHECK(!ImGui::TempInputIsActive(field_ids["##music"]));
  ClickField("##music",.25f);ClickField("##effects",.5f);ClickField("##speech",.75f);
  CHECK(g_audio_draft.music>15&&g_audio_draft.music<35&&g_audio_draft.effects>40&&g_audio_draft.effects<60&&g_audio_draft.speech>65&&g_audio_draft.speech<85);
- SelectQuality("##sound output",1,"Surround");CHECK(g_surround_draft&&!audio::surround&&darkwatch::audio_applies==native&&saves==saved);
+ SelectQuality("##sound output",1,"5.1 Surround");CHECK(g_sound_output_draft==1&&!audio::surround&&darkwatch::audio_applies==native&&saves==saved);
  const auto pending=g_audio_draft;ClickNamed("APPLY");CHECK(audio::surround&&saves==saved+1&&darkwatch::audio_applies==native);
  Poll();Frame();CHECK(darkwatch::audio_applies==native+1&&route.audio.music==pending.music&&route.audio.effects==pending.effects&&route.audio.speech==pending.speech);
- ClickNamed("RESET DEFAULTS");CHECK(g_audio_draft.music==100&&g_audio_draft.effects==100&&g_audio_draft.speech==100&&!g_surround_draft);
+ CHECK(audio::GetSoundOutput()==audio::SoundOutput::Surround51);
+ CHECK(std::find(rendered_text.begin(),rendered_text.end(),"Active output: 5.1 Surround.")!=rendered_text.end());
+ ClickNamed("RESET DEFAULTS");CHECK(g_audio_draft.music==100&&g_audio_draft.effects==100&&g_audio_draft.speech==100&&g_sound_output_draft==0);
  CHECK(audio::surround&&route.audio.music==pending.music&&darkwatch::audio_applies==native+1);
  ClickNamed("BACK");CHECK(!g_open);route.route=darkwatch::GraphicsMenuRoute::OptionsMain;Poll();Poll();Frame();Frame();
- route.route=darkwatch::GraphicsMenuRoute::Audio;Poll();Frame();CHECK(g_audio_draft.music==pending.music&&g_surround_draft);
+ route.route=darkwatch::GraphicsMenuRoute::Audio;Poll();Frame();CHECK(g_audio_draft.music==pending.music&&g_sound_output_draft==1);
+ // A 7.1 draft keeps the currently active 5.1 hint until Apply. Unsupported
+ // devices retain the request; changing capacity changes only active playback.
+ SelectQuality("##sound output",2,"7.1 Surround");CHECK(g_sound_output_draft==2&&audio::GetSoundOutput()==audio::SoundOutput::Surround51);
+ CHECK(std::find(rendered_text.begin(),rendered_text.end(),"7.1 unavailable on this device; playback will use 5.1.")!=rendered_text.end());
+ ClickNamed("APPLY");Poll();Frame();CHECK(audio::GetSoundOutput()==audio::SoundOutput::Surround71&&audio::ActiveSoundOutput()==audio::SoundOutput::Surround51);
+ audio::output_channels=8;Frame();
+ CHECK(std::find(rendered_text.begin(),rendered_text.end(),"Active output: 7.1 Surround.")!=rendered_text.end());
+ ClickNamed("BACK");open_audio();CHECK(g_sound_output_draft==2);
  ClickNamed("RESET DEFAULTS");ClickNamed("APPLY");Poll();Frame();CHECK(!audio::surround&&route.audio.music==100&&route.audio.effects==100&&route.audio.speech==100);
  // Saving host output and applying profile volumes report failures separately.
  save_ok=false;ClickNamed("APPLY");CHECK(std::strstr(g_notice,"Could not save"));save_ok=true;Poll();Frame();
@@ -910,8 +952,10 @@ int main(){
  ClickField("##music",.4f);ClickNamed("APPLY");route.options+=4;route.audio={20,30,40};Poll();Frame();
  CHECK(g_audio_draft.music==20&&route.audio.music==20&&std::strstr(g_notice,"Could not apply audio"));
  // The Audio page remains usable on stereo hardware, with an explicit capability hint.
- audio::surround_available=false;Frame();
+ audio::surround_available=false;SelectQuality("##sound output",2,"7.1 Surround");Frame();
  CHECK(std::find(rendered_text.begin(),rendered_text.end(),"Surround unavailable. Set up 5.1 or 7.1 speakers, then restart.")!=rendered_text.end());
+ ClickNamed("APPLY");Poll();Frame();CHECK(audio::GetSoundOutput()==audio::SoundOutput::Surround71&&audio::ActiveSoundOutput()==audio::SoundOutput::Stereo);
+ ClickNamed("BACK");open_audio();CHECK(g_sound_output_draft==2);
  // Audio is a separate native pause entry, for either owner, with a normal page pop on Back.
  for(unsigned port:{0u,1u}){
   hidden();route.route=darkwatch::GraphicsMenuRoute::Controls;route.paused=true;route.options=0x622200+port*0x1000;route.page=route.options+0x100;
@@ -979,7 +1023,7 @@ int main(){
  Navigate(0,2,field_ids["##internal"]);const auto internal=g_draft.render_percent;
  PadTap(0,16);PadTap(0,8);CHECK(g_draft.render_percent>internal);
  PadTap(0,32);CHECK(g_open&&!g_leave); // B finishes slider editing before leaving its page.
- for(const char* field:{"##fov","##weapon_fov","##reticle","##cutscene_borders","##fps","##vsync","##cap","##msaa","##aniso","##hd_ui","##subtitles","##brightness","##hd_textures","##forever_ragdolls"})
+ for(const char* field:{"##camera_mode","##fov","##weapon_fov","##reticle","##cutscene_borders","##fps","##vsync","##cap","##msaa","##aniso","##hd_ui","##subtitles","##brightness","##hd_textures","##forever_ragdolls"})
   Navigate(0,2,field_ids[field]);
  CHECK(ImGui::FindWindowByName("Graphics")->DC.ChildWindows[0]->Scroll.y>0);
  CHECK(!g_view_draft.forever_ragdolls);
@@ -1007,7 +1051,7 @@ int main(){
  PadTap(0,32);CHECK(!g_open&&g_leave);
  std::puts("PASS gamepad Controls: binding-table scrolling and capture/conflict Back isolation");
  // The other controller must not move or activate Player 2's settings.
- OpenControls(1);CHECK(GImGui->NavId==field_ids["##invert look"]);
+ OpenControls(1);CHECK(GImGui->NavId==field_ids["##sight mode"]);
  const auto focused=GImGui->NavId;PadTap(0,2);PadTap(0,16);CHECK(GImGui->NavId==focused&&g_open);
  Navigate(1,2,button_ids["CONTROLLER LAYOUT..."]);PadTap(1,16);CHECK(g_controller_layout);
  CHECK(GImGui->NavId==field_ids["##controller preset"]);
@@ -1026,8 +1070,10 @@ int main(){
  PadFrames(0,0,5);CHECK(g_audio&&GImGui->NavId==field_ids["##music"]);
  PadTap(0,16);PadTap(0,4);CHECK(g_audio_draft.music<100);PadTap(0,32);CHECK(g_open&&!g_leave);
  Navigate(0,2,field_ids["##effects"]);Navigate(0,2,field_ids["##speech"]);Navigate(0,2,field_ids["##sound output"]);
- PadTap(0,16);PadTap(0,2);PadTap(0,16);CHECK(g_surround_draft&&!audio::surround);
- Navigate(0,2,button_ids["APPLY"]);PadTap(0,16);CHECK(audio::surround&&route.audio.music<100&&darkwatch::audio_applies==1);
+ PadTap(0,16);PadTap(0,2);PadTap(0,2);PadTap(0,16);CHECK(g_sound_output_draft==2&&!audio::surround);
+ Navigate(0,2,button_ids["APPLY"]);PadTap(0,16);CHECK(audio::GetSoundOutput()==audio::SoundOutput::Surround71&&route.audio.music<100&&darkwatch::audio_applies==1);
+ Navigate(0,1,field_ids["##sound output"]);PadTap(0,16);PadTap(0,1);PadTap(0,16);CHECK(g_sound_output_draft==1&&audio::GetSoundOutput()==audio::SoundOutput::Surround71);
+ Navigate(0,2,button_ids["APPLY"]);PadTap(0,16);CHECK(audio::GetSoundOutput()==audio::SoundOutput::Surround51);
  PadTap(0,32);CHECK(!g_open&&g_leave);
  std::puts("PASS gamepad Audio: slider editing/cancel, output choice, Apply and Back");
  // The held selection which opened a page cannot also choose/quit on that page.
@@ -1076,7 +1122,7 @@ int main(){
    CHECK(!std::strcmp(ActionDescription(21),"Equip the previous carried weapon."));
   }
   g_original_draft.controller_preset=0;
-  ClickNamed("CONTROLLER LAYOUT...",true);Frame();CHECK(layout_rows.size()==20);
+  ClickNamed("CONTROLLER LAYOUT...",true);Frame();CHECK(layout_rows.size()==22);
   const auto normal=g_pad_draft;
   ClickLayoutRow(18);CHECK(g_pad_capture_action==20&&input::pad_owner==int(port));
   for(unsigned reserved:{5u,6u}){
@@ -1092,7 +1138,7 @@ int main(){
   // Unbind is an actual separate, reachable button beside the selected action.
   Frame();auto r=layout_rows[18].second;auto* child=ImGui::FindWindowByName("Controls")->DC.ChildWindows[0];
   ImGui::SetScrollY(child,child->Scroll.y+(r.y+r.w)/2-(child->InnerRect.Min.y+child->InnerRect.Max.y)/2);Frame();Frame();
-  CHECK(repeated_buttons["UNBIND"].size()==2);auto point=repeated_buttons["UNBIND"][0];Click(point.x,point.y);Frame();
+  CHECK(repeated_buttons["UNBIND"].size()==4);auto point=repeated_buttons["UNBIND"][0];Click(point.x,point.y);Frame();
   CHECK(g_controls_draft.weapon_buttons[port][0]==-1&&g_controls_draft.weapon_buttons[port][1]==6);
   ClickLayoutRow(18);input::pad_capture_result=9;Frame();Frame();
   ClickNamed("BACK");Frame();
@@ -1142,7 +1188,7 @@ int main(){
  input::pad_capture_result=13;PadFrames(1);CHECK(g_controls_draft.weapon_buttons[1][0]==12);
  Navigate(1,2,layout_rows[19].first);PadTap(1,16);CHECK(g_pad_capture_action==21);
  input::pad_capture_result=input::kPadCaptureCancelled;PadFrames(1);CHECK(g_controller_layout&&g_pad_capture_action<0);
- std::puts("PASS new weapon Controls: shared default-off cheat, 22 keyboard actions, wheel conflict replacement, per-player optional controller bindings/Unbind/reserved buttons/reset/merge and gamepad navigation");
+ std::puts("PASS new weapon Controls: shared default-off cheat, weapon actions alongside Walk, wheel conflict replacement, per-player optional controller bindings/Unbind/reserved buttons/reset/merge and gamepad navigation");
  ImGui::DestroyContext();
 }
 '''
@@ -1280,7 +1326,9 @@ int main(){
 PLAYER_VIEW_UI = r'''
 static bool SameView(view::Settings a, view::Settings b) {
  return a.fov_percent==b.fov_percent && a.viewmodel_fov_percent==b.viewmodel_fov_percent &&
-        a.reticle_percent==b.reticle_percent;
+        a.reticle_percent==b.reticle_percent && a.show_hud==b.show_hud &&
+        a.reticle_normal_color==b.reticle_normal_color && a.reticle_enemy_color==b.reticle_enemy_color &&
+        a.reticle_friendly_color==b.reticle_friendly_color && a.camera_mode==b.camera_mode;
 }
 static void HiddenViewPage() {
  route={};Poll();Poll();Frame();Frame();CHECK(!g_open&&!g_confirm);
@@ -1309,6 +1357,7 @@ int main(){
   const auto before=view::Snapshot(player),other=view::Snapshot(1-player);
   OpenViewPage(player);CHECK(SameView(g_view_draft,before));
   const auto old_saves=saves,old_displays=displays;
+  SelectQuality("##camera_mode",player?2:1,player?"Third Person - Shoulder":"Third Person - Centered");
   ClickField("##fov",player?.2f:.9f);
   ClickField("##weapon_fov",player?.15f:.85f);
   CHECK(slider_ranges["##reticle"].first==0&&slider_ranges["##reticle"].second==200);
@@ -1324,12 +1373,14 @@ int main(){
   CHECK(actual.brightness_percent==brightness);
   // Reset edits only this draft; Back discards it without resetting either player.
   ClickNamed("RESET VIEW DEFAULTS",true);
+  CHECK(g_view_draft.camera_mode==view::CameraMode::FirstPerson);
   CHECK(g_view_draft.fov_percent==100&&g_view_draft.viewmodel_fov_percent==100&&g_view_draft.reticle_percent==100);
   CHECK(SameView(view::Snapshot(player),edited)&&SameView(view::Snapshot(1-player),other));
   ClickNamed("BACK");CHECK(!g_open&&g_leave&&saves==old_saves+1);
   OpenViewPage(player);CHECK(SameView(g_view_draft,edited));
   ClickNamed("RESET VIEW DEFAULTS",true);ClickNamed("APPLY");
   CHECK(view::Snapshot(player).fov_percent==100&&view::Snapshot(player).viewmodel_fov_percent==100&&view::Snapshot(player).reticle_percent==100);
+  CHECK(view::Snapshot(player).camera_mode==view::CameraMode::FirstPerson);
   CHECK(SameView(view::Snapshot(1-player),other));
  }
  // A reused page pointer with a different pause owner must discard an unapplied draft.
@@ -1342,12 +1393,15 @@ int main(){
  // frame belongs to the other player. Other-player view settings are not rolled back.
  for(unsigned exit=0;exit<4;++exit) {
   OpenViewPage(1);const auto retained=view::Snapshot(1);const auto display=actual;
+  g_view_draft.camera_mode=view::CameraMode::Shoulder;
   ClickField("##fov",.15f);ClickField("##weapon_fov",.15f);ClickField("##reticle",.15f);
+  g_view_draft.show_hud=!retained.show_hud;g_view_draft.reticle_normal_color=0x123456;
+  g_view_draft.reticle_enemy_color=0x654321;g_view_draft.reticle_friendly_color=0xFF00FF;
   g_draft.display_mode=actual.display_mode==app::DisplayMode::Windowed?app::DisplayMode::Fullscreen:app::DisplayMode::Windowed;
   const auto old_saves=saves,old_displays=displays;ClickNamed("APPLY");
   CHECK(g_confirm&&!SameView(view::Snapshot(1),retained)&&saves==old_saves);
   Frame();
-  auto independent=view::Snapshot(0);independent.fov_percent=155+exit;view::Apply(independent,0);
+  auto independent=view::Snapshot(0);independent.fov_percent=155+exit;independent.reticle_friendly_color=exit;view::Apply(independent,0);
   if(exit==0)ClickNamed("REVERT");
   else if(exit==1)Frame(16);
   else if(exit==2)HiddenViewPage();
@@ -1360,6 +1414,8 @@ int main(){
  // Keep commits only P2's view triple alongside the genuinely shared display.
  OpenViewPage(1);const auto kept_other=view::Snapshot(0);const auto old_saves=saves;
  ClickField("##fov",.7f);ClickField("##weapon_fov",.6f);ClickField("##reticle",.4f);
+ g_view_draft.show_hud=false;g_view_draft.reticle_normal_color=0;
+ g_view_draft.camera_mode=view::CameraMode::Centered;
  const auto kept=g_view_draft;
  g_draft.display_mode=actual.display_mode==app::DisplayMode::Windowed?app::DisplayMode::Fullscreen:app::DisplayMode::Windowed;
  ClickNamed("APPLY");CHECK(g_confirm&&saves==old_saves);Frame();ClickNamed("KEEP");
@@ -1378,6 +1434,228 @@ int main(){
 '''
 
 
+SIGHT_CONTROLS_UI = r'''
+int main(){
+ ImGui::CreateContext();auto& io=ImGui::GetIO();io.IniFilename=nullptr;
+ io.ConfigFlags|=ImGuiConfigFlags_NavEnableKeyboard|ImGuiConfigFlags_NavEnableGamepad;
+ ImFontConfig font;font.SizePixels=22;g_body=io.Fonts->AddFontDefault(&font);g_title=g_body;
+ unsigned char* pixels;int w,h;io.Fonts->GetTexDataAsRGBA32(&pixels,&w,&h);
+ for(unsigned port:{0u,1u}){
+  darkwatch::controls=darkwatch::ControlsDefaults();darkwatch::controls.sight_toggle={false,false};
+  OpenControls(port);const auto bindings=darkwatch::controls.bindings;
+  SelectQuality("##sight mode",1,"Toggle");
+  CHECK(g_controls_draft.sight_toggle[port]&&!darkwatch::controls.sight_toggle[port]);
+  // A later edit by the other owner must survive this page's stale draft.
+  darkwatch::controls.sight_toggle[1-port]=true;darkwatch::controls.mouse_millidegrees=123;
+  if(port)g_controls_draft.mouse_millidegrees=999;
+  const auto before=saves;ClickNamed("APPLY");Poll();Frame();
+  CHECK(saves==before+1&&darkwatch::controls.sight_toggle[port]&&darkwatch::controls.sight_toggle[1-port]);
+  CHECK(!std::memcmp(&bindings,&darkwatch::controls.bindings,sizeof(bindings)));
+  if(port)CHECK(darkwatch::controls.mouse_millidegrees==123);
+  SelectQuality("##sight mode",0,"Hold");ClickNamed("BACK");OpenControls(port);
+  CHECK(g_controls_draft.sight_toggle[port]);
+  SelectQuality("##sight mode",0,"Hold");ClickNamed("APPLY");Poll();Frame();
+  CHECK(!darkwatch::controls.sight_toggle[port]&&darkwatch::controls.sight_toggle[1-port]);
+  ClickNamed("BACK");OpenControls(port);CHECK(!g_controls_draft.sight_toggle[port]);
+ }
+ // PC defaults reset P1's mode but retain P2's independent choice.
+ const bool native=darkwatch::ControlsDefaults().sight_toggle[0];
+ darkwatch::controls.sight_toggle={!native,!native};OpenControls(0);
+ ClickNamed("RESET DEFAULTS");CHECK(g_controls_draft.sight_toggle[0]==native&&g_controls_draft.sight_toggle[1]==!native);
+ CHECK(darkwatch::controls.sight_toggle[0]==!native);ClickNamed("APPLY");Poll();Frame();
+ CHECK(darkwatch::controls.sight_toggle[0]==native&&darkwatch::controls.sight_toggle[1]==!native);
+ // Both players can select the mode using only their controller.
+ record_combo_text=false;
+ for(unsigned port:{0u,1u}){
+  darkwatch::controls.sight_toggle={false,false};OpenControls(port);io.AddMousePosEvent(-100,-100);PadFrames(port);
+  Navigate(port,2,field_ids["##sight mode"]);PadTap(port,16);PadTap(port,2);PadTap(port,16);
+  CHECK(g_controls_draft.sight_toggle[port]&&!darkwatch::controls.sight_toggle[port]);
+  Navigate(port,2,button_ids["APPLY"]);PadTap(port,16);PadFrames(port);
+  CHECK(darkwatch::controls.sight_toggle[port]&&!darkwatch::controls.sight_toggle[1-port]);
+ }
+ std::puts("PASS Sight Mode UI: both owners Hold/Toggle, draft/Apply/Back/reopen, concurrent other-player preservation, default reset, unchanged bindings and controller navigation");
+ ImGui::DestroyContext();
+}
+'''
+
+
+WALK_CONTROLS_UI = r'''
+int main(){
+ ImGui::CreateContext();auto& io=ImGui::GetIO();io.IniFilename=nullptr;
+ io.ConfigFlags|=ImGuiConfigFlags_NavEnableKeyboard|ImGuiConfigFlags_NavEnableGamepad;
+ ImFontConfig font;font.SizePixels=22;g_body=io.Fonts->AddFontDefault(&font);g_title=g_body;
+ unsigned char* pixels;int w,h;io.Fonts->GetTexDataAsRGBA32(&pixels,&w,&h);
+ for(unsigned port:{0u,1u}){
+  darkwatch::controls=darkwatch::ControlsDefaults();input::maps[0]=input::maps[1]=input::DefaultPadBindings();
+  CHECK(!darkwatch::controls.walk_toggle[0]&&!darkwatch::controls.walk_toggle[1]);
+  OpenControls(port);CHECK(!g_controls_draft.carry_all_weapons&&!g_controls_draft.keep_starting_revolver);
+  SelectQuality("##keep starting revolver",1,"On");CHECK(g_controls_draft.keep_starting_revolver&&!darkwatch::controls.keep_starting_revolver);
+  SelectQuality("##walk mode",1,"Toggle");CHECK(g_controls_draft.walk_toggle[port]&&!darkwatch::controls.walk_toggle[port]);
+  if(!port){
+   // Walking can be rebound independently while Carry All is off.
+   ClickNamed("Caps Lock",true);CHECK(g_capture_action==22&&darkwatch::capture_active);
+   darkwatch::capture_result='H';darkwatch::capture_active=false;Frame();Frame();
+   CHECK(g_controls_draft.bindings[22].keys[0]=='H'&&!g_controls_draft.carry_all_weapons);
+  }
+  ClickNamed("CONTROLLER LAYOUT...",true);Frame();CHECK(layout_rows.size()==22);
+  const auto normal=g_pad_draft;ClickLayoutRow(20);CHECK(g_pad_capture_action==22&&input::pad_owner==int(port));
+  for(unsigned reserved:{5u,6u}){input::pad_capture_result=reserved;Frame();Frame();CHECK(input::pad_capture&&g_pad_capture_action==22&&g_controls_draft.walk_buttons[port]==-1);}
+  // A physical button can have only one gameplay override, including dormant weapon overrides.
+  g_controls_draft.weapon_buttons[port]={6,7};input::pad_capture_result=7;Frame();Frame();
+  CHECK(g_controls_draft.walk_buttons[port]==6&&g_controls_draft.weapon_buttons[port][0]==-1&&g_controls_draft.weapon_buttons[port][1]==7&&g_pad_draft==normal);
+  CHECK(darkwatch::controls.walk_buttons[port]==-1);
+  Frame();CHECK(repeated_buttons["UNBIND"].size()==4);auto unbind=repeated_buttons["UNBIND"][2];Click(unbind.x,unbind.y);Frame();
+  CHECK(g_controls_draft.walk_buttons[port]==-1&&g_controls_draft.weapon_buttons[port][1]==7);
+  ClickLayoutRow(20);input::pad_capture_result=9;Frame();Frame();
+  ClickNamed("BACK");Frame();SelectQuality("##carry all weapons",1,"On");
+  ClickNamed("CONTROLLER LAYOUT...",true);Frame();ClickLayoutRow(18);input::pad_capture_result=9;Frame();Frame();
+  CHECK(g_controls_draft.walk_buttons[port]==-1&&g_controls_draft.weapon_buttons[port][0]==8);
+  ClickLayoutRow(20);input::pad_capture_result=13;Frame();Frame();
+  ClickNamed("BACK");Frame();SelectQuality("##carry all weapons",0,"Off");
+  // Applying P2 must publish its walking changes, while preserving P1's later edits and PC bindings.
+  darkwatch::controls.walk_toggle[1-port]=true;darkwatch::controls.walk_buttons[1-port]=11;
+  darkwatch::controls.mouse_millidegrees=123;const auto keyboard=darkwatch::controls.bindings;
+  if(port)g_controls_draft.mouse_millidegrees=999;
+  const auto saved=saves;ClickNamed("APPLY");Poll();Frame();
+  CHECK(saves==saved+1&&darkwatch::controls.walk_toggle[port]&&darkwatch::controls.walk_buttons[port]==12&&darkwatch::controls.keep_starting_revolver);
+  CHECK(darkwatch::controls.walk_toggle[1-port]&&darkwatch::controls.walk_buttons[1-port]==11&&!darkwatch::controls.carry_all_weapons);
+  if(port)CHECK(darkwatch::controls.mouse_millidegrees==123&&!std::memcmp(&keyboard,&darkwatch::controls.bindings,sizeof(keyboard)));
+  else CHECK(darkwatch::controls.bindings[22].keys[0]=='H');
+  // Back discards mode edits; controller reset unbinds only this player's walk button.
+  SelectQuality("##walk mode",0,"Hold to Walk");SelectQuality("##keep starting revolver",0,"Off");ClickNamed("BACK");OpenControls(port);
+  CHECK(g_controls_draft.walk_toggle[port]&&g_controls_draft.walk_buttons[port]==12&&g_controls_draft.keep_starting_revolver);
+  ClickNamed("CONTROLLER LAYOUT...",true);Frame();ClickNamed("RESET BUTTONS");
+  CHECK(g_controls_draft.walk_buttons[port]==-1&&g_controls_draft.walk_buttons[1-port]==11);
+  ClickNamed("BACK");Frame();ClickNamed("APPLY");CHECK(darkwatch::controls.walk_buttons[port]==-1&&darkwatch::controls.walk_buttons[1-port]==11);
+ }
+ // Full PC defaults keep Player Two's independent walking settings.
+ OpenControls(0);ClickNamed("RESET DEFAULTS");CHECK(!g_controls_draft.walk_toggle[0]&&g_controls_draft.walk_buttons[0]==-1&&g_controls_draft.bindings[22].keys[0]==VK_CAPITAL&&!g_controls_draft.keep_starting_revolver);
+ CHECK(g_controls_draft.walk_toggle[1]&&g_controls_draft.walk_buttons[1]==-1);
+ // Controller-only navigation reaches Walk with Carry All off and cancels a capture without leaving.
+ darkwatch::controls=darkwatch::ControlsDefaults();record_combo_text=false;OpenControls(1);io.AddMousePosEvent(-100,-100);PadFrames(1);
+ Navigate(1,2,field_ids["##walk mode"]);PadTap(1,16);PadTap(1,2);PadTap(1,16);CHECK(g_controls_draft.walk_toggle[1]);
+ Navigate(1,1,button_ids["CONTROLLER LAYOUT..."]);PadTap(1,16);PadFrames(1);
+ Navigate(1,2,layout_rows[20].first);PadTap(1,16);CHECK(g_pad_capture_action==22&&input::pad_capture&&!g_controls_draft.carry_all_weapons);
+ input::pad_capture_result=input::kPadCaptureCancelled;PadFrames(1);CHECK(g_controller_layout&&g_pad_capture_action<0&&g_controls_draft.walk_buttons[1]==-1);
+ std::puts("PASS Walk UI: hold/toggle, Carry-All-independent keyboard/controller capture, reserved buttons, override conflicts, unbind/reset/cancel, both-player Apply isolation and actual gamepad navigation");
+ ImGui::DestroyContext();
+}
+'''
+
+
+SHOULDER_CONTROLS_UI = r'''
+int main(){
+ ImGui::CreateContext();auto& io=ImGui::GetIO();io.IniFilename=nullptr;
+ io.ConfigFlags|=ImGuiConfigFlags_NavEnableKeyboard|ImGuiConfigFlags_NavEnableGamepad;
+ ImFontConfig font;font.SizePixels=22;g_body=io.Fonts->AddFontDefault(&font);g_title=g_body;
+ unsigned char* pixels;int w,h;io.Fonts->GetTexDataAsRGBA32(&pixels,&w,&h);
+ for(unsigned port:{0u,1u}){
+  darkwatch::controls=darkwatch::ControlsDefaults();input::maps[0]=input::maps[1]=input::DefaultPadBindings();
+  OpenControls(port);CHECK(!g_controls_draft.carry_all_weapons&&g_controls_draft.shoulder_buttons[port]==-1);
+  if(!port){
+   ClickNamed("V",true);CHECK(g_capture_action==23&&darkwatch::capture_active);
+   darkwatch::capture_result=VK_XBUTTON2;darkwatch::capture_active=false;Frame();Frame();
+   CHECK(g_controls_draft.bindings[23].keys[0]==VK_XBUTTON2&&!g_controls_draft.carry_all_weapons);
+  }
+  ClickNamed("CONTROLLER LAYOUT...",true);Frame();CHECK(layout_rows.size()==22);
+  const auto normal=g_pad_draft;ClickLayoutRow(21);CHECK(g_pad_capture_action==23&&input::pad_owner==int(port));
+  for(unsigned reserved:{5u,6u}){input::pad_capture_result=reserved;Frame();Frame();CHECK(input::pad_capture&&g_controls_draft.shoulder_buttons[port]==-1);}
+  // Shoulder, Walk and weapon overrides compete for one physical button even with Carry All off.
+  g_controls_draft.walk_buttons[port]=6;input::pad_capture_result=7;Frame();Frame();
+  CHECK(g_controls_draft.shoulder_buttons[port]==6&&g_controls_draft.walk_buttons[port]==-1&&g_pad_draft==normal);
+  ClickLayoutRow(20);input::pad_capture_result=7;Frame();Frame();
+  CHECK(g_controls_draft.walk_buttons[port]==6&&g_controls_draft.shoulder_buttons[port]==-1);
+  g_controls_draft.weapon_buttons[port]={7,8};ClickLayoutRow(21);input::pad_capture_result=8;Frame();Frame();
+  CHECK(g_controls_draft.shoulder_buttons[port]==7&&g_controls_draft.weapon_buttons[port][0]==-1&&g_controls_draft.weapon_buttons[port][1]==8);
+  Frame();CHECK(repeated_buttons["UNBIND"].size()==4);auto unbind=repeated_buttons["UNBIND"].back();Click(unbind.x,unbind.y);Frame();
+  CHECK(g_controls_draft.shoulder_buttons[port]==-1&&g_controls_draft.walk_buttons[port]==6);
+  ClickLayoutRow(21);input::pad_capture_result=13;Frame();Frame();ClickNamed("BACK");Frame();
+  darkwatch::controls.shoulder_buttons[1-port]=11;const auto keyboard=darkwatch::controls.bindings;
+  const auto saved=saves;ClickNamed("APPLY");Poll();Frame();
+  CHECK(saves==saved+1&&darkwatch::controls.shoulder_buttons[port]==12&&darkwatch::controls.shoulder_buttons[1-port]==11);
+  CHECK(!darkwatch::controls.carry_all_weapons);
+  if(port)CHECK(!std::memcmp(&keyboard,&darkwatch::controls.bindings,sizeof(keyboard)));
+  else CHECK(darkwatch::controls.bindings[23].keys[0]==VK_XBUTTON2);
+  // Cancel and reset retain the other player's setting.
+  ClickNamed("CONTROLLER LAYOUT...",true);Frame();ClickNamed("RESET BUTTONS");
+  CHECK(g_controls_draft.shoulder_buttons[port]==-1&&g_controls_draft.shoulder_buttons[1-port]==11);
+  ClickNamed("BACK");Frame();ClickNamed("BACK");OpenControls(port);
+  CHECK(g_controls_draft.shoulder_buttons[port]==12);
+  ClickNamed("CONTROLLER LAYOUT...",true);Frame();ClickNamed("RESET BUTTONS");ClickNamed("BACK");Frame();ClickNamed("APPLY");
+  CHECK(darkwatch::controls.shoulder_buttons[port]==-1&&darkwatch::controls.shoulder_buttons[1-port]==11);
+ }
+ darkwatch::controls.shoulder_buttons={6,7};OpenControls(0);ClickNamed("RESET DEFAULTS");
+ CHECK(g_controls_draft.shoulder_buttons[0]==-1&&g_controls_draft.shoulder_buttons[1]==7&&g_controls_draft.bindings[23].keys[0]=='V');
+ // Either controller can reach and capture its own shoulder action without mouse input.
+ record_combo_text=false;
+ for(unsigned port:{0u,1u}){
+  darkwatch::controls=darkwatch::ControlsDefaults();OpenControls(port);io.AddMousePosEvent(-100,-100);PadFrames(port);
+  Navigate(port,2,button_ids["CONTROLLER LAYOUT..."]);PadTap(port,16);PadFrames(port);
+  Navigate(port,2,layout_rows[21].first);PadTap(port,16);CHECK(g_pad_capture_action==23&&input::pad_owner==int(port));
+  input::pad_capture_result=input::kPadCaptureCancelled;PadFrames(port);CHECK(g_controller_layout&&g_pad_capture_action<0);
+  PadTap(port,16);CHECK(g_pad_capture_action==23);input::pad_capture_result=12;PadFrames(port);
+  CHECK(g_controls_draft.shoulder_buttons[port]==11&&g_controls_draft.shoulder_buttons[1-port]==-1);
+ }
+ std::puts("PASS Shoulder UI: keyboard/mouse and both controllers, Carry-All-independent capture, reserved buttons, conflicting overrides, unbind/reset/cancel and per-player Apply ownership");
+ ImGui::DestroyContext();
+}
+'''
+
+
+HUD_COLOR_UI = r'''
+static bool SamePresentation(view::Settings a,view::Settings b){
+ return a.show_hud==b.show_hud&&a.reticle_normal_color==b.reticle_normal_color&&a.reticle_enemy_color==b.reticle_enemy_color&&a.reticle_friendly_color==b.reticle_friendly_color;
+}
+static uint32_t TargetColor(view::Settings s,unsigned target){return target==0?s.reticle_normal_color:target==1?s.reticle_enemy_color:s.reticle_friendly_color;}
+int main(){
+ ImGui::CreateContext();auto& io=ImGui::GetIO();io.IniFilename=nullptr;
+ io.ConfigFlags|=ImGuiConfigFlags_NavEnableKeyboard|ImGuiConfigFlags_NavEnableGamepad;
+ ImFontConfig font;font.SizePixels=22;g_body=io.Fonts->AddFontDefault(&font);g_title=g_body;
+ unsigned char* pixels;int w,h;io.Fonts->GetTexDataAsRGBA32(&pixels,&w,&h);
+ g_modes={{1280,720},{1920,1080},{2560,1440}};view::Apply({},0);view::Apply({},1);
+ const char* targets[]{"Normal","Enemy","Friendly"};const char* channels[]{"##reticle red","##reticle green","##reticle blue"};
+ for(unsigned player:{0u,1u}){
+  const auto before=view::Snapshot(player),other=view::Snapshot(1-player);OpenViewPage(player);
+  CHECK(g_view_draft.show_hud&&TargetColor(g_view_draft,0)==0x1000000);
+  SelectQuality("##show_hud",0,"Off");CHECK(!g_view_draft.show_hud&&view::Snapshot(player).show_hud);
+  for(unsigned target=0;target<3;++target){
+   SelectQuality("##reticle target",target,targets[target]);CHECK(TargetColor(g_view_draft,target)==0x1000000);
+   for(auto channel:channels){CHECK(slider_disabled[channel]);CHECK(slider_ranges[channel]==std::make_pair(0,255));}
+   ClickField(channels[0],.2f);CHECK(TargetColor(g_view_draft,target)==0x1000000);
+   SelectQuality("##reticle color mode",1,"Custom");
+   CHECK(TargetColor(g_view_draft,target)==(target==0?0xFFFFFFu:target==1?0xD0100Bu:0x00CE00u));
+   for(unsigned channel=0;channel<3;++channel){CHECK(!slider_disabled[channels[channel]]);ClickField(channels[channel],.2f+.1f*target+.15f*channel);}
+   const auto rgb=TargetColor(g_view_draft,target);CHECK(rgb<=0xFFFFFFu&&rgb!=0&&rgb!=0xFFFFFFu);
+   for(unsigned previous=0;previous<target;++previous)CHECK(TargetColor(g_view_draft,previous)!=rgb);
+  }
+  CHECK(SamePresentation(view::Snapshot(player),before)&&SamePresentation(view::Snapshot(1-player),other));
+  const auto edited=g_view_draft;const auto saved=saves;ClickNamed("APPLY");CHECK(saves==saved+1&&!g_confirm);
+  CHECK(SamePresentation(view::Snapshot(player),edited)&&SamePresentation(view::Snapshot(1-player),other));
+  SelectQuality("##reticle target",1,"Enemy");SelectQuality("##reticle color mode",0,"Original");
+  CHECK(g_view_draft.reticle_enemy_color==0x1000000&&g_view_draft.reticle_normal_color==edited.reticle_normal_color&&g_view_draft.reticle_friendly_color==edited.reticle_friendly_color);
+  ClickNamed("RESET RETICLE COLORS",true);CHECK(TargetColor(g_view_draft,0)==0x1000000&&TargetColor(g_view_draft,1)==0x1000000&&TargetColor(g_view_draft,2)==0x1000000&&!g_view_draft.show_hud);
+  ClickNamed("BACK");OpenViewPage(player);CHECK(SamePresentation(g_view_draft,edited));
+  // Reset View also restores the HUD, while keeping the other player's selection intact.
+  ClickNamed("RESET VIEW DEFAULTS",true);CHECK(SamePresentation(g_view_draft,view::Settings{}));
+  CHECK(SamePresentation(view::Snapshot(player),edited));ClickNamed("APPLY");CHECK(SamePresentation(view::Snapshot(player),view::Settings{}));
+  CHECK(SamePresentation(view::Snapshot(1-player),other));
+  // Keep an asymmetric committed value for the next player's isolation check.
+  SelectQuality("##show_hud",0,"Off");SelectQuality("##reticle target",2,"Friendly");SelectQuality("##reticle color mode",1,"Custom");ClickField("##reticle blue",.6f);ClickNamed("APPLY");
+ }
+ // Gamepad editing uses normal combos/sliders and B only ends editing before closing the page.
+ view::Apply({},1);record_combo_text=false;OpenViewPage(1);io.AddMousePosEvent(-100,-100);PadFrames(1);
+ Navigate(1,2,field_ids["##show_hud"]);PadTap(1,16);PadTap(1,1);PadTap(1,16);CHECK(!g_view_draft.show_hud);
+ Navigate(1,2,field_ids["##reticle target"]);PadTap(1,16);PadTap(1,1);PadTap(1,1);PadTap(1,16);CHECK(g_reticle_color_target==0);
+ Navigate(1,2,field_ids["##reticle color mode"]);PadTap(1,16);PadTap(1,2);PadTap(1,16);CHECK(g_view_draft.reticle_normal_color==0xFFFFFF);
+ Navigate(1,2,field_ids["##reticle red"]);PadTap(1,16);PadTap(1,4);CHECK((g_view_draft.reticle_normal_color>>16)<255);PadTap(1,32);CHECK(g_open&&!g_leave);
+ Navigate(1,2,field_ids["##reticle green"]);Navigate(1,2,field_ids["##reticle blue"]);Navigate(1,2,button_ids["APPLY"]);
+ const auto edited=g_view_draft,other=view::Snapshot(0);PadTap(1,16);CHECK(SamePresentation(view::Snapshot(1),edited)&&SamePresentation(view::Snapshot(0),other));
+ std::puts("PASS HUD/reticle UI: independently editable normal/enemy/friendly RGB, Original restoration, bounded sliders, draft/Apply/cancel/reset, per-player isolation and actual controller navigation");
+ ImGui::DestroyContext();
+}
+'''
+
+
 class GraphicsUiTests(unittest.TestCase):
     def run_fixture(self, fixture):
         compiler = shutil.which("clang++")
@@ -1387,13 +1665,14 @@ class GraphicsUiTests(unittest.TestCase):
             source, exe = folder / "test.cpp", folder / "test.exe"
             source.write_text(fixture, encoding="utf-8")
             command = [compiler, "-std=c++20", "-O1", "-fuse-ld=lld", "-I", str(SDK),
-                       "-I", str(ROOT / "xbexbe/src"), "-I", str(ROOT / "build/xbexbe/_deps/tomlplusplus-src/include"), "-I", str(IMGUI), str(source)]
+                       "-I", str(ROOT / "xbexbe/src"), "-I", str(ROOT / "build/xbexbe/_deps/tomlplusplus-src/include"), "-I", str(IMGUI), str(source), str(SDK / "core/log.cpp")]
             command += [str(IMGUI / name) for name in ("imgui.cpp", "imgui_draw.cpp", "imgui_tables.cpp", "imgui_widgets.cpp")]
             built = subprocess.run(command + ["-o", str(exe), "-luser32"], capture_output=True, text=True, timeout=90)
             self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
             ran = subprocess.run([str(exe)], cwd=folder, capture_output=True, text=True, timeout=15)
             print(ran.stdout.strip())
             return ran
+
 
 
     def test_real_imgui_page_and_input_lifetime(self):
@@ -1466,6 +1745,72 @@ int main(){
         ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + PLAYER_VIEW_UI)
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
 
+    def test_menu_aspect_draft_apply_cancel_and_controller(self):
+        helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")] + PLAYER_VIEW_UI[:PLAYER_VIEW_UI.index("int main(){")]
+        driver = r'''
+int main(){
+ ImGui::CreateContext();auto& io=ImGui::GetIO();io.IniFilename=nullptr;
+ io.ConfigFlags|=ImGuiConfigFlags_NavEnableKeyboard|ImGuiConfigFlags_NavEnableGamepad;
+ ImFontConfig font;font.SizePixels=22;g_body=io.Fonts->AddFontDefault(&font);g_title=g_body;
+ unsigned char* pixels;int w,h;io.Fonts->GetTexDataAsRGBA32(&pixels,&w,&h);
+ for(bool controller:{false,true})for(unsigned entry:{0u,1u,2u}){
+  HiddenViewPage();SeedPlayerViews();const unsigned player=entry==2?1:0;
+  const auto p0=view::Snapshot(),p1=view::Snapshot(1);const auto aspect=actual.aspect_ratio;
+  const auto old_saves=saves,old_displays=displays;
+  OpenViewPage(player,entry!=0);CHECK(!g_view_draft.original_ui_aspect);
+  record_combo_text=!controller;
+  if(controller){io.AddMousePosEvent(-100,-100);PadFrames(player);Navigate(player,2,field_ids["##ui_aspect"]);
+   PadTap(player,16);PadTap(player,2);PadTap(player,16);
+  }else SelectQuality("##ui_aspect",1,"Original 4:3");
+  CHECK(g_view_draft.original_ui_aspect&&!view::Snapshot().original_ui_aspect);
+  CHECK(g_view_draft.movie_aspect_fit==p0.movie_aspect_fit&&SameView(view::Snapshot(),p0)&&SameView(view::Snapshot(1),p1));
+  if(controller){Navigate(player,2,button_ids["APPLY"]);PadTap(player,16);}else ClickNamed("APPLY");
+  CHECK(saves==old_saves+1&&displays==old_displays&&!g_confirm);
+  CHECK(view::Snapshot().original_ui_aspect&&view::Snapshot(1).original_ui_aspect&&actual.aspect_ratio==aspect);
+  CHECK(view::Snapshot().movie_aspect_fit==p0.movie_aspect_fit&&SameView(view::Snapshot(),p0)&&SameView(view::Snapshot(1),p1));
+  if(controller){Navigate(player,1,field_ids["##ui_aspect"]);PadTap(player,16);PadTap(player,1);PadTap(player,16);PadTap(player,32);}
+  else {SelectQuality("##ui_aspect",0,"Widescreen");ClickNamed("BACK");}
+  CHECK(!g_open&&view::Snapshot().original_ui_aspect&&saves==old_saves+1);
+  OpenViewPage(player,entry!=0);CHECK(g_view_draft.original_ui_aspect);HiddenViewPage();
+ }
+ std::puts("PASS Menu Aspect Ratio: main and both pause owners, mouse/controller drafts, shared Apply, Back discard, no display/FMV/gameplay changes");
+ ImGui::DestroyContext();
+}
+'''
+        ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + driver)
+        self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+
+
+    def test_camera_modes_using_each_players_controller(self):
+        helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")] + PLAYER_VIEW_UI[:PLAYER_VIEW_UI.index("int main(){")]
+        driver = r'''
+int main(){
+ ImGui::CreateContext();auto& io=ImGui::GetIO();io.IniFilename=nullptr;
+ io.ConfigFlags|=ImGuiConfigFlags_NavEnableKeyboard|ImGuiConfigFlags_NavEnableGamepad;
+ ImFontConfig font;font.SizePixels=22;g_body=io.Fonts->AddFontDefault(&font);g_title=g_body;
+ unsigned char* pixels;int w,h;io.Fonts->GetTexDataAsRGBA32(&pixels,&w,&h);
+ record_combo_text=false;
+ for(unsigned player:{0u,1u}){
+  view::Apply({},player);const auto other=view::Snapshot(1-player);
+  OpenViewPage(player);io.AddMousePosEvent(-100,-100);PadFrames(player);
+  Navigate(player,2,field_ids["##camera_mode"]);PadTap(player,16);PadTap(player,2);PadTap(player,16);
+  CHECK(g_view_draft.camera_mode==view::CameraMode::Centered&&view::Snapshot(player).camera_mode==view::CameraMode::FirstPerson);
+  Navigate(player,2,button_ids["APPLY"]);PadTap(player,16);PadFrames(player);
+  CHECK(view::Snapshot(player).camera_mode==view::CameraMode::Centered&&SameView(view::Snapshot(1-player),other));
+  Navigate(player,1,field_ids["##camera_mode"]);PadTap(player,16);PadTap(player,2);PadTap(player,16);
+  CHECK(g_view_draft.camera_mode==view::CameraMode::Shoulder);
+  Navigate(player,2,button_ids["APPLY"]);PadTap(player,16);PadFrames(player);
+  CHECK(view::Snapshot(player).camera_mode==view::CameraMode::Shoulder&&SameView(view::Snapshot(1-player),other));
+  PadTap(player,32);CHECK(!g_open);OpenViewPage(player);
+  CHECK(g_view_draft.camera_mode==view::CameraMode::Shoulder);
+ }
+ std::puts("PASS Camera View: both controller owners choose centered/shoulder, apply independently, return and reopen");
+ ImGui::DestroyContext();
+}
+'''
+        ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + driver)
+        self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+
     def test_per_player_view_negative_controls(self):
         source = (ROOT / "xbexbe/src/common/graphics.cpp").read_text(encoding="utf-8")
         old_snapshot = source.replace("view::Snapshot(g_view_player)", "view::Snapshot()")
@@ -1489,6 +1834,28 @@ int main(){
     def test_weapon_cycle_controls_and_carry_all(self):
         helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")]
         ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + WEAPON_CONTROLS_UI)
+        self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+
+    def test_walk_mode_bindings_and_player_isolation(self):
+        helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")]
+        ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + WALK_CONTROLS_UI)
+        self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+
+    def test_shoulder_bindings_and_player_isolation(self):
+        helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")]
+        ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + SHOULDER_CONTROLS_UI)
+        self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+
+
+    def test_sight_mode_drafts_players_and_controller_navigation(self):
+        helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")]
+        ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + SIGHT_CONTROLS_UI)
+        self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+
+
+    def test_hud_visibility_and_reticle_color_editing(self):
+        helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")] + PLAYER_VIEW_UI[:PLAYER_VIEW_UI.index("int main(){")]
+        ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + HUD_COLOR_UI)
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
 
     def test_coop_preview_and_independent_player_controls(self):

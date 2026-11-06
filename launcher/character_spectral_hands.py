@@ -36,7 +36,7 @@ def _inverse(matrix):
     return out
 
 
-def _geometry(raw, index):
+def _geometry(raw, index, allowed_bones=(22,51)):
     geos = [(a,z) for t,a,z,p in boss._records(raw) if t == 15]
     if not 0 <= index < len(geos):
         raise ValueError('Missing hand source geometry')
@@ -79,7 +79,7 @@ def _geometry(raw, index):
     platform,bones = struct.unpack_from('<II',raw,start)
     palette = struct.unpack_from('<256i',raw,start+8)
     _,influences,_,skin_stride = struct.unpack_from('<4I',raw,start+2056)
-    if platform != 5 or bones not in (22,51) or not 1 <= influences <= 4 or skin_stride != influences*3:
+    if platform != 5 or bones not in allowed_bones or not 1 <= influences <= 4 or skin_stride != influences*3:
         raise ValueError('Unexpected hand skin schema')
     at = start+2072
     weights = []

@@ -4,6 +4,7 @@
 #include "language.h"
 #include "hd_ui_assets.h"
 #include "hd_ui_font.h"
+#include "portuguese_font.h"
 #include "app/app.h"
 #include "core/log.h"
 #include "core/diag.h"
@@ -28,7 +29,7 @@ void DarkwatchRefreshMenuBars(uint8_t*, uint64_t);
 
 namespace {
 // Original localization/preset, font-list and RenderWare witnesses are pinned in
-// Prompt identities were checked against the original resources; files remain unchanged.
+// Original behavior verified in private regression evidence.
 constexpr std::array<uint8_t, 26> kCodes = {
     'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p',1,2,3,4,5,6,7,8,9,11};
 constexpr std::array<uint8_t, 20> kActions = {10,11,8,9,15,13,7,14,12,6,5,4,2,3,0,1,16,17,18,19};
@@ -42,21 +43,29 @@ struct Glyph { float width; uint32_t texture; float uv[4]; uint32_t path,index; 
 static_assert(sizeof(Glyph)==32);
 struct Font {
     uint32_t address=0,list=0,data=0,first=0,texture=0;
+    uint32_t extra=0;
+    bool prompts=true;
     std::array<int16_t,kCodes.size()> original{};
     uint64_t revision=0;
 };
 std::recursive_mutex g_lock;
 std::array<Font,16> g_fonts{};
 Atlas g_atlas;
-struct PromptHd { std::vector<uint8_t> original, pixels; uint64_t id=0; unsigned height=0; };
+struct PromptHd { std::vector<uint8_t> original, pixels; uint64_t id=0; unsigned height=0,scale=2; };
 std::shared_ptr<const PromptHd> g_prepared_hd;
 std::shared_ptr<const PromptHd> g_prompt_hd;
+std::shared_ptr<const PromptHd> g_accent_hd;
+std::shared_ptr<const PromptHd> g_title_hd;
 std::atomic<uint64_t> g_prompt_revision{0};
 #ifndef XBE_RELEASE
 std::atomic<bool> g_prompt_logged{false};
 #endif
 bool g_tried_hd=false;
 uint32_t g_texture=0;
+uint32_t g_accent_texture=0;
+bool g_accent_failed=false;
+uint32_t g_title_texture=0;
+bool g_title_failed=false;
 bool g_failed=false, g_have_settings=false;
 uint64_t g_revision=0;
 input::DeviceSnapshot g_device{};
@@ -405,22 +414,18 @@ bool BuildAtlas(Atlas& out) {
 uint32_t Call(X86Context& ctx,uint32_t function,std::initializer_list<uint32_t> args) {
     X86Context clone=ctx;return kernel::CallGuest(clone,function,args);
 }
-bool EnsureAtlas(X86Context& ctx,uint8_t* base) {
-    if(g_texture)return true;
-    if(g_failed)return false;
-    g_failed=true;
-    auto failure=[](const char* stage){if(diag::Perf())LOGI("PC prompt atlas failed: stage=%s",stage);return false;};
-    if(!BuildAtlas(g_atlas))return failure("package");
-    if(ctx.esp<4096||!Span(base,uint64_t(ctx.esp)-4096,4096))return failure("stack");
-    const uint32_t image=Call(ctx,0x122630,{kAtlasWidth,g_atlas.height,32});
-    if(!image)return failure("image-create");
+uint32_t CreateAtlas(X86Context& ctx,uint8_t* base,unsigned height,std::span<const uint8_t> rgba) {
+    if(!height||height>1024||rgba.size()!=uint64_t(kAtlasWidth)*height*4||
+       ctx.esp<4096||!Span(base,uint64_t(ctx.esp)-4096,4096))return 0;
+    const uint32_t image=Call(ctx,0x122630,{kAtlasWidth,height,32});
+    if(!image)return 0;
     uint32_t raster=0,texture=0;
     const char* stage="image-pixels";
     if(Call(ctx,0x122690,{image})&&Span(base,image,0x1C)) {
         const uint32_t stride=U32(base+image+0x10),pixels=U32(base+image+0x14);
         stage="image-span";
-        if(stride>=kAtlasWidth*4&&stride<=kAtlasWidth*8&&Span(base,pixels,uint64_t(stride)*g_atlas.height)) {
-            for(unsigned y=0;y<g_atlas.height;++y)std::memcpy(base+pixels+y*stride,g_atlas.pixels.data()+y*kAtlasWidth*4,kAtlasWidth*4);
+        if(stride>=kAtlasWidth*4&&stride<=kAtlasWidth*8&&Span(base,pixels,uint64_t(stride)*height)) {
+            for(unsigned y=0;y<height;++y)std::memcpy(base+pixels+y*stride,rgba.data()+y*kAtlasWidth*4,kAtlasWidth*4);
             X86Context scratch=ctx;scratch.esp-=64;
             const uint32_t p=scratch.esp;std::memset(base+p,0,16);
             stage="raster-format";
@@ -433,12 +438,21 @@ bool EnsureAtlas(X86Context& ctx,uint8_t* base) {
     }
     Call(ctx,0x123250,{image});
     if(!texture&&raster)Call(ctx,0x122160,{raster});
-    if(!texture)return failure(stage);
+    if(!texture&&diag::Perf())LOGI("Font atlas failed: stage=%s",stage);
+    return texture;
+}
+bool EnsureAtlas(X86Context& ctx,uint8_t* base) {
+    if(g_texture)return true;
+    if(g_failed)return false;
+    g_failed=true;
+    if(!BuildAtlas(g_atlas))return false;
+    const uint32_t texture=CreateAtlas(ctx,base,g_atlas.height,g_atlas.pixels);
+    if(!texture)return false;
     // One session-owned immutable texture. Fonts only own their original four texture references;
     // appended glyph records borrow this one. Keep it alive through all queued draws until process exit.
     g_texture=texture;
     std::atomic_store_explicit(&g_prompt_hd,g_prepared_hd,std::memory_order_release);
-    g_prompt_revision.store(g_prepared_hd?1:0);
+    if(g_prepared_hd)g_prompt_revision.fetch_add(1);
     LOGI("PC prompt atlas: %ux%u, original Darkwatch lettering",kAtlasWidth,g_atlas.height);
     return true;
 }
@@ -452,6 +466,202 @@ bool TextureName(const uint8_t* base,uint32_t texture) {
         !std::strcmp(name,"small")||!std::strcmp(name,"smallglow")||
         !std::strcmp(name,"xboxstandard")||!std::strcmp(name,"xboxstandardglow")||
         !std::strcmp(name,"xboxsmall")||!std::strcmp(name,"xboxsmallglow");
+}
+// Exact original metadata/texture pairs. Three unused legacy metadata tables
+// have no matching named atlas; they are deliberately not guessed.
+struct AccentSource { uint32_t meta,bytes; uint64_t hash; uint32_t texture,core; const char* name; };
+constexpr AccentSource kAccentSources[]{
+    {93491508,2113,0x54a549c2ef9bc6e0ull,93457588,93457588,"large"},
+    {93626932,2470,0x6708486683e4b689ull,93495348,93495348,"small"},
+    {93629414,2470,0x9d9dc024a583ccf2ull,93594036,93495348,"smallglow"},
+    {93631896,2470,0xb17ffc7a77a8febdull,93528244,93528244,"standard"},
+    {93634378,2470,0x5bdd9ee3bb2bc674ull,93561140,93528244,"standardglow"},
+    {93905460,2806,0xcc2f09d5726d5ea1ull,93638708,93638708,"small"},
+    {93908278,2806,0x0871938787f262caull,93838772,93638708,"smallglow"},
+    {93911096,2806,0xbb182d66af4b2b23ull,93705396,93705396,"standard"},
+    {93913914,2806,0x61fa3fa6ac4def9eull,93772084,93705396,"standardglow"},
+    {94198373,2323,0xb525a23e4e3fe183ull,93986868,93986868,"xboxsmall"},
+    {94200708,2806,0xa04471ff903bead8ull,94020788,94020788,"xboxstandard"},
+    {94203526,2386,0x72e4289df33ceae4ull,94087476,94020788,"xboxstandardglow"},
+};
+struct AccentFont { std::vector<uint8_t> metadata; std::array<Glyph,2> glyphs{}; };
+std::array<AccentFont,std::size(kAccentSources)> g_accent_fonts{};
+const uint8_t* AccentGlyph(std::span<const uint8_t> metadata,unsigned code) {
+    if(metadata.size()<418)return nullptr;
+    const unsigned count=U32(metadata.data()+28);
+    if(U32(metadata.data()+24)!=161||U32(metadata.data()+32)!=63||
+       count>128||metadata.size()!=418+count*21+36||code>=224)return nullptr;
+    const unsigned at=code<128?63+code:code-161;
+    if(code>=128&&code<161)return nullptr;
+    const int index=int16_t(U16(metadata.data()+36+at*2));
+    return index>=0&&unsigned(index)<count?metadata.data()+418+unsigned(index)*21:nullptr;
+}
+bool AccentPixels(uint32_t offset,std::vector<uint8_t>& pixels,const darkwatch::hd::Asset*& asset) {
+    const auto* end=std::end(darkwatch::hd::kAssets);
+    asset=std::find_if(std::begin(darkwatch::hd::kAssets),end,[&](const auto& a){return a.offset==offset;});
+    if(asset==end)return false;
+    std::vector<uint8_t> native(asset->bytes);
+    return Package(offset,native)&&Hash(native)==asset->native_hash&&
+        darkwatch::hd_ui::DecodeNative(asset->width,asset->height,asset->format==11?0:asset->format,
+          {native.data()+92+asset->palette_bytes,asset->payload_bytes},
+          {native.data()+92,asset->palette_bytes},pixels);
+}
+bool BuildAccentAtlas(PromptHd& atlas) {
+    atlas.height=32;atlas.scale=4;atlas.original.assign(kAtlasWidth*atlas.height*4,0);
+    std::vector<darkwatch::hd_ui::FontCell> contour_cells;
+    for(unsigned i=0;i<std::size(kAccentSources);++i) {
+        const auto& source=kAccentSources[i];auto& font=g_accent_fonts[i];
+        font.metadata.resize(source.bytes);
+        if(!Package(source.meta,font.metadata)||Hash(font.metadata)!=source.hash)return false;
+        const auto* n=AccentGlyph(font.metadata,'N');const auto* nt=AccentGlyph(font.metadata,0xD1);
+        if(!n||!nt)return false;
+        const darkwatch::hd::Asset *asset=nullptr,*core_asset=nullptr;
+        std::vector<uint8_t> pixels,core;
+        if(!AccentPixels(source.texture,pixels,asset))return false;
+        if(source.core==source.texture)core=pixels;
+        else if(!AccentPixels(source.core,core,core_asset)||asset->width!=core_asset->width||asset->height!=core_asset->height)return false;
+        auto cell=[&](const uint8_t* g) { return darkwatch::portuguese_font::Cell{
+            Float(g)*asset->width,Float(g+4)*asset->height,Float(g+8)*asset->width,Float(g+12)*asset->height}; };
+        for(unsigned j=0;j<2;++j) {
+            const auto* g=AccentGlyph(font.metadata,j?'O':'A');if(!g)return false;
+            darkwatch::portuguese_font::Image letter;
+            if(!darkwatch::portuguese_font::Compose(asset->width,asset->height,pixels,core,cell(g),cell(n),cell(nt),letter)||
+               letter.width>30||letter.height>30)return false;
+            const unsigned x=(i*2+j)*32+1,y=1;
+            for(unsigned row=0;row<letter.height;++row)
+                std::memcpy(atlas.original.data()+((y+row)*kAtlasWidth+x)*4,
+                            letter.bgra.data()+row*letter.width*4,letter.width*4);
+            const auto r=cell(g);
+            font.glyphs[j]={Float(g+16),0,{(x+r.x0-std::floor(r.x0))/kAtlasWidth,
+                (y+r.y0-std::floor(r.y0))/atlas.height,
+                (x+r.x1-std::floor(r.x0))/kAtlasWidth,
+                (y+r.y1-std::floor(r.y0))/atlas.height},0,0};
+            if(source.core==source.texture)contour_cells.push_back({float(x),float(y),float(x+letter.width),float(y+letter.height)});
+        }
+    }
+    // Independent original-density guest art and four-times host artwork.
+    // Existing glyphs and all foreign-language glyph slots remain untouched.
+    atlas.pixels=darkwatch::hd_ui::Upscale4x(kAtlasWidth,atlas.height,atlas.original);
+    if(atlas.pixels.empty())return false;
+    for(const auto& cell:contour_cells)
+        darkwatch::hd_ui::font_detail::RestoreCell(kAtlasWidth,atlas.original,cell,atlas.pixels);
+    atlas.id=Hash(atlas.pixels);return true;
+}
+bool EnsureAccentAtlas(X86Context& ctx,uint8_t* base) {
+    if(g_accent_texture)return true;
+    if(g_accent_failed)return false;
+    g_accent_failed=true;
+    auto atlas=std::make_shared<PromptHd>();if(!BuildAccentAtlas(*atlas))return false;
+    auto rgba=atlas->original;for(size_t i=0;i<rgba.size();i+=4)std::swap(rgba[i],rgba[i+2]);
+    const auto texture=CreateAtlas(ctx,base,atlas->height,rgba);if(!texture)return false;
+    for(auto& font:g_accent_fonts)for(auto& glyph:font.glyphs)glyph.texture=texture;
+    g_accent_texture=texture;
+    std::atomic_store_explicit(&g_accent_hd,std::shared_ptr<const PromptHd>(atlas),std::memory_order_release);
+    g_prompt_revision.fetch_add(1);return true;
+}
+int MatchingAccentFont(const uint8_t* base,uint32_t data,unsigned count,uint32_t texture) {
+    char name[33]{};if(!Span(base,uint64_t(texture)+16,32))return -1;
+    std::memcpy(name,base+texture+16,32);for(char& c:name)if(c>='A'&&c<='Z')c+=32;
+    for(unsigned i=0;i<g_accent_fonts.size();++i) {
+        const auto& meta=g_accent_fonts[i].metadata;
+        if(meta.empty()||U32(meta.data()+28)!=count||std::strcmp(name,kAccentSources[i].name))continue;
+        bool same=true;
+        for(unsigned j=0;j<count&&same;++j) {
+            const uint8_t* record=base+data+j*32;const uint8_t* original=meta.data()+418+j*21;
+            same=std::memcmp(record+8,original,16)==0&&std::memcmp(record,original+16,4)==0;
+        }
+        if(same)return int(i);
+    }
+    return -1;
+}
+struct TitleLetter { uint8_t code,plain,donor; };
+constexpr TitleLetter kTitleLetters[]{
+    {0xC0,'A',0xC0},{0xC1,'A',0xC1},{0xC2,'A',0xC2},{0xC3,'A',0xD1},{0xC4,'A',0xC4},
+    {0xC7,'C',0xC7},{0xC8,'E',0xC8},{0xC9,'E',0xC9},{0xCA,'E',0xCA},{0xCB,'E',0xCB},
+    {0xCC,'I',0xCC},{0xCD,'I',0xCD},{0xCE,'I',0xCE},{0xCF,'I',0xCF},{0xD1,'N',0xD1},
+    {0xD2,'O',0xD2},{0xD3,'O',0xD3},{0xD4,'O',0xD4},{0xD5,'O',0xD1},{0xD6,'O',0xD6},
+    {0xD9,'U',0xD9},{0xDA,'U',0xDA},{0xDB,'U',0xDB},{0xDC,'U',0xDC}
+};
+std::vector<uint8_t> g_title_metadata;
+std::array<Glyph,std::size(kTitleLetters)> g_title_glyphs{};
+bool TitleTextureName(const uint8_t* base,uint32_t texture) {
+    return Span(base,uint64_t(texture)+16,6)&&
+        (!std::memcmp(base+texture+16,"title",6)||!std::memcmp(base+texture+16,"Title",6));
+}
+bool BuildTitleAtlas(PromptHd& atlas) {
+    g_title_metadata.resize(937);std::vector<uint8_t> donor_meta(2113),pixels,donor;
+    const darkwatch::hd::Asset *asset=nullptr,*donor_asset=nullptr;
+    if(!Package(93493633,g_title_metadata)||Hash(g_title_metadata)!=0x38b7e4e87907f30eull||
+       !Package(93491508,donor_meta)||Hash(donor_meta)!=0x54a549c2ef9bc6e0ull||
+       !AccentPixels(93423668,pixels,asset)||!AccentPixels(93457588,donor,donor_asset))return false;
+    atlas.height=32;atlas.scale=4;atlas.original.assign(kAtlasWidth*atlas.height*4,0);
+    std::vector<darkwatch::hd_ui::FontCell> cells;
+    auto cell=[](const uint8_t* g,const darkwatch::hd::Asset& a) {return darkwatch::portuguese_font::Cell{
+        Float(g)*a.width,Float(g+4)*a.height,Float(g+8)*a.width,Float(g+12)*a.height};};
+    for(unsigned i=0;i<std::size(kTitleLetters);++i) {
+        const auto& letter=kTitleLetters[i];const int index=int16_t(U16(g_title_metadata.data()+36+letter.plain*2));
+        if(index<0||index>=29)return false;
+        const auto* original=g_title_metadata.data()+292+index*21;
+        const auto* plain=AccentGlyph(donor_meta,letter.donor==0xD1?'N':letter.plain);
+        const auto* accented=AccentGlyph(donor_meta,letter.donor);if(!plain||!accented)return false;
+        darkwatch::portuguese_font::Image image;
+        if(!darkwatch::portuguese_font::ComposeHeading(asset->width,asset->height,pixels,cell(original,*asset),
+            donor_asset->width,donor_asset->height,donor,cell(plain,*donor_asset),cell(accented,*donor_asset),
+            letter.code==0xC7,image)||image.width>30||image.height>30)return false;
+        const unsigned x=i*32+1,y=1;
+        for(unsigned row=0;row<image.height;++row)std::memcpy(atlas.original.data()+((y+row)*kAtlasWidth+x)*4,
+            image.bgra.data()+row*image.width*4,image.width*4);
+        const auto r=cell(original,*asset);
+        const darkwatch::hd_ui::FontCell placed{ x+r.x0-std::floor(r.x0),y+r.y0-std::floor(r.y0),
+            x+r.x1-std::floor(r.x0),y+r.y1-std::floor(r.y0)};
+        cells.push_back(placed);
+        g_title_glyphs[i]={Float(original+16),0,{placed.x0/kAtlasWidth,placed.y0/atlas.height,
+            placed.x1/kAtlasWidth,placed.y1/atlas.height},0,0};
+    }
+    atlas.pixels=darkwatch::hd_ui::Upscale4x(kAtlasWidth,atlas.height,atlas.original);
+    if(atlas.pixels.empty())return false;
+    for(const auto& c:cells)darkwatch::hd_ui::font_detail::RestoreCell(kAtlasWidth,atlas.original,c,atlas.pixels);
+    auto heading=*asset;heading.width=kAtlasWidth;heading.height=atlas.height;
+    if(!darkwatch::hd_ui::font_detail::RestoreHeadingRgb(heading,atlas.original,
+        {heading.offset,heading.width,heading.height,cells},atlas.pixels))return false;
+    for(size_t i=0;i<atlas.pixels.size();i+=4)if(!atlas.pixels[i+3])atlas.pixels[i]=atlas.pixels[i+1]=atlas.pixels[i+2]=0;
+    atlas.id=Hash(atlas.pixels);return true;
+}
+bool EnsureTitleAtlas(X86Context& ctx,uint8_t* base) {
+    if(g_title_texture)return true;
+    if(g_title_failed)return false;
+    g_title_failed=true;auto atlas=std::make_shared<PromptHd>();if(!BuildTitleAtlas(*atlas))return false;
+    auto rgba=atlas->original;for(size_t i=0;i<rgba.size();i+=4)std::swap(rgba[i],rgba[i+2]);
+    const auto texture=CreateAtlas(ctx,base,atlas->height,rgba);if(!texture)return false;
+    for(auto& glyph:g_title_glyphs)glyph.texture=texture;
+    g_title_texture=texture;
+    std::atomic_store_explicit(&g_title_hd,std::shared_ptr<const PromptHd>(atlas),std::memory_order_release);
+    g_prompt_revision.fetch_add(1);return true;
+}
+bool ExtendTitleFont(X86Context& ctx,uint8_t* base,uint32_t font,uint32_t list,uint32_t data,Font& added) {
+    if(added.first!=29||U32(base+font+0x124)||U32(base+font+0x128)||U32(base+font+0x12C)||
+       !EnsureTitleAtlas(ctx,base)||std::memcmp(base+font+0x24,g_title_metadata.data()+36,256))return false;
+    for(unsigned i=0;i<29;++i) {
+        const auto* original=g_title_metadata.data()+292+i*21;const auto* record=base+data+i*32;
+        if(std::memcmp(record+8,original,16)||std::memcmp(record,original+16,4))return false;
+    }
+    uint32_t allocate=0,release=0;
+    if(!Read(base,0x4DF2D4,allocate)||allocate!=0x113990||!Read(base,0x4DF2D8,release)||release!=0x24CB7B)return false;
+    // Match native loader127538 and destructor126A68 ownership of the signed16 map.
+    const uint32_t extension=Call(ctx,allocate,{126,0x30190});if(!extension)return false;
+    if(!Span(base,extension,126)){Call(ctx,release,{extension});return false;}
+    const unsigned extra=unsigned(std::size(kTitleLetters));
+    const uint32_t records=Call(ctx,0x138190,{list,extra,0x30190});
+    if(!records||!Span(base,records,extra*32)||records!=uint64_t(U32(base+list))+29*32||U32(base+list+4)!=29+extra) {
+        Call(ctx,release,{extension});return false;
+    }
+    std::memset(base+extension,0xFF,126);
+    for(unsigned i=0;i<extra;++i) {
+        std::memcpy(base+records+i*32,&g_title_glyphs[i],32);
+        const int16_t index=int16_t(29+i);std::memcpy(base+extension+(kTitleLetters[i].code-161)*2,&index,2);
+    }
+    const uint32_t fields[]{161,63,extension,29+extra};std::memcpy(base+font+0x124,fields,sizeof(fields));
+    added.data=U32(base+list);added.extra=extra;added.prompts=false;return true;
 }
 void Refresh(uint8_t* base) {
     const int port=darkwatch::prompt_owner::Port(base);
@@ -499,20 +709,25 @@ bool SetReference(X86Context& ctx,uint8_t* base,uint32_t output,const std::strin
 uint64_t darkwatch::PromptTextureRevision() { return g_prompt_revision.load(); }
 bool darkwatch::ReplacePromptTexture(const gpu::TextureDesc& d,const gpu::FormatInfo& fi,
                                     const uint8_t* source,uint32_t bytes,gpu::TextureReplacement& out) {
-    const auto hd=std::atomic_load_explicit(&g_prompt_hd,std::memory_order_acquire);
-    if(!hd||!source||d.width!=kAtlasWidth||d.height!=hd->height||d.depth!=1||d.levels!=1||d.cube||d.linear||
+    if(!source||d.width!=kAtlasWidth||d.depth!=1||d.levels!=1||d.cube||d.linear||
        fi.depth||fi.compressed||!fi.swizzled||fi.bits!=32||fi.host!=gpu::Host::BGRA8||
-       (d.format!=6&&d.format!=0x3A&&d.format!=0x3B&&d.format!=0x3C)||bytes!=hd->original.size())return false;
+       (d.format!=6&&d.format!=0x3A&&d.format!=0x3B&&d.format!=0x3C))return false;
+    for(const auto& hd:{std::atomic_load_explicit(&g_prompt_hd,std::memory_order_acquire),
+                       std::atomic_load_explicit(&g_accent_hd,std::memory_order_acquire),
+                       std::atomic_load_explicit(&g_title_hd,std::memory_order_acquire)}) {
+    if(!hd||d.height!=hd->height||bytes!=hd->original.size())continue;
     // Invoked by the renderer only on resource/revision changes. Decode with
     // its real format path, then require every original texel, not just a hash.
     std::vector<uint8_t> decoded;uint32_t pitch=0;
     gpu::DecodeLevel(d,0,0,source,nullptr,decoded,pitch);
-    if(pitch!=kAtlasWidth*4||decoded!=hd->original)return false;
-    out.id=hd->id;out.width=kAtlasWidth*2;out.height=hd->height*2;out.bgra=hd->pixels;
+    if(pitch!=kAtlasWidth*4||decoded!=hd->original)continue;
+    out.id=hd->id;out.width=kAtlasWidth*hd->scale;out.height=hd->height*hd->scale;out.bgra=hd->pixels;
 #ifndef XBE_RELEASE
     if(!g_prompt_logged.exchange(true))LOGR("HD UI: selected PC keycaps format=%02X %ux%u -> %ux%u",d.format,d.width,d.height,out.width,out.height);
 #endif
     return true;
+    }
+    return false;
 }
 
 void DarkwatchPromptFont(X86Context& ctx,uint8_t* base) {
@@ -526,27 +741,51 @@ void DarkwatchPromptFont(X86Context& ctx,uint8_t* base) {
        !Read(base,list,data)||!Read(base,uint64_t(list)+4,listcount)||!Read(base,uint64_t(list)+12,itemsize)||itemsize!=32||
        !Read(base,uint64_t(font)+0x130,count)||count!=listcount||count<16||count>512||!Span(base,data,uint64_t(count)*32)||
        !Read(base,uint64_t(font)+0x14,texture)||!texture){TraceFont(base,font,3);return;}
-    if(!TextureName(base,texture)){TraceFont(base,font,4);return;}
+    const bool prompts=TextureName(base,texture),portuguese=darkwatch::language::Portuguese();
+    const bool title=darkwatch::language::Translated()&&TitleTextureName(base,texture);
+    if(!prompts&&!portuguese&&!title){TraceFont(base,font,4);return;}
     TraceFont(base,font,0);
     Refresh(base);
     auto it=std::find_if(g_fonts.begin(),g_fonts.end(),[&](const Font& f){return f.address==font;});
-    if(it!=g_fonts.end()&&(it->list!=list||it->data!=data||it->texture!=texture||it->first+kCodes.size()!=count)) {
+    if(it!=g_fonts.end()&&(it->list!=list||it->data!=data||it->texture!=texture||it->first+it->extra!=count)) {
         *it={};it=g_fonts.end(); // Never restore a backup into a reused or independently changed font.
     }
     if(it==g_fonts.end()) {
         it=std::find_if(g_fonts.begin(),g_fonts.end(),[](const Font& f){return !f.address;});if(it==g_fonts.end())return;
         struct InCall {InCall(){g_in_call=true;}~InCall(){g_in_call=false;}} guard;
-        if(!EnsureAtlas(ctx,base))return;
+        if(title) {
+            Font added;added.address=font;added.list=list;added.first=count;added.texture=texture;
+            if(ExtendTitleFont(ctx,base,font,list,data,added))*it=added;
+            return;
+        }
+        if(prompts&&!EnsureAtlas(ctx,base))return;
+        uint32_t first=0,extended=0,extension=0;int accent=-1;
+        // The existing signed16-bit map already has both Latin1 positions.
+        // Only absent records are supplied; never overwrite another alphabet.
+        if(portuguese&&Read(base,uint64_t(font)+0x124,first)&&first==161&&
+           Read(base,uint64_t(font)+0x128,extended)&&extended==63&&
+           Read(base,uint64_t(font)+0x12C,extension)&&Span(base,extension,126)&&
+           int16_t(U16(base+extension+(0xC3-161)*2))==-1&&
+           int16_t(U16(base+extension+(0xD5-161)*2))==-1&&EnsureAccentAtlas(ctx,base))
+            accent=MatchingAccentFont(base,data,count,texture);
+        const unsigned prompt_count=prompts?unsigned(kCodes.size()):0;
+        const unsigned extra=prompt_count+(accent>=0?2:0);if(!extra)return;
         Font added;added.address=font;added.list=list;added.first=count;added.texture=texture;
-        for(unsigned i=0;i<kCodes.size();++i)std::memcpy(&added.original[i],base+font+0x24+kCodes[i]*2,2);
-        const uint32_t records=Call(ctx,0x138190,{list,uint32_t(kCodes.size()),0x30190});
-        if(!records||!Span(base,records,kCodes.size()*32))return;
+        added.extra=extra;added.prompts=prompts;
+        if(prompts)for(unsigned i=0;i<kCodes.size();++i)std::memcpy(&added.original[i],base+font+0x24+kCodes[i]*2,2);
+        const uint32_t records=Call(ctx,0x138190,{list,extra,0x30190});
+        if(!records||!Span(base,records,uint64_t(extra)*32))return;
         added.data=U32(base+list);
-        if(records!=uint64_t(added.data)+count*32||U32(base+list+4)!=count+kCodes.size())return;
-        std::memset(base+records,0,kCodes.size()*32);
-        count+=uint32_t(kCodes.size());std::memcpy(base+font+0x130,&count,4);*it=added;
+        if(records!=uint64_t(added.data)+count*32||U32(base+list+4)!=count+extra)return;
+        std::memset(base+records,0,extra*32);
+        if(accent>=0)for(unsigned j=0;j<2;++j) {
+            std::memcpy(base+records+(prompt_count+j)*32,&g_accent_fonts[accent].glyphs[j],32);
+            const int16_t index=int16_t(count+prompt_count+j);
+            std::memcpy(base+extension+((j?0xD5:0xC3)-161)*2,&index,2);
+        }
+        count+=extra;std::memcpy(base+font+0x130,&count,4);*it=added;
     }
-    if(it->revision==g_revision)return;
+    if(!it->prompts||it->revision==g_revision)return;
     for(unsigned i=0;i<kCodes.size();++i) {
         int16_t map=g_device.controller?it->original[i]:int16_t(it->first+i);
         unsigned badgeKey=i<kActions.size()?Key(kActions[i]):256;
@@ -607,7 +846,7 @@ void DarkwatchPromptLocalization(X86Context& ctx,uint8_t* base) {
         SetReference(ctx,base,output,darkwatch::language::Guest(identity==start?
             (controller?"Press ^pcStart":"Press any key to start"):
             (controller?"Press ^pcStart to Continue":"Press any key to continue")));
-    } else if(darkwatch::language::Spanish()) {
+    } else if(darkwatch::language::Translated()) {
         std::string original;
         if(!Reference(base,output,original,16385))return;
         auto translated=darkwatch::language::Translate(identity,original);

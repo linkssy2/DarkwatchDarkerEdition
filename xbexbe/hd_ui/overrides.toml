@@ -423,6 +423,13 @@ native_offset = 102889204
 file = "Icon_SoulStealer-restored.png"
 crop = [0, 0, 1254, 1254]
 
+# FullBloodEffect keeps the native atlas framing and animated HUD placement.
+[[texture]]
+name = "ActiveBrand_glow"
+native_offset = 103266612
+file = "ActiveBrand_glow.png"
+crop = [0, 0, 1774, 887]
+
 # The gameplay atlas uses the same eight power emblems. Keep the original
 # cell positions, opacity and gutters; the builder preserves the other cells.
 [[texture]]

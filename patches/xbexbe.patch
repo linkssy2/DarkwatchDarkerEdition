@@ -14,14 +14,14 @@ index a237161..07f2e51 100644
      add_dependencies(${target} recompile_${target})
      target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${XBE_SDK_DIR}/runtime ${GEN})
 diff --git a/runtime/app/app.h b/runtime/app/app.h
-index d3519d5..7c585ae 100644
+index d3519d5..14dea93 100644
 --- a/runtime/app/app.h
 +++ b/runtime/app/app.h
 @@ -14,20 +14,27 @@ struct Pad;
  namespace app {
  
  enum class DisplayMode : uint32_t { Fullscreen, Borderless, Windowed };
-+enum class AspectRatio : uint32_t { Auto, Wide16x9, Standard4x3 };
++enum class AspectRatio : uint32_t { Auto, Wide16x9, Standard4x3, Ultra21x9, Super32x9, Wide16x10 };
  
  struct Settings {
      DisplayMode display_mode = DisplayMode::Borderless;
@@ -48,19 +48,22 @@ index d3519d5..7c585ae 100644
  void LogSettings();  // every setting, as the settings file has them
  void LogSystem();    // the machine and the settings, at a run's start
  void ApplyDisplay();  // any thread
-@@ -36,8 +43,10 @@ struct Mode {
+@@ -36,8 +43,13 @@ struct Mode {
  };
  Mode Desktop();
  Mode Output();
++void InvalidateOutput();  // window/display changes invalidate the cached desktop mode
++float RenderAspect(const Settings& settings);
++float RenderAspect();  // effective full-frame ratio, independent of render percentage
 +Mode RenderSize(const Settings& settings);  // normalized draft or current settings; aspect fit, then render percent
 +Mode RenderSize();
  float RenderScale(uint32_t guest_height);
 -// the output is 3:2 or wider: the console reports a widescreen TV and the frame is shown 16:9, else 4:3 as on a 4:3 TV
-+// explicit aspect, or Auto: output 3:2 or wider reports widescreen, otherwise 4:3
++// The Xbox flag remains binary; projection and presentation use RenderAspect.
  bool Widescreen();
  
  std::filesystem::path ExeDir();
-@@ -50,6 +59,9 @@ struct GameFiles {
+@@ -50,6 +62,9 @@ struct GameFiles {
  bool FindGame(GameFiles& game);
  int Instance();  // --instance N on the command line, 0 without: a second copy on this PC for system link tests
  void* Window();  // HWND
@@ -70,7 +73,7 @@ index d3519d5..7c585ae 100644
  // boot splash: GameInfo::splash .bmp or .png beside the exe, up before the game window
  bool OpenSplash();        // window thread, at launch; false without one, and the game window opens at once
  void SplashFirstFrame();  // the game's first Swap: waits out the splash's minimum, then opens the game window
-@@ -90,6 +102,8 @@ struct GameInfo {
+@@ -90,6 +105,8 @@ struct GameInfo {
      void (*ui)(double fps);        // each frame inside the ImGui frame, UiLock held
      void (*pad)(int port, input::Pad& pad);  // a polled pad before the game gets it
      void (*rumble)(int port, uint16_t& left, uint16_t& right);
@@ -227,7 +230,7 @@ index 25774ca..fe56979 100644
  
  }  // namespace app
 diff --git a/runtime/app/main.cpp b/runtime/app/main.cpp
-index 201bcaa..556e1fe 100644
+index 201bcaa..fe33072 100644
 --- a/runtime/app/main.cpp
 +++ b/runtime/app/main.cpp
 @@ -10,8 +10,10 @@
@@ -352,7 +355,7 @@ index 201bcaa..556e1fe 100644
  void DumpThreads() {
      gpu::g_capture = true;
      for (auto& t : kernel::Threads())
-@@ -76,10 +166,12 @@ void DumpThreads() {
+@@ -76,10 +166,13 @@ void DumpThreads() {
              kernel::LogGuestStack(*t->ctx, 32);
          }
  }
@@ -361,12 +364,13 @@ index 201bcaa..556e1fe 100644
  // window thread only
  void ApplyNow() {
 -    const Settings& s = Get();
++    InvalidateOutput();
 +    if (PreparingShaders()) return;
 +    const Settings s = Snapshot();
      HMONITOR mon = MonitorFromWindow(g_hwnd, MONITOR_DEFAULTTOPRIMARY);
      MONITORINFOEXW mi{};
      mi.cbSize = sizeof(mi);
-@@ -120,14 +212,80 @@ void ApplyNow() {
+@@ -120,14 +213,81 @@ void ApplyNow() {
  }
  
  LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -375,6 +379,7 @@ index 201bcaa..556e1fe 100644
 +        if (msg == kOpenWindow || msg == kApplyDisplay || msg == kSyncInput) return 0;
 +        return DefWindowProcW(hwnd, msg, wp, lp);
 +    }
++    if (msg == WM_SIZE || msg == WM_MOVE || msg == WM_DISPLAYCHANGE) InvalidateOutput();
 +    bool handled_ui = false;
      {
          std::lock_guard lock(UiLock());
@@ -448,7 +453,7 @@ index 201bcaa..556e1fe 100644
              return 0;
          case WM_ACTIVATE:
              if (LOWORD(wp) == WA_INACTIVE) {
-@@ -141,7 +299,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+@@ -141,7 +301,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                      g_mode_changed = false;
                      ShowWindow(hwnd, SW_MINIMIZE);
                  }
@@ -457,7 +462,7 @@ index 201bcaa..556e1fe 100644
                         IsWindowVisible(hwnd) && !g_apply_posted) {
                  // once: restoring the window activates it again from inside the apply, and a second apply switched
                  // the mode back and forth, after which presents were not taken for a while (the game stood still
-@@ -188,36 +346,60 @@ int Instance() {
+@@ -188,36 +348,60 @@ int Instance() {
  }
  
  void* Window() { return g_hwnd; }
@@ -528,7 +533,7 @@ index 201bcaa..556e1fe 100644
      timeBeginPeriod(1);
      SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
      // one log a session: a relaunch into another image carries on its predecessor's
-@@ -225,15 +407,20 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
+@@ -225,15 +409,22 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
      std::string log = app::kGame.log;
      if (app::Instance() > 1) log += "-" + std::to_string(app::Instance());
      logx::Init((app::ExeDir() / "logs").string(), log, relaunched);
@@ -541,6 +546,8 @@ index 201bcaa..556e1fe 100644
 +#ifndef XBE_RELEASE
      if (relaunched && !logx::kVerbose) LOGR("Relaunched: %s", IMAGE_XBE);
      else app::LogSystem();
++#else
++    if (logx::SessionEnabled()) app::LogSystem();
 +#endif
  
      app::GameFiles game;
@@ -552,7 +559,7 @@ index 201bcaa..556e1fe 100644
  
      WNDCLASSEXW wc{sizeof(wc)};
      wc.style = CS_HREDRAW | CS_VREDRAW;
-@@ -245,10 +432,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
+@@ -245,10 +436,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
      RegisterClassExW(&wc);
      app::g_hwnd = CreateWindowExW(0, wc.lpszClassName, app::kGame.title, WS_POPUP, 0, 0, 1280, 720,
                                    nullptr, nullptr, inst, nullptr);
@@ -565,7 +572,7 @@ index 201bcaa..556e1fe 100644
          app::ApplyNow();
          ShowWindow(app::g_hwnd, SW_SHOW);
      }
-@@ -257,25 +445,41 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
+@@ -257,25 +449,41 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
      ImGui::CreateContext();
      ImGuiIO& io = ImGui::GetIO();
      io.IniFilename = nullptr;
@@ -613,7 +620,7 @@ index 201bcaa..556e1fe 100644
      logx::Flush();
      kernel::Shutdown(0);
 diff --git a/runtime/app/settings.cpp b/runtime/app/settings.cpp
-index 4b494d0..f28b004 100644
+index 4b494d0..0c3841c 100644
 --- a/runtime/app/settings.cpp
 +++ b/runtime/app/settings.cpp
 @@ -8,7 +8,6 @@
@@ -624,22 +631,24 @@ index 4b494d0..f28b004 100644
  #include <fstream>
  #include <sstream>
  
-@@ -22,6 +21,8 @@ namespace app {
+@@ -22,6 +21,10 @@ namespace app {
  namespace {
  
  const char* kModes[] = {"fullscreen", "borderless", "windowed"};
-+const char* kAspects[] = {"auto", "16:9", "4:3"};
++const char* kAspects[] = {"auto", "16:9", "4:3", "21:9", "32:9", "16:10"};
 +std::mutex g_settings_lock, g_save_lock;
++std::mutex g_output_lock;
++Mode g_desktop{};
  
  std::filesystem::path File() { return ExeDir() / kGame.settings; }
  
-@@ -32,42 +33,77 @@ Settings& Get() {
+@@ -32,42 +35,77 @@ Settings& Get() {
      return s;
  }
  
 +Settings Normalize(Settings s) {
 +    if (uint32_t(s.display_mode) >= 3) s.display_mode = DisplayMode::Borderless;
-+    if (uint32_t(s.aspect_ratio) >= 3) s.aspect_ratio = AspectRatio::Auto;
++    if (uint32_t(s.aspect_ratio) >= 6) s.aspect_ratio = AspectRatio::Auto;
 +    // Keep a valid pair, or use the desktop; at 200% these explicit sizes fit the GPU's 16384 limit.
 +    if (s.width < 320 || s.height < 240 || s.width > 8192 || s.height > 8192) s.width = s.height = 0;
 +    s.render_percent = std::clamp(s.render_percent, 25u, 200u);
@@ -675,7 +684,7 @@ index 4b494d0..f28b004 100644
      for (uint32_t i = 0; i < 3; i++)
          if (mode == kModes[i]) s.display_mode = DisplayMode(i);
 +    std::string aspect = t["aspect_ratio"].value_or(std::string(kAspects[uint32_t(s.aspect_ratio)]));
-+    for (uint32_t i = 0; i < 3; i++)
++    for (uint32_t i = 0; i < 6; i++)
 +        if (aspect == kAspects[i]) s.aspect_ratio = AspectRatio(i);
      s.width = t["width"].value_or(s.width);
      s.height = t["height"].value_or(s.height);
@@ -714,7 +723,7 @@ index 4b494d0..f28b004 100644
                    {"join_ip", s.join_ip}};
      for (const Option& o : kGame.options) {
          if (o.flag) t.insert(o.key, *o.flag);
-@@ -79,18 +115,36 @@ toml::table Table() {
+@@ -79,12 +117,29 @@ toml::table Table() {
  
  }  // namespace
  
@@ -743,19 +752,31 @@ index 4b494d0..f28b004 100644
  }
  
  void LogSettings() {
-+#ifndef XBE_RELEASE
++    if (!logx::kVerbose && !logx::SessionEnabled()) return;
      std::ostringstream text;
      text << Table();
      std::istringstream lines(text.str());
-     LOGR("Settings:");
-     for (std::string line; std::getline(lines, line);)
-         if (!line.empty()) LOGR("  %s", line.c_str());
-+#endif
+@@ -94,38 +149,85 @@ void LogSettings() {
  }
  
  Mode Desktop() {
-@@ -104,28 +158,61 @@ Mode Desktop() {
-     return {uint32_t(GetSystemMetrics(SM_CXSCREEN)), uint32_t(GetSystemMetrics(SM_CYSCREEN))};
++    std::lock_guard guard(g_output_lock);
++    if (g_desktop.width && g_desktop.height) return g_desktop;
+     HMONITOR mon = MonitorFromWindow(static_cast<HWND>(Window()), MONITOR_DEFAULTTOPRIMARY);
+     MONITORINFOEXW mi{};
+     mi.cbSize = sizeof(mi);
+     DEVMODEW dm{};
+     dm.dmSize = sizeof(dm);
+     if (GetMonitorInfoW(mon, &mi) && EnumDisplaySettingsW(mi.szDevice, ENUM_REGISTRY_SETTINGS, &dm))
+-        return {dm.dmPelsWidth, dm.dmPelsHeight};
+-    return {uint32_t(GetSystemMetrics(SM_CXSCREEN)), uint32_t(GetSystemMetrics(SM_CYSCREEN))};
++        return g_desktop = {dm.dmPelsWidth, dm.dmPelsHeight};
++    return g_desktop = {uint32_t(GetSystemMetrics(SM_CXSCREEN)), uint32_t(GetSystemMetrics(SM_CYSCREEN))};
++}
++
++void InvalidateOutput() {
++    std::lock_guard guard(g_output_lock);
++    g_desktop = {};
  }
  
 -Mode Output() {
@@ -768,16 +789,7 @@ index 4b494d0..f28b004 100644
      return Desktop();
  }
  
-+bool Wide(const Settings& s, Mode output) {
-+    if (s.aspect_ratio != AspectRatio::Auto) return s.aspect_ratio == AspectRatio::Wide16x9;
-+    return uint64_t(output.width) * 2 >= uint64_t(output.height) * 3;
-+}
-+
-+}  // namespace
-+
-+Mode Output() { return OutputOf(Snapshot()); }
-+
- bool Widescreen() {
+-bool Widescreen() {
 -    // asked per frame and per HUD quad: the desktop mode lookup only runs when the resolution setting changes
 -    static std::atomic<uint64_t> key{~0ull};
 -    static std::atomic<bool> wide{true};
@@ -786,25 +798,43 @@ index 4b494d0..f28b004 100644
 -    if (key.exchange(k) != k) {
 -        Mode m = Output();
 -        wide = m.width * 2 >= m.height * 3;  // 3:2 or wider
-+    Settings s = Snapshot();
-+    if (s.aspect_ratio != AspectRatio::Auto) return s.aspect_ratio == AspectRatio::Wide16x9;
-+    // Auto is asked per HUD quad; avoid repeated desktop display queries.
-+    static std::mutex lock;
-+    static uint64_t key = ~0ull;
-+    static bool wide = true;
-+    std::lock_guard guard(lock);
-+    uint64_t next = s.display_mode == DisplayMode::Borderless ? 0 : uint64_t(s.width) << 32 | s.height;
-+    if (next != key) {
-+        wide = Wide(s, OutputOf(s));
-+        key = next;
++Mode AspectOf(const Settings& s, Mode output) {
++    switch (s.aspect_ratio) {
++    case AspectRatio::Standard4x3: return {4, 3};
++    case AspectRatio::Wide16x9: return {16, 9};
++    case AspectRatio::Ultra21x9: return {21, 9};
++    case AspectRatio::Super32x9: return {32, 9};
++    case AspectRatio::Wide16x10: return {16, 10};
++    default:
++        // Use the display's native shape, including 16:10. Narrow displays keep
++        // the original 4:3 fallback; explicitly selected ratios remain fixed.
++        if (output.height && uint64_t(output.width) * 3 >= uint64_t(output.height) * 4) return output;
++        return {4, 3};
      }
-     return wide;
+-    return wide;
  }
  
++}  // namespace
++
++Mode Output() { return OutputOf(Snapshot()); }
++
++float RenderAspect(const Settings& settings) {
++    const Settings s = Normalize(settings);
++    // Fixed ratios do not depend on the monitor, even in borderless mode.
++    const Mode output = s.aspect_ratio == AspectRatio::Auto ? OutputOf(s) : Mode{};
++    const Mode aspect = AspectOf(s, output);
++    return float(aspect.width) / float(aspect.height);
++}
++
++float RenderAspect() { return RenderAspect(Snapshot()); }
++
++bool Widescreen() { return RenderAspect() > 4.0f / 3.0f; }
++
 +Mode RenderSize(const Settings& settings) {
 +    Settings s = Normalize(settings);
 +    Mode size = OutputOf(s);
-+    uint32_t numerator = Wide(s, size) ? 16 : 4, denominator = numerator == 16 ? 9 : 3;
++    const Mode aspect = AspectOf(s, size);
++    const uint32_t numerator = aspect.width, denominator = aspect.height;
 +    if (uint64_t(size.width) * denominator > uint64_t(size.height) * numerator)
 +        size.width = uint32_t(uint64_t(size.height) * numerator / denominator);
 +    else
@@ -830,30 +860,27 @@ index 4b494d0..f28b004 100644
  
  }  // namespace app
 diff --git a/runtime/app/system_info.cpp b/runtime/app/system_info.cpp
-index a739de7..e55c4e7 100644
+index a739de7..463e858 100644
 --- a/runtime/app/system_info.cpp
 +++ b/runtime/app/system_info.cpp
-@@ -71,6 +71,7 @@ std::string CpuName() {
+@@ -71,10 +71,12 @@ std::string CpuName() {
  }  // namespace
  
  void LogSystem() {
-+#ifndef XBE_RELEASE
++    if (!logx::kVerbose && !logx::SessionEnabled()) return;
      std::time_t now = std::time(nullptr);
      char date[32] = {};
      std::strftime(date, sizeof(date), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
-@@ -95,6 +96,7 @@ void LogSystem() {
-     Mode desk = Desktop();
-     LOGR("Desktop: %ux%u", desk.width, desk.height);
-     LogSettings();
-+#endif
- }
- 
- }  // namespace app
+     LOGR("%ls (%s), %s", kGame.title, IMAGE_XBE, date);
++    LOGR("Runtime compiled: %s %s; diagnostic logs are local only", __DATE__, __TIME__);
+     LOGR("Path: %ls", ExeDir().c_str());
+     LOGR("OS: %s", OsVersion().c_str());
+     SYSTEM_INFO si{};
 diff --git a/runtime/audio/audio.h b/runtime/audio/audio.h
-index 6daa1dd..9a0fdf7 100644
+index 6daa1dd..99d5ec5 100644
 --- a/runtime/audio/audio.h
 +++ b/runtime/audio/audio.h
-@@ -6,7 +6,22 @@ namespace audio {
+@@ -6,7 +6,27 @@ namespace audio {
  
  constexpr uint32_t kRate = 48000;
  
@@ -864,7 +891,12 @@ index 6daa1dd..9a0fdf7 100644
 +// Read-only, bounded diagnostics for a caller-confirmed voice. At most two watches per process.
 +void TraceVoice(uint32_t object, uint64_t observation, const char* phase = "post-start");
 +
-+// Stereo is the default. Surround preserves the original game's 5.1 speaker bins.
++// Stereo is the default. Surround preserves authored 5.1 bins; 7.1 additionally
++// distributes spatial rear sends between side/back speakers using native direction.
++enum class SoundOutput { Stereo, Surround51, Surround71 };
++void SetSoundOutput(SoundOutput mode);
++SoundOutput GetSoundOutput();
++SoundOutput ActiveSoundOutput();
 +void SetSurroundEnabled(bool enabled);
 +bool SurroundEnabled();
 +bool SurroundAvailable();
@@ -878,19 +910,49 @@ index 6daa1dd..9a0fdf7 100644
  
  }  // namespace audio
 diff --git a/runtime/audio/xaudio2.cpp b/runtime/audio/xaudio2.cpp
-index bc0df7b..ce1fd5f 100644
+index bc0df7b..7672154 100644
 --- a/runtime/audio/xaudio2.cpp
 +++ b/runtime/audio/xaudio2.cpp
-@@ -6,6 +6,7 @@
+@@ -6,8 +6,14 @@
  #define NOMINMAX
  #endif
  #include <windows.h>
 +#include <mmreg.h>
  #include <xaudio2.h>
++#include <mmdeviceapi.h>
++#include <functiondiscoverykeys_devpkey.h>
  
++#include <algorithm>
++#include <chrono>
++#include <cmath>
  #include <thread>
-@@ -18,38 +19,88 @@ namespace audio {
+ #include <vector>
  
+@@ -16,40 +22,150 @@
+ 
+ namespace audio {
+ 
++static void LogOutputDevice(IXAudio2MasteringVoice* master) {
++    XAUDIO2_VOICE_DETAILS details{};
++    master->GetVoiceDetails(&details);
++    LOGI("audio: mastering channels=%u rate=%u mixer_rate=%u", details.InputChannels, details.InputSampleRate, kRate);
++    IMMDeviceEnumerator* enumerator = nullptr;
++    IMMDevice* device = nullptr;
++    IPropertyStore* properties = nullptr;
++    if (SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
++                                  __uuidof(IMMDeviceEnumerator), reinterpret_cast<void**>(&enumerator))) &&
++        SUCCEEDED(enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device)) &&
++        SUCCEEDED(device->OpenPropertyStore(STGM_READ, &properties))) {
++        PROPVARIANT name{};
++        if (SUCCEEDED(properties->GetValue(PKEY_Device_FriendlyName, &name)) && name.vt == VT_LPWSTR)
++            LOGI("audio: default output device=%ls", name.pwszVal);
++        PropVariantClear(&name);
++    }
++    if (properties) properties->Release();
++    if (device) device->Release();
++    if (enumerator) enumerator->Release();
++}
++
  void StartOutput(std::function<void(float*, uint32_t)> render) {
      std::thread([render] {
 -        CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -923,31 +985,39 @@ index bc0df7b..ce1fd5f 100644
 +        DWORD mask = 0;
 +        const bool surround = SUCCEEDED(master->GetChannelMask(&mask)) && (mask & 0xF) == 0xF &&
 +                              ((mask & 0x30) == 0x30 || (mask & 0x600) == 0x600);
-+        uint32_t channels = surround ? 6 : 2;
++        // Keep side and back speakers distinct on a full 7.1 surround layout.
++        // Legacy 7.1 wide (0xFF) has extra front speakers instead and stays 5.1.
++        uint32_t channels = surround ? ((mask & 0x63F) == 0x63F ? 8 : 6) : 2;
++        const bool diagnostics = logx::SessionEnabled();
++        if (diagnostics) LogOutputDevice(master);
 +        auto create = [&] {
 +            WAVEFORMATEXTENSIBLE wf{};
-+            wf.Format.wFormatTag = channels == 6 ? WAVE_FORMAT_EXTENSIBLE : WAVE_FORMAT_IEEE_FLOAT;
++            wf.Format.wFormatTag = channels > 2 ? WAVE_FORMAT_EXTENSIBLE : WAVE_FORMAT_IEEE_FLOAT;
 +            wf.Format.nChannels = WORD(channels);
 +            wf.Format.nSamplesPerSec = kRate;
 +            wf.Format.wBitsPerSample = 32;
 +            wf.Format.nBlockAlign = WORD(channels * sizeof(float));
 +            wf.Format.nAvgBytesPerSec = kRate * wf.Format.nBlockAlign;
-+            if (channels == 6) {
++            if (channels > 2) {
 +                wf.Format.cbSize = 22;
 +                wf.Samples.wValidBitsPerSample = 32;
-+                wf.dwChannelMask = 0x3F;  // Xbox 5.1: FL, FR, centre, LFE, rear left/right.
++                // FL, FR, centre, LFE, back left/right, then (7.1) side left/right.
++                wf.dwChannelMask = channels == 8 ? 0x63F : 0x3F;
 +                wf.SubFormat = {WAVE_FORMAT_IEEE_FLOAT, 0, 0x0010, {0x80, 0, 0, 0xAA, 0, 0x38, 0x9B, 0x71}};
 +            }
 +            return xa->CreateSourceVoice(&voice, &wf.Format);
 +        };
 +        HRESULT hr = create();
-+        if (FAILED(hr) && channels == 6) { channels = 2; hr = create(); }
++        while (FAILED(hr) && channels > 2) {
++            channels = channels == 8 ? 6 : 2;
++            hr = create();
++        }
 +        if (FAILED(hr)) {
 +            LOGE("audio: Source voice unavailable; processed=%u submitted=0 played=0, clock stopped", SampleCounter());
 +            stop();
 +            return;
 +        }
-+        // Keep the stream format fixed while Stereo/Surround changes the mixer routing live.
++        // Keep the frame width fixed while Stereo/5.1/7.1 changes the mixer routing live.
 +        SetOutputChannels(channels);
 +        hr = voice->Start();
 +        if (FAILED(hr)) {
@@ -960,6 +1030,12 @@ index bc0df7b..ce1fd5f 100644
 -        std::vector<float> bufs(kSlots * kFrames * 2);
 +        std::vector<float> bufs(kSlots * kFrames * channels);
 +        uint64_t submitted = 0;
++        using Clock = std::chrono::steady_clock;
++        auto last_render = Clock::time_point{}, report_at = Clock::now();
++        double max_gap_ms = 0, max_render_ms = 0;
++        float peak = 0;
++        uint64_t clipped = 0, empty_queues = 0;
++        uint32_t min_queue = kSlots;
          for (uint32_t n = 0;;) {
 -            XAUDIO2_VOICE_STATE st;
 +            XAUDIO2_VOICE_STATE st{};
@@ -970,7 +1046,21 @@ index bc0df7b..ce1fd5f 100644
              }
 -            float* b = &bufs[(n % kSlots) * kFrames * 2];
 +            float* b = &bufs[(n % kSlots) * kFrames * channels];
++            auto begin = diagnostics ? Clock::now() : Clock::time_point{};
++            if (diagnostics) {
++                if (last_render != Clock::time_point{}) max_gap_ms = std::max(max_gap_ms, std::chrono::duration<double, std::milli>(begin - last_render).count());
++                last_render = begin;
++                min_queue = std::min(min_queue, st.BuffersQueued);
++                if (n > 3 && !st.BuffersQueued) ++empty_queues;
++            }
              render(b, kFrames);
++            if (diagnostics) {
++                max_render_ms = std::max(max_render_ms, std::chrono::duration<double, std::milli>(Clock::now() - begin).count());
++                for (uint32_t i = 0; i < kFrames * channels; ++i) {
++                    peak = std::max(peak, std::abs(b[i]));
++                    if (std::abs(b[i]) >= 1.f) ++clipped;
++                }
++            }
              XAUDIO2_BUFFER xb{};
 -            xb.AudioBytes = kFrames * 8;
 +            xb.AudioBytes = kFrames * channels * sizeof(float);
@@ -985,11 +1075,22 @@ index bc0df7b..ce1fd5f 100644
 +                return;
 +            }
 +            submitted += kFrames;
++            if (diagnostics && Clock::now() - report_at >= std::chrono::seconds(1)) {
++                XAUDIO2_PERFORMANCE_DATA perf{};
++                xa->GetPerformanceData(&perf);
++                voice->GetState(&st, 0);
++                LOGI("audio session: processed=%u submitted=%llu played=%llu queued=%u min_queue=%u empty_queues=%llu glitches=%u max_gap_ms=%.3f max_render_ms=%.3f peak=%.6f samples_at_limit=%llu channels=%u mask=%08X requested=%u active=%u",
++                     SampleCounter(), (unsigned long long)submitted, (unsigned long long)st.SamplesPlayed, st.BuffersQueued, min_queue,
++                     (unsigned long long)empty_queues, perf.GlitchesSinceEngineStarted, max_gap_ms, max_render_ms, peak,
++                     (unsigned long long)clipped, channels, unsigned(mask), unsigned(GetSoundOutput()), unsigned(ActiveSoundOutput()));
++                report_at = Clock::now();max_gap_ms = max_render_ms = 0;peak = 0;clipped = 0;min_queue = kSlots;
++            }
 +#ifndef XBE_RELEASE
 +            if (n < 3) {
 +                voice->GetState(&st, 0);
-+                LOGI("audio: processed=%u submitted=%llu played=%llu queued=%u (processed counter wraps at 32 bits)",
-+                     SampleCounter(), (unsigned long long)submitted, (unsigned long long)st.SamplesPlayed, st.BuffersQueued);
++                LOGI("audio: processed=%u submitted=%llu played=%llu queued=%u channels=%u master_mask=%08X (processed counter wraps at 32 bits)",
++                     SampleCounter(), (unsigned long long)submitted, (unsigned long long)st.SamplesPlayed, st.BuffersQueued,
++                     channels, unsigned(mask));
 +            }
 +#endif
              n++;  // only a submitted buffer takes a slot, XAudio2 still reads the queued ones
@@ -1024,7 +1125,7 @@ index 200d6b4..99143e0 100644
  
  }  // namespace diag
 diff --git a/runtime/core/input.cpp b/runtime/core/input.cpp
-index 8a0f1d0..b71b525 100644
+index 8a0f1d0..76da09d 100644
 --- a/runtime/core/input.cpp
 +++ b/runtime/core/input.cpp
 @@ -2,6 +2,8 @@
@@ -1036,7 +1137,7 @@ index 8a0f1d0..b71b525 100644
  #include <iterator>
  #include <mutex>
  
-@@ -14,10 +16,216 @@ namespace input {
+@@ -14,10 +16,217 @@ namespace input {
  
  namespace {
  
@@ -1077,7 +1178,7 @@ index 8a0f1d0..b71b525 100644
 +    {{0x26, 0}}, {{0x28, 0}}, {{0x25, 0}}, {{0x27, 0}}, {{0x0D, 0}}, {{0x09, 0}}, {{'C', 0}}, {{'F', 0}},
 +    {{0x20, 'E'}}, {{0x1B, 0}}, {{'R', 0}}, {{'Q', 0}}, {{'G', 0}}, {{0x10, 0}}, {{0x02, 0}}, {{0x01, 0}},
 +    {{'W', 0}}, {{'S', 0}}, {{'A', 0}}, {{'D', 0}},
-+    {{0xDD, 0}}, {{0xDB, 0}},
++    {{0xDD, 0}}, {{0xDB, 0}}, {{0x14, 0}}, {{'V', 0}},
 +}};
 +PcBindings g_pc_bindings = kDefaultBindings;
 +constexpr PadBindings kDefaultPadBindings{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
@@ -1095,6 +1196,7 @@ index 8a0f1d0..b71b525 100644
 +
 +void Device(bool controller, ControllerFamily family = ControllerFamily::Xbox, int port = -1) {
 +    if (g_device.controller != controller || g_device.family != family || g_device_port != port) {
++        LOGI("input: active device=%s family=%u physical_port=%d", controller ? "controller" : "keyboard/mouse", unsigned(family), port);
 +        g_device.controller = controller; g_device.family = family; g_device_port = port;
 +        ++g_device.revision;
 +    }
@@ -1253,7 +1355,7 @@ index 8a0f1d0..b71b525 100644
  
  void AddPad(SDL_JoystickID id) {
      for (SDL_Gamepad* pad : g_pads)
-@@ -25,6 +233,8 @@ void AddPad(SDL_JoystickID id) {
+@@ -25,6 +234,8 @@ void AddPad(SDL_JoystickID id) {
      SDL_Gamepad** slot = std::find(std::begin(g_pads), std::end(g_pads), nullptr);
      if (slot == std::end(g_pads)) return;
      *slot = SDL_OpenGamepad(id);
@@ -1262,7 +1364,7 @@ index 8a0f1d0..b71b525 100644
      const char* name = *slot ? SDL_GetGamepadName(*slot) : SDL_GetError();
      LOGI("input: controller %d %s: %s", int(slot - g_pads) + 1, *slot ? "plugged in" : "failed to open", name ? name : "");
  }
-@@ -34,6 +244,10 @@ void RemovePad(SDL_JoystickID id) {
+@@ -34,6 +245,10 @@ void RemovePad(SDL_JoystickID id) {
          if (!g_pads[i] || SDL_GetGamepadID(g_pads[i]) != id) continue;
          SDL_CloseGamepad(g_pads[i]);
          g_pads[i] = nullptr;
@@ -1273,7 +1375,7 @@ index 8a0f1d0..b71b525 100644
          LOGI("input: controller %d unplugged", i + 1);
      }
  }
-@@ -54,7 +268,309 @@ void UpdatePads() {
+@@ -54,7 +269,309 @@ void UpdatePads() {
  
  }  // namespace
  
@@ -1583,7 +1685,7 @@ index 8a0f1d0..b71b525 100644
      // WGI reads the triggers apart and HIDAPI takes PlayStation and Switch pads. Reads come from the guest's threads,
      // so SDL's own thread takes the device notices.
      SDL_SetHint(SDL_HINT_JOYSTICK_THREAD, "1");
-@@ -78,36 +594,18 @@ void Init() {
+@@ -78,36 +595,26 @@ void Init() {
      }
  }
  
@@ -1615,9 +1717,16 @@ index 8a0f1d0..b71b525 100644
 -            p.ly = int16_t(-1 - axis(SDL_GAMEPAD_AXIS_LEFTY));
 -            p.rx = int16_t(axis(SDL_GAMEPAD_AXIS_RIGHTX));
 -            p.ry = int16_t(-1 - axis(SDL_GAMEPAD_AXIS_RIGHTY));
--        }
 +        const int physical = PhysicalPort(port);
 +        p = ReadPhysical(physical);
++        if (logx::SessionEnabled() && port >= 0 && port < 4) {
++            static uint32_t previous[4]{~0u, ~0u, ~0u, ~0u};
++            const uint32_t state = ButtonMask(p) | (uint32_t(p.connected) << 16);
++            if (state != previous[port]) {
++                LOGI("input: guest_port=%d physical_port=%d connected=%u buttons=%04X menu=%u pc_active=%u capture_port=%d", port, physical, unsigned(p.connected), ButtonMask(p), unsigned(g_menu_mode), unsigned(g_pc_active), g_pad_capture_port);
++                previous[port] = state;
++            }
+         }
 +        if (physical >= 0) PhysicalActivity(p, physical);
 +        if (CapturePad(port, p)) { const bool connected = p.connected; p = {}; p.connected = connected; }
 +        else { FilterPad(port, physical, p); if (port == 0) MergePc(p); }
@@ -1627,7 +1736,7 @@ index 8a0f1d0..b71b525 100644
      return p;
  }
  
-@@ -115,7 +613,9 @@ Pad Poll(int port) {
+@@ -115,7 +622,9 @@ Pad Poll(int port) {
  void Rumble(int port, uint16_t left, uint16_t right) {
      if (app::kGame.rumble) app::kGame.rumble(port, left, right);
      std::lock_guard lock(g_lock);
@@ -1639,7 +1748,7 @@ index 8a0f1d0..b71b525 100644
  
  }  // namespace input
 diff --git a/runtime/core/input.h b/runtime/core/input.h
-index 21f9051..17fe744 100644
+index 21f9051..d8efde7 100644
 --- a/runtime/core/input.h
 +++ b/runtime/core/input.h
 @@ -1,4 +1,5 @@
@@ -1659,7 +1768,7 @@ index 21f9051..17fe744 100644
 +enum class PcAction : uint8_t {
 +    DpadUp, DpadDown, DpadLeft, DpadRight, Start, Back, LeftThumb, RightThumb,
 +    A, B, X, Y, Black, White, LeftTrigger, RightTrigger,
-+    MoveForward, MoveBackward, MoveLeft, MoveRight, NextWeapon, PreviousWeapon, Count
++    MoveForward, MoveBackward, MoveLeft, MoveRight, NextWeapon, PreviousWeapon, Walk, SwapShoulder, Count
 +};
 +constexpr uint32_t kMouseWheel = 0x100;  // Legacy binding: either vertical wheel direction.
 +constexpr uint32_t kMouseWheelUp = 0x101, kMouseWheelDown = 0x102;
@@ -1757,114 +1866,167 @@ index 21f9051..17fe744 100644
  
  }  // namespace input
 diff --git a/runtime/core/log.cpp b/runtime/core/log.cpp
-index 7e6507d..289ca98 100644
+index 7e6507d..b597b0b 100644
 --- a/runtime/core/log.cpp
 +++ b/runtime/core/log.cpp
-@@ -17,6 +17,10 @@ namespace logx {
- static std::mutex g_mutex;
+@@ -18,6 +18,10 @@ static std::mutex g_mutex;
  static FILE* g_file = nullptr;
  static std::string g_path;
+ static auto g_start = std::chrono::steady_clock::now();
 +#ifdef XBE_RELEASE
 +static size_t g_error_bytes = 0;
 +constexpr size_t kErrorLimit = 64 * 1024;
-+#else
- static auto g_start = std::chrono::steady_clock::now();
++#endif
  
  constexpr int kKeep = 30;
-@@ -28,9 +32,17 @@ static int RunNumber(const fs::path& file, const std::string& prefix) {
-         return 0;
-     return std::atoi(name.c_str() + prefix.size() + 1);
- }
-+#endif
+ 
+@@ -31,28 +35,62 @@ static int RunNumber(const fs::path& file, const std::string& prefix) {
  
  void Init(const std::string& dir, const std::string& prefix, bool append) {
      std::lock_guard<std::mutex> lock(g_mutex);
++    const char* override_dir = SessionEnabled() ? std::getenv("XBE_SESSION_LOG_DIR") : nullptr;
++    const fs::path directory = override_dir && *override_dir ? fs::u8path(override_dir) : fs::path(dir);
 +#ifdef XBE_RELEASE
 +    // Successful sessions create no log. An error replaces one capped report.
 +    if (g_file) std::fclose(g_file);
 +    g_file = nullptr;
 +    g_error_bytes = 0;
 +    g_path = (fs::path(dir) / (prefix + "-error.log")).string();
-+#else
-     std::error_code ec;
-     fs::create_directories(dir, ec);
-     if (!kVerbose) {
-@@ -47,11 +59,32 @@ void Init(const std::string& dir, const std::string& prefix, bool append) {
-     std::snprintf(name, sizeof(name), "%s_%03d.log", prefix.c_str(), runs.empty() ? 1 : runs.back().first + 1);
-     g_path = (fs::path(dir) / name).string();
-     g_file = std::fopen(g_path.c_str(), "w");
++    if (!SessionEnabled()) return;
 +#endif
+     std::error_code ec;
+-    fs::create_directories(dir, ec);
+-    if (!kVerbose) {
++    fs::create_directories(directory, ec);
++    if (!kVerbose && !SessionEnabled()) {
+         g_path = (fs::path(dir) / (prefix + ".log")).string();
+         g_file = std::fopen(g_path.c_str(), append ? "a" : "w");
+         return;
+     }
+     std::vector<std::pair<int, fs::path>> runs;
+-    for (const auto& e : fs::directory_iterator(dir, ec))
+-        if (int n = RunNumber(e.path(), prefix)) runs.emplace_back(n, e.path());
++    const std::string session_prefix = SessionEnabled() ? prefix + "-session" : prefix;
++    for (const auto& e : fs::directory_iterator(directory, ec))
++        if (int n = RunNumber(e.path(), session_prefix)) runs.emplace_back(n, e.path());
+     std::sort(runs.begin(), runs.end());
+     for (size_t i = 0; i + kKeep <= runs.size(); i++) fs::remove(runs[i].second, ec);
+     char name[256];
+-    std::snprintf(name, sizeof(name), "%s_%03d.log", prefix.c_str(), runs.empty() ? 1 : runs.back().first + 1);
+-    g_path = (fs::path(dir) / name).string();
++    std::snprintf(name, sizeof(name), "%s_%03d.log", session_prefix.c_str(), runs.empty() ? 1 : runs.back().first + 1);
++    g_path = (directory / name).string();
+     g_file = std::fopen(g_path.c_str(), "w");
  }
  
  const std::string& Path() { return g_path; }
  
  void Write(Level lv, const char* fmt, ...) {
+-    if (!kVerbose && lv < Level::Error) return;
 +#ifdef XBE_RELEASE
-+    if (lv != Level::Error) return;
-+    std::lock_guard<std::mutex> lock(g_mutex);
-+    if (g_error_bytes >= kErrorLimit) return;
-+    char msg[4096];
-+    va_list ap;
-+    va_start(ap, fmt);
-+    std::vsnprintf(msg, sizeof(msg), fmt, ap);
-+    va_end(ap);
-+    char line[4120];
-+    int n = std::snprintf(line, sizeof(line), "error: %s\n", msg);
-+    const size_t bytes = std::min({size_t(std::max(n, 0)), sizeof(line) - 1, kErrorLimit - g_error_bytes});
-+    if (!g_file && !g_path.empty()) {
-+        std::error_code ec;
-+        fs::create_directories(fs::path(g_path).parent_path(), ec);
-+        g_file = std::fopen(g_path.c_str(), "wb");
++    if (!SessionEnabled()) {
++        if (lv != Level::Error) return;
++        std::lock_guard<std::mutex> lock(g_mutex);
++        if (g_error_bytes >= kErrorLimit) return;
++        char msg[4096];
++        va_list ap;
++        va_start(ap, fmt);
++        std::vsnprintf(msg, sizeof(msg), fmt, ap);
++        va_end(ap);
++        char line[4120];
++        int n = std::snprintf(line, sizeof(line), "error: %s\n", msg);
++        const size_t bytes = std::min({size_t(std::max(n, 0)), sizeof(line) - 1, kErrorLimit - g_error_bytes});
++        if (!g_file && !g_path.empty()) {
++            std::error_code ec;
++            fs::create_directories(fs::path(g_path).parent_path(), ec);
++            g_file = std::fopen(g_path.c_str(), "wb");
++        }
++        if (g_file) { std::fwrite(line, 1, bytes, g_file); std::fflush(g_file); }
++        g_error_bytes += bytes;
++        return;
 +    }
-+    if (g_file) { std::fwrite(line, 1, bytes, g_file); std::fflush(g_file); }
-+    g_error_bytes += bytes;
-+#else
-     if (!kVerbose && lv < Level::Error) return;
++#endif
++    if (!kVerbose && !SessionEnabled() && lv < Level::Error) return;
      char msg[4096];
      va_list ap;
-@@ -71,6 +104,7 @@ void Write(Level lv, const char* fmt, ...) {
-         if (lv >= Level::Warn) std::fflush(g_file);
+     va_start(ap, fmt);
+@@ -63,14 +101,27 @@ void Write(Level lv, const char* fmt, ...) {
+     auto tid = std::hash<std::thread::id>()(std::this_thread::get_id()) & 0xFFFF;
+     std::lock_guard<std::mutex> lock(g_mutex);
+     char line[4300];
+-    int n = kVerbose ? std::snprintf(line, sizeof(line), "[%9.3f] [%s] [t%04zx] %s\n", t, names[int(lv)], size_t(tid), msg)
++    int n = (kVerbose || SessionEnabled()) ? std::snprintf(line, sizeof(line), "[%9.3f] [%s] [t%04zx] %s\n", t, names[int(lv)], size_t(tid), msg)
+                      : std::snprintf(line, sizeof(line), "[%9.3f] %s%s\n", t, lv == Level::Error ? "error: " : "", msg);
+     n = std::min(n, int(sizeof(line)) - 1);
++#ifdef XBE_RELEASE
++    constexpr size_t kSessionLimit = 64 * 1024 * 1024;
++    if (g_error_bytes >= kSessionLimit) return;
++    g_error_bytes += size_t(n);
++#endif
+     if (g_file) {
+         std::fwrite(line, 1, size_t(n), g_file);
+-        if (lv >= Level::Warn) std::fflush(g_file);
++        if (lv >= Level::Warn || SessionEnabled()) std::fflush(g_file);
++#ifdef XBE_RELEASE
++        if (g_error_bytes >= kSessionLimit) {
++            std::fputs("Session log reached 64 MiB; further messages omitted. Restart to record another session.\n", g_file);
++            std::fflush(g_file);
++        }
++#endif
      }
++#ifndef XBE_RELEASE
      std::fwrite(line, 1, size_t(n), stderr);
 +#endif
  }
  
  void Flush() {
 diff --git a/runtime/core/log.h b/runtime/core/log.h
-index ea8516c..c6f3e2f 100644
+index ea8516c..97ad6fd 100644
 --- a/runtime/core/log.h
 +++ b/runtime/core/log.h
-@@ -6,16 +6,16 @@
+@@ -2,20 +2,28 @@
+ #include <atomic>
+ #include <cstdarg>
+ #include <cstdint>
++#include <cstdlib>
+ #include <string>
  
  namespace logx {
  
 -// a release build writes Report and Error lines only
-+// XBE_RELEASE keeps capped errors only; ordinary NDEBUG builds retain reports too.
++// Release sessions remain quiet unless explicitly enabled by the launcher.
  enum class Level { Debug, Info, Warn, Error, Report };
  
 -// release: dir/prefix.log, carried on when append; debug: dir/prefix_NNN.log per run, newest 30 kept
-+// XBE_RELEASE: lazy prefix-error.log (64 KiB); diagnostic builds retain session logs.
++// Release defaults to a lazy 64 KiB error report; opt-in sessions retain capped logs.
  void Init(const std::string& dir, const std::string& prefix, bool append = false);
  void Write(Level lv, const char* fmt, ...) __attribute__((format(printf, 2, 3)));
  void Flush();
  const std::string& Path();
++inline bool SessionEnabled() {
++    static const bool enabled = [] {
++        const char* value = std::getenv("XBE_SESSION_LOG");
++        return value && value[0] == '1' && value[1] == '\0';
++    }();
++    return enabled;
++}
  
 -#ifdef NDEBUG
 +#if defined(NDEBUG) || defined(XBE_RELEASE)
  inline constexpr bool kVerbose = false;
  #else
  inline constexpr bool kVerbose = true;
-@@ -23,10 +23,17 @@ inline constexpr bool kVerbose = true;
+@@ -23,10 +31,17 @@ inline constexpr bool kVerbose = true;
  
  }  // namespace logx
  
 +#ifdef XBE_RELEASE
-+// Release tracing must not evaluate arguments or touch per-call counters.
-+#define LOGD(...) ((void)0)
-+#define LOGI(...) ((void)0)
-+#define LOGW(...) ((void)0)
-+#define LOGR(...) ((void)0)
-+#define LOG_FIRST(...) ((void)0)
++#define LOGD(...) do { if (::logx::SessionEnabled()) ::logx::Write(::logx::Level::Debug, __VA_ARGS__); } while (0)
++#define LOGI(...) do { if (::logx::SessionEnabled()) ::logx::Write(::logx::Level::Info, __VA_ARGS__); } while (0)
++#define LOGW(...) do { if (::logx::SessionEnabled()) ::logx::Write(::logx::Level::Warn, __VA_ARGS__); } while (0)
++#define LOGR(...) do { if (::logx::SessionEnabled()) ::logx::Write(::logx::Level::Report, __VA_ARGS__); } while (0)
++#define LOG_FIRST(n, ...) do { if (::logx::SessionEnabled()) { static std::atomic<int> _c{0}; \
++    if (_c.fetch_add(1, std::memory_order_relaxed) < (n)) LOGI(__VA_ARGS__); } } while (0)
 +#else
  #define LOGD(...) ::logx::Write(::logx::Level::Debug, __VA_ARGS__)
  #define LOGI(...) ::logx::Write(::logx::Level::Info, __VA_ARGS__)
@@ -1873,7 +2035,7 @@ index ea8516c..c6f3e2f 100644
  #define LOGR(...) ::logx::Write(::logx::Level::Report, __VA_ARGS__)
  
  // logs only the first n times a call site is reached
-@@ -35,3 +42,5 @@ inline constexpr bool kVerbose = true;
+@@ -35,3 +50,5 @@ inline constexpr bool kVerbose = true;
          static std::atomic<int> _c{0};                     \
          if (_c.fetch_add(1, std::memory_order_relaxed) < (n)) LOGI(__VA_ARGS__); \
      } while (0)
@@ -2003,11 +2165,13 @@ index 8ff1924..8c6f9d6 100644
  inline void x87_push(X86Context& ctx, double v) {
      ctx.top = (ctx.top - 1) & 7;
 diff --git a/runtime/gpu/backend.h b/runtime/gpu/backend.h
-index 14a066a..dba0323 100644
+index 14a066a..c0913a9 100644
 --- a/runtime/gpu/backend.h
 +++ b/runtime/gpu/backend.h
-@@ -2,11 +2,19 @@
+@@ -1,12 +1,24 @@
+ #pragma once
  #include <atomic>
++#include <array>
  #include <cstdint>
  #include <memory>
 +#include <string>
@@ -2020,13 +2184,16 @@ index 14a066a..dba0323 100644
 +// Setup uses the normal compiler/cache without creating a GPU device or pipeline.
 +std::string ShaderCompilerCacheIdentity();
 +bool ShaderCacheContains(const std::string& key);
-+bool PrepareShaderCache(const std::string& source, const char* profile, std::string& key);
++bool PrepareShaderCache(const std::string& source, const char* profile, std::string& key, const char* entry = "main");
++struct BackendShaderSource { std::string source; const char* entry; const char* profile; };
++inline constexpr size_t kBackendShaderCount = 8;
++std::array<BackendShaderSource, kBackendShaderCount> BackendShaderSources();
 +bool PrepareVertexShaderCache(const std::vector<uint32_t>& program, uint16_t regs, uint64_t decode, std::string& key);
 +
  // D3DCLEAR flags as the XDK defines them
  enum : uint32_t {
      kClearTarget = 0xF0,  // ARGB channels
-@@ -54,6 +62,8 @@ private:
+@@ -54,6 +66,8 @@ private:
  };
  
  std::unique_ptr<Backend> CreateBackend();
@@ -2035,7 +2202,7 @@ index 14a066a..dba0323 100644
  // the same backend driven from a thread of its own: calls return once recorded
  std::unique_ptr<Backend> CreateThreadedBackend(std::unique_ptr<Backend> inner);
  
-@@ -65,4 +75,12 @@ inline std::atomic<uint64_t> g_perf_sync_late{0}, g_perf_sync_block{0};  // read
+@@ -65,4 +79,12 @@ inline std::atomic<uint64_t> g_perf_sync_late{0}, g_perf_sync_block{0};  // read
  // F3: save the next frame, every draw and target, under diag::CaptureDir
  inline std::atomic<bool> g_capture{false};
  
@@ -2049,7 +2216,7 @@ index 14a066a..dba0323 100644
 +
  }  // namespace gpu
 diff --git a/runtime/gpu/d3d12.cpp b/runtime/gpu/d3d12.cpp
-index 16395fa..8a6173e 100644
+index 16395fa..75176d6 100644
 --- a/runtime/gpu/d3d12.cpp
 +++ b/runtime/gpu/d3d12.cpp
 @@ -9,16 +9,21 @@
@@ -2109,7 +2276,7 @@ index 16395fa..8a6173e 100644
      double compile = 0;
 +    // Slow-frame subcosts; nested within the existing outer CPU timers.
 +    double cache_identity = 0, cache_key = 0, cache_read = 0, cache_write = 0;
-+    double pso = 0, texture_create = 0, target_upload = 0, fence_wait = 0;
++    double pso = 0, texture_replace = 0, texture_create = 0, target_upload = 0, fence_wait = 0;
 +    uint64_t pso_attempts = 0, settings_changes = 0;
      double clear = 0;
      double copy = 0;
@@ -2298,7 +2465,7 @@ index 16395fa..8a6173e 100644
      void UploadConstants(const State& s, const DrawShaders& sh, const PsoKey& k, const DrawTextures& stages,
                           GuestExtent size, DrawConstants& c);
      void FillTextureConstants(const State& s, const DrawTextures& stages, DrawConstants& c);
-@@ -519,16 +583,20 @@ private:
+@@ -519,16 +583,21 @@ private:
      void CaptureDraw(const State& s, uint32_t prim, uint32_t count, const PsoKey& k, const DrawConstants& c,
                       const DrawTextures& stages);
      void CaptureTextures(const State& s, const DrawTextures& stages);
@@ -2315,6 +2482,7 @@ index 16395fa..8a6173e 100644
      void SetTextureViewsAndSamplers(const State& s, const Assembled& a, DrawTextures& stages);
      uint32_t EnsureStageSamplers(const State& s, const DrawTextures& stages, bool clamp);
      void SetViewportScissor(const State& s, uint32_t gw);
++    void TrackPresentationAspect(const State& s);
      void SetBlendFactorStencilRef(const State& s);
 -    void DrawGeometry(const Assembled& a);
 -    void UploadVertexBuffers(const Assembled& a);
@@ -2323,7 +2491,7 @@ index 16395fa..8a6173e 100644
      // visibility tests
      bool EnsureQueries();
      uint32_t BeginCountedDraw(const State& s);
-@@ -538,8 +606,9 @@ private:
+@@ -538,8 +607,9 @@ private:
      // shaders by source hash: Compile returns the bytecode and sets hash
      ID3DBlob* Compile(const std::string& src, const char* entry, const char* profile, uint64_t& hash);
      // Blit's pipeline
@@ -2335,22 +2503,25 @@ index 16395fa..8a6173e 100644
      // Init, in order, each callee right after its caller
      bool CreateDevice();
      bool CreateSwapChain(HWND hwnd);
-@@ -556,7 +625,8 @@ private:
+@@ -556,7 +626,9 @@ private:
      void ResizeSwap();
      void UploadGammaRamp();
      void DrawFrame(Target* t, uint32_t bi);
 -    void BlitFrame(Target& t);
 +    bool BlitFrame(Target& t);
 +    void BlitPresentationOverlay(const Target* front);
++    void ClearPresentationBars(const Target* front, D3D12_CPU_DESCRIPTOR_HANDLE output);
      void RenderUi();
      void ReleaseOldTextures();
      void ResetFrame();
-@@ -687,11 +757,15 @@ private:
+@@ -687,11 +759,17 @@ private:
      Target* bound_ds_ = nullptr;
      Target* draw_rt_ = nullptr;  // the draw's targets, the bound ones go when a texture's copy is drawn
      Target* draw_ds_ = nullptr;
 +    Target presentation_overlay_;
 +    bool presentation_active_ = false, presentation_drawn_ = false;
++    bool presentation_original_drawn_ = false;
++    uint32_t presentation_original_data_ = 0;
      uint32_t guest_w_ = 640;
      uint32_t guest_h_ = 480;
      uint32_t bb_w_ = 0;
@@ -2361,7 +2532,7 @@ index 16395fa..8a6173e 100644
      // surfaces locked without a wait: copies in flight, the newest finished one goes to guest memory
      struct Late {
          ComPtr<ID3D12Resource> rb[kFrames];
-@@ -747,15 +821,17 @@ bool D3D12Backend::Init(uint32_t width, uint32_t height) {
+@@ -747,15 +825,17 @@ bool D3D12Backend::Init(uint32_t width, uint32_t height) {
                          ui_heap_->GetCPUDescriptorHandleForHeapStart(), ui_heap_->GetGPUDescriptorHandleForHeapStart());
      LoadSettings();
      Begin();
@@ -2380,7 +2551,7 @@ index 16395fa..8a6173e 100644
      if (FAILED(CreateDXGIFactory2(0, IID_PPV_ARGS(&factory_)))) return false;
      // dedicated GPU first on hybrid laptops
      ComPtr<IDXGIFactory6> f6;
-@@ -882,8 +958,38 @@ void D3D12Backend::CreateGammaLut() {
+@@ -882,8 +962,38 @@ void D3D12Backend::CreateGammaLut() {
                                    IID_PPV_ARGS(&lut_));
  }
  
@@ -2420,7 +2591,7 @@ index 16395fa..8a6173e 100644
      ext_ = g_extension.get();
      if (ext_) {
          ext_->Settings();
-@@ -919,6 +1025,7 @@ void D3D12Backend::Submit(bool wait) {
+@@ -919,6 +1029,7 @@ void D3D12Backend::Submit(bool wait) {
  void D3D12Backend::Flush() { Submit(true); }
  
  void D3D12Backend::WaitFence(uint64_t value) {
@@ -2428,7 +2599,7 @@ index 16395fa..8a6173e 100644
      fence_->SetEventOnCompletion(value, event_);
      WaitForSingleObject(event_, INFINITE);
  }
-@@ -932,6 +1039,7 @@ void D3D12Backend::SetFullViewport(uint32_t w, uint32_t h) {
+@@ -932,6 +1043,7 @@ void D3D12Backend::SetFullViewport(uint32_t w, uint32_t h) {
  
  // one w x h colour target for a Blit, the draw's bound targets forgotten
  void D3D12Backend::SetBlitTarget(D3D12_CPU_DESCRIPTOR_HANDLE rtv, uint32_t w, uint32_t h) {
@@ -2436,7 +2607,7 @@ index 16395fa..8a6173e 100644
      cl_->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
      bound_rt_ = bound_ds_ = nullptr;
      SetFullViewport(w, h);
-@@ -939,14 +1047,14 @@ void D3D12Backend::SetBlitTarget(D3D12_CPU_DESCRIPTOR_HANDLE rtv, uint32_t w, ui
+@@ -939,14 +1051,14 @@ void D3D12Backend::SetBlitTarget(D3D12_CPU_DESCRIPTOR_HANDLE rtv, uint32_t w, ui
  
  D3D12Backend::Alloc D3D12Backend::Upload(uint64_t size, uint64_t align) {
      Frame& f = CurrentFrame();
@@ -2453,7 +2624,7 @@ index 16395fa..8a6173e 100644
      ComPtr<ID3D12Resource> r;
      D3D12_HEAP_PROPERTIES hp{D3D12_HEAP_TYPE_UPLOAD};
      constexpr uint64_t kOwnAlign = 0x10000;  // a committed buffer's size granularity
-@@ -989,6 +1097,8 @@ void D3D12Backend::ReleaseTarget(std::unordered_map<uint64_t, Target>::iterator
+@@ -989,6 +1101,8 @@ void D3D12Backend::ReleaseTarget(std::unordered_map<uint64_t, Target>::iterator
      (it->second.depth ? free_dsv_ : free_rtv_).push_back(it->second.view);
      CurrentFrame().garbage.push_back(it->second.res);
      if (it->second.fb) CurrentFrame().garbage.push_back(it->second.fb);
@@ -2462,7 +2633,7 @@ index 16395fa..8a6173e 100644
      targets_.erase(it);
  }
  
-@@ -996,10 +1106,22 @@ void D3D12Backend::ReleaseTarget(std::unordered_map<uint64_t, Target>::iterator
+@@ -996,10 +1110,22 @@ void D3D12Backend::ReleaseTarget(std::unordered_map<uint64_t, Target>::iterator
  bool D3D12Backend::CreateTargetResource(Target& t, const Surface& s) {
      float sc = scale_;
      if (ext_) ext_->MakeTarget(s, t.depth, t.gw, t.gh, sc, t.fmt);
@@ -2487,7 +2658,7 @@ index 16395fa..8a6173e 100644
      D3D12_CLEAR_VALUE cv{};
      if (t.depth) {
          td.Format = DXGI_FORMAT_R24G8_TYPELESS;
-@@ -1026,7 +1148,8 @@ bool D3D12Backend::CreateTargetView(Target& t) {
+@@ -1026,7 +1152,8 @@ bool D3D12Backend::CreateTargetView(Target& t) {
      if (t.depth) {
          D3D12_DEPTH_STENCIL_VIEW_DESC dv{};
          dv.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -2497,7 +2668,7 @@ index 16395fa..8a6173e 100644
          dev_->CreateDepthStencilView(t.res.Get(), &dv, Cpu(dsv_heap_.Get(), t.view, dsv_inc_));
          float one = 1;
          cl_->ClearDepthStencilView(Cpu(dsv_heap_.Get(), t.view, dsv_inc_),
-@@ -1090,7 +1213,7 @@ Target* D3D12Backend::EnsureTarget(const Surface& s, bool depth) {
+@@ -1090,7 +1217,7 @@ Target* D3D12Backend::EnsureTarget(const Surface& s, bool depth) {
      t.gw = slot.gw;
      t.gh = slot.gh;
      if (!CreateTargetResource(t, s)) return nullptr;
@@ -2506,7 +2677,7 @@ index 16395fa..8a6173e 100644
      // an empty pool drops the new resource with t
      if (!CreateTargetView(t)) return nullptr;
      t.data = slot.data;
-@@ -1102,13 +1225,50 @@ Target* D3D12Backend::EnsureTarget(const Surface& s, bool depth) {
+@@ -1102,13 +1229,50 @@ Target* D3D12Backend::EnsureTarget(const Surface& s, bool depth) {
      return &ref;
  }
  
@@ -2559,7 +2730,7 @@ index 16395fa..8a6173e 100644
          Transition(rt->res.Get(), rt->state, D3D12_RESOURCE_STATE_RENDER_TARGET);
          rt->drawn = true;
      }
-@@ -1128,13 +1288,23 @@ bool D3D12Backend::BindTargets(const State& s) {
+@@ -1128,13 +1292,23 @@ bool D3D12Backend::BindTargets(const State& s) {
  
  constexpr uint64_t kDepthCopyKey = ~0ull;  // DepthCopy's pipeline in blit_psos_
  
@@ -2587,7 +2758,7 @@ index 16395fa..8a6173e 100644
      if (!vs || !ps) return nullptr;
      D3D12_GRAPHICS_PIPELINE_STATE_DESC p{};
      p.pRootSignature = root_.Get();
-@@ -1149,14 +1319,17 @@ ID3D12PipelineState* D3D12Backend::EnsureDepthCopyPipeline() {
+@@ -1149,14 +1323,17 @@ ID3D12PipelineState* D3D12Backend::EnsureDepthCopyPipeline() {
      p.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_ALWAYS;
      p.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
      p.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -2607,7 +2778,7 @@ index 16395fa..8a6173e 100644
      Transition(src.res.Get(), src.state, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
      Transition(dst.res.Get(), dst.state, D3D12_RESOURCE_STATE_DEPTH_WRITE);
      D3D12_CPU_DESCRIPTOR_HANDLE dh = Cpu(dsv_heap_.Get(), dst.view, dsv_inc_);
-@@ -1165,7 +1338,8 @@ void D3D12Backend::DrawDepthCopy(Target& src, Target& dst, ID3D12PipelineState*
+@@ -1165,7 +1342,8 @@ void D3D12Backend::DrawDepthCopy(Target& src, Target& dst, ID3D12PipelineState*
      uint32_t slot = AllocSrvSlots(1);
      D3D12_SHADER_RESOURCE_VIEW_DESC sv{};
      sv.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
@@ -2617,7 +2788,7 @@ index 16395fa..8a6173e 100644
      sv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
      sv.Texture2D.MipLevels = 1;
      dev_->CreateShaderResourceView(src.res.Get(), &sv, Cpu(srv_heap_.Get(), slot, srv_inc_));
-@@ -1190,7 +1364,7 @@ bool D3D12Backend::DepthCopy(const State& s) {
+@@ -1190,7 +1368,7 @@ bool D3D12Backend::DepthCopy(const State& s) {
      if (di == targets_.end() || si == targets_.end() || di == si) return false;
      Target& dst = di->second;
      Target& src = si->second;
@@ -2626,7 +2797,7 @@ index 16395fa..8a6173e 100644
      if (!pso) return false;
      DrawDepthCopy(src, dst, pso);
      return true;
-@@ -1237,7 +1411,8 @@ ComPtr<ID3D12Resource> D3D12Backend::CreatePixelTexture(const std::vector<uint8_
+@@ -1237,7 +1415,8 @@ ComPtr<ID3D12Resource> D3D12Backend::CreatePixelTexture(const std::vector<uint8_
  
  // CPU pixels of a color surface into its host target, scaled
  void D3D12Backend::UploadTarget(Target& t, const Surface& s) {
@@ -2636,7 +2807,7 @@ index 16395fa..8a6173e 100644
      TextureDesc d;
      if (!Describe(s.header, d) || Format(d.format).depth) return;
      std::vector<uint8_t> px;
-@@ -1256,7 +1431,8 @@ void D3D12Backend::UploadTarget(Target& t, const Surface& s) {
+@@ -1256,7 +1435,8 @@ void D3D12Backend::UploadTarget(Target& t, const Surface& s) {
      SetBlitTarget(Cpu(rtv_heap_.Get(), t.view, rtv_inc_), t.w, t.h);
      float uv[4] = {0, 0, 1, 1};
      float mul = 1 / t.range;
@@ -2646,7 +2817,7 @@ index 16395fa..8a6173e 100644
      CurrentFrame().garbage.push_back(tex);
      t.epoch = DirtyEpoch(t.data);
      t.sig = MemSig(t.data, t.bytes);
-@@ -1320,7 +1496,144 @@ void D3D12Backend::Blit(ID3D12Resource* src, DXGI_FORMAT fmt, const float uvrect
+@@ -1320,7 +1500,148 @@ void D3D12Backend::Blit(ID3D12Resource* src, DXGI_FORMAT fmt, const float uvrect
      float c[8] = {uvrect[0], uvrect[1], uvrect[2], uvrect[3],
                    o.gamma ? 1.0f : 0.0f, o.alpha ? 1.0f : 0.0f, float(o.taps), o.mul};
      std::memcpy(cb.cpu, c, sizeof(c));
@@ -2725,7 +2896,11 @@ index 16395fa..8a6173e 100644
 +    constexpr char hex[] = "0123456789abcdef";
 +    std::string name;
 +    for (uint8_t b : key) { name += hex[b >> 4]; name += hex[b & 15]; }
-+    return app::ExeDir() / "cache" / "d3dcompile-v1" / (name + ".bin");
++    // Cache digests and atomic-write suffixes can exceed MAX_PATH inside a valid install.
++    auto path = std::filesystem::absolute(app::ExeDir() / "cache" / "d3dcompile-v1" / (name + ".bin"))
++                    .lexically_normal().make_preferred().native();
++    if (path.starts_with(L"\\\\?\\")) return path;
++    return path.starts_with(L"\\\\") ? L"\\\\?\\UNC\\" + path.substr(2) : L"\\\\?\\" + path;
 +}
 +
 +bool ShaderBytecode(const void* data, size_t size) {
@@ -2792,7 +2967,7 @@ index 16395fa..8a6173e 100644
  }
  
  ID3DBlob* D3D12Backend::Compile(const std::string& src, const char* entry, const char* profile, uint64_t& hash) {
-@@ -1332,23 +1645,42 @@ ID3DBlob* D3D12Backend::Compile(const std::string& src, const char* entry, const
+@@ -1332,23 +1653,42 @@ ID3DBlob* D3D12Backend::Compile(const std::string& src, const char* entry, const
      if (it != blobs_.end()) return it->second.Get();
      ComPtr<ID3DBlob> code;
      ComPtr<ID3DBlob> err;
@@ -2840,7 +3015,7 @@ index 16395fa..8a6173e 100644
      D3D12_GRAPHICS_PIPELINE_STATE_DESC d{};
      d.pRootSignature = root_.Get();
      d.VS = {vs->GetBufferPointer(), vs->GetBufferSize()};
-@@ -1361,17 +1693,18 @@ D3D12_GRAPHICS_PIPELINE_STATE_DESC D3D12Backend::FullScreenPipelineDesc(ID3DBlob
+@@ -1361,17 +1701,18 @@ D3D12_GRAPHICS_PIPELINE_STATE_DESC D3D12Backend::FullScreenPipelineDesc(ID3DBlob
      d.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
      d.NumRenderTargets = 1;
      d.RTVFormats[0] = rtv;
@@ -2863,7 +3038,7 @@ index 16395fa..8a6173e 100644
      if (over) {
          auto& blend = d.BlendState.RenderTarget[0];
          // premultiplied colour, the target keeps its alpha
-@@ -1382,14 +1715,14 @@ ID3D12PipelineState* D3D12Backend::EnsureBlitPipeline(DXGI_FORMAT rtv, bool over
+@@ -1382,14 +1723,14 @@ ID3D12PipelineState* D3D12Backend::EnsureBlitPipeline(DXGI_FORMAT rtv, bool over
          blend.DestBlendAlpha = D3D12_BLEND_ONE;
          blend.BlendOp = blend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
      }
@@ -2881,7 +3056,7 @@ index 16395fa..8a6173e 100644
      uint64_t source_seed = Hash(hlsl, std::strlen(hlsl), seed);
      auto& pso = blit_psos_[Hash(entry, std::strlen(entry), source_seed)];
      if (pso) return pso.Get();
-@@ -1397,7 +1730,7 @@ ID3D12PipelineState* D3D12Backend::EnsurePassPipeline(const char* hlsl, const ch
+@@ -1397,7 +1738,7 @@ ID3D12PipelineState* D3D12Backend::EnsurePassPipeline(const char* hlsl, const ch
      ID3DBlob* vs = Compile(hlsl, "vs", "vs_5_0", h);
      ID3DBlob* ps = Compile(hlsl, entry, "ps_5_0", h);
      if (!vs || !ps) return nullptr;
@@ -2890,7 +3065,7 @@ index 16395fa..8a6173e 100644
      if (blend >= 0) {
          auto& b = d.BlendState.RenderTarget[0];
          b.BlendEnable = TRUE;
-@@ -1405,26 +1738,48 @@ ID3D12PipelineState* D3D12Backend::EnsurePassPipeline(const char* hlsl, const ch
+@@ -1405,26 +1746,48 @@ ID3D12PipelineState* D3D12Backend::EnsurePassPipeline(const char* hlsl, const ch
          b.DestBlend = b.DestBlendAlpha = D3D12_BLEND_INV_BLEND_FACTOR;
          b.BlendOp = b.BlendOpAlpha = D3D12_BLEND_OP_ADD;
      }
@@ -2943,7 +3118,7 @@ index 16395fa..8a6173e 100644
      cl_->OMSetRenderTargets(1, &rh, FALSE, nullptr);
      SetFullViewport(w, h);
      if (blend >= 0) {
-@@ -1435,11 +1790,60 @@ void D3D12Backend::Pass(const char* hlsl, const char* entry, DXGI_FORMAT rtv, D3
+@@ -1435,11 +1798,60 @@ void D3D12Backend::Pass(const char* hlsl, const char* entry, DXGI_FORMAT rtv, D3
      bound_rt_ = bound_ds_ = nullptr;
  }
  
@@ -3005,7 +3180,7 @@ index 16395fa..8a6173e 100644
          td.Flags = D3D12_RESOURCE_FLAG_NONE;
          t.fb_state = D3D12_RESOURCE_STATE_COPY_DEST;
          if (FAILED(dev_->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &td, t.fb_state, nullptr,
-@@ -1447,9 +1851,9 @@ ID3D12Resource* D3D12Backend::Feedback(Target& t) {
+@@ -1447,9 +1859,9 @@ ID3D12Resource* D3D12Backend::Feedback(Target& t) {
              return nullptr;
          }
      }
@@ -3017,7 +3192,7 @@ index 16395fa..8a6173e 100644
      Transition(t.fb.Get(), t.fb_state, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
      return t.fb.Get();
  }
-@@ -1503,6 +1907,14 @@ void D3D12Backend::FillPipelineDesc(const PsoKey& k, ID3DBlob* vs, ID3DBlob* ps,
+@@ -1503,6 +1915,14 @@ void D3D12Backend::FillPipelineDesc(const PsoKey& k, ID3DBlob* vs, ID3DBlob* ps,
      b.DestBlendAlpha = Blend(k.dst, true);
      b.BlendOpAlpha = BlendOp(k.op);
      b.RenderTargetWriteMask = UINT8(k.wmask);
@@ -3032,7 +3207,7 @@ index 16395fa..8a6173e 100644
      d.SampleMask = UINT_MAX;
      d.RasterizerState.FillMode = k.fill == kFillWireframe ? D3D12_FILL_MODE_WIREFRAME : D3D12_FILL_MODE_SOLID;
      d.RasterizerState.CullMode = k.cull ? D3D12_CULL_MODE_BACK : D3D12_CULL_MODE_NONE;
-@@ -1515,7 +1927,8 @@ void D3D12Backend::FillPipelineDesc(const PsoKey& k, ID3DBlob* vs, ID3DBlob* ps,
+@@ -1515,7 +1935,8 @@ void D3D12Backend::FillPipelineDesc(const PsoKey& k, ID3DBlob* vs, ID3DBlob* ps,
      d.NumRenderTargets = k.has_rt ? 1 : 0;
      d.RTVFormats[0] = k.has_rt ? DXGI_FORMAT(k.rtfmt) : DXGI_FORMAT_UNKNOWN;
      d.DSVFormat = k.has_ds ? DXGI_FORMAT_D24_UNORM_S8_UINT : DXGI_FORMAT_UNKNOWN;
@@ -3042,7 +3217,7 @@ index 16395fa..8a6173e 100644
  }
  
  // a point is drawn as its whole console pixel by a geometry shader, solid, front facing and never culled
-@@ -1529,10 +1942,11 @@ void D3D12Backend::ExpandPoints(D3D12_GRAPHICS_PIPELINE_STATE_DESC& d) {
+@@ -1529,10 +1950,11 @@ void D3D12Backend::ExpandPoints(D3D12_GRAPHICS_PIPELINE_STATE_DESC& d) {
      d.RasterizerState.FrontCounterClockwise = FALSE;
  }
  
@@ -3057,7 +3232,7 @@ index 16395fa..8a6173e 100644
  }
  
  ID3D12PipelineState* D3D12Backend::EnsurePipeline(const PsoKey& k, ID3DBlob* vs, ID3DBlob* ps) {
-@@ -1546,8 +1960,8 @@ ID3D12PipelineState* D3D12Backend::EnsurePipeline(const PsoKey& k, ID3DBlob* vs,
+@@ -1546,8 +1968,8 @@ ID3D12PipelineState* D3D12Backend::EnsurePipeline(const PsoKey& k, ID3DBlob* vs,
      FillPipelineDesc(k, vs, ps, d);
      if (k.topo == uint32_t(Topology::Points)) ExpandPoints(d);
      ComPtr<ID3D12PipelineState> pso;
@@ -3068,7 +3243,7 @@ index 16395fa..8a6173e 100644
      psos_[h] = pso;
      return pso.Get();
  }
-@@ -1575,19 +1989,26 @@ ID3D12Resource* D3D12Backend::BindTargetTexture(const State& s, int stage, const
+@@ -1575,19 +1997,26 @@ ID3D12Resource* D3D12Backend::BindTargetTexture(const State& s, int stage, const
      info.kind = kTex2D;
      // a pass shrinking it averages each tap over a console texel, else upscaled taps skip texels and ghost
      Target* rt = FindTarget(s.rt, false);
@@ -3103,7 +3278,7 @@ index 16395fa..8a6173e 100644
  }
  
  bool SameTexture(const Tex& tx, const TextureDesc& d) {
-@@ -1595,17 +2016,34 @@ bool SameTexture(const Tex& tx, const TextureDesc& d) {
+@@ -1595,17 +2024,34 @@ bool SameTexture(const Tex& tx, const TextureDesc& d) {
             tx.d.depth == d.depth && tx.d.levels == d.levels && tx.d.cube == d.cube && tx.d.pitch == d.pitch;
  }
  
@@ -3146,7 +3321,7 @@ index 16395fa..8a6173e 100644
      if (bc && ((w & 3) || (h & 3))) {
          w = (w + 3) & ~3u;
          h = (h + 3) & ~3u;
-@@ -1622,7 +2060,6 @@ bool D3D12Backend::CreateTexture(Tex& tx, const TextureDesc& d, const FormatInfo
+@@ -1622,7 +2068,6 @@ bool D3D12Backend::CreateTexture(Tex& tx, const TextureDesc& d, const FormatInfo
      td.SampleDesc.Count = 1;
      if (FAILED(dev_->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &td, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
                                               IID_PPV_ARGS(&tx.res)))) {
@@ -3154,7 +3329,7 @@ index 16395fa..8a6173e 100644
          return false;
      }
      return true;
-@@ -1664,19 +2101,26 @@ void D3D12Backend::UploadTextureLevel(Tex& tx, uint32_t f, uint32_t l, const std
+@@ -1664,19 +2109,26 @@ void D3D12Backend::UploadTextureLevel(Tex& tx, uint32_t f, uint32_t l, const std
  }
  
  void D3D12Backend::UploadTexture(Tex& tx, const TextureDesc& d, const FormatInfo& fi, const uint8_t* p,
@@ -3184,7 +3359,7 @@ index 16395fa..8a6173e 100644
      Transition(tx.res.Get(), st, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
  }
  
-@@ -1725,22 +2169,48 @@ ID3D12Resource* D3D12Backend::BindGuestTexture(const State& s, int stage, const
+@@ -1725,22 +2177,49 @@ ID3D12Resource* D3D12Backend::BindGuestTexture(const State& s, int stage, const
      Tex& tx = textures_[key];
      uint32_t total = TotalSize(d);
      bool same = SameTexture(tx, d);
@@ -3213,6 +3388,7 @@ index 16395fa..8a6173e 100644
 +            bool replace = false;
 +            if (ext_ && !d.linear && !d.cube && d.depth == 1 && !fi.depth) {
 +                try {
++                    PerfScope perf_replace{g_perf.texture_replace};
 +                    replace = ext_->ReplaceTexture(d, fi, p, total, palette.va ? palette.colours : nullptr, replacement) &&
 +                              ValidReplacement(d, fi, replacement);
 +                } catch (...) { replace = false; } // optional artwork must not prevent the original upload
@@ -3245,7 +3421,7 @@ index 16395fa..8a6173e 100644
      }
      FillTextureView(tx, d, stages.sv[stage]);
      if (fi.depth) info.shadow = ShadowDepthKind(d.format);
-@@ -1756,6 +2226,7 @@ ID3D12Resource* D3D12Backend::BindTexture(const State& s, int stage, DrawTexture
+@@ -1756,6 +2235,7 @@ ID3D12Resource* D3D12Backend::BindTexture(const State& s, int stage, DrawTexture
      stages.rt[stage] = false;
      stages.k[stage] = 1;
      stages.wide[stage] = 0;
@@ -3253,7 +3429,7 @@ index 16395fa..8a6173e 100644
      sv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
      sv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
      sv.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-@@ -1798,7 +2269,10 @@ D3D12_SAMPLER_DESC StageSampler(const State& s, int i, const DrawTextures& stage
+@@ -1798,7 +2278,10 @@ D3D12_SAMPLER_DESC StageSampler(const State& s, int i, const DrawTextures& stage
      bool anisotropic = min == kTexfAnisotropic || mag == kTexfAnisotropic;
      uint32_t an = anisotropic ? std::max<uint32_t>(t[kTssMaxAnisotropy], 1) : 1;
      // forced only where the title filters across mip levels and the texture has them
@@ -3265,7 +3441,7 @@ index 16395fa..8a6173e 100644
      if (an > 1) {
          sd.Filter = D3D12_FILTER_ANISOTROPIC;
          sd.MaxAnisotropy = std::min<uint32_t>(an, 16);
-@@ -1824,8 +2298,26 @@ D3D12_SAMPLER_DESC StageSampler(const State& s, int i, const DrawTextures& stage
+@@ -1824,8 +2307,26 @@ D3D12_SAMPLER_DESC StageSampler(const State& s, int i, const DrawTextures& stage
  
  uint32_t D3D12Backend::EnsureStageSamplers(const State& s, const DrawTextures& stages, bool clamp) {
      D3D12_SAMPLER_DESC sd[4];
@@ -3294,7 +3470,7 @@ index 16395fa..8a6173e 100644
      uint64_t key = Hash(sd, sizeof(sd));
      auto it = samplers_.find(key);
      if (it != samplers_.end()) return it->second;
-@@ -1896,11 +2388,11 @@ void D3D12Backend::EnsureVertexShader(const State& s, const Assembled& a, DrawSh
+@@ -1896,11 +2397,11 @@ void D3D12Backend::EnsureVertexShader(const State& s, const Assembled& a, DrawSh
  }
  
  bool D3D12Backend::BindStageTexturesAndTargets(const State& s, DrawTextures& stages) {
@@ -3308,7 +3484,7 @@ index 16395fa..8a6173e 100644
      // textures may have recorded copies that unbound the targets
      return BindTargets(s);
  }
-@@ -1953,7 +2445,10 @@ void D3D12Backend::KeyDepthStencil(const State& s, const Assembled& a, PsoKey& k
+@@ -1953,7 +2454,10 @@ void D3D12Backend::KeyDepthStencil(const State& s, const Assembled& a, PsoKey& k
      // and an upscaled target's pixels are smaller
      if (a.topology == Topology::Triangles && SimpleState(s, kMSolidOffsetEnable)) {
          k.zbias = int32_t(std::lround(Bits(SimpleState(s, kMDepthOffset)) * kDepth24Max / s.zscale));
@@ -3320,7 +3496,7 @@ index 16395fa..8a6173e 100644
      }
  }
  
-@@ -1979,6 +2474,9 @@ void D3D12Backend::BuildPipelineKey(const State& s, const Assembled& a, uint64_t
+@@ -1979,6 +2483,9 @@ void D3D12Backend::BuildPipelineKey(const State& s, const Assembled& a, uint64_t
      k.has_rt = bound_rt_ != nullptr;
      k.has_ds = bound_ds_ != nullptr;
      k.rtfmt = bound_rt_ ? bound_rt_->fmt : 0;
@@ -3330,7 +3506,7 @@ index 16395fa..8a6173e 100644
      KeyBlend(s, k);
      if (k.has_ds) KeyDepthStencil(s, a, k);
      KeyRasterizer(s, a, k);
-@@ -2007,10 +2505,29 @@ void FillFogConstants(const State& s, bool vertex_program, DrawConstants& c) {
+@@ -2007,10 +2514,29 @@ void FillFogConstants(const State& s, bool vertex_program, DrawConstants& c) {
      c.fog[3] = float(s.rs[kRsFogTableMode]);
  }
  
@@ -3363,7 +3539,7 @@ index 16395fa..8a6173e 100644
      Color(s.rs[kRsFogColor], c.fog_color);
      c.misc[0] = float(SimpleState(s, kMAlphaRef) & 0xFF);
      c.misc[1] = SimpleState(s, kMAlphaTestEnable) ? float(Cmp(SimpleState(s, kMAlphaFunc)) - 1) : kAlphaTestAlways;
-@@ -2040,10 +2557,12 @@ void D3D12Backend::FillTexelConstants(int i, const TextureDesc& d, const DrawTex
+@@ -2040,10 +2566,12 @@ void D3D12Backend::FillTexelConstants(int i, const TextureDesc& d, const DrawTex
      c.texsize[i][3] = -0.5f / (float(d.height) * k);
      // a 3 console texel box per tap keeps the console chain's glow width and brightness
      if (stages.wide[i] > 0) {
@@ -3380,7 +3556,7 @@ index 16395fa..8a6173e 100644
      }
  }
  
-@@ -2179,9 +2698,9 @@ void D3D12Backend::UploadConstants(const State& s, const DrawShaders& sh, const
+@@ -2179,9 +2707,9 @@ void D3D12Backend::UploadConstants(const State& s, const DrawShaders& sh, const
      Alloc vc = Upload(sizeof(s.vsc), 256);
      std::memcpy(vc.cpu, s.vsc.data(), sizeof(s.vsc));
      Alloc dc = Upload(sizeof(DrawConstants), 256);
@@ -3393,7 +3569,7 @@ index 16395fa..8a6173e 100644
      FillFogConstants(s, sh.prog, c);
      FillCombinerConstants(s, c);
      if (ext_) ext_->Constants(reinterpret_cast<float(*)[4]>(vc.cpu), c.ext, bound_rt_, k.blend ? k.src : 1);
-@@ -2195,6 +2714,7 @@ void D3D12Backend::UploadConstants(const State& s, const DrawShaders& sh, const
+@@ -2195,6 +2723,7 @@ void D3D12Backend::UploadConstants(const State& s, const DrawShaders& sh, const
      cl_->SetGraphicsRootConstantBufferView(1, dc.gpu);
  }
  
@@ -3401,7 +3577,7 @@ index 16395fa..8a6173e 100644
  void D3D12Backend::CaptureTextures(const State& s, const DrawTextures& stages) {
      for (int i = 0; i < 4; i++) {
          ID3D12Resource* res = stages.res[i];
-@@ -2213,19 +2733,63 @@ void D3D12Backend::CaptureTextures(const State& s, const DrawTextures& stages) {
+@@ -2213,19 +2742,63 @@ void D3D12Backend::CaptureTextures(const State& s, const DrawTextures& stages) {
  constexpr int kVsConstants = 192;
  constexpr int kVsConstantBias = 96;
  
@@ -3469,7 +3645,7 @@ index 16395fa..8a6173e 100644
          }
      }
      fprintf(cap_, "\n     pc");
-@@ -2246,10 +2810,86 @@ void D3D12Backend::CaptureDraw(const State& s, uint32_t prim, uint32_t count, co
+@@ -2246,10 +2819,86 @@ void D3D12Backend::CaptureDraw(const State& s, uint32_t prim, uint32_t count, co
      CaptureTextures(s, stages);
  }
  
@@ -3559,7 +3735,7 @@ index 16395fa..8a6173e 100644
  }
  
  // each shader once, as translated
-@@ -2270,6 +2910,8 @@ void D3D12Backend::CaptureShaders(const State& s, const Assembled& a, const Draw
+@@ -2270,6 +2919,8 @@ void D3D12Backend::CaptureShaders(const State& s, const Assembled& a, const Draw
      CaptureShader("ps", sh.pkey, PixelHlsl(pk));
  }
  
@@ -3568,34 +3744,59 @@ index 16395fa..8a6173e 100644
  D3D12_SRV_DIMENSION NullViewDimension(uint8_t kind) {
      if (kind == kTexCube) return D3D12_SRV_DIMENSION_TEXTURECUBE;
      if (kind == kTex3D) return D3D12_SRV_DIMENSION_TEXTURE3D;
-@@ -2323,16 +2965,17 @@ void D3D12Backend::SetViewportScissor(const State& s, uint32_t gw) {
+@@ -2321,24 +2972,41 @@ void D3D12Backend::SetTextureViewsAndSamplers(const State& s, const Assembled& a
+ void D3D12Backend::SetViewportScissor(const State& s, uint32_t gw) {
+     float W = float(bound_rt_ ? bound_rt_->w : bound_ds_->w);
      float H = float(bound_rt_ ? bound_rt_->h : bound_ds_->h);
-     D3D12_VIEWPORT vp{0, 0, W, H, 0, 1};
+-    D3D12_VIEWPORT vp{0, 0, W, H, 0, 1};
++    // Native menus/subtitles retain their authored layout. Fit vertically too
++    // on 16:10; the scene/background and independently anchored HUD stay full size.
++    float width = W, height = H;
++    if (s.presentation_safe_area && app::RenderAspect() > 4.0f / 3.0f) {
++        const float aspect = s.presentation_original_aspect ? 4.0f / 3.0f : 16.0f / 9.0f;
++        width = std::min(W, H * aspect);
++        height = width / aspect;
++    }
++    float left = (W - width) / 2, top = (H - height) / 2;
++    D3D12_VIEWPORT vp{left, top, width, height, 0, 1};
      cl_->RSSetViewports(1, &vp);
 -    float sc = W / gw;
 -    LONG x0 = LONG(s.viewport.x * sc);
 -    LONG y0 = LONG(s.viewport.y * sc);
 -    LONG x1 = LONG((s.viewport.x + s.viewport.w) * sc);
 -    LONG y1 = LONG((s.viewport.y + s.viewport.h) * sc);
-+    float sx = W / gw;
-+    float sy = H / (bound_rt_ ? bound_rt_->gh : bound_ds_->gh);
-+    LONG x0 = LONG(s.viewport.x * sx);
-+    LONG y0 = LONG(s.viewport.y * sy);
-+    LONG x1 = LONG((s.viewport.x + s.viewport.w) * sx);
-+    LONG y1 = LONG((s.viewport.y + s.viewport.h) * sy);
++    float sx = width / gw;
++    float sy = height / (bound_rt_ ? bound_rt_->gh : bound_ds_->gh);
++    LONG x0 = LONG(left + s.viewport.x * sx);
++    LONG y0 = LONG(top + s.viewport.y * sy);
++    LONG x1 = LONG(left + (s.viewport.x + s.viewport.w) * sx);
++    LONG y1 = LONG(top + (s.viewport.y + s.viewport.h) * sy);
      if (s.scissor_count) {
 -        x0 = std::max(x0, LONG(s.scissors[0] * sc));
 -        y0 = std::max(y0, LONG(s.scissors[1] * sc));
 -        x1 = std::min(x1, LONG(s.scissors[2] * sc));
 -        y1 = std::min(y1, LONG(s.scissors[3] * sc));
-+        x0 = std::max(x0, LONG(s.scissors[0] * sx));
-+        y0 = std::max(y0, LONG(s.scissors[1] * sy));
-+        x1 = std::min(x1, LONG(s.scissors[2] * sx));
-+        y1 = std::min(y1, LONG(s.scissors[3] * sy));
++        x0 = std::max(x0, LONG(left + s.scissors[0] * sx));
++        y0 = std::max(y0, LONG(top + s.scissors[1] * sy));
++        x1 = std::min(x1, LONG(left + s.scissors[2] * sx));
++        y1 = std::min(y1, LONG(top + s.scissors[3] * sy));
      }
      D3D12_RECT rect{std::clamp<LONG>(x0, 0, LONG(W)), std::clamp<LONG>(y0, 0, LONG(H)),
                      std::clamp<LONG>(x1, 0, LONG(W)), std::clamp<LONG>(y1, 0, LONG(H))};
-@@ -2354,19 +2997,39 @@ D3D_PRIMITIVE_TOPOLOGY PrimitiveTopology(const Assembled& a) {
+     cl_->RSSetScissorRects(1, &rect);
+ }
+ 
++void D3D12Backend::TrackPresentationAspect(const State& s) {
++    if (bound_rt_ && (!s.presentation_overlay || (s.presentation_safe_area && s.presentation_original_aspect))) {
++        presentation_original_drawn_ = s.presentation_safe_area && s.presentation_original_aspect;
++        presentation_original_data_ = bound_rt_->data;
++    }
++}
++
+ void D3D12Backend::SetBlendFactorStencilRef(const State& s) {
+     float bf[4];
+     Color(SimpleState(s, kMBlendColor), bf);
+@@ -2354,19 +3022,39 @@ D3D_PRIMITIVE_TOPOLOGY PrimitiveTopology(const Assembled& a) {
      return a.strip ? D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
  }
  
@@ -3638,7 +3839,7 @@ index 16395fa..8a6173e 100644
      cl_->IASetPrimitiveTopology(PrimitiveTopology(a));
      if (a.index_count) {
          uint32_t ibytes = a.index_count * (a.index16 ? 2 : 4);
-@@ -2391,11 +3054,11 @@ struct DrawEnd {
+@@ -2391,11 +3079,11 @@ struct DrawEnd {
  // Assemble, timed and counted
  bool D3D12Backend::AssembleDraw(const State& s, uint32_t prim, uint32_t start, uint32_t count,
                                  const uint8_t* indices, Assembled& a) {
@@ -3654,7 +3855,7 @@ index 16395fa..8a6173e 100644
      return assembled;
  }
  
-@@ -2463,9 +3126,11 @@ void D3D12Backend::DeliverReports() {
+@@ -2463,9 +3151,11 @@ void D3D12Backend::DeliverReports() {
  
  void D3D12Backend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t count, const uint8_t* indices) {
      PerfScope perf_draw{g_perf.draw};
@@ -3668,7 +3869,7 @@ index 16395fa..8a6173e 100644
      DrawEnd draw_end{ext_};
      if (ext_) ext_->BeginDraw(s);
      Assembled& a = asm_;
-@@ -2503,11 +3168,13 @@ void D3D12Backend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
+@@ -2503,11 +3193,13 @@ void D3D12Backend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
      DrawConstants c{};
      UploadConstants(s, sh, k, stages, size, c);
  
@@ -3683,7 +3884,7 @@ index 16395fa..8a6173e 100644
  
      // texture views and samplers, viewport and scissor, blend factor and stencil reference
      SetTextureViewsAndSamplers(s, a, stages);
-@@ -2516,15 +3183,16 @@ void D3D12Backend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
+@@ -2516,15 +3208,17 @@ void D3D12Backend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
  
      // geometry, counted while the title runs a visibility test
      uint32_t query = BeginCountedDraw(s);
@@ -3691,6 +3892,7 @@ index 16395fa..8a6173e 100644
 +    DrawGeometry(s, a);
      EndCountedDraw(query);
 +    if (s.presentation_overlay) presentation_drawn_ = true;
++    TrackPresentationAspect(s);
  }
  
  // a guest rect scaled to the target and clamped to it
@@ -3704,7 +3906,7 @@ index 16395fa..8a6173e 100644
  }
  
  // rs: the rects buffer, reused across targets
-@@ -2561,11 +3229,13 @@ void D3D12Backend::ClearTarget(Target& t, const State& s, const ClearArgs& c, st
+@@ -2561,11 +3255,13 @@ void D3D12Backend::ClearTarget(Target& t, const State& s, const ClearArgs& c, st
  void D3D12Backend::Clear(const State& s, uint32_t count, const uint8_t* rects, uint32_t flags, uint32_t color, float z,
                           uint32_t stencil) {
      PerfScope perf_clear{g_perf.clear};
@@ -3718,7 +3920,7 @@ index 16395fa..8a6173e 100644
      Target* rt = (flags & kClearTarget) ? EnsureTarget(s.rt, false) : nullptr;
      Target* ds = (flags & (kClearZ | kClearStencil)) ? EnsureTarget(s.zs, true) : nullptr;
      uint32_t gw;
-@@ -2659,8 +3329,8 @@ void D3D12Backend::CopyByDraw(const Target& src_t, ID3D12Resource* src_res, D3D1
+@@ -2659,8 +3355,8 @@ void D3D12Backend::CopyByDraw(const Target& src_t, ID3D12Resource* src_res, D3D1
      Transition(dst_t.res.Get(), dst_t.state, D3D12_RESOURCE_STATE_RENDER_TARGET);
      D3D12_CPU_DESCRIPTOR_HANDLE rh = Cpu(rtv_heap_.Get(), dst_t.view, rtv_inc_);
      cl_->OMSetRenderTargets(1, &rh, FALSE, nullptr);
@@ -3729,7 +3931,7 @@ index 16395fa..8a6173e 100644
      bool listed = l.count && l.src_rects;
      uint32_t n = listed ? l.count : 1;
      for (uint32_t i = 0; i < n; i++) {
-@@ -2669,7 +3339,7 @@ void D3D12Backend::CopyByDraw(const Target& src_t, ID3D12Resource* src_res, D3D1
+@@ -2669,7 +3365,7 @@ void D3D12Backend::CopyByDraw(const Target& src_t, ID3D12Resource* src_res, D3D1
          DrawnRect r{.x0 = 0, .y0 = 0, .x1 = whole_w, .y1 = whole_h};
          if (listed) r = ReadDrawnRect(l.src_rects, l.dst_points, i);
          if (r.x1 <= r.x0 || r.y1 <= r.y0) continue;
@@ -3738,7 +3940,7 @@ index 16395fa..8a6173e 100644
                            0, 1};
          LONG right = std::min(LONG(vp.TopLeftX + vp.Width), LONG(dst_t.w));
          LONG bottom = std::min(LONG(vp.TopLeftY + vp.Height), LONG(dst_t.h));
-@@ -2678,9 +3348,11 @@ void D3D12Backend::CopyByDraw(const Target& src_t, ID3D12Resource* src_res, D3D1
+@@ -2678,9 +3374,11 @@ void D3D12Backend::CopyByDraw(const Target& src_t, ID3D12Resource* src_res, D3D1
          cl_->RSSetViewports(1, &vp);
          cl_->RSSetScissorRects(1, &scissor);
          float uv[4] = {r.x0 / src_t.gw, r.y0 / src_t.gh, (r.x1 - r.x0) / src_t.gw, (r.y1 - r.y0) / src_t.gh};
@@ -3752,7 +3954,7 @@ index 16395fa..8a6173e 100644
          Blit(src_res, src_t.fmt, uv, o);
      }
      dst_t.drawn = true;
-@@ -2694,7 +3366,8 @@ void D3D12Backend::CopyByRegion(const Target& src_t, ID3D12Resource* src_res, D3
+@@ -2694,7 +3392,8 @@ void D3D12Backend::CopyByRegion(const Target& src_t, ID3D12Resource* src_res, D3
      Transition(dst_t.res.Get(), dst_t.state, D3D12_RESOURCE_STATE_COPY_DEST);
      D3D12_TEXTURE_COPY_LOCATION dl{dst_t.res.Get(), D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
      D3D12_TEXTURE_COPY_LOCATION sl{src_res, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
@@ -3762,7 +3964,7 @@ index 16395fa..8a6173e 100644
      bool listed = l.count && l.src_rects;
      uint32_t n = listed ? l.count : 1;
      for (uint32_t i = 0; i < n; i++) {
-@@ -2703,16 +3376,16 @@ void D3D12Backend::CopyByRegion(const Target& src_t, ID3D12Resource* src_res, D3
+@@ -2703,16 +3402,16 @@ void D3D12Backend::CopyByRegion(const Target& src_t, ID3D12Resource* src_res, D3
          uint32_t dy = 0;
          if (listed) {
              GuestRect r = ReadGuestRect(l.src_rects, i);
@@ -3785,7 +3987,7 @@ index 16395fa..8a6173e 100644
              }
          }
          if (b.right <= b.left || b.bottom <= b.top || dx >= dst_t.w || dy >= dst_t.h) continue;
-@@ -2728,11 +3401,13 @@ void D3D12Backend::Copy(const Surface& src, const Surface& dst, uint32_t count,
+@@ -2728,11 +3427,13 @@ void D3D12Backend::Copy(const Surface& src, const Surface& dst, uint32_t count,
                          uint32_t dst_points) {
      PerfScope perf_copy{g_perf.copy};
      Target* src_t = FindTarget(src, false);
@@ -3799,7 +4001,7 @@ index 16395fa..8a6173e 100644
      // pixels the CPU made: the copy happens in memory, textures and targets pick it up from there
      if (!src_t || !src_t->drawn) {
          if (!CopySurfaceMemory(src, dst, count, src_rects, dst_points)) {
-@@ -2746,17 +3421,23 @@ void D3D12Backend::Copy(const Surface& src, const Surface& dst, uint32_t count,
+@@ -2746,17 +3447,23 @@ void D3D12Backend::Copy(const Surface& src, const Surface& dst, uint32_t count,
      Target* dst_t = EnsureTarget(dst, false);
      if (!dst_t || src_t == dst_t) return;
      CopyList l{.count = count, .src_rects = src_rects, .dst_points = dst_points};
@@ -3827,7 +4029,7 @@ index 16395fa..8a6173e 100644
  }
  
  void D3D12Backend::ResizeSwap() {
-@@ -2777,9 +3458,18 @@ void D3D12Backend::ResizeSwap() {
+@@ -2777,9 +3484,18 @@ void D3D12Backend::ResizeSwap() {
      bb_h_ = h;
  }
  
@@ -3847,7 +4049,7 @@ index 16395fa..8a6173e 100644
      for (auto& t : cap_tex_) {
          char name[32];
          snprintf(name, sizeof(name), "tex_%08X", t.data);
-@@ -2806,6 +3496,8 @@ void D3D12Backend::StartCapture() {
+@@ -2806,6 +3522,8 @@ void D3D12Backend::StartCapture() {
      cap_sh_.clear();
  }
  
@@ -3856,18 +4058,22 @@ index 16395fa..8a6173e 100644
  // ramp_ holds the red, green and blue ramps, 256 entries each
  constexpr int kRampRed = 0;
  constexpr int kRampGreen = 256;
-@@ -2833,7 +3525,9 @@ void D3D12Backend::UploadGammaRamp() {
+@@ -2833,10 +3551,10 @@ void D3D12Backend::UploadGammaRamp() {
      cl_->CopyTextureRegion(&dl, 0, 0, 0, &sl, nullptr);
  }
  
 -void D3D12Backend::BlitFrame(Target& t) {
+-    // 16:9 when the console reports a widescreen display, else 4:3
+-    bool wide = app::Widescreen();
+-    float aspect = wide ? 16.0f / 9.0f : 4.0f / 3.0f;
 +bool D3D12Backend::BlitFrame(Target& t) {
 +    TargetRead read = ReadTarget(t);
 +    if (!read.res || !EnsureBlitPipeline(kBgra, false, 1)) return false;
-     // 16:9 when the console reports a widescreen display, else 4:3
-     bool wide = app::Widescreen();
-     float aspect = wide ? 16.0f / 9.0f : 4.0f / 3.0f;
-@@ -2846,8 +3540,21 @@ void D3D12Backend::BlitFrame(Target& t) {
++    float aspect = app::RenderAspect();
+     float w = float(bb_w_);
+     float h = float(bb_h_);
+     float vw = std::min(w, h * aspect);
+@@ -2846,8 +3564,44 @@ void D3D12Backend::BlitFrame(Target& t) {
      D3D12_RECT scissor{0, 0, LONG(bb_w_), LONG(bb_h_)};
      cl_->RSSetViewports(1, &vp);
      cl_->RSSetScissorRects(1, &scissor);
@@ -3888,20 +4094,44 @@ index 16395fa..8a6173e 100644
 +        Blit(t.res.Get(), t.fmt, uv, {.alpha = true, .over = true});
 +    }
 +    presentation_active_ = presentation_drawn_ = false;
++}
++
++void D3D12Backend::ClearPresentationBars(const Target* front, D3D12_CPU_DESCRIPTOR_HANDLE output) {
++    if (front && presentation_original_drawn_ && front->data == presentation_original_data_) {
++        // Fit inside the actual output rectangle, including forced aspects in
++        // a differently shaped window. Clear gutters after native composition,
++        // so transparent art and retained guest pixels cannot fill the bars.
++        const float aspect = app::RenderAspect();
++        const float output_width = std::min(float(bb_w_), float(bb_h_) * aspect);
++        const float output_height = output_width / aspect;
++        const float width = std::min(output_width, output_height * (4.f / 3.f));
++        const float height = width / (4.f / 3.f);
++        const LONG left = std::max(LONG(0), LONG(std::floor((bb_w_ - width) * .5f)));
++        const LONG top = std::max(LONG(0), LONG(std::floor((bb_h_ - height) * .5f)));
++        const LONG right = std::min(LONG(bb_w_), LONG(std::ceil((bb_w_ + width) * .5f)));
++        const LONG bottom = std::min(LONG(bb_h_), LONG(std::ceil((bb_h_ + height) * .5f)));
++        const D3D12_RECT bars[] = {{0, 0, left, LONG(bb_h_)}, {right, 0, LONG(bb_w_), LONG(bb_h_)},
++                                 {left, 0, right, top}, {left, bottom, right, LONG(bb_h_)}};
++        const float black[]{0, 0, 0, 1};
++        for (const auto& bar : bars)
++            if (bar.left < bar.right && bar.top < bar.bottom) cl_->ClearRenderTargetView(output, black, 1, &bar);
++    }
++    presentation_original_drawn_ = false;
  }
  
  void D3D12Backend::RenderUi() {
-@@ -2870,7 +3577,8 @@ void D3D12Backend::DrawFrame(Target* t, uint32_t bi) {
+@@ -2870,7 +3624,9 @@ void D3D12Backend::DrawFrame(Target* t, uint32_t bi) {
      cl_->ClearRenderTargetView(rh, black, 0, nullptr);
      cl_->OMSetRenderTargets(1, &rh, FALSE, nullptr);
      bound_rt_ = bound_ds_ = nullptr;
 -    if (t) BlitFrame(*t);
 +    const bool visible = t && BlitFrame(*t);
 +    BlitPresentationOverlay(visible ? t : nullptr);
++    ClearPresentationBars(visible ? t : nullptr, rh);
      RenderUi();
      Transition(bb_[bi].Get(), bs, D3D12_RESOURCE_STATE_PRESENT);
  }
-@@ -2894,9 +3602,9 @@ void D3D12Backend::ReleaseOldTextures() {
+@@ -2894,9 +3650,9 @@ void D3D12Backend::ReleaseOldTextures() {
  void D3D12Backend::ResetFrame() {
      Frame& f = CurrentFrame();
      if (f.fence && fence_->GetCompletedValue() < f.fence) {
@@ -3913,7 +4143,13 @@ index 16395fa..8a6173e 100644
      }
      f.alloc->Reset();
      f.garbage.clear();
-@@ -2917,6 +3625,71 @@ void D3D12Backend::CountFps() {
+@@ -2912,11 +3668,77 @@ void D3D12Backend::CountFps() {
+     double el = std::chrono::duration<double>(now - fps_t_).count();
+     if (el >= 0.5) {
+         fps_ = fps_n_ / el;
++        if (logx::SessionEnabled()) LOGI("presentation: fps=%.2f output=%ux%u widescreen=%u", fps_, bb_w_, bb_h_, unsigned(app::Widescreen()));
+         fps_n_ = 0;
+         fps_t_ = now;
      }
  }
  
@@ -3962,7 +4198,7 @@ index 16395fa..8a6173e 100644
 +    LOGI("frame hitch: slow_frames=%llu frame=%llu gap_ms=%.2f cpu_ms=%.2f unexplained_ms=%.2f "
 +         "present_ms=%.2f swap_ms=%.2f fence_ms=%.2f compile_ms=%.2f "
 +         "cache_identity_ms=%.2f cache_key_ms=%.2f cache_read_ms=%.2f cache_write_ms=%.2f "
-+         "pso_ms=%.2f texture_create_ms=%.2f texture_upload_ms=%.2f target_upload_ms=%.2f "
++         "pso_ms=%.2f texture_replace_ms=%.2f texture_create_ms=%.2f texture_upload_ms=%.2f target_upload_ms=%.2f "
 +         "compiles=%llu pso_attempts=%llu cache_hits=%llu cache_misses=%llu cache_writes=%llu "
 +         "texture_uploads=%llu target_uploads=%llu overflow=%llu settings_changes=%llu capture=%u",
 +         (unsigned long long)f.slow_frames, (unsigned long long)f.worst_frame,
@@ -3970,7 +4206,7 @@ index 16395fa..8a6173e 100644
 +         p.present - b.present, p.swap - b.swap, p.fence_wait - b.fence_wait, p.compile - b.compile,
 +         p.cache_identity - b.cache_identity, p.cache_key - b.cache_key,
 +         p.cache_read - b.cache_read, p.cache_write - b.cache_write, p.pso - b.pso,
-+         p.texture_create - b.texture_create, p.texup - b.texup, p.target_upload - b.target_upload,
++         p.texture_replace - b.texture_replace, p.texture_create - b.texture_create, p.texup - b.texup, p.target_upload - b.target_upload,
 +         (unsigned long long)(p.shaders - b.shaders), (unsigned long long)(p.pso_attempts - b.pso_attempts),
 +         (unsigned long long)(p.shader_cache_hits - b.shader_cache_hits),
 +         (unsigned long long)(p.shader_cache_misses - b.shader_cache_misses),
@@ -3985,7 +4221,7 @@ index 16395fa..8a6173e 100644
  void LogPerf() {
      static PerfClock::time_point perf_start = PerfClock::now();
      static uint64_t perf_frames = 0;
-@@ -2942,11 +3715,14 @@ void LogPerf() {
+@@ -2942,11 +3764,14 @@ void LogPerf() {
               g_perf_sync_late.exchange(0) / n);
          LOGI("perf: per frame %.0f draws (%.0f raw) %.0fk verts %.1f MB upload %.1f overflow | %.0f checks %.2f MB "
               "hashed | %.1f tex uploads %.2f MB, %.1f new tex, %.1f new targets, %.1f target uploads, %.1f shrinks, "
@@ -4002,7 +4238,7 @@ index 16395fa..8a6173e 100644
          g_perf = Perf{};
          perf_start = PerfClock::now();
          perf_frames = 0;
-@@ -2954,12 +3730,19 @@ void LogPerf() {
+@@ -2954,12 +3779,19 @@ void LogPerf() {
  }
  
  void D3D12Backend::Present(const Surface& front) {
@@ -4022,7 +4258,7 @@ index 16395fa..8a6173e 100644
      ResizeSwap();
      Target* t = EnsureTarget(front, false);
      if (t && LatchCpuWrite(*t)) UploadTarget(*t, front);
-@@ -2971,10 +3754,10 @@ void D3D12Backend::Present(const Surface& front) {
+@@ -2971,10 +3803,10 @@ void D3D12Backend::Present(const Surface& front) {
      DrawFrame(t, bi);
      Submit(false);
      DeliverReports();
@@ -4036,7 +4272,7 @@ index 16395fa..8a6173e 100644
  
      presents_++;
      presents_seen_.store(presents_);
-@@ -2982,18 +3765,37 @@ void D3D12Backend::Present(const Surface& front) {
+@@ -2982,18 +3814,37 @@ void D3D12Backend::Present(const Surface& front) {
      ReleaseOldTextures();
      ResetFrame();
      CountFps();
@@ -4079,7 +4315,7 @@ index 16395fa..8a6173e 100644
          if (ext_) ext_->Reset(*this);
          bound_rt_ = bound_ds_ = nullptr;
      }
-@@ -3002,12 +3804,14 @@ void D3D12Backend::ApplySettings() {
+@@ -3002,12 +3853,14 @@ void D3D12Backend::ApplySettings() {
  // the target resolved, then shrunk with o when it is not guest sized BGRA; res null on failure
  D3D12Backend::CopySource D3D12Backend::PrepareCopySource(Target& t, const ShrinkOptions& o) {
      Resolve(t);
@@ -4097,7 +4333,7 @@ index 16395fa..8a6173e 100644
      }
      return out;
  }
-@@ -3024,7 +3828,7 @@ void D3D12Backend::Sync(uint32_t data, uint32_t) {
+@@ -3024,7 +3877,7 @@ void D3D12Backend::Sync(uint32_t data, uint32_t) {
      auto it = targets_.find(TargetMapKey(data, false));
      if (it == targets_.end() || !it->second.drawn || TargetStale(data)) return;
      PerfScope perf_sync{g_perf.sync};
@@ -4106,7 +4342,7 @@ index 16395fa..8a6173e 100644
      if (diag::Perf()) {
          LOG_FIRST(16, "perf: read-back of %08X (%ux%u guest, %ux%u host)", data, it->second.gw, it->second.gh,
                    it->second.w, it->second.h);
-@@ -3143,7 +3947,7 @@ void D3D12Backend::RecordLate(uint32_t data) {
+@@ -3143,7 +3996,7 @@ void D3D12Backend::RecordLate(uint32_t data) {
      if (it == targets_.end() || TargetStale(data)) return;
      Target& t = it->second;
      PerfScope perf_sync{g_perf.sync};
@@ -4115,7 +4351,7 @@ index 16395fa..8a6173e 100644
      // what DeliverLate or Sync left in guest memory is no CPU write to upload back
      t.sig = MemSig(t.data, t.bytes);
      t.read.clear();
-@@ -3171,7 +3975,7 @@ ComPtr<ID3D12Resource> D3D12Backend::Shrink(ID3D12Resource* src, D3D12_RESOURCE_
+@@ -3171,7 +4024,7 @@ ComPtr<ID3D12Resource> D3D12Backend::Shrink(ID3D12Resource* src, D3D12_RESOURCE_
      cv.Format = td.Format;
      ComPtr<ID3D12Resource> down = o.into;
      D3D12_RESOURCE_STATES down_state = o.into ? o.into_state : D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -4124,7 +4360,7 @@ index 16395fa..8a6173e 100644
      if (free_rtv_.empty()) return nullptr;
      if (down) {
          Transition(down.Get(), down_state, D3D12_RESOURCE_STATE_RENDER_TARGET);
-@@ -3218,6 +4022,7 @@ bool D3D12Backend::ReadBack(ID3D12Resource* res, uint32_t w, uint32_t h, std::ve
+@@ -3218,6 +4071,7 @@ bool D3D12Backend::ReadBack(ID3D12Resource* res, uint32_t w, uint32_t h, std::ve
      return true;
  }
  
@@ -4132,7 +4368,7 @@ index 16395fa..8a6173e 100644
  // BMP file and info header: byte offsets of the fields CapSave writes
  constexpr int kBmpHeaderBytes = 54;
  constexpr int kBmpFileSize = 2;
-@@ -3252,9 +4057,10 @@ void D3D12Backend::CapSave(const CapImage& img, const char* name) {
+@@ -3252,9 +4106,10 @@ void D3D12Backend::CapSave(const CapImage& img, const char* name) {
  }
  
  void D3D12Backend::CapSave(Target& t, const char* name) {
@@ -4145,7 +4381,7 @@ index 16395fa..8a6173e 100644
  }
  
  // the frame moves to another target: save the one it leaves
-@@ -3276,11 +4082,16 @@ void D3D12Backend::CapStep(const Surface& rt) {
+@@ -3276,11 +4131,16 @@ void D3D12Backend::CapStep(const Surface& rt) {
      cap_rt_ = d;
  }
  
@@ -4163,7 +4399,7 @@ index 16395fa..8a6173e 100644
  }
  
  void D3D12Backend::SetGamma(const uint8_t* ramp) {
-@@ -3290,6 +4101,60 @@ void D3D12Backend::SetGamma(const uint8_t* ramp) {
+@@ -3290,6 +4150,68 @@ void D3D12Backend::SetGamma(const uint8_t* ramp) {
  
  }  // namespace
  
@@ -4188,13 +4424,21 @@ index 16395fa..8a6173e 100644
 +    return ReadShaderCache(digest, code);
 +}
 +
-+bool PrepareShaderCache(const std::string& source, const char* profile, std::string& key) {
++std::array<BackendShaderSource, kBackendShaderCount> BackendShaderSources() {
++    // Reuse the renderer's exact source and entry names; both participate in cache identity.
++    return {{{kBlitHlsl, "vs", "vs_5_0"}, {kBlitHlsl, "psmain", "ps_5_0"},
++             {kDepthHlsl, "vs", "vs_5_0"}, {kDepthHlsl, "psmain", "ps_5_0"},
++             {kDepthMsHlsl, "vs", "vs_5_0"}, {kDepthMsHlsl, "psmain", "ps_5_0"},
++             {kDepthMsHlsl, "resolve", "ps_5_0"}, {PointHlsl(), "main", "gs_5_0"}}};
++}
++
++bool PrepareShaderCache(const std::string& source, const char* profile, std::string& key, const char* entry) {
 +    key.clear();
-+    if (source.empty() || !profile || (std::strcmp(profile, "vs_5_0") && std::strcmp(profile, "ps_5_0") &&
++    if (source.empty() || !entry || !*entry || !profile || (std::strcmp(profile, "vs_5_0") && std::strcmp(profile, "ps_5_0") &&
 +        std::strcmp(profile, "gs_5_0"))) return false;
 +    static const auto compiler = ShaderCompilerIdentity(false);
 +    if (!compiler) return false;
-+    const auto digest = ShaderCacheKey(source, "main", profile, D3DCOMPILE_OPTIMIZATION_LEVEL1, 0, *compiler, false);
++    const auto digest = ShaderCacheKey(source, entry, profile, D3DCOMPILE_OPTIMIZATION_LEVEL1, 0, *compiler, false);
 +    if (!digest) return false;
 +    // Equal recipes share compilation and cannot replace a file another setup worker is reading.
 +    static std::array<std::mutex, 64> locks;
@@ -4205,7 +4449,7 @@ index 16395fa..8a6173e 100644
 +    if (!ReadShaderCache(*digest, code, false)) {
 +        // Setup owns no renderer state or frame counters, including on worker threads.
 +        ComPtr<ID3DBlob> errors;
-+        if (FAILED(D3DCompile(source.data(), source.size(), nullptr, nullptr, nullptr, "main", profile,
++        if (FAILED(D3DCompile(source.data(), source.size(), nullptr, nullptr, nullptr, entry, profile,
 +            D3DCOMPILE_OPTIMIZATION_LEVEL1, 0, &code, &errors)) ||
 +            !WriteShaderCache(*digest, code.Get(), false) || !ReadShaderCache(*digest, code, false)) return false;
 +    }
@@ -4284,7 +4528,7 @@ index ce6acda..24c5acc 100644
      virtual void Constants(float (*/*vsc*/)[4], float* /*ext*/, const Target* /*rt*/, uint32_t /*src_blend*/) {}
      // a target with range other than 1 is read, copied or presented
 diff --git a/runtime/gpu/render_thread.cpp b/runtime/gpu/render_thread.cpp
-index def8fc5..83f99f7 100644
+index def8fc5..84cba6e 100644
 --- a/runtime/gpu/render_thread.cpp
 +++ b/runtime/gpu/render_thread.cpp
 @@ -76,7 +76,7 @@ std::vector<Range> StateRanges() {
@@ -4446,8 +4690,8 @@ index def8fc5..83f99f7 100644
          for (const Range& r : ranges_)
              for (size_t off = r.off, end = r.off + r.len; off < end; off += 64)
                  Delta(reinterpret_cast<const uint8_t*>(&sent_) + off, now + off, std::min<size_t>(64, end - off));
-+        const State::DrawCapture empty{};
 +#ifndef XBE_RELEASE
++        const State::DrawCapture empty{};
 +        Delta(&sent_.draw_capture, capture ? capture : &empty, sizeof(empty));
 +#endif
          std::array<uint32_t, 4> textures;
@@ -4643,10 +4887,10 @@ index ecb55a2..af89bf2 100644
  
  }  // namespace gpu
 diff --git a/runtime/gpu/state.h b/runtime/gpu/state.h
-index d1814a3..8aaaea4 100644
+index d1814a3..95503c3 100644
 --- a/runtime/gpu/state.h
 +++ b/runtime/gpu/state.h
-@@ -184,7 +184,22 @@ struct State {
+@@ -184,7 +184,24 @@ struct State {
      std::array<std::array<uint32_t, 26>, 8> lights{};  // D3DLIGHT8
      uint32_t light_enable = 0;                         // bit per light
      float ss_offset_x = 0, ss_offset_y = 0;
@@ -4655,6 +4899,8 @@ index d1814a3..8aaaea4 100644
      float zscale = 16777215.0f;  // depth buffer units per 1.0
 +    // Native UI, composited like host UI outside guest feedback surfaces.
 +    bool presentation_overlay = false;
++    bool presentation_safe_area = false;
++    bool presentation_original_aspect = false; // Scoped full-page UI, never gameplay/subtitles.
 +    // Diagnostic provenance only; zero for immediate commands without a retained API caller.
 +    uint32_t draw_api = 0, draw_caller = 0;
 +    struct DrawCapture {
@@ -5326,7 +5572,7 @@ index 86cf14a..ce8a50f 100644
  
  // Exceptions dispatch like NT on x86: each handler of the fs:[0] chain is called (record, frame, context,
 diff --git a/runtime/xdk/d3d8.cpp b/runtime/xdk/d3d8.cpp
-index cb38363..46baeac 100644
+index cb38363..a3a9f0d 100644
 --- a/runtime/xdk/d3d8.cpp
 +++ b/runtime/xdk/d3d8.cpp
 @@ -39,6 +39,10 @@ using namespace kernel;
@@ -5455,7 +5701,21 @@ index cb38363..46baeac 100644
  HLE_STDCALL(D3DResource_IsBusy, 1) {
      std::lock_guard<std::recursive_mutex> lock(g_lock);
      uint32_t res = a[0];
-@@ -445,6 +497,7 @@ HLE_STDCALL(D3DDevice_SetGammaRamp, 2) {
+@@ -414,7 +466,12 @@ HLE_STDCALL(D3D_MakeRequestedSpace, 2) {
+ }
+ 
+ HLE_STDCALL(D3DDevice_BlockUntilVerticalBlank, 0) {
+-    std::this_thread::sleep_for(std::chrono::milliseconds(16));
++    using clock = std::chrono::steady_clock;
++    static const auto origin = clock::now();
++    constexpr auto period = std::chrono::nanoseconds(16666667);
++    // Wait for the next refresh boundary, rather than adding a refresh to the caller's work.
++    const auto elapsed = clock::now() - origin;
++    std::this_thread::sleep_until(origin + (elapsed / period + 1) * period);
+     return 0;
+ }
+ HLE_STDCALL(D3DDevice_SetFlickerFilter, 1) { return 0; }
+@@ -445,6 +502,7 @@ HLE_STDCALL(D3DDevice_SetGammaRamp, 2) {
  
  HLE_STDCALL(D3DDevice_SetRenderTarget, 2) {
      std::lock_guard<std::recursive_mutex> lock(g_lock);
@@ -5463,7 +5723,7 @@ index cb38363..46baeac 100644
      uint32_t rt = a[0] ? a[0] : Dev(kDevRenderTarget), zs = a[1];
      AddRef(ctx, rt);
      uint32_t old_rt = Dev(kDevRenderTarget), old_zs = Dev(kDevDepth);
-@@ -541,6 +594,7 @@ HLE_STDCALL(D3DDevice_CopyRects, 5) {
+@@ -541,6 +599,7 @@ HLE_STDCALL(D3DDevice_CopyRects, 5) {
  
  HLE_STDCALL(D3DDevice_SetViewport, 1) {
      std::lock_guard<std::recursive_mutex> lock(g_lock);
@@ -5471,7 +5731,7 @@ index cb38363..46baeac 100644
      uint32_t v = a[0];
      g_state.viewport = {R32(v), R32(v + 4), R32(v + 8), R32(v + 12), GF(v + 16), GF(v + 20)};
      g_state.scissor_count = 0;
-@@ -556,6 +610,8 @@ HLE_STDCALL(D3DDevice_SetScissors, 3) {
+@@ -556,6 +615,8 @@ HLE_STDCALL(D3DDevice_SetScissors, 3) {
  }
  
  HLE_STDCALL(D3DDevice_SetScreenSpaceOffset, 2) {
@@ -5480,7 +5740,7 @@ index cb38363..46baeac 100644
      g_state.ss_offset_x = ArgF(a, 0);
      g_state.ss_offset_y = ArgF(a, 1);
      UpdateViewportConstants();
-@@ -748,6 +804,101 @@ HLE_STDCALL(D3DDevice_SetIndices, 2) {
+@@ -748,6 +809,101 @@ HLE_STDCALL(D3DDevice_SetIndices, 2) {
  
  // shaders
  
@@ -5582,7 +5842,7 @@ index cb38363..46baeac 100644
  HLE_STDCALL(D3DDevice_CreateVertexShader, 4) {
      std::lock_guard<std::recursive_mutex> lock(g_lock);
      uint32_t decl = a[0], func = a[1], out = a[2];
-@@ -802,66 +953,169 @@ HLE_STDCALL(D3DDevice_GetVertexShaderFunction, 3) {
+@@ -802,66 +958,169 @@ HLE_STDCALL(D3DDevice_GetVertexShaderFunction, 3) {
  HLE_STDCALL(D3DDevice_SetVertexShader, 1) {
      std::lock_guard<std::recursive_mutex> lock(g_lock);
      uint32_t h = a[0];
@@ -5775,7 +6035,7 @@ index cb38363..46baeac 100644
      ps->handle = rec;
      g_ps[rec] = ps;
      W32(a[1], rec);
-@@ -870,32 +1124,30 @@ HLE_STDCALL(D3DDevice_CreatePixelShader, 2) {
+@@ -870,32 +1129,30 @@ HLE_STDCALL(D3DDevice_CreatePixelShader, 2) {
  
  HLE_STDCALL(D3DDevice_DeletePixelShader, 1) {
      std::lock_guard<std::recursive_mutex> lock(g_lock);
@@ -5823,7 +6083,7 @@ index cb38363..46baeac 100644
      // the definition loads the combiner state like the XDK pushes it
      const uint32_t* d = g_state.ps->def;
      auto put = [&](uint32_t method, uint32_t v) { g_state.simple[method >> 2] = v; };
-@@ -929,10 +1181,18 @@ HLE_STDCALL(D3DDevice_SetPixelShaderConstant, 3) {
+@@ -929,10 +1186,18 @@ HLE_STDCALL(D3DDevice_SetPixelShaderConstant, 3) {
  
  // drawing
  
@@ -5842,7 +6102,7 @@ index cb38363..46baeac 100644
      if (g_backend) g_backend->Draw(g_state, a[0], a[1], a[2], nullptr);
      return 0;
  }
-@@ -941,6 +1201,8 @@ HLE_STDCALL(D3DDevice_DrawIndexedVertices, 3) {
+@@ -941,6 +1206,8 @@ HLE_STDCALL(D3DDevice_DrawIndexedVertices, 3) {
      std::lock_guard<std::recursive_mutex> lock(g_lock);
      Walk(Dev(kDevPush));
      SyncDeferred();
@@ -5851,7 +6111,7 @@ index cb38363..46baeac 100644
      const uint8_t* indices = a[2] ? static_cast<const uint8_t*>(HostPtr(a[2])) : nullptr;
      if (g_backend) g_backend->Draw(g_state, a[0], 0, a[1], indices);
      return 0;
-@@ -974,11 +1236,13 @@ uint32_t UpVertices(const void* src, uint32_t bytes) {
+@@ -974,11 +1241,13 @@ uint32_t UpVertices(const void* src, uint32_t bytes) {
      return g_up_header;
  }
  
@@ -5866,7 +6126,7 @@ index cb38363..46baeac 100644
      g_backend->Draw(g_state, prim, 0, count, nullptr);
      g_state.streams[0] = stream;
  }
-@@ -1001,6 +1265,34 @@ uint32_t g_im_prim = 0, g_im_mask = 0;  // open primitive, slots it wrote
+@@ -1001,6 +1270,34 @@ uint32_t g_im_prim = 0, g_im_mask = 0;  // open primitive, slots it wrote
  float g_im_attr[64];                    // 16 slots of x y z w
  std::vector<float> g_im_vertices;       // every slot per vertex
  
@@ -5901,7 +6161,7 @@ index cb38363..46baeac 100644
  // visibility tests: depth passing pixels are counted while enabled, a report gets the count since the clear,
  // at a physical address in the first 16 MB
  void ApplyVisibilityMethod(uint32_t m, uint32_t v) {
-@@ -1050,16 +1342,19 @@ void EndPrimitive() {
+@@ -1050,16 +1347,19 @@ void EndPrimitive() {
  }
  
  // reads the commands pushed since the last call: vertex data between a begin and an end is drawn, visibility tests
@@ -5924,7 +6184,7 @@ index cb38363..46baeac 100644
              float f, *a = g_im_attr;
              bool last = true;  // the slot's last component
              std::memcpy(&f, &v, 4);
-@@ -1101,7 +1396,7 @@ void Walk(uint32_t end) {
+@@ -1101,7 +1401,7 @@ void Walk(uint32_t end) {
              if (a == g_im_attr && last) g_im_vertices.insert(g_im_vertices.end(), g_im_attr, g_im_attr + 64);
          }
      }
@@ -5933,7 +6193,7 @@ index cb38363..46baeac 100644
  }
  }  // namespace
  }  // namespace d3d
-@@ -1109,7 +1404,8 @@ void Walk(uint32_t end) {
+@@ -1109,7 +1409,8 @@ void Walk(uint32_t end) {
  HLE_STDCALL(D3DDevice_DrawVerticesUP, 4) {
      std::lock_guard<std::recursive_mutex> lock(g_lock);
      Walk(Dev(kDevPush));
@@ -5943,7 +6203,7 @@ index cb38363..46baeac 100644
      return 0;
  }
  
-@@ -1136,6 +1432,7 @@ HLE_STDCALL(D3DDevice_EndPush, 1) {
+@@ -1136,6 +1437,7 @@ HLE_STDCALL(D3DDevice_EndPush, 1) {
          }
          for (uint32_t i = 0; i < n; i++, p += 4) {
              uint32_t m = head & 0x40000000 ? method : method + i * 4, v = R32(p);
@@ -5951,7 +6211,7 @@ index cb38363..46baeac 100644
              ApplyVisibilityMethod(m, v);
              if (m == kInlineArray) {
                  if (prim) vertices.push_back(v);
-@@ -1146,7 +1443,9 @@ HLE_STDCALL(D3DDevice_EndPush, 1) {
+@@ -1146,7 +1448,9 @@ HLE_STDCALL(D3DDevice_EndPush, 1) {
                  vertices.clear();
              } else if (prim) {
                  uint32_t stride = VertexBytes(), bytes = uint32_t(vertices.size()) * 4;
@@ -5963,7 +6223,7 @@ index cb38363..46baeac 100644
                  prim = 0;
              }
 diff --git a/runtime/xdk/dsound.cpp b/runtime/xdk/dsound.cpp
-index 05977b5..dfd0654 100644
+index 05977b5..cfa607d 100644
 --- a/runtime/xdk/dsound.cpp
 +++ b/runtime/xdk/dsound.cpp
 @@ -1,14 +1,20 @@
@@ -5987,7 +6247,7 @@ index 05977b5..dfd0654 100644
  #include "xbe/xbe.h"
  #include "xdk/hle.h"
  #include "xdk/layout.h"
-@@ -20,6 +26,20 @@ extern const xbe::Image* g_image;
+@@ -20,6 +26,31 @@ extern const xbe::Image* g_image;
  }
  namespace dispatch {
  X86Func* Find(uint32_t guest);
@@ -5998,17 +6258,28 @@ index 05977b5..dfd0654 100644
 +// Shared by native output and the null-audio harness; no voice/device-object reset in this one-shot runtime.
 +static std::atomic<uint32_t> g_processed_frames{0};
 +uint32_t SampleCounter() { return g_processed_frames.load(std::memory_order_relaxed); }
-+static std::atomic<bool> g_surround_enabled{false};
++static std::atomic<SoundOutput> g_sound_output{SoundOutput::Stereo};
 +static std::atomic<uint32_t> g_output_channels{2};
-+void SetSurroundEnabled(bool enabled) { g_surround_enabled.store(enabled, std::memory_order_relaxed); }
-+bool SurroundEnabled() { return g_surround_enabled.load(std::memory_order_relaxed); }
++void SetSoundOutput(SoundOutput mode) {
++    if (mode != SoundOutput::Surround51 && mode != SoundOutput::Surround71) mode = SoundOutput::Stereo;
++    g_sound_output.store(mode, std::memory_order_relaxed);
++}
++SoundOutput GetSoundOutput() { return g_sound_output.load(std::memory_order_relaxed); }
++SoundOutput ActiveSoundOutput() {
++    const auto mode = GetSoundOutput();
++    const auto channels = OutputChannels();
++    if (channels < 6) return SoundOutput::Stereo;
++    return mode == SoundOutput::Surround71 && channels < 8 ? SoundOutput::Surround51 : mode;
++}
++void SetSurroundEnabled(bool enabled) { SetSoundOutput(enabled ? SoundOutput::Surround51 : SoundOutput::Stereo); }
++bool SurroundEnabled() { return GetSoundOutput() != SoundOutput::Stereo; }
 +uint32_t OutputChannels() { return g_output_channels.load(std::memory_order_relaxed); }
-+bool SurroundAvailable() { return OutputChannels() == 6; }
-+void SetOutputChannels(uint32_t channels) { g_output_channels.store(channels == 6 ? 6 : 2, std::memory_order_relaxed); }
++bool SurroundAvailable() { const auto channels = OutputChannels(); return channels == 6 || channels == 8; }
++void SetOutputChannels(uint32_t channels) { g_output_channels.store(channels == 6 || channels == 8 ? channels : 2, std::memory_order_relaxed); }
  }
  
  // configs written before the SDK knew the name
-@@ -75,6 +95,58 @@ X86Func* Find(uint32_t guest);
+@@ -75,6 +106,58 @@ X86Func* Find(uint32_t guest);
  #define SYM_IDirectSoundStream_SetEG FFFFFF0C
  #define HAS_IDirectSoundStream_SetEG 0
  #endif
@@ -6067,7 +6338,7 @@ index 05977b5..dfd0654 100644
  
  namespace {
  
-@@ -100,14 +172,44 @@ struct Voice {
+@@ -100,14 +183,45 @@ struct Voice {
      uint32_t owned = 0;  // memory the library made for the buffer
      bool playing = false, looping = false, paused = false;
      bool sync = false;  // held until IDirectSound_SynchPlayback
@@ -6105,6 +6376,7 @@ index 05977b5..dfd0654 100644
 +    // shortcut: Native angles approximate speaker balance; Xbox HRTF filtering/delay and filter DSP remain unsupported.
 +    std::array<uint32_t, 2> hrtf_data = {};
 +    std::array<float, 2> direction_balance = {1, 1};
++    std::array<float, 2> rear_spread = {1, 0};  // Back, side; neutral until native direction arrives.
 +    std::array<uint32_t, 6> filter_data = {};
 +    uint32_t unsupported_voice_data = 0;
 +    uint32_t output = 0;  // Retained mono mix-in buffer; not an independently playing PCM voice.
@@ -6113,7 +6385,7 @@ index 05977b5..dfd0654 100644
      uint8_t nbins = 0, bin[8] = {};
      int32_t bin_mb[32] = {};  // by mix bin
      std::vector<float> curve;  // rolloff
-@@ -117,6 +219,15 @@ struct Voice {
+@@ -117,6 +231,15 @@ struct Voice {
      // ADPCM block cache
      int64_t block = -1;
      int16_t decoded[65 * 8];
@@ -6129,7 +6401,7 @@ index 05977b5..dfd0654 100644
  };
  
  struct Done {
-@@ -135,7 +246,291 @@ std::atomic<int64_t> g_pumped{0};          // the last DirectSoundDoWork, steady
+@@ -135,7 +258,303 @@ std::atomic<int64_t> g_pumped{0};          // the last DirectSoundDoWork, steady
  bool g_started = false;
  uint32_t g_ds = 0;
  
@@ -6358,6 +6630,17 @@ index 05977b5..dfd0654 100644
 +    }
 +}
 +
++std::array<float, 2> RearSpread(float azimuth, float elevation) {
++    if (!std::isfinite(azimuth) || !std::isfinite(elevation) || std::abs(elevation) > 90) return {1, 0};
++    constexpr float radians = 0.017453292519943295f;
++    const float angle = std::abs(std::remainder(azimuth, 360.0f));
++    const float t = std::clamp((angle - 90) / 90, 0.0f, 1.0f);
++    const float side = std::clamp(std::cos(t * 90 * radians), 0.0f, 1.0f)
++                     * std::max(0.0f, std::cos(elevation * radians));
++    // Redistribute existing rear energy; do not duplicate it or synthesize center/LFE.
++    return {std::sqrt(std::max(0.0f, 1 - side * side)), side};
++}
++
 +uint32_t SetVoiceData(Voice& v, uint32_t data) {
 +    uint32_t mask = R32(data);
 +    if (!(mask & 0xFF)) return 0;
@@ -6381,6 +6664,7 @@ index 05977b5..dfd0654 100644
 +        v.direction_balance = {1, 1};
 +        const float azimuth = std::bit_cast<float>(v.hrtf_data[0]);
 +        const float elevation = std::bit_cast<float>(v.hrtf_data[1]);
++        v.rear_spread = RearSpread(azimuth, elevation);
 +        if (std::isfinite(azimuth) && std::isfinite(elevation) && std::abs(elevation) <= 90) {
 +            constexpr float radians = 0.017453292519943295f;
 +            const float side = std::sin(std::remainder(azimuth, 360.0f) * radians)
@@ -6422,7 +6706,7 @@ index 05977b5..dfd0654 100644
  
  uint32_t FramesOf(const Voice& v, uint32_t bytes) {
      if (v.tag == 0x69) return bytes / (36u * v.channels) * 64;  // WAVE_FORMAT_XBOX_ADPCM
-@@ -203,12 +598,22 @@ void Complete(Voice& v, Packet& pk, uint32_t status) {
+@@ -203,12 +622,22 @@ void Complete(Voice& v, Packet& pk, uint32_t status) {
      }
  }
  
@@ -6446,7 +6730,7 @@ index 05977b5..dfd0654 100644
      uint32_t per = std::max<uint32_t>(n / voices, 2), step = v.channels == 1 ? 1 : 2;
      bool speakers = false;
      for (uint32_t s = 0; s < n; s++) speakers |= bin[s] < 10 && bin[s] != 3;
-@@ -216,14 +621,14 @@ void Levels(Voice& v, float g[2][2]) {
+@@ -216,14 +645,14 @@ void Levels(Voice& v, float g[2][2]) {
          g[c][0] = g[c][1] = 0;
          for (uint32_t s = c; c < v.channels && s < per && s < n; s += step) {
              uint32_t b = bin[s];
@@ -6464,12 +6748,12 @@ index 05977b5..dfd0654 100644
      bool rel = v.mode == 1;  // the position is already in listener space
      float d[3] = {v.p[0], v.p[1], v.p[2]};
      for (int i = 0; i < 3 && !rel; i++) d[i] -= g_listener[i];
-@@ -248,24 +653,170 @@ void Levels(Voice& v, float g[2][2]) {
+@@ -248,24 +677,196 @@ void Levels(Voice& v, float g[2][2]) {
      }
  }
  
-+void SurroundLevels(Voice& v, float g[8][6]) {
-+    std::fill_n(&g[0][0], 8 * 6, 0.0f);
++void SurroundLevels(Voice& v, bool surround71, float g[8][8]) {
++    std::fill_n(&g[0][0], 8 * 8, 0.0f);
 +    if (v.is3d && v.mode != 2 && !v.applied_voice_data) {
 +        float stereo[2][2];
 +        Levels(v, stereo);
@@ -6480,9 +6764,24 @@ index 05977b5..dfd0654 100644
 +        const float angle = std::isfinite(distance) && std::isfinite(forward) && distance > 1e-3f
 +                          ? std::clamp(forward / distance, -1.0f, 1.0f) : 1.0f;
 +        const float front = std::sqrt((1 + angle) * .5f), rear = std::sqrt((1 - angle) * .5f);
++        std::array<float, 2> spread{1, 0};
++        if (surround71 && std::isfinite(distance) && distance > 1e-3f) {
++            const float right[3] = {g_top[1]*g_front[2] - g_top[2]*g_front[1],
++                                   g_top[2]*g_front[0] - g_top[0]*g_front[2],
++                                   g_top[0]*g_front[1] - g_top[1]*g_front[0]};
++            const float side = v.mode == 1 ? d[0] : d[0]*right[0] + d[1]*right[1] + d[2]*right[2];
++            const float up = v.mode == 1 ? d[1] : d[0]*g_top[0] + d[1]*g_top[1] + d[2]*g_top[2];
++            constexpr float degrees = 57.29577951308232f;
++            spread = RearSpread(std::atan2(side, forward) * degrees,
++                                std::atan2(up, std::hypot(side, forward)) * degrees);
++        }
 +        for (unsigned c = 0; c < std::min<unsigned>(v.channels, 2); ++c) {
 +            g[c][0] = stereo[c][0] * front; g[c][1] = stereo[c][1] * front;
 +            g[c][4] = stereo[c][0] * rear; g[c][5] = stereo[c][1] * rear;
++            if (surround71) {
++                g[c][6] = g[c][4] * spread[1]; g[c][7] = g[c][5] * spread[1];
++                g[c][4] *= spread[0]; g[c][5] *= spread[0];
++            }
 +        }
 +        return;
 +    }
@@ -6500,7 +6799,15 @@ index 05977b5..dfd0654 100644
 +        const unsigned first = (c / 2) * per;
 +        for (unsigned s = first + (c & 1); s < std::min(first + per, n); s += step) {
 +            const unsigned bin = bins[s];
-+            if (bin < std::size(speaker)) g[c][speaker[bin]] = std::max(g[c][speaker[bin]], SpeakerGain(v, bin));
++            if (bin < std::size(speaker)) {
++                const float gain = SpeakerGain(v, bin);
++                if (surround71 && bin >= 8 && (v.creation_flags & 0x00200010) && v.mode != 2
++                    && v.use_voice_data && v.applied_voice_data) {
++                    const unsigned back = speaker[bin], side = back + 2;
++                    g[c][back] = std::max(g[c][back], gain * v.rear_spread[0]);
++                    g[c][side] = std::max(g[c][side], gain * v.rear_spread[1]);
++                } else g[c][speaker[bin]] = std::max(g[c][speaker[bin]], gain);
++            }
 +            else if (!speakers && !v.output) {
 +                // Retain the existing dry fallback for voices routed only to unsupported DSP sends.
 +                g[c][0] = g[c][1] = std::max(g[c][0], v.applied_gain[bin]);
@@ -6509,24 +6816,26 @@ index 05977b5..dfd0654 100644
 +    }
 +}
 +
-+void OutputLevels(Voice& v, bool surround, float g[8][6]) {
-+    if (surround) SurroundLevels(v, g);
++void OutputLevels(Voice& v, audio::SoundOutput mode, float g[8][8]) {
++    const bool surround = mode != audio::SoundOutput::Stereo;
++    const bool surround71 = mode == audio::SoundOutput::Surround71;
++    if (surround) SurroundLevels(v, surround71, g);
 +    else {
-+        std::fill_n(&g[0][0], 8 * 6, 0.0f);
++        std::fill_n(&g[0][0], 8 * 8, 0.0f);
 +        float stereo[2][2]; Levels(v, stereo);
 +        for (unsigned c = 0; c < 2; ++c) for (unsigned s = 0; s < 2; ++s) g[c][s] = stereo[c][s];
 +    }
 +    if (!v.output) return;
 +    const auto parent = g_voices.find(v.output);
 +    if (parent == g_voices.end()) return;
-+    float spatial[8][6]{};
-+    if (surround) SurroundLevels(parent->second, spatial);
++    float spatial[8][8]{};
++    if (surround) SurroundLevels(parent->second, surround71, spatial);
 +    else {
 +        float stereo[2][2]; Levels(parent->second, stereo);
 +        spatial[0][0] = stereo[0][0]; spatial[0][1] = stereo[0][1];
 +    }
 +    for (unsigned c = 0; c < std::min<unsigned>(v.channels, 8); ++c)
-+        for (unsigned s = 0; s < 6; ++s) g[c][s] += v.output_gain * spatial[0][s];
++        for (unsigned s = 0; s < 8; ++s) g[c][s] += v.output_gain * spatial[0][s];
 +}
 +
  // a stream goes quiet: the synch hold ends, a started one loses its pause as well
@@ -6600,7 +6909,8 @@ index 05977b5..dfd0654 100644
  void Render(float* out, uint32_t frames) {
 -    std::memset(out, 0, frames * 2 * sizeof(float));
 +    const uint32_t output_channels = audio::OutputChannels();
-+    const bool surround = output_channels == 6 && audio::SurroundEnabled();
++    const auto sound_output = audio::ActiveSoundOutput();
++    const bool surround = sound_output != audio::SoundOutput::Stereo;
 +    std::memset(out, 0, size_t(frames) * output_channels * sizeof(float));
      std::lock_guard<std::recursive_mutex> lock(g_lock);
      for (auto& [obj, v] : g_voices) {
@@ -6627,8 +6937,8 @@ index 05977b5..dfd0654 100644
 +        }
          float g[2][2];
          Levels(v, g);
-+        float spatial[8][6];
-+        if (surround || v.output) OutputLevels(v, surround, spatial);
++        float spatial[8][8];
++        if (surround || v.output) OutputLevels(v, sound_output, spatial);
          uint32_t base = v.data + v.play_start;
 -        double step = double(v.freq ? v.freq : v.rate) / audio::kRate;
 +        double step = v.applied_step;
@@ -6639,7 +6949,7 @@ index 05977b5..dfd0654 100644
              if (v.stream) {
                  while (!v.packets.empty() && f >= FramesOf(v, v.packets.front().size)) {
                      Packet pk = v.packets.front();
-@@ -276,17 +827,22 @@ void Render(float* out, uint32_t frames) {
+@@ -276,17 +877,22 @@ void Render(float* out, uint32_t frames) {
                      f = uint32_t(v.pos);
                  }
                  if (v.packets.empty()) {
@@ -6662,7 +6972,7 @@ index 05977b5..dfd0654 100644
                      a1 = Sample(v, v.packets[1].data, 0, 0);
                      b1 = Sample(v, v.packets[1].data, 0, 1);
                  } else {
-@@ -298,6 +854,7 @@ void Render(float* out, uint32_t frames) {
+@@ -298,6 +904,7 @@ void Render(float* out, uint32_t frames) {
                  uint32_t end = FramesOf(v, v.looping ? v.loop_start + v.loop_len : v.play_len);
                  if (f >= end) {
                      if (!v.looping || end <= start) {
@@ -6670,7 +6980,7 @@ index 05977b5..dfd0654 100644
                          v.playing = false;
                          v.pos = 0;
                          break;
-@@ -305,22 +862,55 @@ void Render(float* out, uint32_t frames) {
+@@ -305,22 +912,55 @@ void Render(float* out, uint32_t frames) {
                      v.pos = start + std::fmod(v.pos - start, double(end - start));
                      f = uint32_t(v.pos);
                  }
@@ -6730,7 +7040,7 @@ index 05977b5..dfd0654 100644
  }
  
  int64_t NowMs() {
-@@ -366,30 +956,55 @@ void ReadFormat(Voice& v, uint32_t wfx) {
+@@ -366,30 +1006,55 @@ void ReadFormat(Voice& v, uint32_t wfx) {
  
  // DSMIXBINS: the voice's bins and their volumes
  void SetBins(Voice& v, uint32_t mixbins) {
@@ -6796,7 +7106,7 @@ index 05977b5..dfd0654 100644
      std::lock_guard<std::recursive_mutex> lock(g_lock);
      Start();
      uint32_t obj = mem::AllocSystem(0x40);
-@@ -399,8 +1014,7 @@ uint32_t NewBuffer(uint32_t desc, uint32_t out) {
+@@ -399,8 +1064,7 @@ uint32_t NewBuffer(uint32_t desc, uint32_t out) {
      uint32_t flags = R32(desc + 4), bytes = R32(desc + 8);  // DSBUFFERDESC: size, flags, bytes, format, mix bins
      ReadFormat(v, R32(desc + 12));
      SetBins(v, R32(desc + 16));
@@ -6806,7 +7116,7 @@ index 05977b5..dfd0654 100644
      if (bytes) {
          v.data = v.owned = mem::AllocContiguous(bytes, 0, 0xFFFFFFFF, 4);
          v.bytes = v.play_len = v.loop_len = bytes;
-@@ -417,10 +1031,30 @@ float F32(uint32_t v) {
+@@ -417,10 +1081,30 @@ float F32(uint32_t v) {
  
  }  // namespace
  
@@ -6837,7 +7147,7 @@ index 05977b5..dfd0654 100644
      static const uint32_t handled[] = {
          SYM(DirectSoundCreate), SYM(IDirectSound_Release), SYM(DirectSoundUseFullHRTF), SYM(DirectSoundUseLightHRTF),
          SYM(IDirectSound_GetSpeakerConfig),
-@@ -431,7 +1065,11 @@ static void AuditExports() {
+@@ -431,7 +1115,11 @@ static void AuditExports() {
          SYM(IDirectSound_DownloadEffectsImage), SYM(IDirectSound_GetEffectData), SYM(IDirectSound_CommitEffectData),
          SYM(IDirectSound_GetOutputLevels), SYM(IDirectSoundBuffer_SetPlayRegion), SYM(IDirectSoundBuffer_SetAllParameters),
          SYM(IDirectSoundBuffer_SetFormat), SYM(IDirectSoundBuffer_SetOutputBuffer), SYM(IDirectSoundBuffer_SetRolloffCurve),
@@ -6850,7 +7160,7 @@ index 05977b5..dfd0654 100644
          SYM(XAudioDownloadEffectsImage), SYM(DirectSoundCreateBuffer), SYM(IDirectSound_CreateSoundBuffer),
          SYM(IDirectSoundBuffer_Release), SYM(IDirectSoundBuffer_Unlock), SYM(IDirectSoundBuffer_SetBufferData),
          SYM(IDirectSoundBuffer_Play), SYM(IDirectSoundBuffer_Stop), SYM(IDirectSoundBuffer_SetLoopRegion),
-@@ -440,14 +1078,15 @@ static void AuditExports() {
+@@ -440,14 +1128,15 @@ static void AuditExports() {
          SYM(IDirectSoundBuffer_SetFilter), SYM(IDirectSoundBuffer_SetHeadroom), SYM(IDirectSoundBuffer_SetMixBinVolumes),
          SYM(IDirectSoundBuffer_SetMixBins), SYM(IDirectSoundBuffer_SetMaxDistance), SYM(IDirectSoundBuffer_SetMinDistance),
          SYM(IDirectSoundBuffer_SetPosition), SYM(IDirectSoundBuffer_SetVelocity), SYM(IDirectSoundBuffer_SetI3DL2Source),
@@ -6868,7 +7178,7 @@ index 05977b5..dfd0654 100644
      std::string left;
      // the library's own section: the WMA decoder shares the export ids and touches no DSOUND object
      uint32_t lo = 0, hi = 0;
-@@ -466,8 +1105,24 @@ static void AuditExports() {
+@@ -466,8 +1155,24 @@ static void AuditExports() {
              left += b;
          }
      if (!left.empty()) LOGW("dsound: exports running their original code:%s", left.c_str());
@@ -6893,7 +7203,7 @@ index 05977b5..dfd0654 100644
  HLE_STDCALL(DirectSoundCreate, 3) {
      std::lock_guard<std::recursive_mutex> lock(g_lock);
      Start();
-@@ -480,7 +1135,7 @@ HLE_STDCALL(DirectSoundCreate, 3) {
+@@ -480,7 +1185,7 @@ HLE_STDCALL(DirectSoundCreate, 3) {
      return 0;
  }
  HLE_STDCALL(IDirectSound_Release, 1) { return 0; }
@@ -6902,7 +7212,7 @@ index 05977b5..dfd0654 100644
  HLE_STDCALL(DirectSoundUseLightHRTF, 0) { return 0; }
  HLE_STDCALL(IDirectSound_GetSpeakerConfig, 2) {
      W32(a[1], 0);  // DSSPEAKER_STEREO
-@@ -555,10 +1210,31 @@ HLE_STDCALL(XAudioDownloadEffectsImage, 4) {
+@@ -555,10 +1260,31 @@ HLE_STDCALL(XAudioDownloadEffectsImage, 4) {
      std::string name = ReadCString(a[0]);
      std::vector<uint8_t> img;
      if (a[2] & 1) {
@@ -6937,7 +7247,7 @@ index 05977b5..dfd0654 100644
      }
      uint32_t desc = EffectsDesc(img, name.c_str());
      if (a[3]) W32(a[3], desc);
-@@ -586,8 +1262,8 @@ HLE_STDCALL(IDirectSound_GetOutputLevels, 3) {
+@@ -586,8 +1312,8 @@ HLE_STDCALL(IDirectSound_GetOutputLevels, 3) {
  
  // buffers
  
@@ -6948,7 +7258,7 @@ index 05977b5..dfd0654 100644
  
  #define BUFFER(name, nargs)                                 \
      static uint32_t buf_##name(Voice& v, const Args& a);    \
-@@ -599,12 +1275,7 @@ HLE_STDCALL(IDirectSound_CreateSoundBuffer, 4) { return NewBuffer(a[1], a[2]); }
+@@ -599,12 +1325,7 @@ HLE_STDCALL(IDirectSound_CreateSoundBuffer, 4) { return NewBuffer(a[1], a[2]); }
      static uint32_t buf_##name([[maybe_unused]] Voice& v, [[maybe_unused]] const Args& a)
  
  BUFFER(Release, 1) {
@@ -6962,7 +7272,7 @@ index 05977b5..dfd0654 100644
  }
  BUFFER(Unlock, 5) { return 0; }
  BUFFER(SetBufferData, 3) {
-@@ -623,6 +1294,8 @@ BUFFER(SetBufferData, 3) {
+@@ -623,6 +1344,8 @@ BUFFER(SetBufferData, 3) {
      return 0;
  }
  BUFFER(Play, 4) {
@@ -6971,7 +7281,7 @@ index 05977b5..dfd0654 100644
      v.playing = true;
      v.looping = a[3] & 1;
      if (a[3] & 2) v.pos = 0;
-@@ -681,16 +1354,26 @@ BUFFER(Lock, 8) {
+@@ -681,16 +1404,26 @@ BUFFER(Lock, 8) {
      return 0;
  }
  BUFFER(SetVolume, 2) {
@@ -7002,7 +7312,7 @@ index 05977b5..dfd0654 100644
      return 0;
  }
  BUFFER(SetMixBinVolumes, 2) {
-@@ -729,22 +1412,39 @@ BUFFER(SetRolloffCurve, 4) {
+@@ -729,22 +1462,39 @@ BUFFER(SetRolloffCurve, 4) {
      for (uint32_t i = 0; a[1] && i < std::min<uint32_t>(a[2], 64); i++) v.curve.push_back(F32(R32(a[1] + i * 4)));
      return 0;
  }
@@ -7046,7 +7356,7 @@ index 05977b5..dfd0654 100644
      uint32_t obj = mem::AllocSystem(0x80);
      std::memset(HostPtr(obj), 0, 0x80);
      W32(obj + XDK_CDirectSoundStream_Vtable, kStreamVtable);
-@@ -758,12 +1458,14 @@ HLE_STDCALL(DirectSoundCreateStream, 2) {
+@@ -758,12 +1508,14 @@ HLE_STDCALL(DirectSoundCreateStream, 2) {
      v.callback = R32(desc + 12);
      v.context = R32(desc + 16);
      SetBins(v, R32(desc + 20));
@@ -7064,7 +7374,7 @@ index 05977b5..dfd0654 100644
  #define STREAM(name, nargs)                                     \
      static uint32_t str_##name(Voice& v, const Args& a);        \
      HLE_STDCALL(CDirectSoundStream_##name, nargs) {             \
-@@ -781,7 +1483,8 @@ HLE_STDCALL(DirectSoundCreateStream, 2) {
+@@ -781,7 +1533,8 @@ HLE_STDCALL(DirectSoundCreateStream, 2) {
      static uint32_t str_##name([[maybe_unused]] Voice& v, [[maybe_unused]] const Args& a)
  
  // the stream's callbacks still queued and those of its flushed packets, in order, go to the calling thread
@@ -7074,7 +7384,7 @@ index 05977b5..dfd0654 100644
      for (auto& pk : v.packets) Complete(v, pk, kFlushed);
      v.packets.clear();
      v.pos = 0;
-@@ -798,18 +1501,20 @@ static void FlushStream(Voice& v) {
+@@ -798,18 +1551,20 @@ static void FlushStream(Voice& v) {
  
  STREAM(AddRef, 1) { return uint32_t(++v.refs); }
  STREAM(SetFormat, 2) {
@@ -7099,7 +7409,7 @@ index 05977b5..dfd0654 100644
      return 0;
  }
  STREAM(GetInfo, 2) {
-@@ -821,7 +1526,16 @@ STREAM(GetInfo, 2) {
+@@ -821,7 +1576,16 @@ STREAM(GetInfo, 2) {
      return 0;
  }
  STREAM(GetStatus, 2) {
@@ -7117,7 +7427,7 @@ index 05977b5..dfd0654 100644
      return 0;
  }
  STREAM(Process, 3) {
-@@ -831,7 +1545,11 @@ STREAM(Process, 3) {
+@@ -831,7 +1595,11 @@ STREAM(Process, 3) {
      if (pk.completed_ptr) W32(pk.completed_ptr, 0);
      if (pk.status_ptr) W32(pk.status_ptr, kPacketPending);
      v.packets.push_back(pk);
@@ -7130,7 +7440,7 @@ index 05977b5..dfd0654 100644
      v.ending = false;
      return 0;
  }
-@@ -850,23 +1568,73 @@ STREAM(FlushEx, 4) {
+@@ -850,23 +1618,73 @@ STREAM(FlushEx, 4) {
      return 0;
  }
  STREAM(Pause, 2) {
@@ -7166,11 +7476,8 @@ index 05977b5..dfd0654 100644
  STREAM(SetFrequency, 2) {
 -    v.freq = a[1];
 +    SetVoiceFrequency(v, a[1], a.ctx);
-     return 0;
- }
--STREAM(SetFilter, 2) { return 0; }
--// the library's own writes voice registers a host stream does not have; envelopes are not played
--HLE_STDCALL(IDirectSoundStream_SetEG, 2) { return 0; }
++    return 0;
++}
 +STREAM(SetFilter, 2) { return SetVoiceFilter(v, a[1]); }
 +// These are public stream wrappers, distinct from the CDirectSoundStream vtable methods.
 +HLE_STDCALL(IDirectSoundStream_Set3DVoiceData, 2) {
@@ -7193,8 +7500,11 @@ index 05977b5..dfd0654 100644
 +    Voice* v = Find(a[0]);
 +    if (!v) return 0x80004005u;
 +    SetVoicePitch(*v, a[1]);
-+    return 0;
-+}
+     return 0;
+ }
+-STREAM(SetFilter, 2) { return 0; }
+-// the library's own writes voice registers a host stream does not have; envelopes are not played
+-HLE_STDCALL(IDirectSoundStream_SetEG, 2) { return 0; }
 +HLE_STDCALL(IDirectSoundStream_GetVoiceProperties, 2) {
 +    std::lock_guard<std::recursive_mutex> lock(g_lock);
 +    Voice* v = Find(a[0]);

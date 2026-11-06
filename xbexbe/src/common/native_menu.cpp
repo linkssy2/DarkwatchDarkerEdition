@@ -1,6 +1,8 @@
 #include "native_menu.h"
 #include "coop_characters.h"
 #include "graphics_route.h"
+#include "graphics_hud.h"
+#include "graphics_presentation.h"
 #include "common/graphics.h"
 #include "common/menu_cursor.h"
 #include "app/app.h"
@@ -35,6 +37,7 @@ struct Snapshot {
     std::vector<Hit> hits;
     std::vector<uint32_t> bars;
     Clock::time_point time;
+    bool original_aspect = false;
 };
 struct Collection {uint32_t manager = 0; std::vector<Hit> rows;};
 thread_local Collection collecting;
@@ -248,10 +251,16 @@ bool Collect(const uint8_t* base, const Scope& scope, const std::vector<Hit>& ro
 bool Fresh(const Snapshot& value) {return Clock::now() - value.time < std::chrono::milliseconds(500);}
 Snapshot Get() {std::lock_guard lock(snapshot_lock); return published;}
 bool Contains(Rect r, float x, float y) {return x >= r.x - r.w && x <= r.x + r.w && y >= r.y - r.h && y <= r.y + r.h;}
-bool Point(const input::PointerSnapshot& p, float& x, float& y) {
+bool Point(const input::PointerSnapshot& p, float& x, float& y, bool original_aspect = false) {
     if (!p.width || !p.height) return false;
-    const float aspect = app::Widescreen() ? 16.f / 9.f : 4.f / 3.f;
-    const float width = std::min(float(p.width), float(p.height) * aspect), height = width / aspect;
+    const float aspect = app::RenderAspect();
+    const float output_width = std::min(float(p.width), float(p.height) * aspect);
+    const float output_height = output_width / aspect;
+    // Match the native menu safe area inside the fitted output, including
+    // a forced ultrawide aspect displayed in an ordinary desktop window.
+    const float safe_aspect = original_aspect || aspect <= 4.f / 3.f ? 4.f / 3.f : 16.f / 9.f;
+    const float width = std::min(output_width, output_height * safe_aspect);
+    const float height = width / safe_aspect;
     const float left = (p.width - width) * .5f, top = (p.height - height) * .5f;
     if (p.x < left || p.x >= left + width || p.y < top || p.y >= top + height) return false;
     x = (p.x - left) * 2.f / width - 1.f; y = 1.f - (p.y - top) * 2.f / height;
@@ -267,6 +276,7 @@ void DarkwatchInvalidateMenuSnapshot() {
 }
 
 bool DarkwatchHideReplacedMenuContent(X86Context& ctx, uint8_t* base) {
+    if (DarkwatchHideGameplayHud(ctx, base)) return true;
     darkwatch::EnsureNativeOptionsEntries(base, ctx.esi);
     return DarkwatchHideCoopSetupContent(ctx, base) ||
            darkwatch::HideFrontendSettingsContent(base, ctx.esi);
@@ -293,6 +303,8 @@ void DarkwatchMenuRenderEnd(X86Context& ctx, uint8_t* base) {
     if (collecting.manager != ctx.esi) return;
     Snapshot value; value.scope = InputScope(base, ctx.esi); value.time = Clock::now();
     if (!value.scope.manager || !Collect(base, value.scope, collecting.rows, value)) value = {};
+    value.original_aspect = std::any_of(value.scope.roots.begin(), value.scope.roots.end(),
+        [base](uint32_t root) {return darkwatch::presentation::OriginalRoot(base, root);});
     input::SetTitleScreen(std::any_of(value.hits.begin(), value.hits.end(), [](const Hit& hit) {return hit.kind == kPressStart;}));
     collecting = {};
     std::lock_guard lock(snapshot_lock);
@@ -345,7 +357,8 @@ void DarkwatchMenuInput(X86Context& ctx, uint8_t* base) {
         auto click = now;
         click.x = now.left_x; click.y = now.left_y; click.width = now.left_width; click.height = now.left_height;
         float x, y;
-        if (now.left_presses != previous.left_presses && click.width == now.width && click.height == now.height && Point(click, x, y))
+        if (now.left_presses != previous.left_presses && click.width == now.width && click.height == now.height &&
+            Point(click, x, y, state.original_aspect))
             ctx.eax |= 0x200;
         return;
     }
@@ -361,7 +374,7 @@ void DarkwatchMenuInput(X86Context& ctx, uint8_t* base) {
         if (location.width != now.width || location.height != now.height) return;
     }
     float x, y;
-    if (!Point(location, x, y)) {pointer.wheel = 0; return;}
+    if (!Point(location, x, y, state.original_aspect)) {pointer.wheel = 0; return;}
     const bool moved = now.x != previous.x || now.y != previous.y;
     const Hit* selected = nullptr;
     for (const auto& hit : checked.hits) if (Contains(hit.rect, x, y)) {selected = &hit; break;}
@@ -426,9 +439,12 @@ void DarkwatchRefreshMenuBars(uint8_t* base, uint64_t revision) {
 }
 
 void DarkwatchMenuUi(double) {
-    const auto state = Get();
     const bool host = DarkwatchGraphicsVisible();
-    const bool menu = Fresh(state) && !state.hits.empty();
+    bool menu;
+    {
+        std::lock_guard lock(snapshot_lock);
+        menu = Fresh(published) && !published.hits.empty();
+    }
     if (!menu || host) input::SetTitleScreen(false);
     app::SetMenuPointer(host || menu);
     if ((host || menu) && !ImGui::GetIO().AppFocusLost) darkwatch::DrawMenuCursor();

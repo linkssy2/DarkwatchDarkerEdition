@@ -49,12 +49,12 @@ bool RefIs(const uint8_t* base, uint32_t ref, const char* text) {
     return Read(base, ref, data) && data && Span(base, uint64_t(data) + 2, size) &&
         !std::memcmp(base + uint64_t(data) + 2, text, size);
 }
-uint32_t ActiveMain(const uint8_t* base) {
+uint32_t ActiveMain(const uint8_t* base, bool extras = false) {
     uint32_t frontend, depth, main, type, manager, list;
     uint16_t count;
     if (!Read(base, 0x4AD664, frontend) || !Field(base, frontend, 8, depth) || !depth || depth > 20 ||
-        !Field(base, frontend, 8 + depth * 4, main) || !Field(base, main, 0, type) || type != 0x42A608 ||
-        !RefIs(base, main + 0x30, "main") ||
+        !Field(base, frontend, 8 + depth * 4, main) || !Field(base, main, 0, type) || type != (extras ? 0x42A2C8u : 0x42A608u) ||
+        !RefIs(base, main + 0x30, extras ? "extras" : "main") ||
         !Read(base, 0x4AD314, manager) || !manager || !Read(base, uint64_t(manager) + 8, count) ||
         count > 512 || !Field(base, manager, 12, list) || !Span(base, list, count * 4)) return 0;
     // Match the original UI input order: even an unfocused visible modal blocks Main.
@@ -93,6 +93,22 @@ bool MainMenu(const uint8_t* base, uint32_t root, uint32_t& menu, uint32_t& rows
     }
     return true;
 }
+bool GunslingerEntry(const uint8_t* base, uint32_t root) {
+    uint32_t menu, type, parent, rows, selected, row;
+    uint16_t count;
+    uint8_t visible, enabled;
+    return root && Field(base, root, 0x60, menu) && Field(base, menu, 0, type) && type == 0x43C8B8 &&
+        Field(base, menu, 4, parent) && Field(base, parent, 0, type) && type == 0x43C934 &&
+        RefIs(base, parent + 0x30, "body") && Field(base, parent, 4, parent) && parent == root &&
+        Read(base, uint64_t(menu) + 0x2F, visible) && visible &&
+        Read(base, uint64_t(menu) + 0x58, count) && count == 5 &&
+        Field(base, menu, 0x68, selected) && selected == 0 &&
+        Field(base, menu, 0x5C, rows) && Read(base, rows, row) &&
+        Field(base, row, 0, type) && type == 0x43C8F8 &&
+        Field(base, row, 4, parent) && parent == menu &&
+        Read(base, uint64_t(row) + 0x54, enabled) && enabled &&
+        Read(base, uint64_t(row) + 0x2F, visible) && visible;
+}
 bool IsAdded(const uint8_t* base, uint32_t root, uint32_t menu, uint32_t rows, uint16_t count) {
     uint32_t row;
     return count == 6 && added.base == base && added.root == root && added.menu == menu &&
@@ -100,24 +116,30 @@ bool IsAdded(const uint8_t* base, uint32_t root, uint32_t menu, uint32_t rows, u
 }
 } // namespace
 
-uint32_t CharacterMenuOwner(const uint8_t* base) { return ActiveMain(base); }
+uint32_t CharacterMenuOwner(const uint8_t* base) {
+    const auto main = ActiveMain(base);
+    return main ? main : ActiveMain(base, true);
+}
 
 bool ContinueSinglePlayer(uint8_t* base, uint32_t owner) {
     auto* thread = kernel::Current();
     uint32_t menu, rows, selected, row;
     uint16_t count;
-    if (!owner || base != kernel::g_base || ActiveMain(base) != owner || !thread || !thread->ctx ||
-        !MainMenu(base, owner, menu, rows, count) || !IsAdded(base, owner, menu, rows, count) ||
+    const bool extras = owner && ActiveMain(base, true) == owner;
+    if (!owner || base != kernel::g_base || CharacterMenuOwner(base) != owner || !thread || !thread->ctx ||
+        thread->ctx->esp < 0x2000 || !Span(base, uint64_t(thread->ctx->esp) - 0x2000, 0x2000)) return false;
+    if (extras) {
+        if (!GunslingerEntry(base, owner)) return false;
+    } else if (!MainMenu(base, owner, menu, rows, count) || !IsAdded(base, owner, menu, rows, count) ||
         !Field(base, menu, 0x68, selected) || selected || !Read(base, rows, row) ||
-        !base[row + 0x54] || !base[row + 0x2F] || thread->ctx->esp < 0x2000 ||
-        !Span(base, uint64_t(thread->ctx->esp) - 0x2000, 0x2000)) return false;
+        !base[row + 0x54] || !base[row + 0x2F]) return false;
     if (!DarkwatchCampaignReplayFinish(*thread->ctx, base)) return false;
     // Resume the original action with a fresh guest frame, never a saved callback stack.
     auto call = *thread->ctx;
     call.esp -= 0x100;
     call.ecx = owner;
     continuing_single_player = owner;
-    const auto result = kernel::CallGuest(call, 0xEA9B7, {0});
+    const auto result = kernel::CallGuest(call, extras ? 0xE9E7F : 0xEA9B7, {0});
     continuing_single_player = 0;
     DarkwatchInvalidateMenuSnapshot();
     return (result & 255) != 0;
@@ -241,4 +263,16 @@ bool DarkwatchDesktopQuit(X86Context& ctx, uint8_t* base) {
     }
     DarkwatchDesktopQuitOpen(root);
     return true; // Never pass our private link to the original page factory.
+}
+
+bool DarkwatchGunslingerSelect(X86Context& ctx, uint8_t* base) {
+    using namespace darkwatch;
+    const auto root = ActiveMain(base, true);
+    if (!root || base != kernel::g_base || ctx.edi != root || ctx.esi || !GunslingerEntry(base, root)) return false;
+    if (continuing_single_player == root) {
+        continuing_single_player = 0;
+        return false;
+    }
+    DarkwatchCharactersOpen(root);
+    return true;
 }

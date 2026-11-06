@@ -292,6 +292,17 @@ class SteamSetupTests(unittest.TestCase):
         self.assertIs(backend.emit, original)
         backend.game_running.assert_not_called()
 
+    def test_other_ps2_languages_forward_to_shared_backend_without_game_launch(self):
+        for action in ("--install-french", "--install-german", "--install-italian"):
+            with self.subTest(action=action):
+                backend = self.worker([dict(event="result", message="Language installed", ready=True)])
+                path = "Z:\\Games\\PS2 Français.iso"
+                code, _, _, dialogs = self.command(backend, "--interactive", action, path)
+                self.assertEqual(code, 0)
+                self.assertEqual(backend.main.call_args.args[0][-2:], [action, path])
+                self.assertEqual(len(dialogs), 2)
+                backend.game_running.assert_not_called()
+
     def test_import_failure_and_argument_system_exit_are_visible(self):
         code, _, _, dialogs = self.command(None, "--interactive", "--status",
                                           import_error=ImportError("missing fixture dependency"))
@@ -343,37 +354,48 @@ class SteamSetupTests(unittest.TestCase):
         self.assertEqual(dialogs, [])
         self.assertEqual(sleep.call_args_list, [mock.call(1), mock.call(1)])
 
-    def test_language_dialog_forwards_both_choices_without_starting_game(self):
-        for choice, language in ((6, "es"), (7, "en")):
+    def test_language_dialog_forwards_all_choices_without_starting_game(self):
+        for choices, language in (([6], "pt-BR"), ([7,6], "fr"), ([7,7,6], "de"), ([7,7,7,6], "it"),
+                                 ([7,7,7,7,6], "es"), ([7,7,7,7,7], "en")):
             with self.subTest(language=language):
                 backend = self.worker([dict(event="result", message="Language saved", language=language)])
                 code, _, _, dialogs = self.command(backend, "--interactive", "--language",
-                                                  dialog_responses=[choice, True])
+                                                  dialog_responses=choices+[True])
                 self.assertEqual(code, 0)
                 self.assertEqual(backend.main.call_args.args[0][-2:], ["--set-language", language])
                 self.assertEqual(dialogs[0].kwargs, {"buttons": 0x203})
-                self.assertIn("Español", dialogs[0].args[0])
-                self.assertIn("English", dialogs[0].args[0])
-                self.assertEqual(dialogs[1], mock.call("Language saved"))
+                self.assertIn("Português (Brasil)", dialogs[0].args[0])
+                if language != "pt-BR":
+                    self.assertIn("Français", dialogs[1].args[0])
+                    self.assertEqual(dialogs[1].kwargs, {"buttons":0x203})
+                if language in ("es", "en"):
+                    self.assertIn("Español", dialogs[-2].args[0])
+                    self.assertIn("English", dialogs[-2].args[0])
+                self.assertEqual(len(dialogs),len(choices)+1)
+                self.assertEqual(dialogs[-1], mock.call("Language saved"))
                 backend.game_running.assert_not_called()
 
-    def test_language_cancel_does_not_change_settings_or_create_report(self):
-        backend = self.worker()
-        original = backend.emit
-        code, _, _, dialogs = self.command(backend, "--interactive", "--language", dialog_responses=[2])
-        self.assertEqual(code, 0)
-        self.assertEqual(len(dialogs), 1)
-        backend.main.assert_not_called()
-        self.assertIs(backend.emit, original)
-        self.assertFalse((self.root / adapter.ERROR_FILE).exists())
+    def test_language_cancel_at_either_dialog_does_not_change_settings_or_create_report(self):
+        for choices in ([2],[7,2],[7,7,2],[7,7,7,2],[7,7,7,7,2]):
+            with self.subTest(choices=choices):
+                backend = self.worker()
+                original = backend.emit
+                code, _, _, dialogs = self.command(backend, "--interactive", "--language", dialog_responses=choices)
+                self.assertEqual(code, 0)
+                self.assertEqual(len(dialogs), len(choices))
+                backend.main.assert_not_called()
+                self.assertIs(backend.emit, original)
+                self.assertFalse((self.root / adapter.ERROR_FILE).exists())
 
     def test_language_dialog_failure_does_not_default_to_a_language(self):
-        backend = self.worker()
-        code, _, _, dialogs = self.command(backend, "--interactive", "--language", dialog_responses=[0, True])
-        self.assertEqual(code, 1)
-        backend.main.assert_not_called()
-        self.assertIn("Could not open the language selector", dialogs[-1].args[0])
-        self.assertEqual(dialogs[-1].kwargs, {"error": True})
+        for choices in ([0],[42],[7,0],[7,42]):
+            with self.subTest(choices=choices):
+                backend = self.worker()
+                code, _, _, dialogs = self.command(backend, "--interactive", "--language", dialog_responses=choices+[True])
+                self.assertEqual(code, 1)
+                backend.main.assert_not_called()
+                self.assertIn("Could not open the language selector", dialogs[-1].args[0])
+                self.assertEqual(dialogs[-1].kwargs, {"error": True})
 
     def test_language_choice_preserves_backend_refusal(self):
         backend = self.worker([dict(event="error", message="Close Darkwatch before changing language.")], code=1)

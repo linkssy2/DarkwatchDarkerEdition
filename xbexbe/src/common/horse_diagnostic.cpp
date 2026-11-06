@@ -1,4 +1,5 @@
 #include "horse_diagnostic.h"
+#ifndef XBE_RELEASE
 #include "horse_voice_diagnostic.h"
 #include "sound_pool.h"
 #include <array>
@@ -375,3 +376,5 @@ void DarkwatchHorseEnd(X86Context& ctx, uint8_t* base) {
     if (f.pair) { Log("after", f, after); logx::Flush(); }
     seen.before = f.before; seen.after = after; seen.have_before = seen.have_after = true;
 }
+
+#endif

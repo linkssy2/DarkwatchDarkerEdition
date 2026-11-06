@@ -2,6 +2,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <mutex>
 #include <toml++/toml.hpp>
@@ -10,13 +11,15 @@
 
 namespace darkwatch {
 namespace {
-std::mutex g_controls_lock, g_capture_lock;
+std::mutex g_controls_lock, g_capture_lock, g_walk_lock;
+struct WalkState { uint64_t epoch = 0; uint32_t owner = 0; bool held = false, walking = false; };
+std::array<WalkState, 2> g_walk;
 bool g_capturing = false;
 uint32_t g_captured = 0;
 constexpr const char* kBindingKeys[] = {
     "dpad_up", "dpad_down", "dpad_left", "dpad_right", "start", "back", "left_thumb", "right_thumb",
     "a", "b", "x", "y", "black", "white", "left_trigger", "right_trigger",
-    "move_forward", "move_backward", "move_left", "move_right", "next_weapon", "previous_weapon"
+    "move_forward", "move_backward", "move_left", "move_right", "next_weapon", "previous_weapon", "walk", "swap_shoulder"
 };
 static_assert(std::size(kBindingKeys) == size_t(input::PcAction::Count));
 
@@ -39,12 +42,22 @@ ControlsSettings ControlsSnapshot() {
 }
 
 bool GetCarryAllWeapons() { return ControlsSnapshot().carry_all_weapons; }
+bool GetKeepStartingRevolver() { return ControlsSnapshot().keep_starting_revolver; }
 
 bool ControlsApply(const ControlsSettings& settings) {
     auto next = settings;
     for (const auto& buttons : next.weapon_buttons) {
         for (int button : buttons) if (button < -1 || button >= 16 || button == 4 || button == 5) return false;
         if (buttons[0] >= 0 && buttons[0] == buttons[1]) return false;
+    }
+    for (unsigned port = 0; port < 2; ++port) {
+        int button = next.walk_buttons[port];
+        if (button < -1 || button >= 16 || button == 4 || button == 5) return false;
+        if (button >= 0 && (button == next.weapon_buttons[port][0] || button == next.weapon_buttons[port][1])) return false;
+        button = next.shoulder_buttons[port];
+        if (button < -1 || button >= 16 || button == 4 || button == 5) return false;
+        if (button >= 0 && (button == next.walk_buttons[port] || button == next.weapon_buttons[port][0] ||
+                           button == next.weapon_buttons[port][1])) return false;
     }
     next.mouse_millidegrees = std::clamp(next.mouse_millidegrees, 1u, 1000u);
     next.zoom_sensitivity_percent = std::clamp(next.zoom_sensitivity_percent, 10u, 200u);
@@ -68,6 +81,7 @@ void ControlsLoad(const void* table) {
     next.aim_assistance = t["aim_assistance"].value_or(next.aim_assistance);
     next.aim_centering = t["aim_centering"].value_or(next.aim_centering);
     next.carry_all_weapons = t["carry_all_weapons"].value_or(false);
+    next.keep_starting_revolver = t["keep_starting_revolver"].value_or(false);
     if (const auto* buttons = t["weapon_cycle_buttons"].as_table()) {
         for (unsigned port = 0; port < 2; ++port) {
             const auto* row = (*buttons)[port ? "player_2" : "player_1"].as_array();
@@ -80,6 +94,25 @@ void ControlsLoad(const void* table) {
                 values[i] = int(*value);
             }
             if (valid && (values[0] == -1 || values[0] != values[1])) next.weapon_buttons[port] = values;
+        }
+    }
+    for (unsigned port = 0; port < 2; ++port) {
+        if (const auto* modes = t["sight_toggle"].as_array(); modes && modes->size() == 2)
+            next.sight_toggle[port] = (*modes)[port].value_or(next.sight_toggle[port]);
+        if (const auto* modes = t["walk_toggle"].as_array(); modes && modes->size() == 2)
+            next.walk_toggle[port] = (*modes)[port].value_or(false);
+        if (const auto* buttons = t["walk_buttons"].as_array(); buttons && buttons->size() == 2) {
+            const auto value = (*buttons)[port].value<int64_t>();
+            if (value && *value >= 0 && *value < 16 && *value != 4 && *value != 5 &&
+                *value != next.weapon_buttons[port][0] && *value != next.weapon_buttons[port][1])
+                next.walk_buttons[port] = int(*value);
+        }
+        if (const auto* buttons = t["shoulder_buttons"].as_array(); buttons && buttons->size() == 2) {
+            if (!(*buttons)[port].is_integer()) continue;
+            const auto value = (*buttons)[port].value<int64_t>();
+            if (value && *value >= 0 && *value < 16 && *value != 4 && *value != 5 &&
+                *value != next.walk_buttons[port] && *value != next.weapon_buttons[port][0] &&
+                *value != next.weapon_buttons[port][1]) next.shoulder_buttons[port] = int(*value);
         }
     }
     bool malformed = false;
@@ -130,9 +163,14 @@ void ControlsSave(void* table) {
     t.erase("direct_mouse"); // Retire the legacy mouse-to-stick preference.
     t.insert_or_assign("mouse_millidegrees_per_count", int64_t(settings.mouse_millidegrees));
     t.insert_or_assign("zoom_sensitivity_percent", int64_t(settings.zoom_sensitivity_percent));
+    t.insert_or_assign("sight_toggle", toml::array{settings.sight_toggle[0], settings.sight_toggle[1]});
     t.insert_or_assign("aim_assistance", settings.aim_assistance);
     t.insert_or_assign("aim_centering", settings.aim_centering);
     t.insert_or_assign("carry_all_weapons", settings.carry_all_weapons);
+    t.insert_or_assign("keep_starting_revolver", settings.keep_starting_revolver);
+    t.insert_or_assign("walk_toggle", toml::array{settings.walk_toggle[0], settings.walk_toggle[1]});
+    t.insert_or_assign("walk_buttons", toml::array{settings.walk_buttons[0], settings.walk_buttons[1]});
+    t.insert_or_assign("shoulder_buttons", toml::array{settings.shoulder_buttons[0], settings.shoulder_buttons[1]});
     toml::table weapon_buttons;
     for (unsigned port = 0; port < 2; ++port)
         weapon_buttons.insert(port ? "player_2" : "player_1", toml::array{settings.weapon_buttons[port][0], settings.weapon_buttons[port][1]});
@@ -148,6 +186,44 @@ void ControlsSave(void* table) {
         controllers.insert(port ? "player_2" : "player_1", std::move(row));
     }
     t.insert_or_assign("controller_bindings", std::move(controllers));
+}
+
+void ControlsWalkInput(int port, input::Pad& pad, bool on_foot, bool right_stick, uint32_t owner) {
+    if (port < 0 || port >= 2) return;
+    const auto frame = input::GetMouseSnapshot();
+    const auto settings = ControlsSnapshot();
+    const int button = settings.walk_buttons[port];
+    const bool physical = button >= 0 && (pad.physical_buttons & (1u << button));
+    const bool held = physical || (port == 0 && input::PcActionDown(input::PcAction::Walk));
+    std::lock_guard lock(g_walk_lock);
+    auto& state = g_walk[port];
+    if (!on_foot || !owner || !frame.active || !frame.published_us) {
+        state = {frame.active_epoch, 0, held, false};
+        return;
+    }
+    // A held menu/focus/respawn input must not become a new toggle press.
+    if (state.epoch != frame.active_epoch || state.owner != owner)
+        state = {frame.active_epoch, owner, held, false};
+    else if (settings.walk_toggle[port] && held && !state.held) state.walking = !state.walking;
+    state.held = held;
+    if (physical) {
+        const auto mapping = input::GetPadBindings(port);
+        for (unsigned action = 0; action < mapping.size(); ++action) if (mapping[action] == button) {
+            const bool pc = port == 0 && input::PcActionDown(input::PcAction(action));
+            if (action < 8) { if (!pc) pad.buttons &= uint16_t(~(1u << action)); }
+            else pad.analog[action - 8] = pc ? 255 : 0;
+        }
+    }
+    if (!(settings.walk_toggle[port] ? state.walking : held)) return;
+    auto& x = right_stick ? pad.rx : pad.lx;
+    auto& y = right_stick ? pad.ry : pad.ly;
+    const double magnitude = std::hypot(double(x), double(y));
+    // Feed the original analog movement path; preserve slower stick positions.
+    constexpr double limit = 16384.0;
+    if (magnitude > limit) {
+        x = int16_t(std::lround(double(x) * limit / magnitude));
+        y = int16_t(std::lround(double(y) * limit / magnitude));
+    }
 }
 
 void ControlsBeginCapture() {

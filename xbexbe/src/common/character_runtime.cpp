@@ -1,7 +1,10 @@
 #include "character_runtime.h"
+#include "carry_all_weapons.h"
+#include "sight_mode.h"
 #include "coop_respawn_weapons.h"
 #include "character_secondary.h"
 #include "character_selection.h"
+#include "online_characters.h"
 #include "kernel/kernel.h"
 #include "core/log.h"
 #include <algorithm>
@@ -28,6 +31,7 @@ constexpr Type types[]{
 struct Dependency { uint32_t hash; uint8_t type; uint32_t modes; };
 struct Route { uint32_t hash; uint8_t mode; bool audio; };
 #include "character_runtime_data.h"
+#include "character_cinematic_routes.h"
 
 struct Held { uint32_t record, data; };
 std::vector<Held> held;
@@ -36,6 +40,10 @@ std::atomic<unsigned> mission{0};
 std::atomic<unsigned> unavailable{0};
 std::atomic<unsigned> reported{0};
 uint32_t owner = 0;
+unsigned mission_mode = 0;
+unsigned local_count = 0, online_ordinal = 2;
+// File reads can run on the loader thread: publish the choice and audited chapter together.
+std::atomic<uint64_t> cinematic_mission{0};
 
 bool Span(const uint8_t* base, uint64_t address, uint64_t bytes) {
     if (!base || !address || !bytes || address + bytes > (uint64_t(1) << 32)) return false;
@@ -126,6 +134,44 @@ uint32_t Hash(std::string value, bool resource = false) {
         for (unsigned bit = 0; bit < 8; ++bit) crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1)));
     }
     return ~crc;
+}
+bool PathEquals(const std::string& path, const char* expected) {
+    const size_t prefix = !path.empty() && (path.front() == '/' || path.front() == '\\') ? 1 : 0;
+    return path.size() == std::strlen(expected) + prefix &&
+        std::equal(path.begin() + prefix, path.end(), expected, [](char actual, char wanted) {
+            if (actual == '\\') actual = '/';
+            if (actual >= 'A' && actual <= 'Z') actual += 'a' - 'A';
+            return actual == wanted;
+        });
+}
+bool SelectedCinematicPath(std::string& path, unsigned state) {
+    const unsigned choice = Selection(state, 0);
+    const uint64_t snapshot = cinematic_mission.load();
+    const uint32_t chapter_index = uint32_t(snapshot) - 1;
+    if (!snapshot || unsigned(snapshot >> 32) != state || chapter_index >= std::size(cinematic_files) ||
+        choice >= std::size(presentations) || ((state & 3) != 1 && (state & 3) != 2)) return false;
+    const char* chapter = cinematic_files[chapter_index].chapter;
+    auto match = [&](const CinematicRoute& r) {
+        return !std::strcmp(chapter, r.chapter) && PathEquals(path, r.path);
+    };
+    for (const auto& r : cinematic_files) {
+        if (match(r)) {
+            // Jericho keeps the original poses/events; only his cinematic body changes.
+            if (!choice && !std::strstr(r.path, "_actors.bxml")) return false;
+            path.insert(path.rfind('.'), "_selectedcharacter" + std::to_string(choice));
+            return true;
+        }
+    }
+    if (!choice) return false;
+    // Keep original resource keys/events; only the matching skeleton's SANM payload changes.
+    // Chapter ownership also prevents remapping a Jericho clip reused by story Tala in M12.
+    for (const auto& r : cinematic_clips) {
+        if (match(r)) {
+            path = "characters/player_cinematic/" + std::to_string(choice) + "/" + (std::strrchr(r.path, '/') + 1);
+            return true;
+        }
+    }
+    return false;
 }
 bool GuestCalls(const X86Context& ctx, uint8_t* base) {
     return base == kernel::g_base && ctx.esp >= 0x2000 && Span(base, uint64_t(ctx.esp) - 0x2000, 0x2000);
@@ -230,7 +276,12 @@ bool CoopTemplate(const uint8_t* base, uint32_t manager, bool& coop) {
 }
 void Reset(const X86Context& ctx, uint8_t* base) {
     DarkwatchCharacterSecondaryReset();
+    DarkwatchResetWeaponChoices();
+    DarkwatchResetSightMode();
     mission.store(0);
+    mission_mode = 0;
+    local_count = 0; online_ordinal = 2;
+    cinematic_mission.store(0);
     unavailable.store(0);
     reported.store(0);
     if (!held.empty() && !GuestCalls(ctx, base)) return;
@@ -281,8 +332,17 @@ void DarkwatchCharacterMissionBegin(X86Context& ctx, uint8_t* base) {
     if (!held.empty()) return;
     uint32_t count, mode;
     if (!Read(base, uint64_t(ctx.esi) + 0x4C, count) || (count != 1 && count != 2) ||
-        !Read(base, uint64_t(ctx.esi) + 0xEC, mode) || mode) return;
+        !Read(base, uint64_t(ctx.esi) + 0xEC, mode)) return;
+    if (mode > 1 || (mode == 1 && count != 1)) return;
+    mission_mode = mode;
     auto choices = darkwatch::settings::characters();
+#ifndef XBE_RELEASE
+    unsigned online_local = 2;
+    if (!mode && count == 1 && DarkwatchOnlineCharacterChoices(ctx, base, ctx.esi, choices, online_local))
+        online_ordinal = online_local;
+#endif
+    local_count = count;
+    if (online_ordinal < 2) count = 2;
     for (auto& choice : choices)
         if (unsigned(choice) >= std::size(presentations)) choice = darkwatch::settings::Character::Jericho;
     const auto cassidy = darkwatch::settings::Character::Cassidy;
@@ -300,13 +360,24 @@ void DarkwatchCharacterMissionBegin(X86Context& ctx, uint8_t* base) {
     }
     // The chapter is assigned before this hook, even when its preload list is cached.
     std::string chapter;
+    const bool known_chapter = OwnedString(base, owner, chapter);
+    uint32_t cinematic_chapter = 0;
+    if (known_chapter && mode == 0) {
+        std::string normalized = chapter;
+        for (char& c : normalized) if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+        const auto route = std::find_if(std::begin(cinematic_files), std::end(cinematic_files),
+            [&](const CinematicRoute& r) { return normalized == r.chapter; });
+        if (route != std::end(cinematic_files)) cinematic_chapter = unsigned(route - std::begin(cinematic_files)) + 1;
+    }
     const bool spectral_two = count == 2 && (choices[1] == spectral ||
-        (choices[1] == cassidy && OwnedString(base, owner, chapter) &&
+        (choices[1] == cassidy && known_chapter &&
          std::find(std::begin(spectral_chapters), std::end(spectral_chapters), Hash(chapter)) != std::end(spectral_chapters)));
-    mission.store(count | (selected[0] ? 4 : 0) | (count == 2 && selected[1] ? 8 : 0) |
+    const unsigned state = count | (selected[0] ? 4 : 0) | (count == 2 && selected[1] ? 8 : 0) |
                   (spectral_two ? 16 : 0) | (choices[0] == spectral ? 32 : 0) |
                   (unsigned(choices[0]) >= 3 ? unsigned(choices[0]) << 8 : 0) |
-                  (count == 2 && unsigned(choices[1]) >= 3 ? unsigned(choices[1]) << 12 : 0));
+                  (count == 2 && unsigned(choices[1]) >= 3 ? unsigned(choices[1]) << 12 : 0);
+    if (cinematic_chapter) cinematic_mission.store((uint64_t(state) << 32) | cinematic_chapter);
+    mission.store(state);
 }
 
 void DarkwatchCharacterFile(X86Context& ctx, uint8_t* base) {
@@ -317,14 +388,12 @@ void DarkwatchCharacterFile(X86Context& ctx, uint8_t* base) {
     const auto path_hash = Hash(path);
     // Startup's recorded stream embeds the old actor table, before character selection.
     constexpr char startup_path[] = "streaming/set0_resources.str";
-    const size_t prefix = !path.empty() && (path.front() == '/' || path.front() == '\\') ? 1 : 0;
-    const bool startup = path.size() == sizeof(startup_path) - 1 + prefix &&
-        std::equal(path.begin() + prefix, path.end(), startup_path, [](char actual, char expected) {
-            if (actual == '\\') actual = '/';
-            if (actual >= 'A' && actual <= 'Z') actual += 'a' - 'A';
-            return actual == expected;
-        }) && DarkwatchCharacterContentReady();
+    const bool startup = PathEquals(path, startup_path) && DarkwatchCharacterContentReady();
     if (!state && !startup) return;
+    if (state && SelectedCinematicPath(path, state)) {
+        std::memcpy(base + ctx.ebp - 0x108, path.c_str(), path.size() + 1);
+        return;
+    }
     const bool cassidy = state & 12;
     const bool roster = Roster(state);
     // Carryable weapons expand every campaign list; missing bundles use ordinary archive reads.
@@ -368,6 +437,35 @@ void DarkwatchCharacterFile(X86Context& ctx, uint8_t* base) {
     std::memcpy(base + ctx.ebp - 0x108, path.c_str(), path.size() + 1);
 }
 
+bool DarkwatchCharacterPrepareOnline(const X86Context& ctx, uint8_t* base) {
+    if (online_ordinal == 2) return true;
+    const auto state = mission.load();
+    uint32_t manager = 0, count = 0; bool coop = false;
+    if ((state & 3) != 2 || !owner || !Read(base, uint64_t(owner) + 0x4C, count) || count != 1 ||
+        !Read(base, 0x4AD370, manager) || !CoopTemplate(base, manager, coop)) {
+        LOGE("Online character preparation: state=%08X owner=%08X count=%u manager=%08X ordinal=%u",
+             state, owner, count, manager, online_ordinal);
+        return false;
+    }
+    for (unsigned player = 0; player < 2; ++player) {
+        const auto choice = Selection(state, player);
+        if (!choice && !coop) continue;
+        const auto& p = presentations[choice];
+        const char* name = coop ? p.coop : p.solo;
+        const char* hands = coop ? p.coop_hands : p.solo_hands;
+        const auto family = Family(choice, coop);
+        if (!Actor(base, manager, name)) { Reject(base, player, "online-body", family, name); return false; }
+        if (!Actor(base, manager, hands)) { Reject(base, player, "online-hands", family, hands); return false; }
+        const bool tala = darkwatch::settings::TalaCharacter(darkwatch::settings::Character(choice));
+        const char* failure = "-";
+        if ((choice == 1 || choice == 2 || tala) && !DarkwatchCharacterAudioReady(base, &failure, tala)) {
+            Reject(base, player, "online-audio", family, name, nullptr, 0, failure); return false;
+        }
+        if (!Acquire(ctx, base, family, player, name)) return false;
+    }
+    return true;
+}
+
 void DarkwatchCharacterSpawn(X86Context& ctx, uint8_t* base) {
     const unsigned state = mission.load();
     uint32_t literal, game, manager, count, mode, actor_manager;
@@ -376,10 +474,11 @@ void DarkwatchCharacterSpawn(X86Context& ctx, uint8_t* base) {
         !Read(base, ctx.esp, literal) || literal != 0x425814 ||
         !Read(base, uint64_t(ctx.ebp) + 0x10, game) || game != owner ||
         !Read(base, uint64_t(ctx.ebp) - 8, manager) || uint64_t(game) + 0x40 != manager ||
-        !Read(base, uint64_t(game) + 0x4C, count) || count != (state & 3) ||
-        !Read(base, uint64_t(game) + 0xEC, mode) || mode ||
+        !Read(base, uint64_t(game) + 0x4C, count) || count != local_count || ctx.edi >= count ||
+        !Read(base, uint64_t(game) + 0xEC, mode) || mode != mission_mode ||
         !Read(base, 0x4AD370, actor_manager) || !actor_manager) return;
-    const unsigned choice = Selection(state, ctx.edi);
+    const unsigned ordinal = online_ordinal < 2 ? online_ordinal : ctx.edi;
+    const unsigned choice = Selection(state, ordinal);
     if (choice >= std::size(presentations)) return;
     const bool cassidy = choice == 1 || choice == 2;
     if (choice || count == 2) unavailable.fetch_or(1u << ctx.edi);
@@ -388,6 +487,7 @@ void DarkwatchCharacterSpawn(X86Context& ctx, uint8_t* base) {
         if (choice || count == 2) Reject(base, ctx.edi, "alias", 0, presentations[choice].solo);
         return;
     }
+    if (online_ordinal < 2 && !DarkwatchCharacterPrepareOnline(ctx, base)) return;
     if (!choice && !coop) { unavailable.fetch_and(~(1u << ctx.edi)); return; }
     const unsigned family = Family(choice, coop);
     const auto& presentation = presentations[choice];
@@ -412,8 +512,8 @@ void DarkwatchCharacterScriptType(X86Context& ctx, uint8_t* base) {
     uint32_t actor, count, mode, category, text;
     std::string character;
     if (!state || !owner || ctx.ebp < 4 ||
-        !Read(base, uint64_t(owner) + 0x4C, count) || count != (state & 3) ||
-        !Read(base, uint64_t(owner) + 0xEC, mode) || mode ||
+        !Read(base, uint64_t(owner) + 0x4C, count) || count != local_count ||
+        !Read(base, uint64_t(owner) + 0xEC, mode) || mode != mission_mode ||
         !Read(base, uint64_t(ctx.ebp) - 4, actor) || !actor ||
         !Read(base, uint64_t(actor) + 0x98, category) || category != 9 ||
         !Read(base, uint64_t(actor) + 0x50, text) || !text ||
@@ -428,6 +528,30 @@ void DarkwatchCharacterScriptType(X86Context& ctx, uint8_t* base) {
     ctx.esi = original;
 }
 
+bool DarkwatchCharacterModelAlias(X86Context& ctx, uint8_t* base) {
+    const unsigned state = mission.load();
+    const unsigned players = state & 3;
+    uint32_t count, mode, vtable, actor, category;
+    std::string character, alias, requested;
+    // The native constructor leaves category 0 through render initialization;
+    // player spawn assigns category 9 only after that initialization returns.
+    if (!players || players > 2 || !owner ||
+        (Selection(state, 0) != 0 && (players != 2 || Selection(state, 1) != 0)) ||
+        ctx.ebp < 12 || ctx.esp != ctx.ebp - 12 ||
+        !Read(base, uint64_t(owner) + 0x4C, count) || count != local_count ||
+        !Read(base, uint64_t(owner) + 0xEC, mode) || mode != mission_mode ||
+        !Read(base, ctx.edi, vtable) || vtable != 0x41E25C ||
+        !Read(base, uint64_t(ctx.edi) + 0x0C, actor) || !actor ||
+        !Read(base, uint64_t(actor) + 0x98, category) || (category != 0 && category != 9) ||
+        !OwnedString(base, actor + 0x50, character) ||
+        (character != "Chaz" && character != "JerichoCoop") ||
+        !Span(base, ctx.esi, 0x108) || !OwnedString(base, ctx.esi + 0x104, requested) || requested != "AsCivilian" ||
+        !OwnedString(base, ctx.ebp - 4, alias) || alias != "AsJericho") return false;
+    // Keep the selected regular body when a chapter requests the civilian costume.
+    // Native lookup, loading and owned-string cleanup still run; explicit Civilian clones are unchanged.
+    return true;
+}
+
 bool DarkwatchCharacterCostume(X86Context& ctx, uint8_t* base) {
     const unsigned state = mission.load();
     uint32_t actor, item, count, mode, group, scope, scratch;
@@ -436,8 +560,8 @@ bool DarkwatchCharacterCostume(X86Context& ctx, uint8_t* base) {
     if (!(state & 12) && !Roster(state)) return false;
     if (!owner || ctx.ebp < 0x34 || ctx.esp != ctx.ebp - 0x34 ||
         !Span(base, ctx.esp, 0x44) ||
-        !Read(base, uint64_t(owner) + 0x4C, count) || count != (state & 3) ||
-        !Read(base, uint64_t(owner) + 0xEC, mode) || mode ||
+        !Read(base, uint64_t(owner) + 0x4C, count) || count != local_count ||
+        !Read(base, uint64_t(owner) + 0xEC, mode) || mode != mission_mode ||
         !Read(base, uint64_t(ctx.ebp) + 8, actor) || !actor || !Span(base, actor, 0x70) ||
         !Read(base, uint64_t(ctx.ebp) + 12, item) || item != ctx.edi ||
         !OwnedString(base, item, name) || (name != "cloak" && name != "Civ_cloak") ||
@@ -464,8 +588,8 @@ bool DarkwatchCharacterIsCassidyPlayer(const uint8_t* base, uint32_t actor) {
     std::string character;
     // Check the spawned actor, not the menu choice: a failed selection remains Jericho.
     return (state & 12) && owner && actor &&
-        Read(base, uint64_t(owner) + 0x4C, count) && count == (state & 3) &&
-        Read(base, uint64_t(owner) + 0xEC, mode) && !mode &&
+        Read(base, uint64_t(owner) + 0x4C, count) && count == local_count &&
+        Read(base, uint64_t(owner) + 0xEC, mode) && mode == mission_mode &&
         Read(base, uint64_t(actor) + 0x98, category) && category == 9 &&
         OwnedString(base, actor + 0x50, character) &&
         CassidyActor(character);
@@ -478,8 +602,8 @@ bool DarkwatchCharacterIsTalaPlayer(const uint8_t* base, uint32_t actor) {
     const auto tala = [](unsigned choice) { return darkwatch::settings::TalaCharacter(darkwatch::settings::Character(choice)); };
     bool solo; unsigned choice;
     return (tala(Selection(state, 0)) || ((state & 3) == 2 && tala(Selection(state, 1)))) &&
-        owner && actor && Read(base, uint64_t(owner) + 0x4C, count) && count == (state & 3) &&
-        Read(base, uint64_t(owner) + 0xEC, mode) && !mode &&
+        owner && actor && Read(base, uint64_t(owner) + 0x4C, count) && count == local_count &&
+        Read(base, uint64_t(owner) + 0xEC, mode) && mode == mission_mode &&
         Read(base, uint64_t(actor) + 0x98, category) && category == 9 &&
         OwnedString(base, actor + 0x50, character) && PlayerTemplate(character, solo, choice) && tala(choice);
 }

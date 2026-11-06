@@ -23,7 +23,7 @@ def node(name, children=(), attributes=None, value=None):
 
 def animation_source():
     resources = {path: model() for path in (animation.STORM, animation.CHAZ, animation.CASSIDY)}
-    resources.update({f'characters/fixture/clip{i}.sanm': clip() for i in range(619)})
+    resources.update({f'characters/fixture/clip{i}.sanm': clip() for i in range(606)})
     first = 0
     for _, table, _, _, witness, count in animation.TABLES:
         names = [f'characters/fixture/clip{i}' for i in range(first, first + count)]
@@ -34,8 +34,8 @@ def animation_source():
         entries += [(name, kind) for name in names for kind in animation.KINDS]
         resources[witness] = art.encode(node('root', [node('data', [
             art.element(dict(name=name, type=kind)) for name, kind in entries])]))
-    # One shared clip exercises the existing deduplication without changing its output.
-    names = ['characters/fixture/clip0'] + [f'characters/fixture/clip{i}' for i in range(329, 619)]
+    # Match the verified source's fourteen shared clips after delta correction.
+    names = [f'characters/fixture/clip{i}' for i in (*range(14), *range(329, 606))]
     resources['characters/multiplayer/multiplayeranimation.bxml'] = art.encode(node('root', [
         node('KeyframeAnimation', attributes={'Name': name}) for name in names]))
     return resources
@@ -95,6 +95,7 @@ def roster_fixture(cancel, progress):
         for target, name, value in (
             (animation, 'prepare', prepare_animation),
             (animation, 'frames', lambda data: {0: dict(rotation=(1.,), translation=(0.,))}),
+            (animation, 'player_arm_parameters', lambda *args, **kwargs: {}),
             (roster, '_hands', lambda *args: b'fixture derived hands'),
             (roster, '_actor', lambda original, identity, solo:
              (actor(f'Fixture{identity}{solo}'), 'FixtureHands', f'fixture/locator{identity}{solo}')),
@@ -134,7 +135,7 @@ class PreparationProgressTests(unittest.TestCase):
         actual = animation.prepare(resources.__getitem__, art.decode, art.encode,
                                    progress=messages.append)
         self.assertEqual(actual, expected)
-        self.assertEqual(len(actual[0]), 624)
+        self.assertEqual(len(actual[0]), 611)
         self.assertIn('co-op animations: 25/300', messages)
         self.assertIn('co-op animations: 300/300', messages)
         self.assertIn('horse-riding animations: 16/16', messages)

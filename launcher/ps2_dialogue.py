@@ -9,6 +9,7 @@ import sys
 
 import character_archive
 import character_assets
+import ps2_text
 from ps2_disc import require
 
 DIALOGUE = 'audio/dialog_base/dialog_base_stream.xwb'
@@ -100,9 +101,11 @@ def cue_waves(raw):
         yield name, waves
 
 
-def map_slots(entries, resource, audio, count):
+def map_slots(entries, resource, audio, count, language='es'):
+    selected = ps2_text.locale(language)
+    prefix = 'audio/dialog_base_' + selected['suffix'] + '/'
     original_base = prototypes(resource('audio/dialog_base/dialog_base.babf'))
-    spanish_base = prototypes(audio.read(SPANISH + 'dialog_base_s.babf'))
+    spanish_base = prototypes(audio.read(prefix + 'dialog_base_' + selected['suffix'] + '.babf'))
     result = {}
     for path in sorted(entries):
         if not path.endswith('.xsb'):
@@ -112,19 +115,19 @@ def map_slots(entries, resource, audio, count):
             names = local.get(cue) or original_base.get(cue)
             require(names is not None and len(names) == len(waves), 'Dialogue variant catalog differs.')
             for variant, (wave, name) in enumerate(zip(waves, names)):
-                target = SPANISH + name.lower() + '.adx'
+                target = prefix + name.lower() + '.adx'
                 if target not in audio.entries:
                     # A source filename was renamed on PS2; require its exact cue/variant identity.
                     alternate = spanish_base.get(cue)
                     require(alternate is not None and len(alternate) == len(waves),
-                            'Spanish dialogue cue is unavailable: ' + cue)
-                    target = SPANISH + alternate[variant].lower() + '.adx'
+                            selected['name'] + ' dialogue cue is unavailable: ' + cue)
+                    target = prefix + alternate[variant].lower() + '.adx'
                 require(target in audio.entries and 0 <= wave < count,
-                        'Spanish dialogue resource is missing or outside the bank.')
+                        selected['name'] + ' dialogue resource is missing or outside the bank.')
                 require(wave not in result or result[wave] == target,
-                        'Conflicting Spanish dialogue cue mapping.')
+                        'Conflicting ' + selected['name'] + ' dialogue cue mapping.')
                 result[wave] = target
-    require(set(result) == set(range(count)), 'Spanish dialogue does not cover the Xbox cue bank.')
+    require(set(result) == set(range(count)), selected['name'] + ' dialogue does not cover the Xbox cue bank.')
     return result
 
 
@@ -170,8 +173,9 @@ def decode_adx(raw):
     return pcm.tobytes()
 
 
-def convert(audio, xbox_dialogue, cancel, notify):
+def convert(audio, xbox_dialogue, cancel, notify, language='es'):
     """Return a complete isolated dialogue PCK; callers publish it atomically."""
+    selected = ps2_text.locale(language)
     parsed, entries, resource = archive(xbox_dialogue)
     original = resource(DIALOGUE)
     require(len(original) >= 80 and original[:8] == b'WBND\x03\0\0\0',
@@ -183,7 +187,7 @@ def convert(audio, xbox_dialogue, cancel, notify):
             and original[48:64].rstrip(b'\0') == b'DIALOG_BASE_S'
             and meta_size == count * 24 and 80 <= meta and meta + meta_size <= start
             and start + size == len(original), 'Xbox dialogue wave bank differs.')
-    mapping = map_slots(entries, resource, audio, count)
+    mapping = map_slots(entries, resource, audio, count, language)
     result, payload, fallbacks = bytearray(original[:start]), bytearray(), []
     for index in range(count):
         cancel()
@@ -204,11 +208,11 @@ def convert(audio, xbox_dialogue, cancel, notify):
         payload.extend(data)
         payload.extend(bytes(-len(payload) % alignment))
         if index % 32 == 0 or index + 1 == count:
-            notify('progress', 'Preparing Spanish dialogue', percent=(index + 1) * 100 // count,
+            notify('progress', 'Preparing ' + selected['name'] + ' dialogue', percent=(index + 1) * 100 // count,
                    current=index + 1, total=count)
     struct.pack_into('<I', result, 36, len(payload))
     result.extend(payload)
     cancel()
-    notify('progress', 'Spanish dialogue prepared', translated=count-len(fallbacks),
+    notify('progress', selected['name'] + ' dialogue prepared', translated=count-len(fallbacks),
            original_fallbacks=len(fallbacks))
     return character_archive.compose(parsed['raw'], {DIALOGUE: bytes(result)})

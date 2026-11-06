@@ -1,8 +1,8 @@
-# Darkwatch: Darker Edition 0.7.1 — Experimental Linux / Proton
+# Darkwatch: Darker Edition 0.7.7 — Experimental Linux / Proton
 
-This package runs the Windows port through Proton. Darkwatch's Linux graphics,
-audio, movies and controls still need live testing. Co-op remains beta. Supply
-your own supported original Xbox Darkwatch ISO or XISO.
+This package runs the Windows port through Proton. Community gameplay results
+are recorded below; this update still needs live testing across Linux systems.
+Co-op remains beta. Supply your own supported original Xbox Darkwatch ISO or XISO.
 
 Keep using the existing separate 0.7 HD texture pack; this update does not need
 a new pack or reinstallation of an already installed pack.
@@ -12,6 +12,12 @@ automatic first-time setup from one supported Xbox ISO/XISO in `assets/`.
 They prepare direct ISO playback through Proton; leave the ISO in that folder.
 Existing installations are reused. Multiple images require choosing one, and
 unsupported discs are rejected.
+
+Setup and play need a graphical desktop session. Run them from a terminal on
+that desktop, not a headless SSH session. The native launcher checks for a
+missing display before starting file preparation; it does not borrow display
+credentials from another process. A configured display must still be accessible
+to Proton, with working graphics drivers.
 
 ## Recommended: setup and play through Steam
 
@@ -316,10 +322,102 @@ Linux symlinks. Windows Python under Proton cannot reliably see those links,
 so the direct Steam route does not provide that native check. Use real files
 and directories for both routes. Proton's own prefix links are expected.
 
+## Without Steam: umu-launcher
+
+Install native Python 3.9 or newer, [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher)
+with `umu-run` on your PATH, and an installed Proton tool such as GE-Proton.
+The Steam client is not required. umu manages its own runtime and may download
+it on first use; allow that to finish. In a desktop terminal, open the extracted
+package folder and run, replacing the path with your installed Proton folder:
+
+```sh
+./Darkwatch.sh --umu --proton "/home/me/Tools/GE-Proton"
+```
+
+This opens the same Play, Manage installation and Updates menus. Put one Xbox
+ISO in `assets/` for automatic direct-ISO setup, or select your existing game
+data from Manage installation. Direct-ISO mode keeps that ISO required.
+All terminal actions above also work with the same `--umu --proton` options:
+
+```sh
+./Darkwatch.sh --umu --proton "/home/me/Tools/GE-Proton" --play
+./Darkwatch.sh --umu --proton "/home/me/Tools/GE-Proton" --install-hd-textures "/path/to/Darkwatch-Darker-Edition-HD-Textures-0.7.zip.001"
+./Darkwatch.sh --umu --proton "/home/me/Tools/GE-Proton" --download-update
+```
+
+Keep those options on later launches and updates. The launcher passes the
+bundled Windows Python executable and file paths using Wine's `Z:` paths;
+you do not need to convert paths yourself. This avoids the executable-startup
+hang reported when passing a Linux path directly to umu.
+
+The launcher keeps game files and saves in `GameData/`, its umu prefix in
+`.proton/umu/`, and caches under `.proton/`. It shares the same game data and
+cache locations as the native Steam-runtime route, but keeps the umu prefix
+separate to preserve an existing Steam-runtime prefix. Keep `GameData/` and
+`.proton/` when updating; do not move another launcher or fork's prefix into
+them. To reuse game data from another folder, choose **Use Existing Install**
+instead. Normal logging stays off; Manage installation → Diagnostic logging
+works on this route too.
+
+### Community-tested configuration
+
+[BitJager-dev reported](https://github.com/linkssy2/DarkwatchDarkerEdition/issues/53)
+successful setup, shader preparation, 0.7 HD installation and gameplay with
+version 0.7.5 in direct-ISO mode using a USA Xbox disc. Their setup was CachyOS,
+KDE Plasma on Wayland, Radeon 780M with RADV/Mesa 26.2.5, GE-Proton11-12,
+umu-launcher 1.4.4, gamescope 3.17 and an 8BitDo Ultimate 2 controller.
+They reported working controller input and audio with no noticed stutter.
+Their [umu wrapper and notes](https://github.com/BitJager-dev/DarkwatchDarkerEdition/tree/linux-umu-no-steam/launcher/linux/umu)
+informed this integration. This is a community result for that configuration;
+the new integrated launcher path has not yet been live-tested on Linux.
+
+That tester also reported a RADV GPU fault with gamescope's `--reshade-effect`.
+Plain gamescope and running without gamescope worked for them. Neither gamescope
+nor ReShade is enabled by this launcher. If you use an external wrapper and see
+similar faults, retry without its ReShade effect, then without gamescope. This
+report does not establish a fault on every GPU or with every effect.
+
+## Additional disc languages
+
+Manage installation > Install language from PS2 ISO offers Español, Français,
+Deutsch and Italiano from your supported European PS2 Darkwatch ISO
+(SLES-53564). Each import keeps its own text, subtitles, dialogue and compatible
+movies; installing one does not overwrite another, your Xbox data or saves.
+Choose the installed language under Language before the next launch.
+
+For example:
+
+```bash
+./Darkwatch.sh --install-french "/home/me/Games/Darkwatch-PS2.iso"
+./Darkwatch.sh --set-language fr
+```
+
+Use `--install-german` / `de`, `--install-italian` / `it`, or
+`--install-spanish` / `es` for the other disc languages. These arguments also
+work with the Steam setup route in place of `--play`. English remains `en`.
+Unsupported or changed discs are rejected without replacing existing files.
+Language imports use the source PS2 stereo movie mix where it matches the Xbox
+movie; incompatible edits retain the original movie.
+
+## Brazilian Portuguese
+
+Portuguese (Brazil) text and subtitles are available from Manage installation >
+Install Portuguese Translation, or `./Darkwatch.sh --install-portuguese`.
+Choose it with `./Darkwatch.sh --set-language pt-BR` before playing. The text is
+HNNEWGAMES' fan translation with Darker Edition compatibility corrections; it
+does not include Portuguese voices. Voices stay English unless you also install
+Spanish from your own supported European PS2 ISO. The Steam route accepts the
+same install and language arguments in place of `--play`.
+
 ## Reporting a failure
 
 Keep the error dialog/report or terminal output, and include your Linux
 distribution, GPU/driver, Proton version and whether failure occurred during
 import, shader preparation or play. Keep saves and caches while troubleshooting.
-Normal play has no test timer or diagnostic logging; the optional setup report
-is written only after a setup/launch failure.
+Normal play has no test timer. Diagnostic logging is off by default.
+Enable it before reproducing an issue with Manage installation > Diagnostic
+logging, or ./Darkwatch.sh --set-diagnostics on. Logs stay locally in
+GameData/logs; nothing uploads automatically. Disable it afterward with off.
+The Steam setup route accepts --set-diagnostics on in place of --play.
+Logs include local paths, settings and devices; review before sharing.
+Logging is size-limited and can affect timing.

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "content_revision": "player-corpses-characters-v14",
+  "content_revision": "character-tala-presentation-v26",
   "originals": {
     "audio.pck": {
       "size": 137741272,
@@ -20,6 +20,12 @@
     }
   },
   "sources": {
+    "accessories/weapons/dwpistol/firstpersonpistol.bxml": {
+      "archive": "packfile.pck",
+      "offset": 3532197,
+      "size": 2058,
+      "sha256": "e00f009e8375ef3154001588e77f8e1c141fb5cd1e831aaccb1fd7f16800f1c6"
+    },
     "audio/audioconfig.babe": {
       "archive": "audio.pck",
       "offset": 95126527,
@@ -97,6 +103,12 @@
       "offset": 15880192,
       "size": 34365,
       "sha256": "6533b0ce6478d94c30bbfe9d282555e06a6f2dc218491bb5c8bdfcf87fc8c7bf"
+    },
+    "characters/gunslinger/sanm/lo/gnslingr_crouch.sanm": {
+      "archive": "packfile.pck",
+      "offset": 16589396,
+      "size": 3288,
+      "sha256": "0007a5df6662768b3676bd30d8fbffc2f715befe45f8232696d748c6bdb2dde9"
     },
     "characters/multiplayer/base_dwstormtrooper.bllist": {
       "archive": "packfile.pck",
@@ -2126,6 +2138,12 @@
       "size": 3405,
       "sha256": "3a09a19804c604c54e97d265893d0811b9cce8c3ac12b69bd4b980fab990c76e"
     },
+    "characters/player_third/chazminematic.bxml": {
+      "archive": "packfile.pck",
+      "offset": 28209850,
+      "size": 1316,
+      "sha256": "d7f05fa2da8266e262deba63026fe4699de22a5897a2c572890f165c834389fe"
+    },
     "characters/player_third/chazvehicleanimation.bxml": {
       "archive": "packfile.pck",
       "offset": 28211166,
@@ -2209,6 +2227,132 @@
       "offset": 26807069,
       "size": 1264,
       "sha256": "89932a2e9939520bc1b3f06df9cead0419ced3251e0b4d308dc53ec5e91fc803"
+    },
+    "characters/player_third/sanm/lo/feedevent_01_jericho.sanm": {
+      "archive": "packfile.pck",
+      "offset": 25353708,
+      "size": 21608,
+      "sha256": "89d0e306985a11db1536156716778256b53700da9118fb756c912df1d0e945c0"
+    },
+    "characters/player_third/sanm/lo/feedevent_devilsb_jericho_evil.sanm": {
+      "archive": "packfile.pck",
+      "offset": 25421824,
+      "size": 60104,
+      "sha256": "3d46dac818e34a41ce1fd10570614421958bb9ade38349b0829e76a3f15ed41b"
+    },
+    "characters/player_third/sanm/lo/feedevent_devilsb_jericho_good.sanm": {
+      "archive": "packfile.pck",
+      "offset": 25481928,
+      "size": 13516,
+      "sha256": "8cf032fca65a55e6d50278a25b35a4ce526c0161170c8170d6b11672ba447b33"
+    },
+    "characters/player_third/sanm/lo/feedevent_devilsb_jericho_idle.sanm": {
+      "archive": "packfile.pck",
+      "offset": 25495444,
+      "size": 19440,
+      "sha256": "d56a52ac10ca5d3aa989565e96b028f8854e491ae13b882921004f2580620d7f"
+    },
+    "characters/player_third/sanm/lo/feedevent_givearm_jericho.sanm": {
+      "archive": "packfile.pck",
+      "offset": 25518080,
+      "size": 35688,
+      "sha256": "7b05845dbcf941c720616166b7ea8fa79db0e7b05419ebe1bc35f49f51fb9dcd"
+    },
+    "characters/player_third/sanm/lo/feedevent_idle_jericho.sanm": {
+      "archive": "packfile.pck",
+      "offset": 25560082,
+      "size": 2684,
+      "sha256": "1ab9c4e5588c83c7ba3e90928d827f3fb13af24ffad8df3469871032351d0a26"
+    },
+    "characters/player_third/sanm/lo/feedevent_outpost_jericho_evil.sanm": {
+      "archive": "packfile.pck",
+      "offset": 25599726,
+      "size": 27272,
+      "sha256": "6d614a61a2741d218de0d4f731f12979a86f7b9d657157f5056662991b45ceb1"
+    },
+    "characters/player_third/sanm/lo/feedevent_outpost_jericho_good.sanm": {
+      "archive": "packfile.pck",
+      "offset": 25626998,
+      "size": 24412,
+      "sha256": "eea7d00ec7398b67e29bb0458ff106893251fc2068b60ffac5b9077e8234c500"
+    },
+    "characters/player_third/sanm/lo/feedevent_outpost_jericho_idle.sanm": {
+      "archive": "packfile.pck",
+      "offset": 25651410,
+      "size": 6560,
+      "sha256": "d3f6c3edc37c177c0889a5d7d7b29348bcc82c72dcd2cd883e66ca910e3e605b"
+    },
+    "characters/player_third/sanm/lo/feedevent_splitpath_jericho_evil.sanm": {
+      "archive": "packfile.pck",
+      "offset": 25716736,
+      "size": 40756,
+      "sha256": "c648db9da67fa061570ffd8c0771b376b384c80bfad953ec5262f143ab5cf110"
+    },
+    "characters/player_third/sanm/lo/feedevent_splitpath_jericho_good.sanm": {
+      "archive": "packfile.pck",
+      "offset": 25759744,
+      "size": 40796,
+      "sha256": "39534ec7c5d0405a345bcac349e1d17261921776e6a6be03fea04f0d94690a0b"
+    },
+    "characters/player_third/sanm/lo/feedevent_splitpath_jericho_idle.sanm": {
+      "archive": "packfile.pck",
+      "offset": 25800540,
+      "size": 18820,
+      "sha256": "3ba4502099cb4f3a91e5f90a32a0007376eb5323d76efe07f2efe55ba4eae06c"
+    },
+    "characters/player_third/sanm/lo/feedevent_tradingpost_jericho_evil.sanm": {
+      "archive": "packfile.pck",
+      "offset": 25917440,
+      "size": 45940,
+      "sha256": "c569e7214059918240af4b9b5ad271fd66841cb1c1f11c4721b18c7b030d6e4f"
+    },
+    "characters/player_third/sanm/lo/feedevent_tradingpost_jericho_good.sanm": {
+      "archive": "packfile.pck",
+      "offset": 25964544,
+      "size": 59144,
+      "sha256": "d20c35d9dc4c164be697c298df37cf7e7b9f5a591ad016c5b7dea721d3f39fda"
+    },
+    "characters/player_third/sanm/lo/feedevent_tradingpost_jericho_idle.sanm": {
+      "archive": "packfile.pck",
+      "offset": 26023688,
+      "size": 7740,
+      "sha256": "084237a8f0dc180dcd0d0f3f2d588becca93c0d5926890ee0b8b4c448daf265e"
+    },
+    "characters/player_third/sanm/lo/jericho_idle.sanm": {
+      "archive": "packfile.pck",
+      "offset": 26043180,
+      "size": 2648,
+      "sha256": "ed5897a5f771b88176e0f1dba0674776650b89563bacd2ded87451be25c9ac7e"
+    },
+    "characters/player_third/sanm/lo/jericho_run.bxml": {
+      "archive": "packfile.pck",
+      "offset": 26045828,
+      "size": 870,
+      "sha256": "ce8540ebfe0fc7f33901798d0261893789b041ff525a50d433930e345028c013"
+    },
+    "characters/player_third/sanm/lo/jericho_run.sanm": {
+      "archive": "packfile.pck",
+      "offset": 26046698,
+      "size": 8556,
+      "sha256": "3fc8a2a3b9ac8b96883e093b354b77adbaa4f53eb60e8cf669c2378e06c9b607"
+    },
+    "characters/player_third/sanm/lo/jericho_trainjumpdown.banim": {
+      "archive": "packfile.pck",
+      "offset": 26055254,
+      "size": 1887,
+      "sha256": "9f89ef0993a339482600969bebb8d73e3a6161c58c1ca159b412b5ca8e9455e4"
+    },
+    "characters/player_third/sanm/lo/jericho_trainjumpdown.sanm": {
+      "archive": "packfile.pck",
+      "offset": 26058752,
+      "size": 35872,
+      "sha256": "c097feaa95c4a5450c467244c3c5f7b5176830ccdcb6c0ef9e8a5b5caa4b2093"
+    },
+    "characters/player_third/sanm/lo/jericho_walk.sanm": {
+      "archive": "packfile.pck",
+      "offset": 26094624,
+      "size": 6172,
+      "sha256": "45f5a343d4d994d722983c165ff240d43af65cb99fca2e8555f910b64cbfc974"
     },
     "characters/player_third/sanm/lo/steamwagon_drive_brake.sanm": {
       "archive": "packfile.pck",
@@ -2372,6 +2516,12 @@
       "size": 77976,
       "sha256": "29f2943bd4b658e38bfcf079f3f650ec36a9f8a6d6946646d5278cd8fde24413"
     },
+    "levels/singleplayer/citadel_launch/citadel_launch_aa/citadel_launch_aa_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 2133361,
+      "size": 13795,
+      "sha256": "684fc66ed80c6d55f9c0be2c76cb1c6171a005975b321fd1f14aeac6615d53b6"
+    },
     "levels/singleplayer/citadel_launch/resources/audio/citadel_launch_aa.bblf": {
       "archive": "audio.pck",
       "offset": 94454,
@@ -2396,6 +2546,18 @@
       "size": 107049,
       "sha256": "b495835af6523de44328739cc6932f33ad5fe432fcb558faf8e1fd546a8fdac3"
     },
+    "levels/singleplayer/fallofcitadel/fallofcitadel_a/fallofcitadel_a_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 10368692,
+      "size": 12954,
+      "sha256": "9f331b3f4ecaf199e5e0c4e015a100ba1d2a50b3488aa1049af11ec72e753152"
+    },
+    "levels/singleplayer/fallofcitadel/fallofcitadel_b/fallofcitadel_b_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 12597784,
+      "size": 1674,
+      "sha256": "e2afeefeb0f7c907f2fda1b0a19d429bc9efd59b8bdb2a3c54207af507d5049a"
+    },
     "levels/singleplayer/fallofcitadel/resources/audio/fallofcitadel_a.bblf": {
       "archive": "audio.pck",
       "offset": 91597,
@@ -2419,6 +2581,78 @@
       "offset": 87751,
       "size": 1299,
       "sha256": "9e50aecbaa8c9fdb5c61c0f9bfa8931faf70005be69501f4bd7dc4b4d7ed6072"
+    },
+    "levels/singleplayer/fallofcitadel/resources/cinematics/sanm/ec_c01_jericho.sanm": {
+      "archive": "LvlSingl.pck",
+      "offset": 12885318,
+      "size": 17464,
+      "sha256": "bb6fc511144bee2886d64f4bcb50ee1ba80248fcafb70fa08288c0e38f3d383c"
+    },
+    "levels/singleplayer/fallofcitadel/resources/cinematics/sanm/ec_c02_jericho.sanm": {
+      "archive": "LvlSingl.pck",
+      "offset": 12966679,
+      "size": 29708,
+      "sha256": "257eb3d366594b2b1158ce43701d32908078881d41ccf126e2477dddf2cdec1f"
+    },
+    "levels/singleplayer/fallofcitadel/resources/cinematics/sanm/ec_c03_jericho.sanm": {
+      "archive": "LvlSingl.pck",
+      "offset": 13011386,
+      "size": 20980,
+      "sha256": "3d715b71069534d1d4bc4943721fc7b05ce7fad8da4d51c4010c81e4d098ecfe"
+    },
+    "levels/singleplayer/fallofcitadel/resources/cinematics/sanm/ec_c04_jericho.sanm": {
+      "archive": "LvlSingl.pck",
+      "offset": 13138745,
+      "size": 14432,
+      "sha256": "ea474b83d970da70f273e37d1832917484c425e036dbaee289b5c59717b9f123"
+    },
+    "levels/singleplayer/fallofcitadel/resources/cinematics/sanm/gc_c01_jericho.sanm": {
+      "archive": "LvlSingl.pck",
+      "offset": 13181792,
+      "size": 11216,
+      "sha256": "7aec90cd922491c190f1ac396e05b83e87d57de4f7801add5c04a6dc83dbd619"
+    },
+    "levels/singleplayer/fallofcitadel/resources/cinematics/sanm/gc_c02_jericho.sanm": {
+      "archive": "LvlSingl.pck",
+      "offset": 13198915,
+      "size": 5252,
+      "sha256": "a4688f871efbb4bf846920c69639fb00e2158654826ca6f012a3ba3a22dfa636"
+    },
+    "levels/singleplayer/fallofcitadel/resources/cinematics/sanm/gc_c03_jericho.sanm": {
+      "archive": "LvlSingl.pck",
+      "offset": 13268983,
+      "size": 7212,
+      "sha256": "d1c9841ed6daf6a823fa9a13b012ee8936abb1a64924611f6504a1cce7692ff9"
+    },
+    "levels/singleplayer/fallofcitadel/resources/cinematics/sanm/gc_c04_jericho.sanm": {
+      "archive": "LvlSingl.pck",
+      "offset": 13323328,
+      "size": 4048,
+      "sha256": "b8c2fbf398c31414a222d1b879921493b4b22c6e7fad400a5a6aae21cec96256"
+    },
+    "levels/singleplayer/fallofcitadel/resources/cinematics/sanm/gc_c06_jericho.sanm": {
+      "archive": "LvlSingl.pck",
+      "offset": 13358713,
+      "size": 11200,
+      "sha256": "8bb9994499a41a8c3bdd14fe81d7f2b1a2774b0a9d74cb2927f151cc20d35ba4"
+    },
+    "levels/singleplayer/fallofcitadel/resources/cinematics/sanm/gc_c07_jericho.sanm": {
+      "archive": "LvlSingl.pck",
+      "offset": 13391432,
+      "size": 7212,
+      "sha256": "b932227cf6d8b0e5339b79e42f9ba1c61f77c616f2bdc6ed018734378387bd70"
+    },
+    "levels/singleplayer/fallofcitadel/resources/cinematics/sanm/sd_c01_jericho.sanm": {
+      "archive": "LvlSingl.pck",
+      "offset": 13466725,
+      "size": 30632,
+      "sha256": "2c6b4e14fbbe3396fc37e61f8c9de2e984f6e53aea3224478ef44ea0eed11a8f"
+    },
+    "levels/singleplayer/fallofcitadel/resources/cinematics/sanm/sd_c02_jericho.sanm": {
+      "archive": "LvlSingl.pck",
+      "offset": 13505624,
+      "size": 7260,
+      "sha256": "f33652b1df5c7b23226313cc7899d8a8677cea2661ef2a641f507b451ee832bc"
     },
     "levels/singleplayer/fallofcitadel/resources/scripts/zoomtofallofcitadel_b.lobj": {
       "archive": "LvlSingl.pck",
@@ -2450,6 +2684,12 @@
       "size": 89164,
       "sha256": "50a1d5614ed8a0c62ba73b997fb0c6392d2f3bb7bbc14b971d11258ea308cdd0"
     },
+    "levels/singleplayer/groundzero/groundzero_a/groundzero_a_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 15876096,
+      "size": 36392,
+      "sha256": "aadf02869aa24f80ee8c7356c7c9ca680b203d42964cfb11ff1d9b30058e652c"
+    },
     "levels/singleplayer/groundzero/resources/audio/groundzero_a.bblf": {
       "archive": "audio.pck",
       "offset": 74904,
@@ -2474,6 +2714,12 @@
       "size": 87443,
       "sha256": "6c9ef3abd836acdcca3c29a413330fd7dbcb9e7f0bfbbd0474f8cb527a8d4d7c"
     },
+    "levels/singleplayer/m02_canyonshoot/hub_a/hub_a_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 16859498,
+      "size": 18567,
+      "sha256": "dda54b9f34900aba38ce8916af842c53572d3eae82ad384bc7137165ef6177cd"
+    },
     "levels/singleplayer/m02_canyonshoot/resources/audio/hub_a.bblf": {
       "archive": "audio.pck",
       "offset": 97347,
@@ -2497,6 +2743,18 @@
       "offset": 199176192,
       "size": 87451,
       "sha256": "4e0a205157bf9d5d45a8faf4d61a9eb4503dee6929643c28f05e87a198f4f80e"
+    },
+    "levels/singleplayer/m03_cemetery/m03_a/m03_a_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 20512626,
+      "size": 28998,
+      "sha256": "c60d2cfe33ef30a1ad2c9f37a6f9ec8b75c01fbbbb250afd05bdfb38bbb12627"
+    },
+    "levels/singleplayer/m03_cemetery/m03_c/m03_c_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 28025516,
+      "size": 24126,
+      "sha256": "6ff332ee073588d7ff96fddfa2a4a525125e8217696932f7e6205760b453cf21"
     },
     "levels/singleplayer/m03_cemetery/resources/audio/m03_a.bblf": {
       "archive": "audio.pck",
@@ -2569,6 +2827,12 @@
       "offset": 199694336,
       "size": 116679,
       "sha256": "e76b1ec57608b85367129fa640f77f4e05f3ee547ad2317df36b22bd7ab2a750"
+    },
+    "levels/singleplayer/m05_devilsbelly/hub_a/hub_a_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 30833964,
+      "size": 18243,
+      "sha256": "31c7b865f83f938fdefdb8584edeb5df23c26483ceab165342b09bf28df8972c"
     },
     "levels/singleplayer/m05_devilsbelly/resources/audio/hub_a.bblf": {
       "archive": "audio.pck",
@@ -2666,6 +2930,12 @@
       "size": 106222,
       "sha256": "c6361bded300bfe7335c0f7f861cd694ffd8a44afedc0eb78e946cfedac43ed0"
     },
+    "levels/singleplayer/m07_dwoutpost/m07_b/m07_b_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 49409171,
+      "size": 11963,
+      "sha256": "3957846ee719aa30d70744723596385969fd506b86c7dc0e337df27d9dafab93"
+    },
     "levels/singleplayer/m07_dwoutpost/resources/audio/m07_a.bblf": {
       "archive": "audio.pck",
       "offset": 125169,
@@ -2714,6 +2984,12 @@
       "size": 107023,
       "sha256": "7ab3f5433efb67d845c07099328cfe91d16e072cc1fe5c11e71a16c5c3c78aca"
     },
+    "levels/singleplayer/m08_regulator/hub_b/hub_b_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 56107304,
+      "size": 10290,
+      "sha256": "9cf75a0dadc41a6c5d7bafabafdac84e4b2ae0eb6288fcd58cfd94971ff5eef1"
+    },
     "levels/singleplayer/m08_regulator/resources/audio/hub_a.bblf": {
       "archive": "audio.pck",
       "offset": 80613,
@@ -2737,6 +3013,12 @@
       "offset": 76111,
       "size": 1571,
       "sha256": "7827ffe4d61184ff8c2a908bbef437a1b46656b0413db2eaffea65e106d960b9"
+    },
+    "levels/singleplayer/m08_regulator/resources/cinematics/m08_alamo_intro.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 56903548,
+      "size": 6602,
+      "sha256": "72b1ebb42445b58432ba4c72037d4c0e2755188259972d7dadee2045a418da26"
     },
     "levels/singleplayer/m08_regulator/streaming/hub_a_resources.bxml": {
       "archive": "LvlSingl.pck",
@@ -2924,6 +3206,18 @@
       "size": 97736,
       "sha256": "08b835b2ca2eb8e9f0e5a4c2bc6897f73ebadb7a59a56713df1c31afa249a0d1"
     },
+    "levels/singleplayer/m10_tradingpost/m10_a/m10_a_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 81764820,
+      "size": 25851,
+      "sha256": "c52b2ea7bf831656db8d8c70c24f2e32b926402ec6404ff092bfb821305022b5"
+    },
+    "levels/singleplayer/m10_tradingpost/m10_c/m10_c_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 89305892,
+      "size": 25073,
+      "sha256": "b9330c31b28baf2e2859b183ae84433d1ac629f8075b177a757417102797e5ca"
+    },
     "levels/singleplayer/m10_tradingpost/resources/audio/m10_a.bblf": {
       "archive": "audio.pck",
       "offset": 147358,
@@ -2971,6 +3265,12 @@
       "offset": 142809,
       "size": 1601,
       "sha256": "f3d6564380052755e9a6d3e50d8c3461ab98c2f0975f953d8b6dec6d946ad03e"
+    },
+    "levels/singleplayer/m10_tradingpost/resources/cinematics/talaintro.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 95029257,
+      "size": 9308,
+      "sha256": "159fbef8417389d2c72b4c6a7a0d23ffec44a48628b7f5bfd2af93406a22e836"
     },
     "levels/singleplayer/m10_tradingpost/streaming/m10_a_resources.bxml": {
       "archive": "LvlSingl.pck",
@@ -3020,6 +3320,18 @@
       "size": 115217,
       "sha256": "03545d28809a7c2355ca91b583a24bf643caa9437dae22b7d288af64aa460518"
     },
+    "levels/singleplayer/m11_hangtown/m11_f/m11_f_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 98316232,
+      "size": 30350,
+      "sha256": "479748eaf4568ee2492a9ae634a9afd8031dc4e54b828077c56c6b78b68fbaa5"
+    },
+    "levels/singleplayer/m11_hangtown/m11_g/m11_g_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 102479896,
+      "size": 22202,
+      "sha256": "0e3155f016c3a7a66e434baa35f6f28ebfca1daabe5f889606de5a16ae13ec64"
+    },
     "levels/singleplayer/m11_hangtown/resources/audio/m11_f.bblf": {
       "archive": "audio.pck",
       "offset": 179443,
@@ -3056,6 +3368,12 @@
       "size": 1819,
       "sha256": "7c8052c3eeb94dc752668471948ee9082f3fab125b893b19bac57ebac5c16e41"
     },
+    "levels/singleplayer/m11_hangtown/resources/scripts/m11_f_citadellaunch_giveweapons.lobj": {
+      "archive": "LvlSingl.pck",
+      "offset": 108985579,
+      "size": 3199,
+      "sha256": "1f6abbbb06fd90824497ff414f2e9dcde97eb7b26bc15a950a924e7d730592f7"
+    },
     "levels/singleplayer/m11_hangtown/streaming/m11_f_resources.bxml": {
       "archive": "LvlSingl.pck",
       "offset": 202919936,
@@ -3091,6 +3409,12 @@
       "offset": 203372544,
       "size": 109459,
       "sha256": "8a1ce5360d1e1ab67ca21e6d70e47774e1310fb81f5ab9a5ecd7053fbef5acd3"
+    },
+    "levels/singleplayer/m12_citadelunderattack/m12_aa/m12_aa_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 115338178,
+      "size": 21718,
+      "sha256": "ec8ad16d25d32c8c3ef5211da086be708f15745d0750cb2deb0e4e62a8464a16"
     },
     "levels/singleplayer/m12_citadelunderattack/resources/audio/m12_a.bblf": {
       "archive": "audio.pck",
@@ -3164,6 +3488,12 @@
       "size": 1387,
       "sha256": "f9a12da6d27d262962e32c0d2f9ecd76a1364221f322f08c34a2f78ca75fecf1"
     },
+    "levels/singleplayer/m12_citadelunderattack/resources/scripts/m12_aa_raisearmonrevolverpickup.lobj": {
+      "archive": "LvlSingl.pck",
+      "offset": 132292139,
+      "size": 1478,
+      "sha256": "aef37888dfe15a80400bdd7a159b89a21dbb0e708e63b2352d9fd4a5e88a2000"
+    },
     "levels/singleplayer/m12_citadelunderattack/streaming/m12_a_resources.bxml": {
       "archive": "LvlSingl.pck",
       "offset": 203689984,
@@ -3223,6 +3553,18 @@
       "offset": 204292096,
       "size": 106012,
       "sha256": "54cd44a75d5b767ef2698abcfdd306c85a189ae240126e3d8bbad1d0f724ee00"
+    },
+    "levels/singleplayer/m15_splittingpaths/m15_a/m15_a_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 135090004,
+      "size": 25713,
+      "sha256": "46674ccf2837a35d59408a1f34bc4b5c9e2456a1a0db67eda09e20c42fcf0e65"
+    },
+    "levels/singleplayer/m15_splittingpaths/m15_d/m15_d_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 141417320,
+      "size": 12864,
+      "sha256": "8b6ed7686517ceb70319c5a43e014458765262e2f8bb3781735d0d3ee70b9f28"
     },
     "levels/singleplayer/m15_splittingpaths/resources/audio/m15_a.bblf": {
       "archive": "audio.pck",
@@ -3284,6 +3626,12 @@
       "size": 1312,
       "sha256": "3dbaa86f02a23bbf65c0ecdf637977f6032d815c66cc5af8145a1f5adef1b76c"
     },
+    "levels/singleplayer/m15_splittingpaths/resources/scripts/m15_d_citadellaunch_giveweapons.lobj": {
+      "archive": "LvlSingl.pck",
+      "offset": 148796285,
+      "size": 3225,
+      "sha256": "f2418a969e58eedc4a94c451eddfb613d0ee9fdbc988290f245373a62b9259c4"
+    },
     "levels/singleplayer/m15_splittingpaths/streaming/m15_a_resources.bxml": {
       "archive": "LvlSingl.pck",
       "offset": 204398592,
@@ -3344,6 +3692,24 @@
       "size": 97846,
       "sha256": "c236b950decf47f100e31e93945862cedff54e2ee2943281b4bd898bd65059a2"
     },
+    "levels/singleplayer/m17_invasion/m17_b/m17_b_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 151631179,
+      "size": 25172,
+      "sha256": "33ff5a2c9017df6a968599b7c114eb260274b4bab71f6f17c5ec736aea79aafd"
+    },
+    "levels/singleplayer/m17_invasion/m17_c/m17_c_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 155269802,
+      "size": 27347,
+      "sha256": "36796778d4f63672b4c000f2b5cef94e8a1db5f36f2e19f0eaa01e0db57ac8f8"
+    },
+    "levels/singleplayer/m17_invasion/m17_d/m17_d_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 159814852,
+      "size": 23176,
+      "sha256": "bd2da32704ec2b671734e77255b09909cf0b7b94d811706b81c0f4c4814c63a3"
+    },
     "levels/singleplayer/m17_invasion/resources/audio/m17_b.bblf": {
       "archive": "audio.pck",
       "offset": 156264,
@@ -3379,6 +3745,12 @@
       "offset": 153371,
       "size": 1573,
       "sha256": "fa9b3e56598d4bc07fb6b18d3dc87ff8cb549a7c00cc2d4164b21680bd4a5312"
+    },
+    "levels/singleplayer/m17_invasion/resources/scripts/m17_b_citadellaunch_giveweapons.lobj": {
+      "archive": "LvlSingl.pck",
+      "offset": 161346170,
+      "size": 3212,
+      "sha256": "6069528ef5983e1e6509f17136fb304b6f694e71ea57949223429d4a6f354e52"
     },
     "levels/singleplayer/m17_invasion/streaming/m17_b_resources.bxml": {
       "archive": "LvlSingl.pck",
@@ -3416,6 +3788,12 @@
       "size": 104793,
       "sha256": "f33053e275712cc9da138378eb16b81e31c6a02cc8b043bf65a5c9f44889c67a"
     },
+    "levels/singleplayer/m19_ridetodeadfall/m19_a/m19_a_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 163956736,
+      "size": 41156,
+      "sha256": "0d6178996e209f7bf60ac285b1ad58bb1e4ded50790e31f050788bff981ed4b0"
+    },
     "levels/singleplayer/m19_ridetodeadfall/resources/audio/m19_a.bblf": {
       "archive": "audio.pck",
       "offset": 100340,
@@ -3428,6 +3806,12 @@
       "size": 1597,
       "sha256": "156124c16398d92dc4adfe866c384c69fff2a2d6d6365b7a99394c8d77e20338"
     },
+    "levels/singleplayer/m19_ridetodeadfall/resources/cinematics/m19_a_oozerintro.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 164743597,
+      "size": 5683,
+      "sha256": "c364451df0b954a5b6bd9e4b396f652023ad59ceaf186db72a8e88e7c207ca33"
+    },
     "levels/singleplayer/m19_ridetodeadfall/streaming/m19_a_resources.bxml": {
       "archive": "LvlSingl.pck",
       "offset": 205758464,
@@ -3439,6 +3823,12 @@
       "offset": 205842432,
       "size": 121105,
       "sha256": "c4565c96b439adcb7192e197f876602efaad4d583a0de2c7bb61b1ad0f0e297a"
+    },
+    "levels/singleplayer/m20_penetratingdeadfall/hub_a/hub_a_actors.bxml": {
+      "archive": "LvlSingl.pck",
+      "offset": 169960956,
+      "size": 25150,
+      "sha256": "50b3d4799b0986d77735aea610183e49c14eb4f54c32819942ab73804ecdae21"
     },
     "levels/singleplayer/m20_penetratingdeadfall/resources/audio/hub_a.bblf": {
       "archive": "audio.pck",
@@ -3650,6 +4040,12 @@
       "size": 216502,
       "sha256": "723c0fbc742317a3a4e4a5a070802cb6cd3c1db67f877ed7dff05bbb7ed86cad"
     },
+    "xml/actortemplates_props.bxml": {
+      "archive": "packfile.pck",
+      "offset": 108861440,
+      "size": 359874,
+      "sha256": "97d72dc7a8ee85fb5e0e5279b7b8d61f037ce16893cd8d5480c1b9cd59d74195"
+    },
     "xml/actortemplates_weapons.bxml": {
       "archive": "packfile.pck",
       "offset": 109250560,
@@ -3662,106 +4058,38 @@
       "size": 7873,
       "sha256": "08bfe757293c1e36ef68ddac843f7e886008bbe9f56b957c82f20a31164eb9bf"
     },
-    "levels/singleplayer/m03_cemetery/m03_c/m03_c_actors.bxml": {
-      "archive": "LvlSingl.pck",
-      "offset": 28025516,
-      "size": 24126,
-      "sha256": "6ff332ee073588d7ff96fddfa2a4a525125e8217696932f7e6205760b453cf21"
-    },
-    "levels/singleplayer/citadel_launch/citadel_launch_aa/citadel_launch_aa_actors.bxml": {
-      "archive": "LvlSingl.pck",
-      "offset": 2133361,
-      "size": 13795,
-      "sha256": "684fc66ed80c6d55f9c0be2c76cb1c6171a005975b321fd1f14aeac6615d53b6"
-    },
-    "levels/singleplayer/fallofcitadel/fallofcitadel_a/fallofcitadel_a_actors.bxml": {
-      "archive": "LvlSingl.pck",
-      "offset": 10368692,
-      "size": 12954,
-      "sha256": "9f331b3f4ecaf199e5e0c4e015a100ba1d2a50b3488aa1049af11ec72e753152"
-    },
-    "levels/singleplayer/groundzero/groundzero_a/groundzero_a_actors.bxml": {
-      "archive": "LvlSingl.pck",
-      "offset": 15876096,
-      "size": 36392,
-      "sha256": "aadf02869aa24f80ee8c7356c7c9ca680b203d42964cfb11ff1d9b30058e652c"
-    },
-    "levels/singleplayer/m10_tradingpost/m10_a/m10_a_actors.bxml": {
-      "archive": "LvlSingl.pck",
-      "offset": 81764820,
-      "size": 25851,
-      "sha256": "c52b2ea7bf831656db8d8c70c24f2e32b926402ec6404ff092bfb821305022b5"
-    },
-    "levels/singleplayer/m20_penetratingdeadfall/hub_a/hub_a_actors.bxml": {
-      "archive": "LvlSingl.pck",
-      "offset": 169960956,
-      "size": 25150,
-      "sha256": "50b3d4799b0986d77735aea610183e49c14eb4f54c32819942ab73804ecdae21"
-    },
-    "levels/singleplayer/m11_hangtown/m11_f/m11_f_actors.bxml": {
-      "archive": "LvlSingl.pck",
-      "offset": 98316232,
-      "size": 30350,
-      "sha256": "479748eaf4568ee2492a9ae634a9afd8031dc4e54b828077c56c6b78b68fbaa5"
-    },
-    "levels/singleplayer/m12_citadelunderattack/m12_aa/m12_aa_actors.bxml": {
-      "archive": "LvlSingl.pck",
-      "offset": 115338178,
-      "size": 21718,
-      "sha256": "ec8ad16d25d32c8c3ef5211da086be708f15745d0750cb2deb0e4e62a8464a16"
-    },
-    "levels/singleplayer/m15_splittingpaths/m15_d/m15_d_actors.bxml": {
-      "archive": "LvlSingl.pck",
-      "offset": 141417320,
-      "size": 12864,
-      "sha256": "8b6ed7686517ceb70319c5a43e014458765262e2f8bb3781735d0d3ee70b9f28"
-    },
-    "levels/singleplayer/m17_invasion/m17_b/m17_b_actors.bxml": {
-      "archive": "LvlSingl.pck",
-      "offset": 151631179,
-      "size": 25172,
-      "sha256": "33ff5a2c9017df6a968599b7c114eb260274b4bab71f6f17c5ec736aea79aafd"
-    },
-    "levels/singleplayer/m11_hangtown/resources/scripts/m11_f_citadellaunch_giveweapons.lobj": {
-      "archive": "LvlSingl.pck",
-      "offset": 108985579,
-      "size": 3199,
-      "sha256": "1f6abbbb06fd90824497ff414f2e9dcde97eb7b26bc15a950a924e7d730592f7"
-    },
-    "levels/singleplayer/m12_citadelunderattack/resources/scripts/m12_aa_raisearmonrevolverpickup.lobj": {
-      "archive": "LvlSingl.pck",
-      "offset": 132292139,
-      "size": 1478,
-      "sha256": "aef37888dfe15a80400bdd7a159b89a21dbb0e708e63b2352d9fd4a5e88a2000"
-    },
-    "levels/singleplayer/m15_splittingpaths/resources/scripts/m15_d_citadellaunch_giveweapons.lobj": {
-      "archive": "LvlSingl.pck",
-      "offset": 148796285,
-      "size": 3225,
-      "sha256": "f2418a969e58eedc4a94c451eddfb613d0ee9fdbc988290f245373a62b9259c4"
-    },
-    "levels/singleplayer/m17_invasion/resources/scripts/m17_b_citadellaunch_giveweapons.lobj": {
-      "archive": "LvlSingl.pck",
-      "offset": 161346170,
-      "size": 3212,
-      "sha256": "6069528ef5983e1e6509f17136fb304b6f694e71ea57949223429d4a6f354e52"
-    },
-    "xml/actortemplates_props.bxml": {
+    "characters/player_first/sanm/med/pov_chaz_reload_pistol.sanm": {
       "archive": "packfile.pck",
-      "offset": 108861440,
-      "size": 359874,
-      "sha256": "97d72dc7a8ee85fb5e0e5279b7b8d61f037ce16893cd8d5480c1b9cd59d74195"
+      "offset": 24197085,
+      "size": 2048,
+      "sha256": "088b63e9ea32b8117dcdd2fde2f26c30702afc906abd32c78f3e84b5fd8a0d17"
+    },
+    "accessories/weapons/dwrailrocket/base_pov_dwrailrocket.rx1": {
+      "archive": "packfile.pck",
+      "offset": 3598336,
+      "size": 413106,
+      "sha256": "d595dd40e1319180ad5bb8e86b92a3ca4cd6294a6d7649819148532116f8fc88"
+    },
+    "characters/player_first/sanm/med/pov_chaz_reload_dwrevolver.sanm": {
+      "archive": "packfile.pck",
+      "offset": 24103378,
+      "size": 31296,
+      "sha256": "39e34c7789640fcc94ea78953129a747d5dfcc271451dae6e9872c49d5ec1e54"
+    },
+    "accessories/weapons/dwrevolver/base_pov_dwrevolver.rx1": {
+      "archive": "packfile.pck",
+      "offset": 4642816,
+      "size": 352500,
+      "sha256": "5a5c05c437a5d1ed6b2e3ed33724d612a6439a2a532cf179c47c466132dcb788"
+    },
+    "accessories/weapons/dwrevolver/sanm/lo/pov_dwrevolver_reload.sanm": {
+      "archive": "packfile.pck",
+      "offset": 4557507,
+      "size": 4032,
+      "sha256": "f6649865168c984233ca6762eec1f1e0c665bafa4bfb74c6d6feb769a91bccf3"
     }
   },
   "v7_outputs": {
-    "xml/actortemplates_characters.bxml": {
-      "size": 228532,
-      "sha256": "d20d1c0cf1f7aeaf5c4f7f3b422d314981ba32ba4de219fa195bd857951811a5"
-    },
-    "characters/player_two/cassidyplayertwo.bllist": {
-      "size": 1961,
-      "sha256": "a087a71f33da427ec8eb417780727c30f444e687c0245b093fc8260a6ac5fc03"
-    },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_walk_lb.sanm": {
       "size": 4368,
       "sha256": "7929d80194a1b37d8a6fe7035c667a6b591caa2a70fb1bacdfdf5bfc3d0a1c10"
@@ -3868,67 +4196,67 @@
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_pistol_walk_ub.sanm": {
       "size": 3712,
-      "sha256": "04226636ffacd0404ec3ae7eb2b948ea22e897e6e4a3fc6d24e090b65053b441"
+      "sha256": "e0d4c81906e7bc2fcbe83aecd6ad1c684f9538ba5bafae567bf37a0f5774cfbc"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_run_ub.sanm": {
       "size": 4072,
-      "sha256": "bcb07928170f4de444d96587668f44ce3c1ab96399c4eb3f2bdb9d5445726200"
+      "sha256": "9789bffe7475cd7a30ec612c5130a813395a3aafdf2e461345787c763ba40f1c"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagrentmale_shootstrafel_ub.sanm": {
       "size": 3728,
-      "sha256": "f0b0e06e7ee48826346bb193c00609cd8f8d703263c0df110a0b238588daab33"
+      "sha256": "8ded79ed34a198bb890043ff6c4fe607deb131c5147e8a619eb4f92140c55bc8"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagrentmale_shootstrafer_ub.sanm": {
       "size": 3796,
-      "sha256": "789a1c879233ce7adac9bcc75ffaf8db1d1d101d04af2fa5b1d96b07a68bae9b"
+      "sha256": "4af53bbbcf6b6771705fdf262b3f2de1392e4b402ce98a59521fc24d1c4299df"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_straferback_ub.sanm": {
       "size": 3652,
-      "sha256": "d5446000d16c4a3076270f0b6a0da8e4c59bd32438e069d95064fb800d63b15b"
+      "sha256": "0ef80238e736b745b1379e61dfc1b51791fc58eac17d1b0a8d94990b194fc7aa"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_strafelback_ub.sanm": {
       "size": 5640,
-      "sha256": "bbdbe1b50af8de588a48de399b0945fbaa34a10586b233f76522bb236cbb8f5c"
+      "sha256": "87de7e5e730a581953cb7df9fcf9d90154d367c6b3efbe7ec75698a8e7f73002"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagent_walkback_ub.sanm": {
       "size": 3292,
-      "sha256": "368774976f212df2e3f91697ff9a93f00b84fd831b3389a6f467c65ecb56dbf1"
+      "sha256": "6bdea9f7950d02ba33a322494d7464bafd58c6ea7aee9ab907b29d9373ac9ae8"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_runback_ub.sanm": {
       "size": 4340,
-      "sha256": "484e6a067cc288b94f7490bdbeec13bbd232a79525a584dd217db814264b330f"
+      "sha256": "6f2e0bfbaee06e41f48cb0e3a95000e1ed00fbb46931ecd6e591513ed3e7c2e6"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_walk_ub.sanm": {
       "size": 3796,
-      "sha256": "c4ca080a9a3bedf142ef1571b2d86d189e966e50a40ca0a9f026401d3a2c2277"
+      "sha256": "a3f264a0fb7af861a7f725b089c90978cd05a98c1e06b368d38d9ace866021af"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_run_ub.sanm": {
       "size": 3928,
-      "sha256": "b24cfe813da2d7edd8b2707c36596eb7e4cfed90fc48cdec070063c18921a9d5"
+      "sha256": "981c2070fc57bc76e77c2f1bdbb5ca68ca8156311210c0c88d4bd723984c7447"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_shootstrafel_ub.sanm": {
       "size": 3836,
-      "sha256": "f06851d4b90de1e8d19a7df980c0315800c22848d535e60bd5845af06f8e2146"
+      "sha256": "f2f97464172430edc55700f998f423142e6a60cdf745b272a3495f01cb81bc16"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_shootstrafer_ub.sanm": {
       "size": 4160,
-      "sha256": "a7b204510f974d6533ca39d5c3349428dec72135757301b841f5b240d314fc16"
+      "sha256": "fc80207a36ccd8255e3fdcc66741e1c331d313a93ede69a19ca6d16f10f07edf"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_strafebackr_ub.sanm": {
       "size": 3252,
-      "sha256": "df545bbb0b30cf46c746e9fb4992a87fead6bdd817f94f7b6a46f08995c8a34b"
+      "sha256": "495a32fcb574fb35c80a90ea05f9bc580d7f04426a3ed4ef22c62f9f94560404"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_strafebackl_ub.sanm": {
       "size": 3060,
-      "sha256": "416199eb858180099622e62e062abe8885490b17b8f4440059c6fe47ad9ef0af"
+      "sha256": "504e914ebd563c8ad1a8cce9d0500325a0f07a84a92e9e19b1a408c7d27dd154"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_walkback_ub.sanm": {
       "size": 3328,
-      "sha256": "4990ea05ad00b863a5cfec40f6cb38b55c5c80ae94d342f39f6ad0f8363f990e"
+      "sha256": "967cee7f8ce7d8cfa93a38dc9a104aa52d4e9e2ccdcf3451e3f4448c3441ccab"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_runback_ub.sanm": {
       "size": 4256,
-      "sha256": "64ad4d98cd8f55eec58489c70768ad255a49ff7a5bb8f4e6771c75a002e7d7ac"
+      "sha256": "779c0199104f7919db0745b0a27d929492efa895bcc53d629e5206fbdadd33c7"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_rifle_walk_ub.sanm": {
       "size": 3736,
@@ -4032,11 +4360,11 @@
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_pistol_crouch_idle.sanm": {
       "size": 3544,
-      "sha256": "f7bc8f2ebd3ed90048633e5d3de34ba2e7ea0e07725ea02fefd7528548226bb0"
+      "sha256": "90992ea7adc2cab388feda9b0c8ae8ba8a57ac6782317ac47f172712cd413e5f"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_crouch_idle.sanm": {
       "size": 3520,
-      "sha256": "2150c7e465578c258108986a29cf2fb1d1e29359fb2d44cbe94afa1232118ee7"
+      "sha256": "1ecae956f39b479637805fa1082485f6612f13ab3222dde299efb2a0c8583262"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_rifle_crouch_idle.sanm": {
       "size": 3460,
@@ -4104,51 +4432,51 @@
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_pistol_crouch_walk_ub.sanm": {
       "size": 4336,
-      "sha256": "7f5232ce08fe7a90dd3a7ed237ed959312289f404db58b535e1cbf7fad7734ac"
+      "sha256": "d29ad1b6b4f057eeab03f12fdaaa2446bdeb1d466776ceff5404d03e096f2b79"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_pistol_crouch_strafel_ub.sanm": {
       "size": 4192,
-      "sha256": "b22fa01bde46f0f11c8194849c44b7e5e2027a68f2caa53a403316363bd4a03e"
+      "sha256": "354667464bf0f02ccaee0f00fa1ce64736dc98e675acb4ce7983ceb453e95029"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_pistol_crouch_strafer_ub.sanm": {
       "size": 4348,
-      "sha256": "c2ee1ba8311ac3644ec8bab5867083231418a30460af837f62271341648915fa"
+      "sha256": "be75395327c3e4fd98bfd0cabab2fb376787be53ab0a60261d17f92f0f2823a4"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_pistol_crouch_strafebackr_ub.sanm": {
       "size": 4360,
-      "sha256": "f5fa1644c96c99977abb467b8e2a3a925f81e47623439069e4676b801be4d93d"
+      "sha256": "304a24d20d4828311631b53d0e714c14dde74757592fd28a3df9ba6ec6f8ae37"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_pistol_crouch_strafebackl_ub.sanm": {
       "size": 4516,
-      "sha256": "6aaa41cd809a01e32b2f547bdb2b9a8dd71b8f71cc6b0dfa7e381cdf1ce0bb01"
+      "sha256": "a1fa1a86a82443ad1aba02b0a16bb89f84f18d66ff5a347649eb073c0324969e"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_pistol_crouch_walkback_ub.sanm": {
       "size": 4360,
-      "sha256": "5cab05be65845aa12347396f71f1c426c7a88352f3eeb651eb67ddd0d0dddc6e"
+      "sha256": "c95f8c579eef0761939d84dd1596dd7eff14951837987cb6d5934a89d9ced54f"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_crouch_walk_ub.sanm": {
       "size": 4468,
-      "sha256": "56123a88fcc3607be27cd43e261fc06c110926ef51843e6d0c58f6406f879615"
+      "sha256": "27509acd95b4973cbb5691500977e18469890c586b345e9cc83cd0bee41e69f9"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_crouch_strafel_ub.sanm": {
       "size": 4084,
-      "sha256": "643cbd70d680cacde1de8b4a026dd459641c53d9e6133e3b9a3a571d9809e53b"
+      "sha256": "412d92205d0427963a7c27947409ecc7f580cbf701b81883872685e783087d4d"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_crouch_strafer_ub.sanm": {
       "size": 4156,
-      "sha256": "18b1283e0bd35cec9f2e8ed968086ede99f1bd9a1067f2ea9d2f5b96d2cffea5"
+      "sha256": "3e3e52d1748b4d35beeb2d02c0f01f41c7f37f8f9f695f09571d3f19949ad1c0"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_crouch_strafebackr_ub.sanm": {
       "size": 4492,
-      "sha256": "9210ec3f5ff3ae6e00653ff2a8f93dc95146814b578eb88f0ba96f924633c279"
+      "sha256": "847aa8eb3be2c1accf3bb4e149c02cfb49e62acf5f1c9c375a34d236473a2445"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_crouch_strafebackl_ub.sanm": {
       "size": 4492,
-      "sha256": "49a17274d21e1555f8f95b353f0c9b7e3362f7afda0c942bac99a28167dfe5e4"
+      "sha256": "1324fddb1a8051547f721aa8f28d589370d419c9b40bde990307be1761c61037"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_crouch_walkback_ub.sanm": {
       "size": 4576,
-      "sha256": "d9fe5a122bb4277ce58dfe73f4714d050ab68bc0b72d606561bc47610ef21258"
+      "sha256": "ed23535567f79e7d18bf31b03deb4cb31289f73029235ca97de2ecffcbead801"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_rifle_crouch_walk_ub.sanm": {
       "size": 4240,
@@ -4252,11 +4580,11 @@
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_readystand_ub.sanm": {
       "size": 3624,
-      "sha256": "4410bc005cbc8f7015375f6274666c95c3b8b9d0bd43630567838cd2f76e9662"
+      "sha256": "ebdc0f8676a9277291cd6c4873c3d238c515a26ca5bb5819d7848fc8c7b3a288"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagent_readystand_doublepistol_ub.sanm": {
       "size": 3556,
-      "sha256": "f8eb11d41ac57d5c0f366e7d7a2684d7315557d3d0e982ccd337e24c8cbc2b27"
+      "sha256": "95939fddc8ce7bacee4bb8cfb9e58621630675b1c0e43159920fc5d3e98be424"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_rifle_readystand_ub.sanm": {
       "size": 3376,
@@ -4272,319 +4600,319 @@
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_aim_d_d.sanm": {
       "size": 644,
-      "sha256": "c6375e5bf8d333ecad003605e07d9807601c7921bb1a6e4c80a8c8bf0979e6ef"
+      "sha256": "07772173d7076e014c242b777cc4e100cd32f94b2c0f37c5f655e4875d32fe82"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_aim_u_d.sanm": {
       "size": 644,
-      "sha256": "6b03a69f51003a0bbc5feea494e95e3746535b9c15e6ce1e33ab092289aeaebf"
+      "sha256": "e3a5b889e7cad4a0cddb744c04d8f630820997f31d55ae5a6be5b9cf71d0cbc3"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_aim_l_d.sanm": {
       "size": 644,
-      "sha256": "a5b78f24332c4e0fbb220d7b1248d227eb18ca49ed201ecfd9c2f36ec138384e"
+      "sha256": "e32c89a8e89fc7b9f5155265deb22cf25bafe8dfb0b628714a655b2d879fb4d2"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_aim_r_d.sanm": {
       "size": 644,
-      "sha256": "7c2545b3d4ff6e9de613bf8d2df7078376b8ac2217d05d377782e3a6fc1adfb4"
+      "sha256": "7f99586399a63b92376e65a428b0795cf55ee8407063275cd6e694e4a7b24feb"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/pistol_crouch_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "1bec4fce2eb72c8c23a58f89d0a9f1404434556ef60e0f0a54bc8f96507e845f"
+      "sha256": "6df7142223ae1715eca637edb03576b83a45f421fe1786d65cb26e103d7b6035"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/pistol_crouch_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "6e9bd4277243da8d96f0f2f81446d2bf8f442c3539d08628b40a4aaeb0f2398f"
+      "sha256": "8abd2c9febccddbbe0772ce45bf0a5ff55399b53b58086f64d4f12564e69a5f0"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/pistol_crouch_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "44cbd01cc4d36dfd4f477f71ff024f7ea50f7264da61985441ea744fb5017664"
+      "sha256": "cf08cd85b25f58cef73e7e3a407ecb60e81126541871d3afcb1beea9f67b57a8"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/pistol_crouch_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "0a98a8dc615c7602328794343a15aa9faadb3465f7e0b9bc37d719af7b9dd825"
+      "sha256": "a7229447bce821c97c16ae32687c7eb5c5feeef7dad28fb7cd4378dc6b7f4dcc"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/pistol_crouch_loco_aim_u_d.sanm": {
       "size": 1164,
-      "sha256": "dd42821492a0d5ddb671739a843a86c8c1ddd9eb54c69e8da35d04fe7ce74bfc"
+      "sha256": "23a2b4850bb61c8c5d7d6adb896e426271d4df2e5f3d95d973d87169679b4d2b"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/pistol_crouch_loco_aim_d_d.sanm": {
       "size": 1164,
-      "sha256": "af40f6986d61c9a5952dd663906bf1e450ab20bca00f83ad240025f8581b3bce"
+      "sha256": "f1f65d3f01a33f9029534e728fe5f10fabcb4f6e336f6eaf1aa2258f206bb618"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/pistol_crouch_loco_aim_l_d.sanm": {
       "size": 1164,
-      "sha256": "fb1b8728990d173dcf524575115be1f3680ee590ddf81a9c7f985d9041752a4b"
+      "sha256": "a58f0d08934d62d2fa0465db5079f22c6cebfeab6576f86f36ac2b4c563b2dcc"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/pistol_crouch_loco_aim_r_d.sanm": {
       "size": 1164,
-      "sha256": "a686a5f6dec4f6ae2068a8ac5162259f86bc1d5735d29dc333647e0b32e8a80d"
+      "sha256": "9500f8a1b67db573070ecdbd52825a55abe087709cec3eb3ad656996fff24e29"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/hammerfan_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "9d618e71555fc24c211f3889377b6e929083d767e9d26ad387720206544ef81a"
+      "sha256": "7727991fb90de20b2066a75720f432c57d4e4bd016a3cce33e23b3720d4fb8ed"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/hammerfan_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "e67f94f71ab60f50a35a3f0c863d5a5f09194ecf1f26d1f84c5bbe9cb4829179"
+      "sha256": "b6016abe43669096bfa6458983080eac80c01ffe70f2cc0b63933a955f0a71d8"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/hammerfan_aim_l_d.sanm": {
       "size": 1224,
-      "sha256": "37859a55f3efa06e1d0fef391278ca1f444e80c7621cebc8ac7453f9b81459ec"
+      "sha256": "238318422aa3ef385eb654cb4d3e7b7ea7de3e61771d00cd466052cc6e939f99"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/hammerfan_aim_d_d.sanm": {
       "size": 1224,
-      "sha256": "97ca2706eee0ab21b1937d45ac0c57b1e7e454d94bc0da258248d46eb1205252"
+      "sha256": "5da7377fe58aa2b6a01d22e33bac3950ac9742fdf1a6723e18d8d8bebc5f4e79"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/doublepistol_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "6223c6b0a7e876b46578d12fdf78df3a18d90e71f03d5b0eb5ac4eca303e5a75"
+      "sha256": "6e5d7ff9836a79d596ef3af2021501b0b5b878fb45817cf40246e8e651965909"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/doublepistol_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "9810ee7c2df3095886f0d5be52ccfbcb8e493ac8265095c8680763c6f0d9d0d3"
+      "sha256": "e11671ce81755d5cb28b5a0fc3bd7d16c940626250d07b769d826d4a6aad277e"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/doublepistol_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "06dcddcc171fea9c03ebe47d38755563737c6e47f27bd9907c10b441fc95c361"
+      "sha256": "14bece3c597741d441445f166b39d89f36745060cc53eb9e2e9d9bdb00713cf0"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/doulbepistol_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "a6ebdb20e89ae2ccf8a2275349c181cd13bc674db38e5ccadd98b1e5ed1cf527"
+      "sha256": "9fcdbeeeed1dd6538d629436a29cdda1eb5b57913220b6dbc7599b9c0340a8e4"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/doublepistol_crouch_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "730759d31d289a5cefdd1b5f60ac4a81e89ce9e800e1ae0bcc9cb317a6c4fe15"
+      "sha256": "78f354b7dad61deed6ad6bc729bc89e73eaa2061bb968f15f565231fc1674d94"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/doublepistol_crouch_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "28a29878b46caa4ec4f5f528f9d24fb65d22cf2be281ffb6f7615fa912dafe55"
+      "sha256": "f0f1e566284a8dbb49ff113ce71cb42a8c50c030393284e3815ab004b54cb0f8"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/doublepistol_crouch_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "a418dc1e84b62712cf4c0e0d45c55a5b2723a46fe70dbbecfcb0dcf0b8f5add8"
+      "sha256": "b072edd376a3e1b745593bd760cca0357ca6b12ee19c582630eb741798a75517"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/doublepistol_crouch_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "7a207249e730b0b4f739578ad636f0081f062f681a577a86f62e475957887ad5"
+      "sha256": "74513e8a9565674abb55ba9d8f2568f80c96d7d7679f55b68685d610c60b84dc"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/doublepistol_crouch_loco_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "972fafc80834b21e971eb967fba5f90832e2a891667f623587c0a1c11be99ea9"
+      "sha256": "a4530730ccf97ccf6a8d5794f4dd7e8cf01f2e3a89f43ca37abb78152bae7b15"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/doublepistol_crouch_loco_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "8ee75dad8e15a6dd0bc5aa93998ba5b1e46a525e363f1a3a6d8ff2ae84e23bcf"
+      "sha256": "75d9e04802dafde9cd32e3105f9a4b150ee59afb1b4404a1bf49497971fa4a29"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/doublepistol_crouch_loco_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "5e42699d4178acd022316be5b97c215cb687c00ce4b296b861753c71a5c88501"
+      "sha256": "0af485cc958a2bcc0be0d43b0e35f32d1b2fa616c4388073a8f50b0957b1757b"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/doublepistol_crouch_loco_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "6c42153b396932d1230a9e280ad651bfdd5833390c11f416648877c1534010b5"
+      "sha256": "a401ad2212754e53077d6a9cb0a4ea76f27be605d01812af7040e1efc12ad264"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rifle_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "acbdae525fe17ae1c60fb4f21e59693c8234ce3365619f1e17b7cfbbb507a8d1"
+      "sha256": "3f4d2e248498a9c9264b5c877fa605643675dc4e97007fc6c4fe4e9f066bdad3"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rifle_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "5133e99e5bbe64e2df6c73a64451cd7e2210a8e444a4f49c464284464c67f883"
+      "sha256": "7c63d7c6ce7e6aaa8a65ae1a1173c33da243920074f630ec50a5ec35036b81fd"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rifle_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "f48fcc1a06dfcae08d4e13c2cbe3a2026828a89b44d213390b0f19c52f712d62"
+      "sha256": "d7be9b7773567fa9aeb6dc52a64a92a8d5fa796f631c28c2fbff1013c4d7464d"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rifle_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "18c8ba8e48708fd39ac7c8e74f12b3daf9d2cc35275c9fd4a67b92a14a3f80ef"
+      "sha256": "0b34d34e975bcbfaafa7e6d65a6eba5db1d941c9ab6d8b79dd9feb58595d01ad"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rifle_crouch_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "a136d08daa85a7c71c86372c2536c27e4d1578d85d3de5750184511f3ecf1109"
+      "sha256": "3c361e18b73d98359e466ce2a849145049f6d2215d7391aea1d0efc592826de5"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rifle_crouch_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "a3f2e471cf85805a1d8664b312585b4d4d9f4ca80568ec254f5e470fb2da3065"
+      "sha256": "c2d616df28e484d6753d3547c0b071e5947c6feb24348b53c7f85669ef558bf6"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rifle_crouch_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "9bbe716452765a957b89315d1d3561eef7a3be9679f2db1c63e94016c84776bf"
+      "sha256": "e8539a9848a72e4864bc1b914fd9ef646de7eed8654cb4b7201c29ac67f6846b"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rifle_crouch_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "e9bae0441abf4f21a434b9333e94ac7b3d74aa259a32517154690277ed6e1d53"
+      "sha256": "0b192b47fbc763321f18b7f3a4da5e5f8d8ad0248eee8bcf5093a321589566ec"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rifle_crouch_loco_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "c6672f767eb6de0d202f5f63f10e7175983bc9a2645b505e400ee46da1168c45"
+      "sha256": "129696dd715a72329b252daefdf83fb9d3acadb4d43f2bc6e5ffd4d9dbf2182d"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rifle_crouch_loco_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "191e7f2fe58338b506bdc1700bd6f0affb5b57fb333e66aa9c5798d648fb070e"
+      "sha256": "e3d5f859ca5989880b7da28cacece4a54290f6ffa7932ece3c48bcb8b4f4acb1"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rifle_crouch_loco_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "62c855610f900b134917bf8c1835653314bf433b3b540479d623053e9b31c9f3"
+      "sha256": "11b445b5ea8c3c2b0ded051cf65b196e63bf591df0f74f47945db673ed679e0b"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rifle_crouch_loco_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "3d2595f00756a81923ef1817a021cbb896d60e0dc95bf199fffaaba558b5e2ab"
+      "sha256": "399b1685b60ea4268019e784aa0cee38ba852297541a59fcedc78f9e85d7ca26"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/flag_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "d7625a9677d5b48ca0336586e21593151381f1de06c5f1ceb4e237ab129ebcf6"
+      "sha256": "483c94d28bc23a87a0579171b3cd1ee9af1b18a16124b00e37b5696df8a7cc12"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/flag_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "61f58106eed4e70154773eadfe2ef06653abfec8a30880caf9857b145786d320"
+      "sha256": "7d80347ab6dac901644420911539f9d18c00b557aa0abae43decbdfee2b75891"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/flag_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "5fe05abd88e08b914e07e65efaad169da5a24a2825275dba6e25659bc5b070cc"
+      "sha256": "a4b7720089398a650f8205613dd4e1af5afb97e18299a9250cfa9fcc7782736c"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/flag_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "9f883921d4160f44e82ca5d0433143e5d2bd5be4c96862fe0e7cde0029c07126"
+      "sha256": "6e54fecd7f29a4302fbe32ba88a414309566976ad73cbd4d65107f4775e226b7"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/flag_crouch_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "ed4ff984f95e6af0ca52e4e6ac6a1a4a98838ca0ee39ce2e1debc9e914571ee5"
+      "sha256": "d6877d4510ed1ac1c2057e3128c6e3a73df2d779ba51668367745fe6c303c2eb"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/flag_crouch_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "ac6e0a910574e9a9ebf4fb2cbb94eb6ae648c59028c656faf58af940d8203550"
+      "sha256": "39af0d3dcbd951d971ab8bcd4462f3e623e56863f142d634d83c2f854a43e159"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/flag_crouch_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "63f4ef2efabbb71ed73eb05365dddd67d6c29dcfc2850c9f4dcd96fc64078e62"
+      "sha256": "ef83b108b3a2d73d4d13664b530a0b5f07439c1b3cd3babe76c0ee3ec4187218"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/flag_crouch_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "8ed9c8f775e55d3451253403296b52489424ebfeaf6cea35e430c2eb3916cc2e"
+      "sha256": "2e9368171c1ee122561bed5a7e882f6af95a062377f2b99bcd64a05e16da40ef"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/flag_crouch_loco_aim_u_d.sanm": {
       "size": 1188,
-      "sha256": "c842bdffb552c991d859b1b38f1d4a21f7ac88e97e1d9f6a6bae54095eccd322"
+      "sha256": "3d3096586f3455e894542172e1d3b2f40666bfeea422065acd276052742f0e48"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/flag_crouch_loco_aim_d_d.sanm": {
       "size": 1188,
-      "sha256": "b247fde2ae38069815938bee08418c2f3fbc8ebd7b1a9c205af204b4a7ed6078"
+      "sha256": "9b24f619f2077d42bf01443e3a0422be38653f604afd998a464f6030bb79dc78"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/flag_crouch_loco_aim_l_d.sanm": {
       "size": 1188,
-      "sha256": "2ac3a0193f2d6c401accd18a5e45ac1eee7560c1d1e4b410b6419a0cd665b10c"
+      "sha256": "a0365fc8eff4630a754dca185845811abc9511412ebfbe45922073d01b2b78dd"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/flag_crouch_loco_aim_r_d.sanm": {
       "size": 1188,
-      "sha256": "4890e908621066a174cf206987cde9e76c69c6f9308d3a6b6c469087e0001bc0"
+      "sha256": "1669ada18f2396fb623f01eaa212079b5a9b50098cbef4acd677fabec65c09fa"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/shotgun_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "8858d2908ca0ca04fcc5b6f55cec85a97649ee97a4712ff8d3ef2c383e929479"
+      "sha256": "676f272201310a6207d6b9955a248b7635d7ad5cbe32a8b5e99725701961abe3"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/shotgun_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "12e1e5fab220d9bb36b425d1421c2b842e838d2e13995094bcc10f8fedcb79b5"
+      "sha256": "212964d4827d83d86dd94637fa336e07fd34bb13f45ba3843fffe4dda04538d5"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/shotgun_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "f22d63b32234829555d89a20c4119d1906435250674eaf9b9f09945fc04054d2"
+      "sha256": "04f915a44dc66ed574c369d5034a2a29e5ffbd898ddda10a72a878f18dd06a19"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/shotgun_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "f2d4b801d76dca26320b7493a84894ab29019c0fe80dbab07629c8e391314445"
+      "sha256": "fc8e11739e5f9e70315697595b4e3ab23e56a028b8d0ca4970671d863092bbd7"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/shotgun_crouch_aim_d_d.sanm": {
       "size": 1440,
-      "sha256": "d32be5726b52352c3c73d495eca0ef41ef46040c74a8d2ce3c80a87675dd8a91"
+      "sha256": "008614a29527ad4c0958970e10e8b76d4b66d796b39d4084f1e0599df2bfa11f"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/shotgun_crouch_aim_l_d.sanm": {
       "size": 1440,
-      "sha256": "46faf6935f7cf1f7e838bb8734dae087b38072faaa257e90fb9c46149f47cb7d"
+      "sha256": "9e6b9c2b3a94800ecf3aea5008522366b9c945e852723fad9b3f7124566fbc23"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/shotgun_crouch_aim_r_d.sanm": {
       "size": 1440,
-      "sha256": "55ec090eb095410f24afde16088d033edf87f382e4bbcc4b998c9566b05a6d4a"
+      "sha256": "e1c37f5669dc83dc9a202d592f091fabe9a25963f69f205dd864872b6cd4f1bc"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/shotgun_crouch_aim_u_d.sanm": {
       "size": 1440,
-      "sha256": "fe8436f45162de7a73cbaf5a46324c1ce1e5ebf3738130afe64aea7635fcb7d3"
+      "sha256": "29f157c875d3a6f337fda5c95bd89e35982b710282a7d32cf974b5771b0eacb5"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rocketlauncher_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "bc99da1782f4f840eb44c18f24501cd85648a7fafa688f8876dfbc656f6fa49c"
+      "sha256": "a7a5cd9f9a5f728e4842fb2699c486145ae0f489a79852176517b2b035fa29bb"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rocketlauncher_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "6b71b29c13b9f191eb71a5c59a05d5f2f0f7a01794e8879918cf38ecd947e09d"
+      "sha256": "aeaf6768568240484ec634b7ba2e134374990279c111907f627dec5e73313019"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rocketlauncher_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "a48f58568e92753e8bca5a1a26c38a638e77f368b98791cc48fd6900fd1fe320"
+      "sha256": "7ae47bd471a71377273dffb4c9c040c99dafc5d409a037b539014413296e1435"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rocketlauncher_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "95ea3c82b7fc67b42056dd8d83a96f0a943f5d9e961ba3859ea6b8a49e0b2782"
+      "sha256": "9f93710655beca0d4f61008d0b6721df1e41b930655d6a34ad601cac67825937"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rocketlauncher_crouch_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "3199e975be7ede38117b353f4cb40bbcf2f6ee3e3bd74a7fc888e84ade9b1194"
+      "sha256": "e3b9cc7d00e71e1fd31d7060109f7fcc0f706addefca82949c54947053930784"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rocketlauncher_crouch_aim_l_d.sanm": {
       "size": 1176,
-      "sha256": "88771deab89f7b0d82643669c6a110c41dd962818e7b0d9b08c59423194448d8"
+      "sha256": "77f88d27b8e0eb992cc28e1811b02641cc5f51431d3e37a87af2ac174d4524c2"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rocketlauncher_crouch_aim_r_d.sanm": {
       "size": 1188,
-      "sha256": "6b3ee57e1ea72507ef376f5b2e049021547095045baf8929199f6ecf3fbbaa0f"
+      "sha256": "c4c94e07f07243b6838ebce388d804267008f2b66c297a2e77e63a89f3272f78"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rocketlauncher_crouch_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "69ffacc8ea68df68a3cb4b48f6bd326bf9b02710434e95625b89cef7cabead75"
+      "sha256": "0dbcbf18f273a729a236a775b895757673185f2e11dafb1b0966052b63a0a09a"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rocketlauncher_crouch_loco_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "f706b6e9ed5ff6b4d4b05e486ae1346395d7a16341471bc33c8812cefab8603d"
+      "sha256": "5c9652c3b2566fe1eaecf048b1e0b9721d844c042becf21e61d87e6289469f89"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rocketlauncher_crouch_loco_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "f9e8e081344364ee8d482ec6f717d6975cc6263c15d464aeb8406c63da506316"
+      "sha256": "67af5666e92d8d5db5ce361a7a94dd68173bbb10c6dfdb2f5ded6296fcd98178"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rocketlauncher_crouch_loco_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "6b909b20c954ed1bd0b1565b9293d6a2e33e7d3bf7eafd004c94f1eb14024377"
+      "sha256": "9a2a6ee747baffd745ac16c708766701a8c52e02d9a2414bf9472ff148c2ac38"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rocketlauncher_crouch_loco_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "f52d54bb899b419dfa84c488e11e26051f553d6815b47a726813a11e9c738c76"
+      "sha256": "acd7ec95bdc7a26ac367798aeb3f4331599f595ae8ae912c2458029a5e9bbecf"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/pistol_shoot_d.sanm": {
       "size": 1140,
-      "sha256": "1925862fa72ea7f7948a4fd191394fad6731125626bd49b75be5d57ca590ee9d"
+      "sha256": "0a887290be4984e814be77891e5951ed1217f663a48479796f31f472d88e6a9d"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rocketlauncher_shoot_delta_d.sanm": {
       "size": 3428,
-      "sha256": "bb2bc05ae453e9b6636378e270811593f52a9fdb806a2338807fc07812362a87"
+      "sha256": "d1ccf38153fc0e4a114cf8d04a7a475adc6ebb0c45ee016bceb22b109c4e9221"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/rifle_shoot_d.sanm": {
       "size": 1152,
-      "sha256": "b9e1fadd8ec2e749a34cf198e45f08fb106d0fda6f631f4a39c1bc8a1a421dd2"
+      "sha256": "963ce8bd8b91f5892277f177c83e9bf3d6712be647ca3606ca28e1cfe347d220"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/shotgun_shoot_d.sanm": {
       "size": 1140,
-      "sha256": "43790bdceccc194261980c718f9d26108a9cd02b717cabc356d6c8d0e51b6a14"
+      "sha256": "628ec1fd6e986a74fee58e55633f5afcb08bd5e1bc61d86d4bde6bf3434a2950"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/crossbow_shoot_delta_d.sanm": {
       "size": 2796,
-      "sha256": "2d3cc88c9b283b1194e55d224e515b6dd242c3210fed0a0692ec7d2fa13af618"
+      "sha256": "5e71bd88d3361ebdd359d02aab0ac7f469be02c91d28d5db31657deafae78144"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/doublepistol_shoot_r_d.sanm": {
       "size": 1140,
-      "sha256": "f53dd17e5b263a90f54eb36254500be4aa58c66788677240ba705927042fece6"
+      "sha256": "14d52a7831bd5c03de252b88f90f0a96eca71abae8ede10cc8b6b4e08b6aded2"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/doublepistol_shoot_l_d.sanm": {
       "size": 1140,
-      "sha256": "f906ce436f58a1d1ed7b01833a11ae2f69ed84105f25f553d97a328067a09de5"
+      "sha256": "1a48a5708b9c18f4c9517add07f810156affe780499cc960a168fa7ee828dcbb"
     },
     "characters/player_two/cassidyanimations/coop/characters/multiplayer/sanm/lo/dwagentmale_pistol_hammerfan.sanm": {
       "size": 2316,
@@ -5016,31 +5344,31 @@
     },
     "characters/player_two/cassidyanimations/chaz/characters/player_third/sanm/med/chaz_horseshoot_u_d.sanm": {
       "size": 568,
-      "sha256": "5753c37784ba9384e7a52e309e2003b1b1fcb98f82e4fcc60d0d46ce998e6e15"
+      "sha256": "6dfa6e2a28edb4385fe9a632d37a60744ff3b78a123f0ecdb62af942d0cd6a16"
     },
     "characters/player_two/cassidyanimations/chaz/characters/player_third/sanm/med/chaz_horseshoot_d_d.sanm": {
       "size": 568,
-      "sha256": "0b80970ddf23e7dec046148aec527f985c181f5f47441b67a0874e7f83409e60"
+      "sha256": "ad3f40ca8f6da70eb7ac881c11885bf901af27d5ab06829b809442ce8fcd0c50"
     },
     "characters/player_two/cassidyanimations/chaz/characters/player_third/sanm/med/chaz_horseshoot_l_d.sanm": {
       "size": 568,
-      "sha256": "810e05a8a863a12ddb18bc8810cabc15313622a300fab10617d7af8e3f61e2d8"
+      "sha256": "d8d75ba8a8feb090ac83be16f7ce93f12f0b68a5242d2727d07837fd2d056cc9"
     },
     "characters/player_two/cassidyanimations/chaz/characters/player_third/sanm/med/chaz_horseshoot_r_d.sanm": {
       "size": 568,
-      "sha256": "0f26a9076bd28e930e55c83656e01a649e5193d61f0ca580efce2fe21f8d9338"
+      "sha256": "d72577f9dc00d14b833292a0169b443cd399c87776073c33636fdcfe3f5fe85e"
     },
     "characters/player_two/cassidyanimations/chaz/characters/player_third/sanm/med/chaz_horseshoot_bl_d.sanm": {
       "size": 568,
-      "sha256": "55471a6f33ec2d13b6095dcdbcc2822b0e3aa03deab36ee1b4e9c6b34ccc7da2"
+      "sha256": "9842b8fc320c9acebeeb84fd37508d7a46d5768d69c6f2466657fdd928aa9070"
     },
     "characters/player_two/cassidyanimations/chaz/characters/player_third/sanm/med/chaz_horseshoot_br_d.sanm": {
       "size": 568,
-      "sha256": "3b7dddc96d6fe40d29f21fffc2f251fe4e5e2dd0e403a2503dc048acff423341"
+      "sha256": "168bc68ca95e7db8f4985f2827bfa869a86e1460631695a131af6362e079df91"
     },
     "characters/player_two/cassidyanimations/chaz/characters/player_third/sanm/med/chaz_horsehitreactionub.sanm": {
       "size": 1836,
-      "sha256": "6d1190280009af8066e930913cfc4bf0e8c2f9e211ab8bf4664b40eaea9c9bc8"
+      "sha256": "dfb910cb2d421dd651f3a12bcdf9a415fd3e32fbed4bbcef084b3fe250c45289"
     },
     "characters/player_two/cassidyanimations/chaz/characters/player_third/sanm/chaz_jerichoridingdeath.sanm": {
       "size": 4252,
@@ -5084,503 +5412,63 @@
     },
     "characters/player_two/cassidyanimations/chaz/characters/player_third/sanm/lo/steamwagon_drive_l_d.sanm": {
       "size": 1440,
-      "sha256": "0dbc81d5cc9b4b3df745d7331d787299e8ad536931261ed8293eb057a367f9fb"
+      "sha256": "72161a4963da388496290bb1e00055338caa84dece914b5d541e8e2c6ed82332"
     },
     "characters/player_two/cassidyanimations/chaz/characters/player_third/sanm/lo/steamwagon_drive_r_d.sanm": {
       "size": 1440,
-      "sha256": "dd9b6020047143614c5520bf9c0377f93c20efcf26a516004815ca0c654af2cd"
+      "sha256": "30643bf91389581983aff0743b9e637cf2a16601f635332afac7893fbb003073"
     },
     "characters/player_two/cassidyvehicleanimation.bxml": {
       "size": 1995,
       "sha256": "f99234f6acedee1f4adcf6ae9036bc907d9bea70ae7bd6f44b03baa56ad74364"
     },
-    "characters/player_first/base_pov_cassidyplayertwo.rx1": {
-      "size": 815156,
-      "sha256": "e834d2eb9ff52e795fc01b5fc283e259404a6a3176d8668f3fc99782784cf4d4"
-    },
-    "characters/player_first/base_pov_cassidyplayertwo.jlist": {
-      "size": 615,
-      "sha256": "47281350d7e374b250bcd60650ffecb7182492a7c585342cf5ed722070f30a1d"
-    },
-    "characters/player_first/base_pov_cassidyplayertwo.llist": {
-      "size": 1874,
-      "sha256": "c644998eeb313039714bd889e60f6d1a68bcd3dae23336ff20476259bc2b56e0"
-    },
-    "characters/player_first/base_pov_cassidyplayertwo.bllist": {
-      "size": 935,
-      "sha256": "2a812a7830b3808a6263637d7065682c2746045afda6d886c0bafbc5a78db7f7"
-    },
-    "levels/singleplayer/citadel_launch/streaming/citadel_launch_aa_resources_coop.bxml": {
-      "size": 165811,
-      "sha256": "715cd76e7533220ff1da0e6f58f3154887bcc85c2ff2eaceb757d6c39d0e92ef"
-    },
-    "levels/singleplayer/citadel_launch/resources/audio/citadel_launch_aa_coop.bblf": {
-      "size": 1566,
-      "sha256": "cbcecd7225f8b489c2811d78e176f23da52e2d060ae16ed0e43f247c5f4e6247"
-    },
-    "levels/singleplayer/fallofcitadel/streaming/fallofcitadel_a_resources_coop.bxml": {
-      "size": 154671,
-      "sha256": "e4a0929933da4ab42e749c21cb8ee4469d9b36522a9747735dce312bb50a3dbb"
-    },
-    "levels/singleplayer/fallofcitadel/resources/audio/fallofcitadel_a_coop.bblf": {
-      "size": 1308,
-      "sha256": "a80c16e25043245a4a3d4670ef708a77674d92aca9cb75f5233e5678541e4f63"
-    },
-    "levels/singleplayer/fallofcitadel/streaming/fallofcitadel_b_resources_coop.bxml": {
-      "size": 147926,
-      "sha256": "f3f225a518badd24b4f775e4bc08d61f1d2ed3d57720dc93d9a45b83b8347d6b"
-    },
-    "levels/singleplayer/fallofcitadel/resources/audio/fallofcitadel_b_coop.bblf": {
-      "size": 1332,
-      "sha256": "718f683534b64ee9524a916d91310e70d8a33265d73f7f41ede3196585be3fc3"
-    },
-    "levels/singleplayer/groundzero/streaming/groundzero_a_resources_coop.bxml": {
-      "size": 146283,
-      "sha256": "d481f2f6aaa19558edfb1ec3580d0237669dbc226fdbf29d7fd386386140e542"
-    },
-    "levels/singleplayer/groundzero/resources/audio/groundzero_a_coop.bblf": {
-      "size": 1269,
-      "sha256": "c8549f0d3d1c491226e477f115c97f89a964c44101ffaf65790c4eef3ec9e3ae"
-    },
-    "levels/singleplayer/m02_canyonshoot/streaming/hub_a_resources_coop.bxml": {
-      "size": 146132,
-      "sha256": "413a45825255c6cfa54a3981669b9a64f0a0207525ab1e60c3e750823df7ef4b"
-    },
-    "levels/singleplayer/m02_canyonshoot/resources/audio/hub_a_coop.bblf": {
-      "size": 1311,
-      "sha256": "db3d34ca61431565b82048949e080e770b051770a7c4e955af0ac18ab316112c"
-    },
-    "levels/singleplayer/m03_cemetery/streaming/m03_a_resources_coop.bxml": {
-      "size": 165443,
-      "sha256": "5d3d0b00f4ad796bc4737e43314c4077255f580b0f3e9a0abf3c6a36a0142c44"
-    },
-    "levels/singleplayer/m03_cemetery/resources/audio/m03_a_coop.bblf": {
-      "size": 1715,
-      "sha256": "ff9faa17c1b4512a4360d4a2d5b2964485db686b9de3e4f14eaa7444e99641d4"
-    },
-    "levels/singleplayer/m03_cemetery/streaming/m03_b_resources_coop.bxml": {
-      "size": 163400,
-      "sha256": "600d87aa3497cb51b7908e38d8234912b20f311935a1ee0f6371e2c341afcc33"
-    },
-    "levels/singleplayer/m03_cemetery/resources/audio/m03_b_coop.bblf": {
-      "size": 1475,
-      "sha256": "f021824163ee8ad30ec17c47a591d23d285568006562456d1e125fd96b628e13"
-    },
-    "levels/singleplayer/m03_cemetery/streaming/m03_c_resources_coop.bxml": {
-      "size": 175360,
-      "sha256": "3f4d25590da8af0b7e6d0b612c7bd6e083df47909a511626492e34eda41d8ad4"
-    },
-    "levels/singleplayer/m03_cemetery/resources/audio/m03_c_coop.bblf": {
-      "size": 1545,
-      "sha256": "76199440a3aae7eab7123b38f9de4f9e3c8ac99c331cb4923b9e21676b16268f"
-    },
-    "levels/singleplayer/m05_devilsbelly/streaming/hub_a_resources_coop.bxml": {
-      "size": 163871,
-      "sha256": "2e731d06a5cf47e398a4511377296c470cd580f461bbc97f30fbd713f0894081"
-    },
-    "levels/singleplayer/m05_devilsbelly/resources/audio/hub_a_coop.bblf": {
-      "size": 1442,
-      "sha256": "700e6b38f0838651ea780eb8ac229e2f85b1477fce66eeb7657814bb8e873e2b"
-    },
-    "levels/singleplayer/m05_devilsbelly/streaming/hub_b_resources_coop.bxml": {
-      "size": 165062,
-      "sha256": "7349fa99e3b5c061d57080c7ede1099c9bea5069dc60a20bd753880bcd6853fb"
-    },
-    "levels/singleplayer/m05_devilsbelly/resources/audio/hub_b_coop.bblf": {
-      "size": 1474,
-      "sha256": "9969dd1f04e3437de66c203cf3bfed88917773256f6b8b01d552c528f2666f7d"
-    },
-    "levels/singleplayer/m05_devilsbelly/streaming/hub_c_resources_coop.bxml": {
-      "size": 165732,
-      "sha256": "3c043668f730e962205585400bdf9eeb000733277c2a627fd72cbbba8a53d5fd"
-    },
-    "levels/singleplayer/m05_devilsbelly/resources/audio/hub_c_coop.bblf": {
-      "size": 1476,
-      "sha256": "3db05f33c62e21e5d745f5da8c2d3b790d06254b5a842b6601f75e7ac6f84ce3"
-    },
-    "levels/singleplayer/m05_devilsbelly/streaming/hub_d_resources_coop.bxml": {
-      "size": 165062,
-      "sha256": "fec3588e078f9edc4da2edbe96942832fd6b52243332e2935743be7ead4935a5"
-    },
-    "levels/singleplayer/m05_devilsbelly/resources/audio/hub_d_coop.bblf": {
-      "size": 1537,
-      "sha256": "0d33b3ca964f18d930c126c19976d7d7bbe1cdc1e832cd6232e490235cc3712c"
-    },
-    "levels/singleplayer/m07_dwoutpost/streaming/m07_a_resources_coop.bxml": {
-      "size": 172406,
-      "sha256": "e963e941e579597f5b1d5254c8c8fdb6e1030513b7a8e30a5763c034f8dcec85"
-    },
-    "levels/singleplayer/m07_dwoutpost/resources/audio/m07_a_coop.bblf": {
-      "size": 1585,
-      "sha256": "6d35e2f1f41cdf5bc3506c40ee4fa921e8a73d5c2d0642de7d29481fcaff74de"
-    },
-    "levels/singleplayer/m07_dwoutpost/streaming/m07_b_resources_coop.bxml": {
-      "size": 165863,
-      "sha256": "a7e2a4e7a70cd15353c23d06255c3c467e79e56c768a7f10a0a50e591f6b1949"
-    },
-    "levels/singleplayer/m07_dwoutpost/resources/audio/m07_b_coop.bblf": {
-      "size": 1774,
-      "sha256": "0c3e9e20c73b0d984eae8891b77d81a369928c5cdeefea455ecd41ca1708fad2"
-    },
-    "levels/singleplayer/m08_regulator/streaming/hub_a_resources_coop.bxml": {
-      "size": 167867,
-      "sha256": "ca91cdc131252643bd847836dce58f26aa8d5d3bb551e8a08b3089fd2aab5d78"
-    },
-    "levels/singleplayer/m08_regulator/resources/audio/hub_a_coop.bblf": {
-      "size": 1496,
-      "sha256": "1a5b083131a684f7ddd88a1238ba50979b5c7c2249a2696b6d7d1f0baf14bf33"
-    },
-    "levels/singleplayer/m08_regulator/streaming/hub_b_resources_coop.bxml": {
-      "size": 169502,
-      "sha256": "45b9893ee6c01bf9f2801beffc4da6e097f86febb280297860109c2837aa3aad"
-    },
-    "levels/singleplayer/m08_regulator/resources/audio/hub_b_coop.bblf": {
-      "size": 1604,
-      "sha256": "78ebf117c57bf2c4bf5364af2511e646cbb1ba82351c20dd462bfacb7bbaf33a"
-    },
-    "levels/singleplayer/m09_torturemaze/streaming/m09_a_resources_coop.bxml": {
-      "size": 150101,
-      "sha256": "97606336b9e0a215efd2dc529c087aa0dab41d0396f9269e07673d75bdcb85eb"
-    },
-    "levels/singleplayer/m09_torturemaze/resources/audio/m09_a_coop.bblf": {
-      "size": 1491,
-      "sha256": "4f1715e3358c1c4ddddc7e17e9d0664622e656aa452fc3f85315f391fa5ab1ab"
-    },
-    "levels/singleplayer/m09_torturemaze/streaming/m09_b_resources_coop.bxml": {
-      "size": 167494,
-      "sha256": "628f8210f104ccca36969f7618e43d69abc51952d50c7b3babf4ce3bfee0a7d8"
-    },
-    "levels/singleplayer/m09_torturemaze/resources/audio/m09_b_coop.bblf": {
-      "size": 1842,
-      "sha256": "b756890b385152b55a45b1af7372a111d99bead489cbecc3cd2bda2da58fb6b9"
-    },
-    "levels/singleplayer/m09_torturemaze/streaming/m09_c_resources_coop.bxml": {
-      "size": 152558,
-      "sha256": "d23346707784d586c251ed184e00ac52b32ec29c2de94bba5117d95e942b98ca"
-    },
-    "levels/singleplayer/m09_torturemaze/resources/audio/m09_c_coop.bblf": {
-      "size": 1342,
-      "sha256": "bdc8b7ed6177c22b0225174b58735fd5444ef3e412e6fd8e0b62420429f25c77"
-    },
-    "levels/singleplayer/m09_torturemaze/streaming/m09_d_resources_coop.bxml": {
-      "size": 145510,
-      "sha256": "52b7ed64c99d1c225732f9cbcf7c32d6993ab9d2e99be62ab54f7c958e025e50"
-    },
-    "levels/singleplayer/m09_torturemaze/resources/audio/m09_d_coop.bblf": {
-      "size": 1601,
-      "sha256": "aa33e460c88e8cd6dd0d5961945a7e90f41b4d673717e191cdb502d943864c46"
-    },
-    "levels/singleplayer/m09_torturemaze/streaming/m09_e_resources_coop.bxml": {
-      "size": 155874,
-      "sha256": "c7a9e48956c14fb22b56d972faad7aca3efa9b80004c141de151c59b189ee856"
-    },
-    "levels/singleplayer/m09_torturemaze/resources/audio/m09_e_coop.bblf": {
-      "size": 1516,
-      "sha256": "48b0c512e3a976f43b89eee164c5ca661157aefa452443f0306b1628e34197da"
-    },
-    "levels/singleplayer/m09_torturemaze/streaming/m09_f_resources_coop.bxml": {
-      "size": 156576,
-      "sha256": "4b8b172aa4aeb931ce5fe68e60aa10ea256acca67de4233604a93d669196ee6c"
-    },
-    "levels/singleplayer/m09_torturemaze/resources/audio/m09_f_coop.bblf": {
-      "size": 1404,
-      "sha256": "eab19e8ec804821087a5c47e936636278c7d1eb2a6ab2b92a44ae12be0e3434c"
-    },
-    "levels/singleplayer/m10_tradingpost/streaming/m10_a_resources_coop.bxml": {
-      "size": 173807,
-      "sha256": "24e63efd91f4de99131c39a4d81e74dfa7d35d1ccea640c79f2c6bd124f08530"
-    },
-    "levels/singleplayer/m10_tradingpost/resources/audio/m10_a_coop.bblf": {
-      "size": 1630,
-      "sha256": "87aa86b93b9fbc6a534588307c94a870d0812d58d6004a1861d4509db5fc0cf3"
-    },
-    "levels/singleplayer/m10_tradingpost/streaming/m10_b_resources_coop.bxml": {
-      "size": 166010,
-      "sha256": "2e3cc5f39f9873f18e3901830606b9568461457f9d83801337418c9848fbd4bc"
-    },
-    "levels/singleplayer/m10_tradingpost/resources/audio/m10_b_coop.bblf": {
-      "size": 1476,
-      "sha256": "a29e6a5c221f6f21cebfbfe4340014e32ab63a5529984fc6623a7e4232cde703"
-    },
-    "levels/singleplayer/m10_tradingpost/streaming/m10_c_resources_coop.bxml": {
-      "size": 165043,
-      "sha256": "8f759cabf9c90337db290a3aabe2d229e12fec6fba624612935164eb73a2cf3c"
-    },
-    "levels/singleplayer/m10_tradingpost/resources/audio/m10_c_coop.bblf": {
-      "size": 1772,
-      "sha256": "e8acc0da592285e45673b4788e5d2bad8d4e778bb756ed37cbcf1f4b64dd50cc"
-    },
-    "levels/singleplayer/m10_tradingpost/streaming/m10_d_resources_coop.bxml": {
-      "size": 173979,
-      "sha256": "640546fa8c3d035ef6b77941aff825833dc8880f900682cbd74b2fe88f3085a2"
-    },
-    "levels/singleplayer/m10_tradingpost/resources/audio/m10_d_coop.bblf": {
-      "size": 1634,
-      "sha256": "7444bd7b932a28b34d88d2d9786969c9d22e48093542e1e34930bb52004826f8"
-    },
-    "levels/singleplayer/m11_hangtown/streaming/m11_f_resources_coop.bxml": {
-      "size": 171268,
-      "sha256": "41cb18b86dbe071a97651edb903c8aca4b10a90f6733b2c09956b46025d68313"
-    },
-    "levels/singleplayer/m11_hangtown/resources/audio/m11_f_coop.bblf": {
-      "size": 1935,
-      "sha256": "fbd1156b7540155c736bc5b233b2e681a67e07b00176cff77c3675722a5f8ab9"
-    },
-    "levels/singleplayer/m11_hangtown/streaming/m11_g_resources_coop.bxml": {
-      "size": 174811,
-      "sha256": "8a2fe057d4e79ae88fad27a3ed27abf3478c44caf3263a96b3b2b84e05fe12ae"
-    },
-    "levels/singleplayer/m11_hangtown/resources/audio/m11_g_coop.bblf": {
-      "size": 1611,
-      "sha256": "f00415bbaca4f6c5c3370c82b0e8d66b348318ef13db89f402723974e0cdb0dc"
-    },
-    "levels/singleplayer/m11_hangtown/streaming/m11_h_resources_coop.bxml": {
-      "size": 168221,
-      "sha256": "12195d185ff13d49165369568ac221b0bdae6211eb4cb57e69d455959d8600b9"
-    },
-    "levels/singleplayer/m11_hangtown/resources/audio/m11_h_coop.bblf": {
-      "size": 1852,
-      "sha256": "49c19d384f52c6351a2e9688451943a56f26b8874ce609d333b6240c7ad1a7ce"
-    },
-    "levels/singleplayer/m12_citadelunderattack/streaming/m12_a_resources_coop.bxml": {
-      "size": 169104,
-      "sha256": "a714efbbecff03851998187d5bd7bfe2c718c4280ec67ce5f6d855f80ca6d56b"
-    },
-    "levels/singleplayer/m12_citadelunderattack/resources/audio/m12_a_coop.bblf": {
-      "size": 1573,
-      "sha256": "5d9691f0ec465433a934c0c5b350814f76b046208e0927b42ac9f5451dfe9c27"
-    },
-    "levels/singleplayer/m12_citadelunderattack/streaming/m12_aa_resources_coop.bxml": {
-      "size": 179701,
-      "sha256": "309e81fd8d6b07befefce97b8c5e0ec5d2cb345af1a5087a9efc96370efd6048"
-    },
-    "levels/singleplayer/m12_citadelunderattack/resources/audio/m12_aa_coop.bblf": {
-      "size": 1607,
-      "sha256": "84283ee5f784938ec39898c12f2808a6f27202b5f374fbea45c36745d28dfa55"
-    },
-    "levels/singleplayer/m12_citadelunderattack/streaming/m12_b_resources_coop.bxml": {
-      "size": 159384,
-      "sha256": "3a7720c7bb5921eec17e337535fb4f359395426c82ea767dff6f19ea1a30824d"
-    },
-    "levels/singleplayer/m12_citadelunderattack/resources/audio/m12_b_coop.bblf": {
-      "size": 1541,
-      "sha256": "e7cecd41969f0d8dc8291d2c6dbcb96de40c6305125c31f8058d3f9816aeadbf"
-    },
-    "levels/singleplayer/m12_citadelunderattack/streaming/m12_c_resources_coop.bxml": {
-      "size": 170436,
-      "sha256": "e7d3a96a524858c9cd6079935120238041d7796c4884425ab45ea82b19fe86fa"
-    },
-    "levels/singleplayer/m12_citadelunderattack/resources/audio/m12_c_coop.bblf": {
-      "size": 1671,
-      "sha256": "02a1edffa7737743609aa5d4812697afb10638efdd1ba2ebf933b844ba2caaa8"
-    },
-    "levels/singleplayer/m12_citadelunderattack/streaming/m12_d_resources_coop.bxml": {
-      "size": 164852,
-      "sha256": "c63a6d398dc132ae816e077f23057cd16937d4beae8ade071d97bcdb2cfdaefc"
-    },
-    "levels/singleplayer/m12_citadelunderattack/resources/audio/m12_d_coop.bblf": {
-      "size": 1446,
-      "sha256": "e46f5b417d1e228b2c7fbab94ccc0ce39604aee9126eac6ac005b2c1ec66a9d4"
-    },
-    "levels/singleplayer/m15_splittingpaths/streaming/m15_a_resources_coop.bxml": {
-      "size": 173488,
-      "sha256": "8b4f46a3afb9c4c0fc34acc6fe12468760fb5a344d9dd095729870ba52ae02d8"
-    },
-    "levels/singleplayer/m15_splittingpaths/resources/audio/m15_a_coop.bblf": {
-      "size": 1638,
-      "sha256": "854ada79a8a18f02f89d05d858e1da72e429a9b5e91fd468dcf84cc56b07d277"
-    },
-    "levels/singleplayer/m15_splittingpaths/streaming/m15_c_resources_coop.bxml": {
-      "size": 157984,
-      "sha256": "9593421a6da9c0709ba10f45bed079ef0f0231e002979ab632ea65c6d8dd5bc1"
-    },
-    "levels/singleplayer/m15_splittingpaths/resources/audio/m15_c_coop.bblf": {
-      "size": 1446,
-      "sha256": "64dcaaee1603d46a8494da1ecfe9df7550f565c0556d7b8ae7a7de8daeb67c43"
-    },
-    "levels/singleplayer/m15_splittingpaths/streaming/m15_d_resources_coop.bxml": {
-      "size": 160666,
-      "sha256": "65250fb748e5240221b37336a0a0782dd8e83424b03152b452bd1a8ef8966b3b"
-    },
-    "levels/singleplayer/m15_splittingpaths/resources/audio/m15_d_coop.bblf": {
-      "size": 1471,
-      "sha256": "93dbe9d05da2d84affdd1f487e93c4dc0d53d03f6935ac87fee3280bf20fd0a2"
-    },
-    "levels/singleplayer/m15_splittingpaths/streaming/m15_e_resources_coop.bxml": {
-      "size": 159973,
-      "sha256": "f8602884d98ddaa40f1d491f8ce90853c3cd3f41cd4bfe27f1e508309eaa94bc"
-    },
-    "levels/singleplayer/m15_splittingpaths/resources/audio/m15_e_coop.bblf": {
-      "size": 1502,
-      "sha256": "465a57d2b0ddc6f5f7d4a4fca6147f010367b306ea0c329a530377466d7e66b3"
-    },
-    "levels/singleplayer/m15_splittingpaths/streaming/m15_f_resources_coop.bxml": {
-      "size": 156686,
-      "sha256": "9a38860aab6a2c7d1fac716bd2894e1029790a9782f5c141221f04caffc9f28f"
-    },
-    "levels/singleplayer/m15_splittingpaths/resources/audio/m15_f_coop.bblf": {
-      "size": 1345,
-      "sha256": "cda646234f23e905f41bf0a1541b7c7866ac164bccf54eda407f36d89be4b205"
-    },
-    "levels/singleplayer/m17_invasion/streaming/m17_b_resources_coop.bxml": {
-      "size": 164568,
-      "sha256": "73f368cd540e34b278213a01751dec2b6f7c899e9edf437ddba222b5fa27cae6"
-    },
-    "levels/singleplayer/m17_invasion/resources/audio/m17_b_coop.bblf": {
-      "size": 1407,
-      "sha256": "b454438478ed3f4a93fc0c479f0126b17ce9c9cce7e9cbe866302e95100bee44"
-    },
-    "levels/singleplayer/m17_invasion/streaming/m17_c_resources_coop.bxml": {
-      "size": 159896,
-      "sha256": "d2f6d591c3696814cf1ee37ec2b4426ee828e4729a421fb7ca585db571014911"
-    },
-    "levels/singleplayer/m17_invasion/resources/audio/m17_c_coop.bblf": {
-      "size": 1542,
-      "sha256": "5b64295646cfb78c72b946e809d2c37be55e56b532a196c2f06c3543c3f8e627"
-    },
-    "levels/singleplayer/m17_invasion/streaming/m17_d_resources_coop.bxml": {
-      "size": 163633,
-      "sha256": "f5fea4fd4e124a668f157c255f14f57a6db5805c47a3f254062e50b242c49bf4"
-    },
-    "levels/singleplayer/m17_invasion/resources/audio/m17_d_coop.bblf": {
-      "size": 1606,
-      "sha256": "efa8146a879d2e3734673370eaeed4eb55643c41732ecc62d9474b936ffc2e1a"
-    },
-    "levels/singleplayer/m19_ridetodeadfall/streaming/m19_a_resources_coop.bxml": {
-      "size": 179945,
-      "sha256": "c18cd6be1d8604e550359c85e1d97e5a63cee7bd59b328bf653d3578c826ba8d"
-    },
-    "levels/singleplayer/m19_ridetodeadfall/resources/audio/m19_a_coop.bblf": {
-      "size": 1630,
-      "sha256": "408eeaeb3be60a4f5b226e19bfa786aba4036fff470a5879c280ef09f8e8b32d"
-    },
-    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_a_resources_coop.bxml": {
-      "size": 169936,
-      "sha256": "905b32f77d4ccfa4cf4212a80000bb9fb42cc25b6361cfbebd69d8377ae89f7b"
-    },
-    "levels/singleplayer/m20_penetratingdeadfall/resources/audio/hub_a_coop.bblf": {
-      "size": 1639,
-      "sha256": "9fa9f4106c81680691608cc2d1d26b0e4f579bce8bf126abade17ab4b514cd2d"
-    },
-    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_b2_resources_coop.bxml": {
-      "size": 165034,
-      "sha256": "b4a7fd745e2fde0edcbf89c062e5b42a4cc2402b3bd5421b5e8fd38e3af694e0"
-    },
-    "levels/singleplayer/m20_penetratingdeadfall/resources/audio/hub_b2_coop.bblf": {
-      "size": 1451,
-      "sha256": "be785989c074edb5c9619263d723659bca2d61fa5f8fb43ecab6a0e14495c5f4"
-    },
-    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_b_resources_coop.bxml": {
-      "size": 167480,
-      "sha256": "3480c910dea80a7fa9da7da628a09566d80a714761bbc9e945602864e5344737"
-    },
-    "levels/singleplayer/m20_penetratingdeadfall/resources/audio/hub_b_coop.bblf": {
-      "size": 1772,
-      "sha256": "cc6aa5337c5f41f73899b9fda1d7651f9358b3b31968f923d1e6f1776c359319"
-    },
-    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_c2_resources_coop.bxml": {
-      "size": 166400,
-      "sha256": "d24895effb71860a8604f038877d4f2bb819054425ecbce614aee082c636b96d"
-    },
-    "levels/singleplayer/m20_penetratingdeadfall/resources/audio/hub_c2_coop.bblf": {
-      "size": 1487,
-      "sha256": "ac8c25e44a3dd4cab4248ed2a1dcfe3164b45f62b9efb9da67e13af3feffa645"
-    },
-    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_c_resources_coop.bxml": {
-      "size": 159140,
-      "sha256": "c2eaa50c2c8c9b8e34e208f8456b8788daeacbfda0ed667b831ad4fc344dba78"
-    },
-    "levels/singleplayer/m20_penetratingdeadfall/resources/audio/hub_c_coop.bblf": {
-      "size": 1705,
-      "sha256": "6dd3c5a883755d20bab2454a29d5f9ababce828ab2ff7d7961322ce4dc9622d8"
-    },
-    "levels/singleplayer/wartrain/streaming/m07_c_resources_coop.bxml": {
-      "size": 158696,
-      "sha256": "db407945979d4ce9df280bd07fc22ba8f7640aa7385ed7b1279b749878888de7"
-    },
-    "levels/singleplayer/wartrain/resources/audio/m07_c_coop.bblf": {
-      "size": 1520,
-      "sha256": "ee56d28221ba105c97015ec139ddb2c2c572ae728582c4929d20b844984b81e7"
-    },
-    "levels/singleplayer/wrongtrain/streaming/wrongtrain_a_resources_coop.bxml": {
-      "size": 159827,
-      "sha256": "682921164253577e31a800b50a84170b786c0b01ff7473b091d3936562e2e298"
-    },
-    "levels/singleplayer/wrongtrain/resources/audio/wrongtrain_a_coop.bblf": {
-      "size": 1471,
-      "sha256": "c14e31e364a843b99ba7ee4074fc358bedd8b010df6ba015dcf81bf338d2ef78"
-    },
-    "levels/singleplayer/wrongtrain/streaming/wrongtrain_b_resources_coop.bxml": {
-      "size": 158959,
-      "sha256": "d0211860c5ec482a6cabb625776683adba9431b5fbfc8274ac4f3fba01b9818f"
-    },
-    "levels/singleplayer/wrongtrain/resources/audio/wrongtrain_b_coop.bblf": {
-      "size": 1402,
-      "sha256": "b5ff9a925c52e00e9e2e164dbd4aab5bfca12eec90a3f972c73143674510f29e"
-    },
-    "characters/player_two/cassidysolo.bllist": {
-      "size": 1572,
-      "sha256": "595253002b77f51e71c032dae6d4fa2c566def0f1020159eebef859acfb732c6"
-    },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/crossbow_shoot_delta_d.sanm": {
       "size": 2796,
-      "sha256": "7fe3ff4e213d2e1fac58b67ef81ee529197b49a9226ce68983271b3ad5c54383"
+      "sha256": "952bd605d07eab2457480d08433aa26893a5ab8d9f23c63b53d62f8219da62c6"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/doublepistol_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "064ebf8770c1acaf6d0f353655adb40029e4503673f11109c2db53da6feb1f82"
+      "sha256": "d44aa58afe7773347258055e57a2574c83870451d72b2355736d2eb9203edb7f"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/doublepistol_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "5eb74fca4e6670bfdc646acd3f78aade9984a87a288b016e46fda11410099013"
+      "sha256": "4fe1edac99e457be9cec85c3867a612a703bb0fe5a6b7ccc037291bd0ec2ce83"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/doublepistol_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "f3d478d81cebc016bf71fc2e8fe444e53803b27e157a6778d6908dfa5895108a"
-    },
-    "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/doublepistol_crouch_aim_d_d.sanm": {
-      "size": 1140,
-      "sha256": "01ab4f7c725c9304e42e5e28e125d6ddbea08b8bc277dd3f2579781ed8fe4449"
+      "sha256": "16ec54dbc87f641893ba88f9425a3f93235e8726ad70941b6abfaea4e1184836"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/doublepistol_crouch_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "64f77d087feb1dcc3b7fed339b97bb1d88a427d8084a0950cb204caa66125f2b"
+      "sha256": "a2c00bde430d2a5c387d7e4154c96c4813f454365aafd02daa6096dadee2fffe"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/doublepistol_crouch_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "b39a092b10292c4c68c017f9beb58ad62df83c0b96f24d73bc76a62505909a20"
+      "sha256": "8a8209afd06c78ee2646677ae25d3812ac5d6ae5496186f08d594dd468584add"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/doublepistol_crouch_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "f634a33fd53050c9eed44285bb062aa784a7e5491ddba3f3f26d1a05dd682d2e"
+      "sha256": "edd60fabf1a127126b467962812418622985f8647832aff3904971bc98cf5a68"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/doublepistol_crouch_loco_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "9e9b74683f3120c0f265c458b8e1e0bd1490a87ae0ecfaee1fe817d8679e355f"
+      "sha256": "624ba86fa3951a7f41d58f12f4bc45bc4891504863cc7419bd8426394c22e2c7"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/doublepistol_crouch_loco_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "7a8bcf37b307b21c75c6096bac82a3dc533d55784fce2e03ac43e876047c7c94"
+      "sha256": "b2087e732ac192da95ae87020be30251a1a2a5a1cfba33be9e362a9750cb07ad"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/doublepistol_crouch_loco_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "301a96a0d92e4a7a324db015042812f260d95abde2216abacc7ab860bae6e7ec"
+      "sha256": "2affa9ac4f2491caa933e267a7d7c9cc82b5c5adf018985d36a5de0687a3744a"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/doublepistol_crouch_loco_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "bb8948025182d10d8968a117fe00137200a34a02decaa1204477631f9dfd8dfb"
-    },
-    "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/doublepistol_shoot_l_d.sanm": {
-      "size": 1140,
-      "sha256": "40173826102976869dc12735de145b42521e6a54e3af04e33569f0fa6760f05e"
-    },
-    "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/doublepistol_shoot_r_d.sanm": {
-      "size": 1140,
-      "sha256": "34a2ee388da9560564aa7d5d0aba0c1ebdc0e2f99eaa61a0e5692d8222c52049"
+      "sha256": "7932891fbbe9ca8508d1493b124a06fb91eb05ae4ffb1f296b76c2d4414d3ff5"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/doulbepistol_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "ac6cd7d49203716e76a8fac161c235c67b2bb1e99718a0279585c290abadae1f"
+      "sha256": "eaae594a32d54686ef384710def7b04c65e24a6f2439b99ebf313c5fb394b90c"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagent_crossbow_melee_ub.sanm": {
       "size": 7036,
@@ -5744,7 +5632,7 @@
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagent_readystand_doublepistol_ub.sanm": {
       "size": 3556,
-      "sha256": "939ca6108c0309e7e391fdd3b004a2d59da777371dc606482b9664b8cc71c318"
+      "sha256": "4a0163572fe13c7e004bef2eff07ba3fbfc4f856a9c64d1dbb5fa51caac38c4b"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagent_rifle_ascent.sanm": {
       "size": 6904,
@@ -5920,23 +5808,23 @@
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagent_walkback_ub.sanm": {
       "size": 3292,
-      "sha256": "6ed27f7698aaaf75560f85330f2459d881334cb0053058e96d4f988f2c3081dd"
+      "sha256": "490286f6f112b10d0d7321729f5043145c340124cc0531b3821ad8096cf65d7f"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_aim_d_d.sanm": {
       "size": 644,
-      "sha256": "8f6243bdd2ef3b71cdf80f4866db00eaadce649cb962e5994baec8f3ffe8936e"
+      "sha256": "a97cf1ec655f22755bc5554973412b88d091f249818c67a773862b6849ee8d11"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_aim_l_d.sanm": {
       "size": 644,
-      "sha256": "1cdf3156f85bafe317bead1d4f295ca9306a1e34375625474bbc5378a6d4ae7b"
+      "sha256": "89ef15c1242bba9cf3011cc08bb84cca10209fb5040f1ebb9a7626c0a8c7eedb"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_aim_r_d.sanm": {
       "size": 644,
-      "sha256": "f50173b3d376f25287ac8a09f88639bca8e856f06f93b9b14d2c2997cca3cb7d"
+      "sha256": "e1a27eb9ce80e5fa433a82a9aaee563b9ef4b27c1ef8cb91bea220314b4e6bd5"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_aim_u_d.sanm": {
       "size": 644,
-      "sha256": "5e2fb0220d1947be25aad47b11a31c9f67bd4231a18a74f45e10101d61a44fe4"
+      "sha256": "6408648da25f4b65c57ac50d4d558e7e951904555c1e9da2ab470274c70ebf64"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_cannon_idle.sanm": {
       "size": 2572,
@@ -5972,63 +5860,63 @@
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_crouch_idle.sanm": {
       "size": 3520,
-      "sha256": "7320153592c8cedf5c847cf3e7205560c105f0928995d0fee978969a444ed95f"
+      "sha256": "76c64e5d1f0e18bca0d3bd6d26c0c1f58b2cfed7500003eab172e15d8f9187c3"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_crouch_strafebackl_ub.sanm": {
       "size": 4492,
-      "sha256": "afea422faac35b6ae3853745d123e9af8b39815b5d72ab7795b0d37efe7f2a9d"
+      "sha256": "7b7d2c49427f8a7dbba2e3666dea575ebddbbbca948c6aba3825edb81f56c2b9"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_crouch_strafebackr_ub.sanm": {
       "size": 4492,
-      "sha256": "504396b459e3bc8ee6f037156dc94201edb8594729fccf7d86bf2a2056370d7d"
+      "sha256": "af581a43837bb2302453e0f53dec9cdd595cba146571fd69592d4d3cb0da73c6"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_crouch_strafel_ub.sanm": {
       "size": 4084,
-      "sha256": "d78ef182ae53c0c5f5e2ea7a02ef8d5c36eefc25492aa3b4a1189c7ec7c9931b"
+      "sha256": "f643b6ea81c593e817a96dcfb7b8c958c2f965831ee8e098f002ce35fd6957b1"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_crouch_strafer_ub.sanm": {
       "size": 4156,
-      "sha256": "3c08cb52f171455010659e9be403c02a246a8404c4a811544641acd3da153b7a"
+      "sha256": "e69361aef9d8a605000044505ec72d8c7d5be69c99a98be89e6f070693aac855"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_crouch_walk_ub.sanm": {
       "size": 4468,
-      "sha256": "a9cf112088a2e80d89db5b31ab545f1a5e61825535cbac9c3651d49025ba794d"
+      "sha256": "53e761bafd0f1b58c51804e1547feeecd79a278c7ef93ded93f6c7c773d3ae8d"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_crouch_walkback_ub.sanm": {
       "size": 4576,
-      "sha256": "a580dbc4ed3144a0544a09cbf47713b695a302072a900eb65d12b7415835d234"
+      "sha256": "f1daeeb661e5008e8f5b8bd1742dfd01620eeb7b70f41a6357ed2e6b9247d450"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_run_ub.sanm": {
       "size": 3928,
-      "sha256": "5c68510498ce14a40623a7d23c42105ad6e16f06f2a394db54f9696615fe23e4"
+      "sha256": "155fd667d4336b122028b9b3043499e66fced773cd714aa5966d757aebab7cb9"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_runback_ub.sanm": {
       "size": 4256,
-      "sha256": "abddf48ad4059f8c43563bafaff1ee24ebb1eab34960771ff2079e4479dc7aa5"
+      "sha256": "fe0c1f5962b02b3699ab59f3c27778b21354242d53f5e82858791b85c2d6f477"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_shootstrafel_ub.sanm": {
       "size": 3836,
-      "sha256": "c1506cf4bf57df9b33203c96f91305d99f9a8155a1f288434e42a7279fbd43d3"
+      "sha256": "bc9c74f269a3d95a1ffcb6f5887b4b757cc882325f6a7c0d2c5033106d38109b"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_shootstrafer_ub.sanm": {
       "size": 4160,
-      "sha256": "eeaa99c7961f3acc3c6b541437051f63edacfcce7e0025328cc46e9803957502"
+      "sha256": "c0857cf1d4824352411bac5972b35fa0ab4c755ad74693682f21a3457d6156f7"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_strafebackl_ub.sanm": {
       "size": 3060,
-      "sha256": "cf1cbba62e9f04c4529f836a7e46f487f1cf33b2751286ae7f23caebc56b641f"
+      "sha256": "c6543297682e75cd7ffe0480890992141718f940e9972065bcc8cd18d325497a"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_strafebackr_ub.sanm": {
       "size": 3252,
-      "sha256": "f8ab5ca1865c37a68ce7cb6601caf64620ba27e94979a366a50433ea94b92865"
+      "sha256": "abc28fc69c5ca9aa5ca34e309cf61dcd18965c1907f4a5a403e3c8a1b3085535"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_walk_ub.sanm": {
       "size": 3796,
-      "sha256": "bd75aed3285199a7c60145bc45e2d61210f40c9194d6c91186492e34d668c25b"
+      "sha256": "0f6cbb054d86775bf81d418e3b4781eff3679392ce6e5f0cc4b5764e9a965bcf"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_doublepistol_walkback_ub.sanm": {
       "size": 3328,
-      "sha256": "3d3e4173cdbf6c9ea128a4b41063f75dd2b213f44312b41a54ade5b526867315"
+      "sha256": "307797d223910492f879a2c1b8101e051ad3890420d6ecfb1f4e6be0d381766a"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_flag_crouch_idle.sanm": {
       "size": 3484,
@@ -6106,29 +5994,33 @@
       "size": 3340,
       "sha256": "0373afd56574d486d716b7d735bdc5b26330b9ccdabffba7278081b6578f9984"
     },
+    "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_pistol_crouch_idle.sanm": {
+      "size": 3544,
+      "sha256": "39830cb71b7dca51cf58f8883d0e33e12580752bd4c96655bbe4b3230f5ea0bd"
+    },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_pistol_crouch_strafebackl_ub.sanm": {
       "size": 4516,
-      "sha256": "d407af7e0b8638032ae08d693168c60f5e00206a5c211629a8af6674c7e80080"
+      "sha256": "b45ebcdbdcda9e13759357f6340b8452d0bddc292a844ecebb882b0b02992338"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_pistol_crouch_strafebackr_ub.sanm": {
       "size": 4360,
-      "sha256": "bff55128c66730271024b415df3e0274218599d6911875933dd76eb78c6df1a8"
+      "sha256": "5dfad67f09da9426d8af7ac82447995b5cf0731b11d1dbcdbcf086ef597db54e"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_pistol_crouch_strafel_ub.sanm": {
       "size": 4192,
-      "sha256": "99c873e96f0a43199b34a27fd06adf13da636167ec28c03a08f2384437fc22ec"
+      "sha256": "0f3aa27bdb062908a9dcca95fb24657f7654758c978fcd361e2e657088f2604d"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_pistol_crouch_strafer_ub.sanm": {
       "size": 4348,
-      "sha256": "9326648e745d1b48d770df81694783064a99a9d647c8874744b72932eef63a5f"
+      "sha256": "6e703bc285f03fee83659be225c3c80965ee90d338553425d8cbf11f50f29c13"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_pistol_crouch_walk_ub.sanm": {
       "size": 4336,
-      "sha256": "d7ffb2a09e94cb75e0ffbea4f288046e7f0f37e18e75306a64335a23c74f4029"
+      "sha256": "f739b191fde903607d813b3df1fcf5480a2da72db2863eebd31860bfb9fae48d"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_pistol_crouch_walkback_ub.sanm": {
       "size": 4360,
-      "sha256": "c4cdf220ae674f4b329527944c5d0e5a7ae05dcbce92ed013346538dfc33fa9e"
+      "sha256": "c2d1d8d2af9bf3cf2fb0f12345cf585abba81474caef4368a7844f5abec32e5a"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_pistol_hammerfan.sanm": {
       "size": 2316,
@@ -6144,7 +6036,7 @@
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_pistol_walk_ub.sanm": {
       "size": 3712,
-      "sha256": "a74be9d6804d0db7a702ce5aa24c2d953a493c9115d44a5563281a35177bce01"
+      "sha256": "7ad133215f89581149a4ef3e2daccb385d213d8e16fa3ada9a6880f9ff7080f0"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_readystand_lb.sanm": {
       "size": 2420,
@@ -6152,7 +6044,7 @@
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_readystand_ub.sanm": {
       "size": 3624,
-      "sha256": "e212a59eab9e90f63c395a548faa1ea008c1122aba0203b7169e105001571b19"
+      "sha256": "6de00c1eef28c82b9f5ef57b422408879f790bfc3058b1862a7711d0c6aa4f16"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_rifle_crouch_idle.sanm": {
       "size": 3460,
@@ -6332,7 +6224,7 @@
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_run_ub.sanm": {
       "size": 4072,
-      "sha256": "e3c33d9c657e87d937181bb7edd092e79847fd05d5a3c2b4a9bf7e961b374c8d"
+      "sha256": "10b16235b93de32e1c23a24c3ee4b7f43a8ac0f086c8d2d87e7093b0e52f37fd"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_runback_lb.sanm": {
       "size": 4912,
@@ -6340,7 +6232,7 @@
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_runback_ub.sanm": {
       "size": 4340,
-      "sha256": "70403a4848cdb738f8d386ccd5bf0efe79edca93e254a74b3024c3684939e1d4"
+      "sha256": "a545ff2639f66492008013f09f81e39d3169bc5106dcbd4361346d99fcd69a40"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_shotgun_melee_ub.sanm": {
       "size": 7132,
@@ -6404,7 +6296,7 @@
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_strafelback_ub.sanm": {
       "size": 5640,
-      "sha256": "ea11e79c7033deedc978405017a881ece3c4d247630702132793125323bc5807"
+      "sha256": "d32824fc16b8cb9d15dabea393c6ddb6aa4c77fe2f34e6c6a635688b2a7fe574"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_straferback_lb.sanm": {
       "size": 3832,
@@ -6412,7 +6304,7 @@
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_straferback_ub.sanm": {
       "size": 3652,
-      "sha256": "01ca68c1b5187174b86955194854b7986b3dbee31b3eac364e7891bfc358cf44"
+      "sha256": "4b775b1d03f1a978dca7db6f7d497cf78c9140707ab893dbec5606b561ef2cdd"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagentmale_turret_hit.sanm": {
       "size": 6308,
@@ -6432,7 +6324,7 @@
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagrentmale_shootstrafel_ub.sanm": {
       "size": 3728,
-      "sha256": "f95749d7cbd270d0241c2da41d1ec4f2d17a6ea5edf35cf9b22832c39d57a529"
+      "sha256": "bda04cc565d1d21165c3ca32dd573638c1c8ba5535f4f5201544158547ae93b3"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagrentmale_shootstrafer_lb.sanm": {
       "size": 3804,
@@ -6440,669 +6332,1053 @@
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/dwagrentmale_shootstrafer_ub.sanm": {
       "size": 3796,
-      "sha256": "de5267506cbf7936dd745da11feae197bbf31a82dabb3e65c5dc0359dc2ddf16"
+      "sha256": "adb162d8ea2eb47eb24c53e42431b1956d3c9f57c86816d94984c31fb5b11b59"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/flag_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "3b0eccbc16214c7e4b53a14936aac6d9c647a9ee5196d30c37e7c5d15a8cbbbc"
+      "sha256": "b792298a7d4fec007439a6ca12050dc30f137faebd62703348e46d44279cf1fc"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/flag_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "3d4b54a059578075c6caf055bc1658d880c55bfe28c5c0bee7c402511c620db2"
-    },
-    "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/flag_aim_r_d.sanm": {
-      "size": 1140,
-      "sha256": "b7f05642c93b20a82dc4620775e6d1365286edf5eaf763fb373ebbbfc5cb11a3"
+      "sha256": "7a2c425132f9e6d5d74ae2a7e2037f116b33d626c65aa653af82764fb7967070"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/flag_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "4c309838836794a9f9765c6f7602668bb8fa76a02cfba47d2d6d95ab43323469"
+      "sha256": "e52df14bcbe1c42a284b9661b7293460557c94ef667c04178d8c55bd93222151"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/flag_crouch_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "8cd39257930165b553c8cea9451ab7c0be47666edc497e4a19882d837c78c05e"
+      "sha256": "6ca654a11e633eacb34a3ef009ddbc325b954724a9c27b0f486d86a26fab4b05"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/flag_crouch_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "ca2969511481befce23d371a068e3144f587b80b1b522221f1e16f886a6ddd71"
+      "sha256": "1e96c7a99b1d7fdaa74e9189b2044f74343036da010c1e60689a0109a2a8ae40"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/flag_crouch_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "7f1af53946d86e163c5c959a5f45ba820e258dabadb090e8f59c848937514a3b"
+      "sha256": "c60d3868864ebdcc7686064ccad31f1f3fb853f80f695d2464d4690ae45ba39d"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/flag_crouch_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "d07b6e4c5979af88b517fc59d43ef7fe2402c3faf912e9a67fd43249bc02e047"
+      "sha256": "97a60b0635fee137769f11d893b7aad0a02a0cd729f3e7824fc3b9090c3a22d9"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/flag_crouch_loco_aim_d_d.sanm": {
       "size": 1188,
-      "sha256": "7a4be5e7602870debafc3525661e737919158e105fecd9379fcf97ffad901435"
+      "sha256": "8e88c319dff70828b034e334bbf1d78c3348851b8bacb9ae2630402eb70a284e"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/flag_crouch_loco_aim_l_d.sanm": {
       "size": 1188,
-      "sha256": "09c2897acf8dbdc0b5dbf54434683b31887e1929c1788bd83795b59c35978f05"
+      "sha256": "a50d27463e963df8e5a9358b1c25efc3a82dfa020356d074380f3613dd4339f2"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/flag_crouch_loco_aim_r_d.sanm": {
       "size": 1188,
-      "sha256": "51da87d4cebfc3649a388cc9722ba4a68cb6e8a7705d976a32f349a8373fa1ea"
-    },
-    "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/flag_crouch_loco_aim_u_d.sanm": {
-      "size": 1188,
-      "sha256": "dc9b4d1796e148a835c9ffff5877d60b7eae0eb9b1d354f0ea0bb48cb5e9c1fc"
+      "sha256": "a6e073d9d36f0364b48066b4b508b14ccc9d073ed0242139a1216876f3d708ff"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/hammerfan_aim_d_d.sanm": {
       "size": 1224,
-      "sha256": "35a75514f4212f8964a32e7ce5218be04ad5b4cacc8aa761ea2d7017b32f5d0f"
+      "sha256": "a4819df609bf91a8e56c613f1d95aa21efb50a228d49b2e55f64c0f3dc517dee"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/hammerfan_aim_l_d.sanm": {
       "size": 1224,
-      "sha256": "00ace1335b0f853af70ffc1b93d4660fa9fb1bc75839d78df4469efbbac9f4ee"
+      "sha256": "92841664990c31864993e8c97ead01fde429ef901bdbee11a887655695e70ccd"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/hammerfan_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "231f292257377b617286a9c0256a3055e6fef47952033ec0f3082345bf9c2b1c"
+      "sha256": "e169b9e4004bd5f5c1487ace4b75ff5ea7a31567509b53c030c5606c73180143"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/hammerfan_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "df28b002c39f028f219eac23153a58d178b3b5b7acb34c7c00e6609b4e6e70dd"
-    },
-    "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/pistol_crouch_aim_d_d.sanm": {
-      "size": 1140,
-      "sha256": "5a6b1f34db9826dfc363fc995666681cd767293d3e0c2cd1633c97626f2c318f"
+      "sha256": "8814b1f702db0ec7df65f3c77761970d3f4a82e2dbba6c59eb5588cf7bfba0ec"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/pistol_crouch_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "73059f191558ebcf781179ad49abe751a5ded475d68174066201875c05f2cb05"
+      "sha256": "39de7acc25e7dff0a77e39bd451f275fd68010f004796064e5be68605b4c9bf7"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/pistol_crouch_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "f30ef758f3b34bc48e9079489b8a989b2d015fb3cf6831eb915cb83c474664b8"
+      "sha256": "cd89329914bd4432b1009f1da7402321a03fbeb5b6fba49f28aaf574fbf9ebd9"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/pistol_crouch_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "d05fb1e1024bc25474628ceb63881f621c10b28fd1c28720d9a76665ff55fce0"
-    },
-    "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/pistol_crouch_loco_aim_d_d.sanm": {
-      "size": 1164,
-      "sha256": "c4726cf6e4a55e45f23d3f1a93d3050c15266910b538aad7022d2e8b07420f88"
+      "sha256": "d3c13df4fdcb5973087a938d653506ebfd61b0f28842d37c902f5dd26a6223e6"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/pistol_crouch_loco_aim_l_d.sanm": {
       "size": 1164,
-      "sha256": "477bdce09d759c472796a2b7dc794678308c7d1f92498697f76d2a57743776d7"
+      "sha256": "7b5cb3d3f52945ceb581da242d6809317e0600ef39541f4076e9bd9ade3df2aa"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/pistol_crouch_loco_aim_r_d.sanm": {
       "size": 1164,
-      "sha256": "dfb0a7fa9e9595a01bc57c1502a7fe58c423d41c8cb5a5b9b8152d3860d9811f"
+      "sha256": "abf7b430bd45d7db4e37c00ef59439759cfab2797bfb394c6607c543ef5d507e"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/pistol_crouch_loco_aim_u_d.sanm": {
       "size": 1164,
-      "sha256": "fe33091a8d6e4768254cf9f3d837866529f0ffe6bab3ba007746a582796daeb2"
-    },
-    "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/pistol_shoot_d.sanm": {
-      "size": 1140,
-      "sha256": "520bc810b71f9e434cd7731f7dd3a7f47a52230cf8286521e339fbbbca0dba1f"
+      "sha256": "d6a4cfc12a2648a8f7f14e05cea0c79c13b38e33b955bfb1305930fabca5d74b"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rifle_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "2f52b1914fd4c915027d2cda28d4f0a767050c1e3c1aaf72cf54353282611af0"
+      "sha256": "6dc8c9f4ae73b37c3532672a928232d960bf2017a7d581aaa6cbea70168ea610"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rifle_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "059706b5fb8323e98b078d0d37a2ccd291943ce149c57fe9c5be32267cd5eedf"
+      "sha256": "b6d9b329724b5ad4951efdf76adda19a3f5bb2c4d838db593a39a51786974725"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rifle_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "92a17529b0fe22c136f2aaae92502d99da232504df7970ca19eb7ef9878adb9d"
+      "sha256": "40e6a146dcd7db2f3c901c8a4b187f678857f60b646e5ba998d5fcfba1a2984e"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rifle_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "7dea5ab06e82c079bc30c7e916eaf2a234f0c13c9a31d2eb42be24ace941ea88"
+      "sha256": "b69c61088bcc9aed8ff8b2c9cd085b9c23b99044093ba1a0840b74b4a58529ac"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rifle_crouch_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "78a0b9e579c97621b3c86fc27a470d483988c42afc517cb6088fadc83cbef67f"
+      "sha256": "4a6fd6268f8b6b28ed7439a9d8649d235d54db885293385fac6e1b0914077148"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rifle_crouch_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "136a36622dab438e95864deea01f8ff0bb16dcd07fb74f597b258142b547d10b"
-    },
-    "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rifle_crouch_aim_r_d.sanm": {
-      "size": 1140,
-      "sha256": "cabbf05cf0705f0dee0969b8094d987893fe55fe2477b6d79cc2b11b73b3671a"
+      "sha256": "64c469ad5104225c80de1ec43c7a36f399c4f006bf95a478e774796efe98a227"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rifle_crouch_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "241096f56f1417eeecba9e7627042702310b3be622f659ac3bea5c9a028dbfce"
+      "sha256": "148527bbf4e568b1bfb7a6dd70afbe08bb1bc939c2447f9a1cdb267af7a3cf99"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rifle_crouch_loco_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "f21615c2ccedee3dfc42c675bac0f414f4be388a545d2b8169848a3458f4418d"
-    },
-    "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rifle_crouch_loco_aim_l_d.sanm": {
-      "size": 1140,
-      "sha256": "746a3ac8061283f2d7106433f9b29a3a061efdfbe43304d0bf3e4b00491255a6"
+      "sha256": "12f3564b4117f27cdc6f4d88519561f2fd11a55349f5a8d269f90d6d84c0f40e"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rifle_crouch_loco_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "177a4731fa9b354fbb95251b8d53e4666a46bb6daae823fc589bcb8d8fbcd07b"
+      "sha256": "914e96b54f31473811d2095c84edd063b09886c95ebeabc8737e57d54c35ee72"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rifle_crouch_loco_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "d6b0231c5d7a9885346e047b7742f361068b18ed742f1582e9463485ca9a3f55"
+      "sha256": "d3f93b7c4ee01dc43f301dca2a16df6ef00a5f85bb68027631e157ca86c26e1f"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rifle_shoot_d.sanm": {
       "size": 1152,
-      "sha256": "0bacfadce33e089a6ed57436c1de27889e1df5763ea648599fce36c64492e204"
+      "sha256": "7a4f38e419de595e983bc9884efad57dad8566a5a5569959c1fc2a0569b41c0d"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rocketlauncher_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "a04664433a3c0de35304679e06b9b9ce1b66c8cabb085d81f517fce370471539"
-    },
-    "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rocketlauncher_aim_l_d.sanm": {
-      "size": 1140,
-      "sha256": "03c6299b7e0b93a43f3dd656c26c3f23a62958e6fef4bc3e07b4ace9343f750d"
-    },
-    "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rocketlauncher_aim_r_d.sanm": {
-      "size": 1140,
-      "sha256": "a66fe087b6605d19964da51c2777cada7bf78a3ff91fd6f6ca13ed099889b939"
+      "sha256": "3b8467aa88fdf0d164899c961da5eff56d989ebe8b2da57f6c047d5189008f6f"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rocketlauncher_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "9c28c8ce3a1ff740fba3b50114386f94bda51a94d198a7d44cf7f5f58a953655"
+      "sha256": "ff5d04de26859326b4ab36e71d5e4212202fcebda3814d0cb687ef6e216f8766"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rocketlauncher_crouch_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "ecb4e718f23e6e42a2ed87a7ba9ca01ff9e284d158b88f41ab4973e8c5348e7e"
+      "sha256": "46d765b70d4604661cffa3a21a8f65cdfd0dd8eacd4c8500fb4b9d93e6c6ed6a"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rocketlauncher_crouch_aim_l_d.sanm": {
       "size": 1176,
-      "sha256": "c6f64aebb6f88b890049c6e600520eef24baf07b34ed557ddf2c942313afdf03"
+      "sha256": "f59d3b784cb77ea54e92a75034470a81391d27843deaf586317146c78b348068"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rocketlauncher_crouch_aim_r_d.sanm": {
       "size": 1188,
-      "sha256": "5a0fd657bec4d8c087ed591498882ae6db33d7b766ec4522eaa209318edaf813"
+      "sha256": "870788ce2eefc7e906f84bb8bfd50ed6346fdd201a313256d5b7dbaeb63a8da3"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rocketlauncher_crouch_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "e000ea7b558e7aa8dcf4168a4095a2abd5335edbaed6bda9c31fdb6a3f3edd5c"
+      "sha256": "734e847d7961b3d451f8fef9378f04c24c95ed41d0b2f494ce1eb1fe71b7f321"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rocketlauncher_crouch_loco_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "9659e0e7499010a4133a7ef3a5abf1db3b4b5f151986a0ee6f57df431ed739ee"
-    },
-    "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rocketlauncher_crouch_loco_aim_l_d.sanm": {
-      "size": 1140,
-      "sha256": "9fcee4a9982646ca9ecdf4855e819157f97e1bc2aefad03a292d52535ffe3a60"
+      "sha256": "981e74e73412aecfb9b5601102b370c30a8df07d6c77a7359892c19cdf4ac372"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rocketlauncher_crouch_loco_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "dfba5da252a54af65eee310d9eb1f66d2c00b601bf0bc1e2003edc71589652ff"
+      "sha256": "1d6139bea9a4564ff823124898685ca496c6582ca7d5f051b576de23dc927151"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rocketlauncher_crouch_loco_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "d428eecd184bdfd44cee01b2f3d86f548ae1045af7aee47a11c5865842c1811e"
+      "sha256": "7a44a521296870b15bd552fcbc1a75cd25387f0d1080249f21ae237450ac30bc"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/rocketlauncher_shoot_delta_d.sanm": {
       "size": 3428,
-      "sha256": "b66422621f4395869cee4804415aebf2c0a6a40e35dd814eedb4af1db9cfc978"
+      "sha256": "4bfa8db4b6c90762fc8791b12299f99f888df657dc89bcfad8ea15a306881b23"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/shotgun_aim_d_d.sanm": {
       "size": 1140,
-      "sha256": "4c05432495e3f40d67bb2bf16dd03dab57559a8c8e7dd5eab3e0415de8121047"
+      "sha256": "7110edeaf24437f8596868d8bb02645c795cd53ce5f89d6ec580f10d273615e3"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/shotgun_aim_l_d.sanm": {
       "size": 1140,
-      "sha256": "a41ff439ba1b04ba8f3720205810604dedea9732f6b4320c9e619129dd973e62"
+      "sha256": "4f6f8a0ec9c1d6c2fd1e54d8ac10af95fec1a37d20615450dd386ed50299f924"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/shotgun_aim_r_d.sanm": {
       "size": 1140,
-      "sha256": "f166e6c94bec92ca09fe127a2d9239c9066ab334c1012bb3d3b0f4a0938f4404"
+      "sha256": "75aee8d028ba8f2aa4d028305f8738918b13f54d75b2f4641d717f582f7eaa41"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/shotgun_aim_u_d.sanm": {
       "size": 1140,
-      "sha256": "75c585f23d828343e2eeae2b1ed0044b821f8d5f8a99b68ccb2e209b2c4cc740"
-    },
-    "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/shotgun_crouch_aim_d_d.sanm": {
-      "size": 1440,
-      "sha256": "8c271ac563929684094ac8984361cc1f8edb1669f2b358007bd8239b3c402802"
-    },
-    "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/shotgun_crouch_aim_l_d.sanm": {
-      "size": 1440,
-      "sha256": "ac4f05c42bf4f5fc8bf7781467fe4556d3c46a907646c26c612c452c559d3c2f"
+      "sha256": "5c7ac171fd4db57fbef9861c7f1720fedb2bc0623b1fb95bfa13fe0f20226dc0"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/shotgun_crouch_aim_r_d.sanm": {
       "size": 1440,
-      "sha256": "6c1bca2fb09fe8cfbc19800584c970d49cc09ab11d818598baf1b4fd3fd2d621"
-    },
-    "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/shotgun_crouch_aim_u_d.sanm": {
-      "size": 1440,
-      "sha256": "c75a2753142d5c5f45514a03ddc7a1e8dfbf45e1aad92ce4c64313253f258201"
+      "sha256": "b7f6ac4c23b637afcb6122915ef10938ad99be75c1bf171dc13de7b9681bf2b4"
     },
     "characters/player_two/cassidyanimations/solo/characters/multiplayer/sanm/lo/shotgun_shoot_d.sanm": {
       "size": 1140,
-      "sha256": "6e59d14d80cdbf431fae8359432d2828b24ec657647e547ba86fd4ad5e18bdc7"
+      "sha256": "ffe9a692aa6be60f005e8a39ca3c5c359fd7103aecad9cf5a7fe06cf75409530"
     },
     "characters/player_two/cassidysolomultiplayeranimation.bxml": {
       "size": 61897,
-      "sha256": "40a3f7e8d024d463cdc1f788f312ed057dfecab1aa8380ab0e4544e0f6735bd4"
+      "sha256": "02ccede1770adaca9780e28c81b71886daa176ef005fedd09cbb00ac900ffb64"
+    },
+    "xml/actortemplates_characters.bxml": {
+      "size": 228532,
+      "sha256": "d20d1c0cf1f7aeaf5c4f7f3b422d314981ba32ba4de219fa195bd857951811a5"
+    },
+    "characters/player_two/cassidyplayertwo.bllist": {
+      "size": 1961,
+      "sha256": "a087a71f33da427ec8eb417780727c30f444e687c0245b093fc8260a6ac5fc03"
+    },
+    "characters/player_two/cassidysolo.bllist": {
+      "size": 1572,
+      "sha256": "595253002b77f51e71c032dae6d4fa2c566def0f1020159eebef859acfb732c6"
+    },
+    "characters/player_first/base_pov_cassidyplayertwo.rx1": {
+      "size": 815156,
+      "sha256": "e834d2eb9ff52e795fc01b5fc283e259404a6a3176d8668f3fc99782784cf4d4"
+    },
+    "characters/player_first/base_pov_cassidyplayertwo.jlist": {
+      "size": 615,
+      "sha256": "47281350d7e374b250bcd60650ffecb7182492a7c585342cf5ed722070f30a1d"
+    },
+    "characters/player_first/base_pov_cassidyplayertwo.llist": {
+      "size": 1874,
+      "sha256": "c644998eeb313039714bd889e60f6d1a68bcd3dae23336ff20476259bc2b56e0"
+    },
+    "characters/player_first/base_pov_cassidyplayertwo.bllist": {
+      "size": 935,
+      "sha256": "2a812a7830b3808a6263637d7065682c2746045afda6d886c0bafbc5a78db7f7"
     },
     "levels/singleplayer/citadel_launch/streaming/citadel_launch_aa_resources.bxml": {
-      "size": 125682,
-      "sha256": "439bc5ca7264de9c223611dab75735f63e1f9f49c3f8a2e714ff8fac5ae15fc0"
-    },
-    "levels/singleplayer/fallofcitadel/streaming/fallofcitadel_a_resources.bxml": {
-      "size": 113959,
-      "sha256": "43e5d09fe484766ae320cfb1629c567af193d3af7661e0c6c09b3f59b774a3ef"
-    },
-    "levels/singleplayer/fallofcitadel/streaming/fallofcitadel_b_resources.bxml": {
-      "size": 107284,
-      "sha256": "8244c7d2878298b9dddd42884aec971e3e5eb30014576beb23ff40046a520755"
-    },
-    "levels/singleplayer/groundzero/streaming/groundzero_a_resources.bxml": {
-      "size": 105454,
-      "sha256": "e547a70ef228364bc3007e44a7f19ba78376cefb0665a4e427bb454a8b09683b"
-    },
-    "levels/singleplayer/m02_canyonshoot/streaming/hub_a_resources.bxml": {
-      "size": 106212,
-      "sha256": "a0217c91ada9113508db857785b0dbf19850274e84adf683bf80d0f817fcb15a"
-    },
-    "levels/singleplayer/m03_cemetery/streaming/m03_a_resources.bxml": {
-      "size": 125479,
-      "sha256": "3628dce2d8cbd486630412c92317d2f42130f90c333fb33a82f44064fe84df3c"
-    },
-    "levels/singleplayer/m03_cemetery/streaming/m03_b_resources.bxml": {
-      "size": 122783,
-      "sha256": "f8f66a4ff2de16185724500155a1dab6d3447150c40b74c5e809329b6c9cb7f5"
-    },
-    "levels/singleplayer/m03_cemetery/streaming/m03_c_resources.bxml": {
-      "size": 134743,
-      "sha256": "43e1369a5ecce0f2d5fcebe37386133476ccb53831b40a9dea77df43922a7941"
-    },
-    "levels/singleplayer/m05_devilsbelly/streaming/hub_a_resources.bxml": {
-      "size": 123951,
-      "sha256": "6cc1f11cdc3251a0e674c6cee41082cd4f1d87b90daffc8b7c0ba49c0010b875"
-    },
-    "levels/singleplayer/m05_devilsbelly/streaming/hub_b_resources.bxml": {
-      "size": 124448,
-      "sha256": "020a65e32a80440099e71ea8487988e653cbc14fb99761ed5596241c1c96ef59"
-    },
-    "levels/singleplayer/m05_devilsbelly/streaming/hub_c_resources.bxml": {
-      "size": 125118,
-      "sha256": "32a07e994a5efdca3c346ae548e4feaa4d5874cd7bcf37b610e49b77d67b5432"
-    },
-    "levels/singleplayer/m05_devilsbelly/streaming/hub_d_resources.bxml": {
-      "size": 124448,
-      "sha256": "e6f94f2385190aec2468872bf68f11c425caad6a40310c5aa65da2b7d797c806"
-    },
-    "levels/singleplayer/m07_dwoutpost/streaming/m07_a_resources.bxml": {
-      "size": 131790,
-      "sha256": "75f47cdc8201d92ae7a0ecd6e39c92240be4d4184f409328d4173c76953d4b23"
-    },
-    "levels/singleplayer/m07_dwoutpost/streaming/m07_b_resources.bxml": {
-      "size": 125941,
-      "sha256": "c936dada625af53f83210d144fff14c810801f1af657c3f90ee2b85df70fdcf8"
-    },
-    "levels/singleplayer/m08_regulator/streaming/hub_a_resources.bxml": {
-      "size": 127210,
-      "sha256": "3e4611ea77bf90b88a8f1942ddc002e4811d73ede8b6adab91c8ff4f5439f2cd"
-    },
-    "levels/singleplayer/m08_regulator/streaming/hub_b_resources.bxml": {
-      "size": 129565,
-      "sha256": "622c0241a3ca1f80b7ae2271fcdab86f8321aa205382783cdcd74b88146fc65e"
-    },
-    "levels/singleplayer/m09_torturemaze/streaming/m09_a_resources.bxml": {
-      "size": 109422,
-      "sha256": "3f2ca1ed0a3599ae9527d358cb0681fbf8421fbfb60d7a383bd8fee08b9ced4a"
-    },
-    "levels/singleplayer/m09_torturemaze/streaming/m09_b_resources.bxml": {
-      "size": 126880,
-      "sha256": "a7271a07109f7b5aece44f304c40f88c79487509291f83fd87797574b6055d00"
-    },
-    "levels/singleplayer/m09_torturemaze/streaming/m09_c_resources.bxml": {
-      "size": 111879,
-      "sha256": "8d0a739702b82f588aae5e98ff5d8cb38ed1523af9fd340c545ab2bdb5819b6c"
-    },
-    "levels/singleplayer/m09_torturemaze/streaming/m09_d_resources.bxml": {
-      "size": 104831,
-      "sha256": "71fb0eda2cd3bebd6e4bb12df70a7d69280fd651c9202b53aed9f309392dd965"
-    },
-    "levels/singleplayer/m09_torturemaze/streaming/m09_e_resources.bxml": {
-      "size": 115260,
-      "sha256": "3742d7a5df72da6930edbc5666c86b42e67b3c1967ec9cfd09e4d22406fd8dc6"
-    },
-    "levels/singleplayer/m09_torturemaze/streaming/m09_f_resources.bxml": {
-      "size": 115897,
-      "sha256": "72f655f84946854accfd8522639298951a650b8fd5d0b27be93f8b27dd6d8bef"
-    },
-    "levels/singleplayer/m10_tradingpost/streaming/m10_a_resources.bxml": {
-      "size": 133305,
-      "sha256": "2026e1a87be08416323f890c5e5e7409abbcdd5cb91959c0d34fd700d0bc2eb9"
-    },
-    "levels/singleplayer/m10_tradingpost/streaming/m10_b_resources.bxml": {
-      "size": 125380,
-      "sha256": "a130cd8e010d44ca30085ec2358d386c37c930d3b70ca711d7dd97b5433a7d92"
-    },
-    "levels/singleplayer/m10_tradingpost/streaming/m10_c_resources.bxml": {
-      "size": 124451,
-      "sha256": "0055857d909341246a395637fe5085fa92a3a2d6cbb8ee331d5a3f4c5c2aee02"
-    },
-    "levels/singleplayer/m10_tradingpost/streaming/m10_d_resources.bxml": {
-      "size": 133349,
-      "sha256": "83a8680350012c5071dab2d09ea11e3e970d0575aebf233475d55316cabc91b1"
-    },
-    "levels/singleplayer/m11_hangtown/streaming/m11_f_resources.bxml": {
-      "size": 130635,
-      "sha256": "d5effd1c276489ef2ced5a72790774ac84c1038a3905338078aa9ad92466d655"
-    },
-    "levels/singleplayer/m11_hangtown/streaming/m11_g_resources.bxml": {
-      "size": 134306,
-      "sha256": "ca6bdbf96374641e621d64c178164633d027fedce730e01a36f6d228cfd88984"
-    },
-    "levels/singleplayer/m11_hangtown/streaming/m11_h_resources.bxml": {
-      "size": 127563,
-      "sha256": "baac4fc786db43e744d924be6ba709a9dff2e6ca0035e82adde94153050d9f4e"
-    },
-    "levels/singleplayer/m12_citadelunderattack/streaming/m12_a_resources.bxml": {
-      "size": 128416,
-      "sha256": "cc54536e455bed2fd63c6f8ecfe217891edd319eb396b46c42a2b2bd01f8e53e"
-    },
-    "levels/singleplayer/m12_citadelunderattack/streaming/m12_aa_resources.bxml": {
-      "size": 139079,
-      "sha256": "087d57c88ac9aa6494fb4c9675876ed32ea28d8aafd4086014f0c8c9b719dd80"
-    },
-    "levels/singleplayer/m12_citadelunderattack/streaming/m12_b_resources.bxml": {
-      "size": 118761,
-      "sha256": "0663ca4ba8453b9f6069841ab16486e1f1dc184eefaba6c6c9638f04656e43a8"
-    },
-    "levels/singleplayer/m12_citadelunderattack/streaming/m12_c_resources.bxml": {
-      "size": 129813,
-      "sha256": "7c641e0d79eabc8a85144b896c92477a5652c671e0d905bd5735a2cfe2ddc29d"
-    },
-    "levels/singleplayer/m12_citadelunderattack/streaming/m12_d_resources.bxml": {
-      "size": 124204,
-      "sha256": "f774442ce7a21620fc44015968d46761cb1c8e12e8b8350240920f816bc7e06b"
-    },
-    "levels/singleplayer/m15_splittingpaths/streaming/m15_a_resources.bxml": {
-      "size": 132989,
-      "sha256": "6dec0aab01601435741ac89a4d1f1c44cdd874029bb6a6d5f6a0449e7cec79d7"
-    },
-    "levels/singleplayer/m15_splittingpaths/streaming/m15_c_resources.bxml": {
-      "size": 117332,
-      "sha256": "d6a6a233241b9165c15d4bbedbec6f264889a758256e51098eee5819750f58a0"
-    },
-    "levels/singleplayer/m15_splittingpaths/streaming/m15_d_resources.bxml": {
-      "size": 120706,
-      "sha256": "95cbd88a3444c0c85ce10ba410b4d070164263f7e2dbc039e14c2d893401447b"
-    },
-    "levels/singleplayer/m15_splittingpaths/streaming/m15_e_resources.bxml": {
-      "size": 119346,
-      "sha256": "efaeee7325332d4edc8ca322254b947014210aad25b4511873df6b76734ee0a0"
-    },
-    "levels/singleplayer/m15_splittingpaths/streaming/m15_f_resources.bxml": {
-      "size": 116034,
-      "sha256": "3bc5114da6c8a936888e5b2bff564fbae513ed0beaa452d477293f19fc4ce0b8"
-    },
-    "levels/singleplayer/m17_invasion/streaming/m17_b_resources.bxml": {
-      "size": 123910,
-      "sha256": "69c53c446b11c1a70b064c19e8df5c8af28c49297717d6dcdfe28bc686872baa"
-    },
-    "levels/singleplayer/m17_invasion/streaming/m17_c_resources.bxml": {
-      "size": 119366,
-      "sha256": "d9da6ff48b8c69846d780aa9ab70f840324615c09b8659a6e184a982394afb29"
-    },
-    "levels/singleplayer/m17_invasion/streaming/m17_d_resources.bxml": {
-      "size": 123010,
-      "sha256": "a1f7c73e79665e44c7c42c10a0a612dc953c1d86fee6b41bf47463f80867a45d"
-    },
-    "levels/singleplayer/m19_ridetodeadfall/streaming/m19_a_resources.bxml": {
-      "size": 140053,
-      "sha256": "11c07240bc0d8e562dab45e68798bfb7fe0c34cd2a68ba8d0ad16b9f10a182ab"
-    },
-    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_a_resources.bxml": {
-      "size": 129314,
-      "sha256": "6416587b9b239f396fb8c794743ad453dae1cc9fca39482018fd3ee59deb3b30"
-    },
-    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_b2_resources.bxml": {
-      "size": 124388,
-      "sha256": "c6c30b84960fd143b1ea3cf1b357672803553292b75455134f9819bc09832ece"
-    },
-    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_b_resources.bxml": {
-      "size": 126833,
-      "sha256": "e25a683e75f0c21e7eac8330086eea3ea98cab6e6120fe6de6b296eb7f995605"
-    },
-    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_c2_resources.bxml": {
-      "size": 125754,
-      "sha256": "275f61a38d4921cfe59cd5ecf783d634a414dba407cab28996990aba6d2ac9e1"
-    },
-    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_c_resources.bxml": {
-      "size": 118428,
-      "sha256": "18a463f964d9434c48f1ca41f386a4aca0facbb905f63d8448c8041272d8710c"
-    },
-    "levels/singleplayer/wartrain/streaming/m07_c_resources.bxml": {
-      "size": 118710,
-      "sha256": "97df0aeb206eba3cec5e6d3652579be864698a5923db832635d5ab0e0f8c2338"
-    },
-    "levels/singleplayer/wrongtrain/streaming/wrongtrain_a_resources.bxml": {
-      "size": 119175,
-      "sha256": "23a91ebce041bc856ea9fade464a3e7c73d3b3d90662be3615f38510828f331e"
-    },
-    "levels/singleplayer/wrongtrain/streaming/wrongtrain_b_resources.bxml": {
-      "size": 118282,
-      "sha256": "ab304b62b92214ab15d6e814b9ddb36e90dcd2121e204ed0692a206c5d76d175"
+      "size": 125862,
+      "sha256": "44f1e43c1a4e50b384fba8f5ae9cf38a2f96bd134b1098713a57e87b91656ba9"
     },
     "levels/singleplayer/citadel_launch/resources/audio/citadel_launch_aa.bblf": {
       "size": 1463,
       "sha256": "02af0a280f832911d6ec7bbec1d4c7c2ffebd4e1d8b69be8effe84168850e430"
     },
+    "levels/singleplayer/citadel_launch/streaming/citadel_launch_aa_resources_coop.bxml": {
+      "size": 165811,
+      "sha256": "715cd76e7533220ff1da0e6f58f3154887bcc85c2ff2eaceb757d6c39d0e92ef"
+    },
+    "levels/singleplayer/citadel_launch/resources/audio/citadel_launch_aa_coop.bblf": {
+      "size": 1566,
+      "sha256": "cbcecd7225f8b489c2811d78e176f23da52e2d060ae16ed0e43f247c5f4e6247"
+    },
+    "levels/singleplayer/fallofcitadel/streaming/fallofcitadel_a_resources.bxml": {
+      "size": 114139,
+      "sha256": "aac4e4828fc668bd9690364ee441dd7675520b16a23ead46721da1d01f08012f"
+    },
     "levels/singleplayer/fallofcitadel/resources/audio/fallofcitadel_a.bblf": {
       "size": 1205,
       "sha256": "369b7aadcbb2de13e85b1bcd90e3a514cd838f94fa60bab381360b8354a86679"
+    },
+    "levels/singleplayer/fallofcitadel/streaming/fallofcitadel_a_resources_coop.bxml": {
+      "size": 154671,
+      "sha256": "e4a0929933da4ab42e749c21cb8ee4469d9b36522a9747735dce312bb50a3dbb"
+    },
+    "levels/singleplayer/fallofcitadel/resources/audio/fallofcitadel_a_coop.bblf": {
+      "size": 1308,
+      "sha256": "a80c16e25043245a4a3d4670ef708a77674d92aca9cb75f5233e5678541e4f63"
+    },
+    "levels/singleplayer/fallofcitadel/streaming/fallofcitadel_b_resources.bxml": {
+      "size": 107464,
+      "sha256": "726373c56ad0b33d2fd23f3cff5adf35795cd42d71d801828af665b5444da124"
     },
     "levels/singleplayer/fallofcitadel/resources/audio/fallofcitadel_b.bblf": {
       "size": 1231,
       "sha256": "3fb1b183cdec5ff6d034012e39eafea93cd45a16c53b1bb85a7fc33dcfc5061a"
     },
+    "levels/singleplayer/fallofcitadel/streaming/fallofcitadel_b_resources_coop.bxml": {
+      "size": 147926,
+      "sha256": "f3f225a518badd24b4f775e4bc08d61f1d2ed3d57720dc93d9a45b83b8347d6b"
+    },
+    "levels/singleplayer/fallofcitadel/resources/audio/fallofcitadel_b_coop.bblf": {
+      "size": 1332,
+      "sha256": "718f683534b64ee9524a916d91310e70d8a33265d73f7f41ede3196585be3fc3"
+    },
+    "levels/singleplayer/groundzero/streaming/groundzero_a_resources.bxml": {
+      "size": 105634,
+      "sha256": "f574b48f64c811616c24883c774868a85a20b7386f28717161e6f291b7d35ed3"
+    },
     "levels/singleplayer/groundzero/resources/audio/groundzero_a.bblf": {
       "size": 1166,
       "sha256": "aea45dac1d95cb69bd2acb7ec1d10e2171dc5cdd542c9bbc514864769b95b28e"
+    },
+    "levels/singleplayer/groundzero/streaming/groundzero_a_resources_coop.bxml": {
+      "size": 146283,
+      "sha256": "d481f2f6aaa19558edfb1ec3580d0237669dbc226fdbf29d7fd386386140e542"
+    },
+    "levels/singleplayer/groundzero/resources/audio/groundzero_a_coop.bblf": {
+      "size": 1269,
+      "sha256": "c8549f0d3d1c491226e477f115c97f89a964c44101ffaf65790c4eef3ec9e3ae"
+    },
+    "levels/singleplayer/m02_canyonshoot/streaming/hub_a_resources.bxml": {
+      "size": 106392,
+      "sha256": "176119013839138bf41e3efac23e9fe43669708ac109be87a721a25ce14a052e"
     },
     "levels/singleplayer/m02_canyonshoot/resources/audio/hub_a.bblf": {
       "size": 1244,
       "sha256": "86e920b6b95655e264852ad4d1130e7db308a7976e36ac444d79964e2d9da608"
     },
+    "levels/singleplayer/m02_canyonshoot/streaming/hub_a_resources_coop.bxml": {
+      "size": 146132,
+      "sha256": "413a45825255c6cfa54a3981669b9a64f0a0207525ab1e60c3e750823df7ef4b"
+    },
+    "levels/singleplayer/m02_canyonshoot/resources/audio/hub_a_coop.bblf": {
+      "size": 1311,
+      "sha256": "db3d34ca61431565b82048949e080e770b051770a7c4e955af0ac18ab316112c"
+    },
+    "levels/singleplayer/m03_cemetery/streaming/m03_a_resources.bxml": {
+      "size": 125659,
+      "sha256": "eaadca9d0e12409619983e2a4fdb809bdae047e72046ef97bdaf590367b293cc"
+    },
     "levels/singleplayer/m03_cemetery/resources/audio/m03_a.bblf": {
       "size": 1612,
       "sha256": "ccf4dbeb3635638605ce23185081b4eef92e5a448cac4e218b1ba7262451e3f2"
+    },
+    "levels/singleplayer/m03_cemetery/streaming/m03_a_resources_coop.bxml": {
+      "size": 165443,
+      "sha256": "5d3d0b00f4ad796bc4737e43314c4077255f580b0f3e9a0abf3c6a36a0142c44"
+    },
+    "levels/singleplayer/m03_cemetery/resources/audio/m03_a_coop.bblf": {
+      "size": 1715,
+      "sha256": "ff9faa17c1b4512a4360d4a2d5b2964485db686b9de3e4f14eaa7444e99641d4"
+    },
+    "levels/singleplayer/m03_cemetery/streaming/m03_b_resources.bxml": {
+      "size": 122963,
+      "sha256": "a4a23759a1ecd7cf579a84668829c6f64ed1b151629a08f4c01262767e2478bf"
     },
     "levels/singleplayer/m03_cemetery/resources/audio/m03_b.bblf": {
       "size": 1372,
       "sha256": "0d2f9bf8e8c35774923fa2bd85180fc6568485b561d232ad5e6a49629c6c0814"
     },
+    "levels/singleplayer/m03_cemetery/streaming/m03_b_resources_coop.bxml": {
+      "size": 163400,
+      "sha256": "600d87aa3497cb51b7908e38d8234912b20f311935a1ee0f6371e2c341afcc33"
+    },
+    "levels/singleplayer/m03_cemetery/resources/audio/m03_b_coop.bblf": {
+      "size": 1475,
+      "sha256": "f021824163ee8ad30ec17c47a591d23d285568006562456d1e125fd96b628e13"
+    },
+    "levels/singleplayer/m03_cemetery/streaming/m03_c_resources.bxml": {
+      "size": 134923,
+      "sha256": "8d9736f5e45009b1c5181b69d7a7dd1d5d1531faa215d880fd6aa5faf3ff28cf"
+    },
     "levels/singleplayer/m03_cemetery/resources/audio/m03_c.bblf": {
       "size": 1442,
       "sha256": "91c6815680f2ab65f20e1ace33c61a9717abd4706c6448bd64f30ae7d1a96b27"
+    },
+    "levels/singleplayer/m03_cemetery/streaming/m03_c_resources_coop.bxml": {
+      "size": 175360,
+      "sha256": "3f4d25590da8af0b7e6d0b612c7bd6e083df47909a511626492e34eda41d8ad4"
+    },
+    "levels/singleplayer/m03_cemetery/resources/audio/m03_c_coop.bblf": {
+      "size": 1545,
+      "sha256": "76199440a3aae7eab7123b38f9de4f9e3c8ac99c331cb4923b9e21676b16268f"
+    },
+    "levels/singleplayer/m05_devilsbelly/streaming/hub_a_resources.bxml": {
+      "size": 124131,
+      "sha256": "64007407ab7603724d64efedd3efd4f4fcacd9b11354a2298f5219ed13f64bc1"
     },
     "levels/singleplayer/m05_devilsbelly/resources/audio/hub_a.bblf": {
       "size": 1339,
       "sha256": "6e2afa17a577fcd1736aa5eeb6db19d84a8ee92d7b9fc34c91081802c8193bc2"
     },
+    "levels/singleplayer/m05_devilsbelly/streaming/hub_a_resources_coop.bxml": {
+      "size": 163871,
+      "sha256": "2e731d06a5cf47e398a4511377296c470cd580f461bbc97f30fbd713f0894081"
+    },
+    "levels/singleplayer/m05_devilsbelly/resources/audio/hub_a_coop.bblf": {
+      "size": 1442,
+      "sha256": "700e6b38f0838651ea780eb8ac229e2f85b1477fce66eeb7657814bb8e873e2b"
+    },
+    "levels/singleplayer/m05_devilsbelly/streaming/hub_b_resources.bxml": {
+      "size": 124628,
+      "sha256": "33e1c5c281d0605f379d4fddcb2c1d74bd9461013d33cca7976cd96629684180"
+    },
     "levels/singleplayer/m05_devilsbelly/resources/audio/hub_b.bblf": {
       "size": 1371,
       "sha256": "b939814c5d3068531478b844331bbbfaeacbcd10374385ba471c56ca23e3c890"
+    },
+    "levels/singleplayer/m05_devilsbelly/streaming/hub_b_resources_coop.bxml": {
+      "size": 165062,
+      "sha256": "7349fa99e3b5c061d57080c7ede1099c9bea5069dc60a20bd753880bcd6853fb"
+    },
+    "levels/singleplayer/m05_devilsbelly/resources/audio/hub_b_coop.bblf": {
+      "size": 1474,
+      "sha256": "9969dd1f04e3437de66c203cf3bfed88917773256f6b8b01d552c528f2666f7d"
+    },
+    "levels/singleplayer/m05_devilsbelly/streaming/hub_c_resources.bxml": {
+      "size": 125298,
+      "sha256": "20f3133547e0abe3059e9258aaaf6a3cd78f4e5506622820cfbf3a6eadb93ac1"
     },
     "levels/singleplayer/m05_devilsbelly/resources/audio/hub_c.bblf": {
       "size": 1373,
       "sha256": "ac28da2bca7787a234a81e9bab65e986f2e2262d2d2fa9aafed40db1918e9eff"
     },
+    "levels/singleplayer/m05_devilsbelly/streaming/hub_c_resources_coop.bxml": {
+      "size": 165732,
+      "sha256": "3c043668f730e962205585400bdf9eeb000733277c2a627fd72cbbba8a53d5fd"
+    },
+    "levels/singleplayer/m05_devilsbelly/resources/audio/hub_c_coop.bblf": {
+      "size": 1476,
+      "sha256": "3db05f33c62e21e5d745f5da8c2d3b790d06254b5a842b6601f75e7ac6f84ce3"
+    },
+    "levels/singleplayer/m05_devilsbelly/streaming/hub_d_resources.bxml": {
+      "size": 124628,
+      "sha256": "a98e2e0f2c80677dc0b211c8939381c3ff1dd781c64567058d6a4b79266a1bfc"
+    },
     "levels/singleplayer/m05_devilsbelly/resources/audio/hub_d.bblf": {
       "size": 1434,
       "sha256": "e8f8eacf08eaf14a4b8f9ff7ae2c1fc07e57ae1cf1c4551abdc9a953fbf66d71"
+    },
+    "levels/singleplayer/m05_devilsbelly/streaming/hub_d_resources_coop.bxml": {
+      "size": 165062,
+      "sha256": "fec3588e078f9edc4da2edbe96942832fd6b52243332e2935743be7ead4935a5"
+    },
+    "levels/singleplayer/m05_devilsbelly/resources/audio/hub_d_coop.bblf": {
+      "size": 1537,
+      "sha256": "0d33b3ca964f18d930c126c19976d7d7bbe1cdc1e832cd6232e490235cc3712c"
+    },
+    "levels/singleplayer/m07_dwoutpost/streaming/m07_a_resources.bxml": {
+      "size": 131970,
+      "sha256": "0436914ce285a20c14b6040f21e29487167e60271363596f15c3b0d5f8cc0f3d"
     },
     "levels/singleplayer/m07_dwoutpost/resources/audio/m07_a.bblf": {
       "size": 1482,
       "sha256": "105a9fa49334c0646bcffbb11b55cb49aad2a3b0a89ace0b2f6f851a8b56431b"
     },
+    "levels/singleplayer/m07_dwoutpost/streaming/m07_a_resources_coop.bxml": {
+      "size": 172406,
+      "sha256": "e963e941e579597f5b1d5254c8c8fdb6e1030513b7a8e30a5763c034f8dcec85"
+    },
+    "levels/singleplayer/m07_dwoutpost/resources/audio/m07_a_coop.bblf": {
+      "size": 1585,
+      "sha256": "6d35e2f1f41cdf5bc3506c40ee4fa921e8a73d5c2d0642de7d29481fcaff74de"
+    },
+    "levels/singleplayer/m07_dwoutpost/streaming/m07_b_resources.bxml": {
+      "size": 126121,
+      "sha256": "09b3c5fe215f05a967a3ecbde8c6f93fbc41e97b0e81a222c301cf30646508d3"
+    },
     "levels/singleplayer/m07_dwoutpost/resources/audio/m07_b.bblf": {
       "size": 1671,
       "sha256": "af834188252f729ef766b437363817a4614f930abea7990d10260281ba16f5ca"
+    },
+    "levels/singleplayer/m07_dwoutpost/streaming/m07_b_resources_coop.bxml": {
+      "size": 165863,
+      "sha256": "a7e2a4e7a70cd15353c23d06255c3c467e79e56c768a7f10a0a50e591f6b1949"
+    },
+    "levels/singleplayer/m07_dwoutpost/resources/audio/m07_b_coop.bblf": {
+      "size": 1774,
+      "sha256": "0c3e9e20c73b0d984eae8891b77d81a369928c5cdeefea455ecd41ca1708fad2"
+    },
+    "levels/singleplayer/m08_regulator/streaming/hub_a_resources.bxml": {
+      "size": 127390,
+      "sha256": "2a97396842e494e214b8bcbaa93de8bb3f04c0b28922f5def333c9dd955bf3cc"
     },
     "levels/singleplayer/m08_regulator/resources/audio/hub_a.bblf": {
       "size": 1393,
       "sha256": "243e7265fd8b3341a431d555ecbf469fb8ec48ac03de2326daa508b45a1571df"
     },
+    "levels/singleplayer/m08_regulator/streaming/hub_a_resources_coop.bxml": {
+      "size": 167867,
+      "sha256": "ca91cdc131252643bd847836dce58f26aa8d5d3bb551e8a08b3089fd2aab5d78"
+    },
+    "levels/singleplayer/m08_regulator/resources/audio/hub_a_coop.bblf": {
+      "size": 1496,
+      "sha256": "1a5b083131a684f7ddd88a1238ba50979b5c7c2249a2696b6d7d1f0baf14bf33"
+    },
+    "levels/singleplayer/m08_regulator/streaming/hub_b_resources.bxml": {
+      "size": 129745,
+      "sha256": "483afebfcf49adab81082713505412355d1e948bea09d5529a875a2ebae045c9"
+    },
     "levels/singleplayer/m08_regulator/resources/audio/hub_b.bblf": {
       "size": 1501,
       "sha256": "a19cda854d13da674befb05921b630665f45475a7f50a193766db39cf6accdb5"
+    },
+    "levels/singleplayer/m08_regulator/streaming/hub_b_resources_coop.bxml": {
+      "size": 169502,
+      "sha256": "45b9893ee6c01bf9f2801beffc4da6e097f86febb280297860109c2837aa3aad"
+    },
+    "levels/singleplayer/m08_regulator/resources/audio/hub_b_coop.bblf": {
+      "size": 1604,
+      "sha256": "78ebf117c57bf2c4bf5364af2511e646cbb1ba82351c20dd462bfacb7bbaf33a"
+    },
+    "levels/singleplayer/m09_torturemaze/streaming/m09_a_resources.bxml": {
+      "size": 109602,
+      "sha256": "addc839030fb2945b90a416c8078e73fbc7c248e3bad1e31eb39646427273410"
     },
     "levels/singleplayer/m09_torturemaze/resources/audio/m09_a.bblf": {
       "size": 1388,
       "sha256": "a5c90eb45c1af2e75afd29d14a26ba98d0681841c1a2ec4bdae59ccf02edcafc"
     },
+    "levels/singleplayer/m09_torturemaze/streaming/m09_a_resources_coop.bxml": {
+      "size": 150101,
+      "sha256": "97606336b9e0a215efd2dc529c087aa0dab41d0396f9269e07673d75bdcb85eb"
+    },
+    "levels/singleplayer/m09_torturemaze/resources/audio/m09_a_coop.bblf": {
+      "size": 1491,
+      "sha256": "4f1715e3358c1c4ddddc7e17e9d0664622e656aa452fc3f85315f391fa5ab1ab"
+    },
+    "levels/singleplayer/m09_torturemaze/streaming/m09_b_resources.bxml": {
+      "size": 127060,
+      "sha256": "2ab9cf33f662aff907c2d0cc199e4a57930d8a01e139e76f8e35590e4dc456f4"
+    },
     "levels/singleplayer/m09_torturemaze/resources/audio/m09_b.bblf": {
       "size": 1739,
       "sha256": "eb423076a29297fcb08748a59494b75b55b19f9bcaed34240b76d2737129034c"
+    },
+    "levels/singleplayer/m09_torturemaze/streaming/m09_b_resources_coop.bxml": {
+      "size": 167494,
+      "sha256": "628f8210f104ccca36969f7618e43d69abc51952d50c7b3babf4ce3bfee0a7d8"
+    },
+    "levels/singleplayer/m09_torturemaze/resources/audio/m09_b_coop.bblf": {
+      "size": 1842,
+      "sha256": "b756890b385152b55a45b1af7372a111d99bead489cbecc3cd2bda2da58fb6b9"
+    },
+    "levels/singleplayer/m09_torturemaze/streaming/m09_c_resources.bxml": {
+      "size": 112059,
+      "sha256": "6636ae092d276bab95673a804083b16db97baa1fdb0f177829daa45f87a4ed59"
     },
     "levels/singleplayer/m09_torturemaze/resources/audio/m09_c.bblf": {
       "size": 1239,
       "sha256": "272f8b268b15303ed7395089282b09ee5a1dbbfa2859fe75c51e67dfb7c6b488"
     },
+    "levels/singleplayer/m09_torturemaze/streaming/m09_c_resources_coop.bxml": {
+      "size": 152558,
+      "sha256": "d23346707784d586c251ed184e00ac52b32ec29c2de94bba5117d95e942b98ca"
+    },
+    "levels/singleplayer/m09_torturemaze/resources/audio/m09_c_coop.bblf": {
+      "size": 1342,
+      "sha256": "bdc8b7ed6177c22b0225174b58735fd5444ef3e412e6fd8e0b62420429f25c77"
+    },
+    "levels/singleplayer/m09_torturemaze/streaming/m09_d_resources.bxml": {
+      "size": 105011,
+      "sha256": "1db96574a3ddd63d475b65a926324868ef11caa3bf5a16d23f0b1caffc4540fe"
+    },
     "levels/singleplayer/m09_torturemaze/resources/audio/m09_d.bblf": {
       "size": 1498,
       "sha256": "b71805e589fd28c3857a4e577e0a396fcefafe2dfb172188c5a14358cfd2edf9"
+    },
+    "levels/singleplayer/m09_torturemaze/streaming/m09_d_resources_coop.bxml": {
+      "size": 145510,
+      "sha256": "52b7ed64c99d1c225732f9cbcf7c32d6993ab9d2e99be62ab54f7c958e025e50"
+    },
+    "levels/singleplayer/m09_torturemaze/resources/audio/m09_d_coop.bblf": {
+      "size": 1601,
+      "sha256": "aa33e460c88e8cd6dd0d5961945a7e90f41b4d673717e191cdb502d943864c46"
+    },
+    "levels/singleplayer/m09_torturemaze/streaming/m09_e_resources.bxml": {
+      "size": 115440,
+      "sha256": "1f0b338000a9b5a5b3a915f04a93e041f8d9ad4661d4e714368319260cdb4d08"
     },
     "levels/singleplayer/m09_torturemaze/resources/audio/m09_e.bblf": {
       "size": 1413,
       "sha256": "3df4257e0c76d44b59b607e07269681077a41f89dd7183ab0207094d716cf48d"
     },
+    "levels/singleplayer/m09_torturemaze/streaming/m09_e_resources_coop.bxml": {
+      "size": 155874,
+      "sha256": "c7a9e48956c14fb22b56d972faad7aca3efa9b80004c141de151c59b189ee856"
+    },
+    "levels/singleplayer/m09_torturemaze/resources/audio/m09_e_coop.bblf": {
+      "size": 1516,
+      "sha256": "48b0c512e3a976f43b89eee164c5ca661157aefa452443f0306b1628e34197da"
+    },
+    "levels/singleplayer/m09_torturemaze/streaming/m09_f_resources.bxml": {
+      "size": 116077,
+      "sha256": "5645616ff86f7fcdf5cd1981afe976229dce137219d35a4fb8176cc4be8b720e"
+    },
     "levels/singleplayer/m09_torturemaze/resources/audio/m09_f.bblf": {
       "size": 1301,
       "sha256": "e29f070f3b4e1fcbb82a00ef88217eee22b3ea52c07871615db669e4c2657835"
+    },
+    "levels/singleplayer/m09_torturemaze/streaming/m09_f_resources_coop.bxml": {
+      "size": 156576,
+      "sha256": "4b8b172aa4aeb931ce5fe68e60aa10ea256acca67de4233604a93d669196ee6c"
+    },
+    "levels/singleplayer/m09_torturemaze/resources/audio/m09_f_coop.bblf": {
+      "size": 1404,
+      "sha256": "eab19e8ec804821087a5c47e936636278c7d1eb2a6ab2b92a44ae12be0e3434c"
+    },
+    "levels/singleplayer/m10_tradingpost/streaming/m10_a_resources.bxml": {
+      "size": 133485,
+      "sha256": "56ed9b3538038adb914b31f3983d4f9942ed989ef4532d89ef0c944407ae3c8f"
     },
     "levels/singleplayer/m10_tradingpost/resources/audio/m10_a.bblf": {
       "size": 1527,
       "sha256": "a6a020cc44ce6f7c204a8c440bd2146b183b9a89d97fcc3cd45f0169dc182a58"
     },
+    "levels/singleplayer/m10_tradingpost/streaming/m10_a_resources_coop.bxml": {
+      "size": 173807,
+      "sha256": "24e63efd91f4de99131c39a4d81e74dfa7d35d1ccea640c79f2c6bd124f08530"
+    },
+    "levels/singleplayer/m10_tradingpost/resources/audio/m10_a_coop.bblf": {
+      "size": 1630,
+      "sha256": "87aa86b93b9fbc6a534588307c94a870d0812d58d6004a1861d4509db5fc0cf3"
+    },
+    "levels/singleplayer/m10_tradingpost/streaming/m10_b_resources.bxml": {
+      "size": 125560,
+      "sha256": "f051c09a2cb6031a832da8000f713ac5b4bb2acc0707f58ad99b124b06488195"
+    },
     "levels/singleplayer/m10_tradingpost/resources/audio/m10_b.bblf": {
       "size": 1373,
       "sha256": "2748541e5581a842b6e792e43a0dbb65a01f2245b87b9637cdf6053dbe257ef9"
+    },
+    "levels/singleplayer/m10_tradingpost/streaming/m10_b_resources_coop.bxml": {
+      "size": 166010,
+      "sha256": "2e3cc5f39f9873f18e3901830606b9568461457f9d83801337418c9848fbd4bc"
+    },
+    "levels/singleplayer/m10_tradingpost/resources/audio/m10_b_coop.bblf": {
+      "size": 1476,
+      "sha256": "a29e6a5c221f6f21cebfbfe4340014e32ab63a5529984fc6623a7e4232cde703"
+    },
+    "levels/singleplayer/m10_tradingpost/streaming/m10_c_resources.bxml": {
+      "size": 124631,
+      "sha256": "93a76a7dc53ea1c82c5994b7e03dc529b65c9cb2c0b21949b85be3dbcb325a87"
     },
     "levels/singleplayer/m10_tradingpost/resources/audio/m10_c.bblf": {
       "size": 1669,
       "sha256": "0f02db3ceac8cc1fb10dc82621822ae3a6ce31521f7424bc7d7a6109087afef9"
     },
+    "levels/singleplayer/m10_tradingpost/streaming/m10_c_resources_coop.bxml": {
+      "size": 165043,
+      "sha256": "8f759cabf9c90337db290a3aabe2d229e12fec6fba624612935164eb73a2cf3c"
+    },
+    "levels/singleplayer/m10_tradingpost/resources/audio/m10_c_coop.bblf": {
+      "size": 1772,
+      "sha256": "e8acc0da592285e45673b4788e5d2bad8d4e778bb756ed37cbcf1f4b64dd50cc"
+    },
+    "levels/singleplayer/m10_tradingpost/streaming/m10_d_resources.bxml": {
+      "size": 133529,
+      "sha256": "173074818d50a503360de4ffa4e0499545e5f1983812095acaf6169003ddcdf6"
+    },
     "levels/singleplayer/m10_tradingpost/resources/audio/m10_d.bblf": {
       "size": 1567,
       "sha256": "d90ce5ed97cdf8df26a585eac0e82826386c5b5ab8ac84597beb800751580adb"
+    },
+    "levels/singleplayer/m10_tradingpost/streaming/m10_d_resources_coop.bxml": {
+      "size": 173979,
+      "sha256": "640546fa8c3d035ef6b77941aff825833dc8880f900682cbd74b2fe88f3085a2"
+    },
+    "levels/singleplayer/m10_tradingpost/resources/audio/m10_d_coop.bblf": {
+      "size": 1634,
+      "sha256": "7444bd7b932a28b34d88d2d9786969c9d22e48093542e1e34930bb52004826f8"
+    },
+    "levels/singleplayer/m11_hangtown/streaming/m11_f_resources.bxml": {
+      "size": 130815,
+      "sha256": "33cccde1e0a2092e7da02c880e599f7dd2b942f22ae827a91f23be5fdc430adb"
     },
     "levels/singleplayer/m11_hangtown/resources/audio/m11_f.bblf": {
       "size": 1832,
       "sha256": "59a901c48c72b320bdd4003376fa5bef8437e2f63e0d3fcc481e2dc87e398438"
     },
+    "levels/singleplayer/m11_hangtown/streaming/m11_f_resources_coop.bxml": {
+      "size": 171268,
+      "sha256": "41cb18b86dbe071a97651edb903c8aca4b10a90f6733b2c09956b46025d68313"
+    },
+    "levels/singleplayer/m11_hangtown/resources/audio/m11_f_coop.bblf": {
+      "size": 1935,
+      "sha256": "fbd1156b7540155c736bc5b233b2e681a67e07b00176cff77c3675722a5f8ab9"
+    },
+    "levels/singleplayer/m11_hangtown/streaming/m11_g_resources.bxml": {
+      "size": 134486,
+      "sha256": "ebbd8385c2e64988b28ad2ef7edb0dd2dbe466de1941d968d763fe012380c784"
+    },
     "levels/singleplayer/m11_hangtown/resources/audio/m11_g.bblf": {
       "size": 1508,
       "sha256": "75e5e12c6f8142536de2e26278c6bd9445fd6feea2f139ec577688bea95ffc6c"
+    },
+    "levels/singleplayer/m11_hangtown/streaming/m11_g_resources_coop.bxml": {
+      "size": 174811,
+      "sha256": "8a2fe057d4e79ae88fad27a3ed27abf3478c44caf3263a96b3b2b84e05fe12ae"
+    },
+    "levels/singleplayer/m11_hangtown/resources/audio/m11_g_coop.bblf": {
+      "size": 1611,
+      "sha256": "f00415bbaca4f6c5c3370c82b0e8d66b348318ef13db89f402723974e0cdb0dc"
+    },
+    "levels/singleplayer/m11_hangtown/streaming/m11_h_resources.bxml": {
+      "size": 127743,
+      "sha256": "def9b41085d68af29e975f9194234273ab26b2e2662f6802bcb41e8b3be4e463"
     },
     "levels/singleplayer/m11_hangtown/resources/audio/m11_h.bblf": {
       "size": 1749,
       "sha256": "671eae92951cd74cadac2c4e820529b20be95e6139e52592a285b106dcae26f8"
     },
+    "levels/singleplayer/m11_hangtown/streaming/m11_h_resources_coop.bxml": {
+      "size": 168221,
+      "sha256": "12195d185ff13d49165369568ac221b0bdae6211eb4cb57e69d455959d8600b9"
+    },
+    "levels/singleplayer/m11_hangtown/resources/audio/m11_h_coop.bblf": {
+      "size": 1852,
+      "sha256": "49c19d384f52c6351a2e9688451943a56f26b8874ce609d333b6240c7ad1a7ce"
+    },
+    "levels/singleplayer/m12_citadelunderattack/streaming/m12_a_resources.bxml": {
+      "size": 128596,
+      "sha256": "baa5b80308db501730c6477cc25bfbe059a83b93eb815f56e27837037842fb20"
+    },
     "levels/singleplayer/m12_citadelunderattack/resources/audio/m12_a.bblf": {
       "size": 1470,
       "sha256": "bb1eb98b9aff117a9ff209974fa99d4ca296c23f3eda1ffb786b42b6dcd61c8d"
+    },
+    "levels/singleplayer/m12_citadelunderattack/streaming/m12_a_resources_coop.bxml": {
+      "size": 169104,
+      "sha256": "a714efbbecff03851998187d5bd7bfe2c718c4280ec67ce5f6d855f80ca6d56b"
+    },
+    "levels/singleplayer/m12_citadelunderattack/resources/audio/m12_a_coop.bblf": {
+      "size": 1573,
+      "sha256": "5d9691f0ec465433a934c0c5b350814f76b046208e0927b42ac9f5451dfe9c27"
+    },
+    "levels/singleplayer/m12_citadelunderattack/streaming/m12_aa_resources.bxml": {
+      "size": 139259,
+      "sha256": "cc783198dd370357dba1dea017bd61aa37806361113fe96a29c311e5c8bf3f7a"
     },
     "levels/singleplayer/m12_citadelunderattack/resources/audio/m12_aa.bblf": {
       "size": 1504,
       "sha256": "347a11ee50cb52cd69f3c272a27dc61c31e8cbb600c131e826c1e3252d84d5e8"
     },
+    "levels/singleplayer/m12_citadelunderattack/streaming/m12_aa_resources_coop.bxml": {
+      "size": 179701,
+      "sha256": "309e81fd8d6b07befefce97b8c5e0ec5d2cb345af1a5087a9efc96370efd6048"
+    },
+    "levels/singleplayer/m12_citadelunderattack/resources/audio/m12_aa_coop.bblf": {
+      "size": 1607,
+      "sha256": "84283ee5f784938ec39898c12f2808a6f27202b5f374fbea45c36745d28dfa55"
+    },
+    "levels/singleplayer/m12_citadelunderattack/streaming/m12_b_resources.bxml": {
+      "size": 118941,
+      "sha256": "fbe4bd007ece1a84847e62989a1656fb9cee2a8040ff2ae9654c564ff0521735"
+    },
     "levels/singleplayer/m12_citadelunderattack/resources/audio/m12_b.bblf": {
       "size": 1438,
       "sha256": "35045e4d65f0e6dc2349b12373dd984b5d6642f2e8b3a5d312e2a95f11d4ad25"
+    },
+    "levels/singleplayer/m12_citadelunderattack/streaming/m12_b_resources_coop.bxml": {
+      "size": 159384,
+      "sha256": "3a7720c7bb5921eec17e337535fb4f359395426c82ea767dff6f19ea1a30824d"
+    },
+    "levels/singleplayer/m12_citadelunderattack/resources/audio/m12_b_coop.bblf": {
+      "size": 1541,
+      "sha256": "e7cecd41969f0d8dc8291d2c6dbcb96de40c6305125c31f8058d3f9816aeadbf"
+    },
+    "levels/singleplayer/m12_citadelunderattack/streaming/m12_c_resources.bxml": {
+      "size": 129993,
+      "sha256": "b6eee70f1cdba6db755b39e4a1938a3752994cee057f37a14d130fbd5b48c83e"
     },
     "levels/singleplayer/m12_citadelunderattack/resources/audio/m12_c.bblf": {
       "size": 1568,
       "sha256": "91659c38f5799efcf512edc8492f779ca3889d5db4285f08ad2c58081945d964"
     },
+    "levels/singleplayer/m12_citadelunderattack/streaming/m12_c_resources_coop.bxml": {
+      "size": 170436,
+      "sha256": "e7d3a96a524858c9cd6079935120238041d7796c4884425ab45ea82b19fe86fa"
+    },
+    "levels/singleplayer/m12_citadelunderattack/resources/audio/m12_c_coop.bblf": {
+      "size": 1671,
+      "sha256": "02a1edffa7737743609aa5d4812697afb10638efdd1ba2ebf933b844ba2caaa8"
+    },
+    "levels/singleplayer/m12_citadelunderattack/streaming/m12_d_resources.bxml": {
+      "size": 124384,
+      "sha256": "ed48f23967687a01efdd992ac9fe5a6d22ae64472c84057864bf4f5b60881f54"
+    },
     "levels/singleplayer/m12_citadelunderattack/resources/audio/m12_d.bblf": {
       "size": 1343,
       "sha256": "8d489e298d53e90983628d2556c73f70a943a3cf2bcc8d1634ae609f1f8c1c6e"
+    },
+    "levels/singleplayer/m12_citadelunderattack/streaming/m12_d_resources_coop.bxml": {
+      "size": 164852,
+      "sha256": "c63a6d398dc132ae816e077f23057cd16937d4beae8ade071d97bcdb2cfdaefc"
+    },
+    "levels/singleplayer/m12_citadelunderattack/resources/audio/m12_d_coop.bblf": {
+      "size": 1446,
+      "sha256": "e46f5b417d1e228b2c7fbab94ccc0ce39604aee9126eac6ac005b2c1ec66a9d4"
+    },
+    "levels/singleplayer/m15_splittingpaths/streaming/m15_a_resources.bxml": {
+      "size": 133169,
+      "sha256": "20f0711560059ca2386476dc8cecf4b942ebfa07d9dfa90c8bbd06089d7fffdb"
     },
     "levels/singleplayer/m15_splittingpaths/resources/audio/m15_a.bblf": {
       "size": 1535,
       "sha256": "26dea62ee4f4a23d3b7a3a41e6ed564423f8900fd106967878e06e0848736fde"
     },
+    "levels/singleplayer/m15_splittingpaths/streaming/m15_a_resources_coop.bxml": {
+      "size": 173488,
+      "sha256": "8b4f46a3afb9c4c0fc34acc6fe12468760fb5a344d9dd095729870ba52ae02d8"
+    },
+    "levels/singleplayer/m15_splittingpaths/resources/audio/m15_a_coop.bblf": {
+      "size": 1638,
+      "sha256": "854ada79a8a18f02f89d05d858e1da72e429a9b5e91fd468dcf84cc56b07d277"
+    },
+    "levels/singleplayer/m15_splittingpaths/streaming/m15_c_resources.bxml": {
+      "size": 117512,
+      "sha256": "0c0ff4de85e8cd960c0cd8af0b0da644fa0d9b89b9664d78a3b9fe933bfd008c"
+    },
     "levels/singleplayer/m15_splittingpaths/resources/audio/m15_c.bblf": {
       "size": 1343,
       "sha256": "b7f2d90121452767763e81c959a9631b1859d192e9ce275c3ef522a60b96f1bf"
+    },
+    "levels/singleplayer/m15_splittingpaths/streaming/m15_c_resources_coop.bxml": {
+      "size": 157984,
+      "sha256": "9593421a6da9c0709ba10f45bed079ef0f0231e002979ab632ea65c6d8dd5bc1"
+    },
+    "levels/singleplayer/m15_splittingpaths/resources/audio/m15_c_coop.bblf": {
+      "size": 1446,
+      "sha256": "64dcaaee1603d46a8494da1ecfe9df7550f565c0556d7b8ae7a7de8daeb67c43"
+    },
+    "levels/singleplayer/m15_splittingpaths/streaming/m15_d_resources.bxml": {
+      "size": 120886,
+      "sha256": "902edec5447e1727080c2dc050094b86a32e234e4ecfbf10d39358ccf847aad1"
     },
     "levels/singleplayer/m15_splittingpaths/resources/audio/m15_d.bblf": {
       "size": 1368,
       "sha256": "fb2dc0754461f64fd5a308f7584a738cbb460de73620f46c7d716886c6b005f7"
     },
+    "levels/singleplayer/m15_splittingpaths/streaming/m15_d_resources_coop.bxml": {
+      "size": 160666,
+      "sha256": "65250fb748e5240221b37336a0a0782dd8e83424b03152b452bd1a8ef8966b3b"
+    },
+    "levels/singleplayer/m15_splittingpaths/resources/audio/m15_d_coop.bblf": {
+      "size": 1471,
+      "sha256": "93dbe9d05da2d84affdd1f487e93c4dc0d53d03f6935ac87fee3280bf20fd0a2"
+    },
+    "levels/singleplayer/m15_splittingpaths/streaming/m15_e_resources.bxml": {
+      "size": 119526,
+      "sha256": "32902c2a3958440c74a320b5cf6a83569f103e5198f7eb6ae4165b69335a288f"
+    },
     "levels/singleplayer/m15_splittingpaths/resources/audio/m15_e.bblf": {
       "size": 1399,
       "sha256": "37a558db9ca5e0106453293547bfee5029de72dc7fbb1b639ab0abca1d8b7c13"
+    },
+    "levels/singleplayer/m15_splittingpaths/streaming/m15_e_resources_coop.bxml": {
+      "size": 159973,
+      "sha256": "f8602884d98ddaa40f1d491f8ce90853c3cd3f41cd4bfe27f1e508309eaa94bc"
+    },
+    "levels/singleplayer/m15_splittingpaths/resources/audio/m15_e_coop.bblf": {
+      "size": 1502,
+      "sha256": "465a57d2b0ddc6f5f7d4a4fca6147f010367b306ea0c329a530377466d7e66b3"
+    },
+    "levels/singleplayer/m15_splittingpaths/streaming/m15_f_resources.bxml": {
+      "size": 116214,
+      "sha256": "0ebdf73d9af2aac86a56630197107f0e20c2d4f0cd1accd14dd4e231f505b291"
     },
     "levels/singleplayer/m15_splittingpaths/resources/audio/m15_f.bblf": {
       "size": 1242,
       "sha256": "a9647fb6b9e22913d99841091fdcb206fd56efd8bd36fb5b5f30f77ddda0cdc5"
     },
+    "levels/singleplayer/m15_splittingpaths/streaming/m15_f_resources_coop.bxml": {
+      "size": 156686,
+      "sha256": "9a38860aab6a2c7d1fac716bd2894e1029790a9782f5c141221f04caffc9f28f"
+    },
+    "levels/singleplayer/m15_splittingpaths/resources/audio/m15_f_coop.bblf": {
+      "size": 1345,
+      "sha256": "cda646234f23e905f41bf0a1541b7c7866ac164bccf54eda407f36d89be4b205"
+    },
+    "levels/singleplayer/m17_invasion/streaming/m17_b_resources.bxml": {
+      "size": 124090,
+      "sha256": "840e64f4397a5bc8ea91726fbea2f52216c28edd0e643c226a646703f2a197bd"
+    },
     "levels/singleplayer/m17_invasion/resources/audio/m17_b.bblf": {
       "size": 1304,
       "sha256": "ae2df2adb93950660f3318bf7a6ffdef6574bd0e7d1c1885f913a66b63d267b7"
+    },
+    "levels/singleplayer/m17_invasion/streaming/m17_b_resources_coop.bxml": {
+      "size": 164568,
+      "sha256": "73f368cd540e34b278213a01751dec2b6f7c899e9edf437ddba222b5fa27cae6"
+    },
+    "levels/singleplayer/m17_invasion/resources/audio/m17_b_coop.bblf": {
+      "size": 1407,
+      "sha256": "b454438478ed3f4a93fc0c479f0126b17ce9c9cce7e9cbe866302e95100bee44"
+    },
+    "levels/singleplayer/m17_invasion/streaming/m17_c_resources.bxml": {
+      "size": 119546,
+      "sha256": "a3d3295ae2fec28dd815a3aa2ab0adcfd649ed1871d54b909a06b30c7810e14c"
     },
     "levels/singleplayer/m17_invasion/resources/audio/m17_c.bblf": {
       "size": 1439,
       "sha256": "9b6d128bd1a5483eccc926feb0de59188264f05b56e74c778c8ae2df4747594c"
     },
+    "levels/singleplayer/m17_invasion/streaming/m17_c_resources_coop.bxml": {
+      "size": 159896,
+      "sha256": "d2f6d591c3696814cf1ee37ec2b4426ee828e4729a421fb7ca585db571014911"
+    },
+    "levels/singleplayer/m17_invasion/resources/audio/m17_c_coop.bblf": {
+      "size": 1542,
+      "sha256": "5b64295646cfb78c72b946e809d2c37be55e56b532a196c2f06c3543c3f8e627"
+    },
+    "levels/singleplayer/m17_invasion/streaming/m17_d_resources.bxml": {
+      "size": 123190,
+      "sha256": "291c15a11a3714f02e9102af75395b1c0662be3526bfc58c1c2d95319de1fbae"
+    },
     "levels/singleplayer/m17_invasion/resources/audio/m17_d.bblf": {
       "size": 1503,
       "sha256": "c2b9f93b7574868036ac8feae6d26f2456003cfddf57f35072710242fdeec75f"
+    },
+    "levels/singleplayer/m17_invasion/streaming/m17_d_resources_coop.bxml": {
+      "size": 163633,
+      "sha256": "f5fea4fd4e124a668f157c255f14f57a6db5805c47a3f254062e50b242c49bf4"
+    },
+    "levels/singleplayer/m17_invasion/resources/audio/m17_d_coop.bblf": {
+      "size": 1606,
+      "sha256": "efa8146a879d2e3734673370eaeed4eb55643c41732ecc62d9474b936ffc2e1a"
+    },
+    "levels/singleplayer/m19_ridetodeadfall/streaming/m19_a_resources.bxml": {
+      "size": 140233,
+      "sha256": "8627d8817d1b215fd165d7442263632d6b3ec173fb866f74acebf65817065f24"
     },
     "levels/singleplayer/m19_ridetodeadfall/resources/audio/m19_a.bblf": {
       "size": 1503,
       "sha256": "47f9d3954b135d16e344889836f3f2620a25762ec3697a3da4b18d8d4f72027e"
     },
+    "levels/singleplayer/m19_ridetodeadfall/streaming/m19_a_resources_coop.bxml": {
+      "size": 179945,
+      "sha256": "c18cd6be1d8604e550359c85e1d97e5a63cee7bd59b328bf653d3578c826ba8d"
+    },
+    "levels/singleplayer/m19_ridetodeadfall/resources/audio/m19_a_coop.bblf": {
+      "size": 1630,
+      "sha256": "408eeaeb3be60a4f5b226e19bfa786aba4036fff470a5879c280ef09f8e8b32d"
+    },
+    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_a_resources.bxml": {
+      "size": 129494,
+      "sha256": "861a501558dbca9bee7162868a1da4f896c094f88aa5df8a54e9e034271ffa7c"
+    },
     "levels/singleplayer/m20_penetratingdeadfall/resources/audio/hub_a.bblf": {
       "size": 1536,
       "sha256": "4adbf36878046802ce01659e530fb56173f898331c0f2d2088031506ebf24e92"
+    },
+    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_a_resources_coop.bxml": {
+      "size": 169936,
+      "sha256": "905b32f77d4ccfa4cf4212a80000bb9fb42cc25b6361cfbebd69d8377ae89f7b"
+    },
+    "levels/singleplayer/m20_penetratingdeadfall/resources/audio/hub_a_coop.bblf": {
+      "size": 1639,
+      "sha256": "9fa9f4106c81680691608cc2d1d26b0e4f579bce8bf126abade17ab4b514cd2d"
+    },
+    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_b2_resources.bxml": {
+      "size": 124568,
+      "sha256": "3e5be020c885408ae8a0a93498586dd3eb7927ae70f5e08023fff1b45b351252"
     },
     "levels/singleplayer/m20_penetratingdeadfall/resources/audio/hub_b2.bblf": {
       "size": 1348,
       "sha256": "bfe08cdb47b2046d58d46754f247739ea726c7948dd08687671753574d8dddc8"
     },
+    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_b2_resources_coop.bxml": {
+      "size": 165034,
+      "sha256": "b4a7fd745e2fde0edcbf89c062e5b42a4cc2402b3bd5421b5e8fd38e3af694e0"
+    },
+    "levels/singleplayer/m20_penetratingdeadfall/resources/audio/hub_b2_coop.bblf": {
+      "size": 1451,
+      "sha256": "be785989c074edb5c9619263d723659bca2d61fa5f8fb43ecab6a0e14495c5f4"
+    },
+    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_b_resources.bxml": {
+      "size": 127013,
+      "sha256": "5a2d997128de044d9b8f15608752039669682bff8a9bf093ead135abc66618d3"
+    },
     "levels/singleplayer/m20_penetratingdeadfall/resources/audio/hub_b.bblf": {
       "size": 1669,
       "sha256": "25986577b90f932990b868f776d3e03aa66fbf7392701949acb3b0513fb48e01"
+    },
+    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_b_resources_coop.bxml": {
+      "size": 167480,
+      "sha256": "3480c910dea80a7fa9da7da628a09566d80a714761bbc9e945602864e5344737"
+    },
+    "levels/singleplayer/m20_penetratingdeadfall/resources/audio/hub_b_coop.bblf": {
+      "size": 1772,
+      "sha256": "cc6aa5337c5f41f73899b9fda1d7651f9358b3b31968f923d1e6f1776c359319"
+    },
+    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_c2_resources.bxml": {
+      "size": 125934,
+      "sha256": "310539df973fcb949d0077c738783d402f7805e726b864bdfa006d3604a4cf3b"
     },
     "levels/singleplayer/m20_penetratingdeadfall/resources/audio/hub_c2.bblf": {
       "size": 1384,
       "sha256": "64c2f4d4dd5362e74c59dcda24709ef96c398b030b877de99938d98d0462068c"
     },
+    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_c2_resources_coop.bxml": {
+      "size": 166400,
+      "sha256": "d24895effb71860a8604f038877d4f2bb819054425ecbce614aee082c636b96d"
+    },
+    "levels/singleplayer/m20_penetratingdeadfall/resources/audio/hub_c2_coop.bblf": {
+      "size": 1487,
+      "sha256": "ac8c25e44a3dd4cab4248ed2a1dcfe3164b45f62b9efb9da67e13af3feffa645"
+    },
+    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_c_resources.bxml": {
+      "size": 118608,
+      "sha256": "19161b88bbc5ad210422f4584274757d59ee3ab60719b51e8658b120624527a2"
+    },
     "levels/singleplayer/m20_penetratingdeadfall/resources/audio/hub_c.bblf": {
       "size": 1602,
       "sha256": "5af82147e565b6ac055228f68e77acd66ed1b94c42f0cadc3b0e98d09a071b86"
+    },
+    "levels/singleplayer/m20_penetratingdeadfall/streaming/hub_c_resources_coop.bxml": {
+      "size": 159140,
+      "sha256": "c2eaa50c2c8c9b8e34e208f8456b8788daeacbfda0ed667b831ad4fc344dba78"
+    },
+    "levels/singleplayer/m20_penetratingdeadfall/resources/audio/hub_c_coop.bblf": {
+      "size": 1705,
+      "sha256": "6dd3c5a883755d20bab2454a29d5f9ababce828ab2ff7d7961322ce4dc9622d8"
+    },
+    "levels/singleplayer/wartrain/streaming/m07_c_resources.bxml": {
+      "size": 118890,
+      "sha256": "f62a4a2065943c8e949188afb38dcdb368b1c0ead8dfb8312d15d03d71821af0"
     },
     "levels/singleplayer/wartrain/resources/audio/m07_c.bblf": {
       "size": 1417,
       "sha256": "6f2218706877f9c66fb71066cffdd76e4cc96a48837a4921552db3c8abaa6d8a"
     },
+    "levels/singleplayer/wartrain/streaming/m07_c_resources_coop.bxml": {
+      "size": 158696,
+      "sha256": "db407945979d4ce9df280bd07fc22ba8f7640aa7385ed7b1279b749878888de7"
+    },
+    "levels/singleplayer/wartrain/resources/audio/m07_c_coop.bblf": {
+      "size": 1520,
+      "sha256": "ee56d28221ba105c97015ec139ddb2c2c572ae728582c4929d20b844984b81e7"
+    },
+    "levels/singleplayer/wrongtrain/streaming/wrongtrain_a_resources.bxml": {
+      "size": 119355,
+      "sha256": "fc433794303200393e28643307f973f06fa7c825c94bcf2ad8477e34a6de995e"
+    },
     "levels/singleplayer/wrongtrain/resources/audio/wrongtrain_a.bblf": {
       "size": 1368,
       "sha256": "9740d58446e6d9f66d7fe146a66214317754b814076b3377528c7f3ab5054f54"
     },
+    "levels/singleplayer/wrongtrain/streaming/wrongtrain_a_resources_coop.bxml": {
+      "size": 159827,
+      "sha256": "682921164253577e31a800b50a84170b786c0b01ff7473b091d3936562e2e298"
+    },
+    "levels/singleplayer/wrongtrain/resources/audio/wrongtrain_a_coop.bblf": {
+      "size": 1471,
+      "sha256": "c14e31e364a843b99ba7ee4074fc358bedd8b010df6ba015dcf81bf338d2ef78"
+    },
+    "levels/singleplayer/wrongtrain/streaming/wrongtrain_b_resources.bxml": {
+      "size": 118462,
+      "sha256": "5aeedbf4d33304d74d8057a37cb831f1b04c5dbc00108e1054bc53e63f3720a4"
+    },
     "levels/singleplayer/wrongtrain/resources/audio/wrongtrain_b.bblf": {
       "size": 1299,
       "sha256": "732645f059e9b93600291298f379687a8f61bfaff0246fea237b8f42006df7ec"
+    },
+    "levels/singleplayer/wrongtrain/streaming/wrongtrain_b_resources_coop.bxml": {
+      "size": 158959,
+      "sha256": "d0211860c5ec482a6cabb625776683adba9431b5fbfc8274ac4f3fba01b9818f"
+    },
+    "levels/singleplayer/wrongtrain/resources/audio/wrongtrain_b_coop.bblf": {
+      "size": 1402,
+      "sha256": "b5ff9a925c52e00e9e2e164dbd4aab5bfca12eec90a3f972c73143674510f29e"
     }
   },
   "v7_archives": {
     "packfile.pck": {
-      "size": 114350807,
-      "sha256": "65ac1fdc8293ba0bfa506e3aa659f5a49db163335e4401061de0bda171563b00"
+      "size": 114320473,
+      "sha256": "c8aadbd4734f2d93cbd79c813c20587c3c15bd851b46365f350ce180360307cf"
     },
     "LvlSingl.pck": {
-      "size": 222446408,
-      "sha256": "83747240f581ac783b978a84e1668037106388fc69b736fd4d3c0960162d1d28"
+      "size": 222460744,
+      "sha256": "eb7bd349696b8448b487fad2869d3f3da30638f9ec35d63604308485a9c4fc5d"
     },
     "audio.pck": {
       "size": 137958865,
@@ -7111,12 +7387,12 @@
   },
   "installed": {
     "packfile.pck": {
-      "size": 143437089,
-      "sha256": "e28e1da7f73eb182a320e057b8d050b2a67b0bb10961b5775f735b435674f51c"
+      "size": 167981663,
+      "sha256": "b50962dd5b51663166a529324ed468ecb1d824397b5e0b7ad34d5bca5e63d17f"
     },
     "LvlSingl.pck": {
-      "size": 1794665399,
-      "sha256": "5968a9080af60f2bfb620406dd1961b3f1676d3c0d1d89584f420eda67355396"
+      "size": 2106210883,
+      "sha256": "f0d98525ca956342ce6884fea2d18eba1255f3407323bc2294b64e14aa2177e1"
     },
     "audio.pck": {
       "size": 152395109,
@@ -7125,12 +7401,12 @@
   },
   "base_archives": {
     "packfile.pck": {
-      "size": 114588423,
-      "sha256": "5e183fa7fa5b1bebd2297e52f688b00eb4013b7146b4e0d0e231f52e2b9bccc4"
+      "size": 114558089,
+      "sha256": "93be79f297222eb49430111beb1257edc0a3c4510054296de1d8077ab60713ce"
     },
     "LvlSingl.pck": {
-      "size": 236805364,
-      "sha256": "62abe525a48bff26fe646e95814693aed225ec4f3ab6a94e94542fb3e48dccad"
+      "size": 236819700,
+      "sha256": "9c53cf76ad0907ba1063fdd0b6c077c7dd6d8a4b88dac6c87321b1ab269f7d56"
     },
     "audio.pck": {
       "size": 137958865,
@@ -7139,12 +7415,12 @@
   },
   "spectral_archives": {
     "packfile.pck": {
-      "size": 120732531,
-      "sha256": "3168b3ba93694bc3d9c54b38ac19d97ac3b8b1b31c6b49b93f716e93550d086c"
+      "size": 120671743,
+      "sha256": "aba044e7ebc892d5c5769e15e75621649a8e441fcc4cfdc0013351833ecb3a0b"
     },
     "LvlSingl.pck": {
-      "size": 258077411,
-      "sha256": "ebf982c749184e05f7ed3342ce108d063e2e1c92611b19245d3c1871fb24c216"
+      "size": 258114275,
+      "sha256": "7343ab40a6c63c4ea26be1768ac2a1b9132aed05f8c38c42e2fc4386b28044c5"
     },
     "audio.pck": {
       "size": 137958865,
@@ -7153,12 +7429,12 @@
   },
   "roster_archives": {
     "packfile.pck": {
-      "size": 142943521,
-      "sha256": "69e0e2d6e86353c7d2a1c94bcf648f92e10bbc227169579b243805dd824831b8"
+      "size": 142700504,
+      "sha256": "8df5915e0c3c2e53cb4fa59cf2ec61679d9e0249fa1de3c0e7b43253488adf3d"
     },
     "LvlSingl.pck": {
-      "size": 1762073527,
-      "sha256": "c24d5000e689a46ee5400f25d2ef42964b065c3373fd3e00e804fa8fdff19bf9"
+      "size": 1740034999,
+      "sha256": "3570b2245a7a0dc59c37984d42d4075002a3a0074c0a8a79cd01faaa41ad7d30"
     },
     "audio.pck": {
       "size": 150256997,

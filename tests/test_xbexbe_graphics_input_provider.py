@@ -43,6 +43,7 @@ class GraphicsInputProviderTests(unittest.TestCase):
         setup = setup.replace("static void Frame(float elapsed=1.f/60){", gamepads + "\nstatic void Frame(float elapsed=1.f/60){")
         setup = setup.replace("ImGui::NewFrame();DarkwatchGraphicsUi", "ImGui_ImplWin32_UpdateGamepads();ImGui::NewFrame();DarkwatchGraphicsUi")
         fixture = setup + WINDOW_BOUNDARY + sync + UNDEFINE_WINDOW + DRIVER
+        fixture += "\nvoid logx::Write(Level,const char*,...){}\n"
         with tempfile.TemporaryDirectory(prefix="graphics-input-provider-", dir=ROOT / "build") as temp:
             folder = Path(temp)
             src, exe = folder / "test.cpp", folder / "test.exe"
@@ -109,6 +110,11 @@ int main(){
  for(unsigned i=0;i<12;++i){Poll(0,255);Frame();SyncInput(window);CHECK(!g_released&&!g_pad&&!ImGui::IsKeyDown(ImGuiKey_GamepadFaceDown));}
  CHECK(!active&&!cursor_clipped);
  Poll();Frame();CHECK(g_released);
+ // Analog face buttons use the same threshold as the native input provider.
+ Poll(0,30,30);CHECK(!g_pad);
+ Poll(0,31);CHECK(g_pad==16);
+ Poll(0,0,31);CHECK(g_pad==32);
+ Poll();CHECK(!g_pad);
  // Stick directions use the same release-gated source, including a precise deadzone boundary.
  input::Pad stick{};stick.connected=true;stick.ly=16000;DarkwatchGraphicsPad(0,stick);CHECK(g_pad==0);
  stick.ly=16001;DarkwatchGraphicsPad(0,stick);CHECK(g_pad==1&&!stick.ly);Frame();Frame();CHECK(ImGui::IsKeyDown(ImGuiKey_GamepadDpadUp));
@@ -117,7 +123,20 @@ int main(){
  // Close while a control has received A. Original Back is delivered, then held B is quarantined.
  Close();auto pad=Poll(0,0,255);CHECK(pad.analog[1]==255);
  route.route=darkwatch::GraphicsMenuRoute::OptionsMain;pad=Poll(0,0,255);CHECK(!pad.analog[1]&&g_block_release);
- Poll();CHECK(!g_leave&&!g_block_release);
+ // Neutral analog noise must not permanently block keyboard or gamepad input after a page closes.
+ input::Pad drift{};drift.connected=true;drift.analog[0]=30;drift.analog[1]=30;drift.analog[6]=1;drift.analog[7]=30;
+ drift.lx=10000;drift.ly=-16000;drift.rx=16000;drift.ry=-10000;
+ auto neutral=drift;DarkwatchGraphicsPad(0,neutral);CHECK(!g_leave&&!g_block_release);
+ // Co-op releases each player's input separately, with the same neutral thresholds.
+ g_coop_block_release={true,true};
+ for(unsigned port:{0u,1u}){neutral=drift;DarkwatchGraphicsPad(port,neutral);CHECK(!g_coop_block_release[port]);}
+ // A deliberate trigger pull or menu direction still has to be released.
+ for(unsigned kind=0;kind<3;++kind){
+  g_block_release=true;auto held=drift;
+  if(kind==0)held.analog[7]=31;else if(kind==1)held.lx=16001;else held.buttons=8;
+  DarkwatchGraphicsPad(0,held);CHECK(g_block_release);
+  neutral=drift;DarkwatchGraphicsPad(0,neutral);CHECK(!g_block_release);
+ }
  // The production kSyncInput path is posted every Pace. No extra native mouse event is required.
  bool recovered=false;
  for(unsigned i=0;i<8;++i){Frame();SyncInput(window);if(active){CHECK(!io.WantCaptureKeyboard&&!io.WantCaptureMouse);recovered=true;}}

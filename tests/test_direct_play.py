@@ -31,19 +31,31 @@ class DirectPlayFixture {
     [DllImport("kernel32.dll")] static extern IntPtr GetStdHandle(int kind);
     [DllImport("kernel32.dll")] static extern uint GetFileType(IntPtr handle);
     static int Main(string[] args) {
-        if(Environment.GetEnvironmentVariable("DARKWATCH_DIRECT_FIXTURE_MODE")=="recover") {
-            int parent=0;
-            for(int i=0;i<args.Length-1;++i)if(args[i]=="--wait-pid")parent=Int32.Parse(args[i+1]);
+        string mode=Environment.GetEnvironmentVariable("DARKWATCH_DIRECT_FIXTURE_MODE");
+        if(mode!=null&&mode.StartsWith("recover")) {
+            int parent=0,pid=Process.GetCurrentProcess().Id;string package=null;
+            for(int i=0;i<args.Length-1;++i){if(args[i]=="--wait-pid")parent=Int32.Parse(args[i+1]);if(args[i]=="--recover")package=args[i+1];}
+            var serializer=new JavaScriptSerializer();
+            string report=Environment.GetEnvironmentVariable("DARKWATCH_DIRECT_FIXTURE_REPORT");
+            string ready=Path.Combine(package,".launcher-update","worker-ready.json");
+            if(mode!="recover")File.WriteAllText(report,serializer.Serialize(new {pid=pid,mode=mode}),Encoding.UTF8);
+            if(mode=="recover-exit-0"||mode=="recover-exit-42")return mode=="recover-exit-0"?0:42;
+            if(mode=="recover-ready-directory")Directory.CreateDirectory(ready);
+            else if(mode!="recover-no-ready") {
+                string value=mode=="recover-bad-ready"?"{":mode=="recover-large-ready"?new string('x',4097):
+                    serializer.Serialize(new {pid=mode=="recover-wrong-pid"?parent:pid});
+                File.WriteAllText(ready+".fixture",value,Encoding.UTF8);File.Move(ready+".fixture",ready);
+            }
+            if(mode!="recover"){Thread.Sleep(30000);return 99;}
             bool exited=false;
             try {using(var process=Process.GetProcessById(parent))exited=process.WaitForExit(5000);}
             catch(ArgumentException) {exited=true;}
-            File.WriteAllText(Environment.GetEnvironmentVariable("DARKWATCH_DIRECT_FIXTURE_REPORT"),
-                new JavaScriptSerializer().Serialize(new {args=args,cwd=Environment.CurrentDirectory,parentExited=exited,
+            File.WriteAllText(report,
+                serializer.Serialize(new {args=args,pid=pid,cwd=Environment.CurrentDirectory,parentExited=exited,
                     input=GetFileType(GetStdHandle(-10)),output=GetFileType(GetStdHandle(-11)),error=GetFileType(GetStdHandle(-12))}),Encoding.UTF8);
             return 0;
         }
         Console.OutputEncoding=new UTF8Encoding(false);
-        string mode=Environment.GetEnvironmentVariable("DARKWATCH_DIRECT_FIXTURE_MODE");
         var json=new JavaScriptSerializer();
         File.WriteAllText(Environment.GetEnvironmentVariable("DARKWATCH_DIRECT_FIXTURE_REPORT"),
             json.Serialize(new {args=args,cwd=Environment.CurrentDirectory,
@@ -95,11 +107,20 @@ using System.Windows;
 using System.Windows.Controls;
 using DarkwatchDarkerEdition;
 class DirectPlayHarness {
+    static int HandleCount(){using(var process=Process.GetCurrentProcess())return process.HandleCount;}
     [STAThread] static int Main(string[] args) {
         Console.OutputEncoding=new UTF8Encoding(false);
         var json=new JavaScriptSerializer();
         try {
-            if(args[0]=="recover") {
+            if(args[0]=="recover-handles") {
+                int before=0;
+                for(int i=0;i<9;++i) {
+                    try {SetupProcess.TryRecover(args[1]);throw new Exception("Unready fixture was accepted");}
+                    catch(IOException) { }
+                    if(i==0)before=HandleCount();
+                }
+                Console.Write(json.Serialize(new {ok=true,before=before,after=HandleCount()}));
+            } else if(args[0]=="recover") {
                 bool started=SetupProcess.TryRecover(args[1]);
                 Console.Write(json.Serialize(new {ok=true,started=started,pid=Process.GetCurrentProcess().Id}));
             } else if(args[0]=="info"||args[0]=="download-info"||args[0]=="status-info") {
@@ -244,6 +265,8 @@ class DirectPlayTests(unittest.TestCase):
                 journal = package / ".launcher-update/transaction.json"
                 journal.write_text(json.dumps({"phase": phase, "runner": "C:/untrusted/evil.exe",
                                                "script": "../../evil.py", "restart": "cmd.exe"}), encoding="utf-8")
+                marker = package / ".launcher-update/worker-ready.json"
+                marker.write_text(json.dumps({"pid": os.getpid()}), encoding="utf-8")
                 started = time.monotonic()
                 response, record = self.run_fixture("recover", "recover", package)
                 self.assertTrue(response["ok"])
@@ -251,11 +274,70 @@ class DirectPlayTests(unittest.TestCase):
                 self.assertLess(time.monotonic() - started, 3, "Recovery must return rather than wait on its own caller")
                 details = self.recovery_report(record)
                 self.assertTrue(details["parentExited"], "The runner must outlive the bootstrap caller")
+                self.assertEqual(json.loads(marker.read_text(encoding="utf-8-sig"))["pid"], details["pid"])
                 self.assertEqual(details["args"], ["-B", str(package / ".launcher-update/runner/release_update.py"),
                                                  "--recover", str(package), "--wait-pid", str(response["pid"]), "--restart"])
                 self.assertEqual(details["cwd"], str(package / ".launcher-update/runner"))
                 for handle in ("input", "output", "error"):
                     self.assertNotEqual(details[handle], 3, "Recovery inherited a caller pipe: " + handle)
+
+    def assert_worker_stopped(self, record):
+        import _winapi
+        pid = self.recovery_report(record)["pid"]
+        try:
+            handle = _winapi.OpenProcess(0x100000, False, pid)
+        except OSError as error:
+            self.assertEqual(error.winerror, 87)
+            return
+        try:
+            self.assertEqual(_winapi.WaitForSingleObject(handle, 0), _winapi.WAIT_OBJECT_0,
+                             "Unacknowledged recovery worker survived the failed handoff")
+        finally:
+            _winapi.CloseHandle(handle)
+
+    def test_recovery_rejects_early_zero_and_nonzero_exit(self):
+        for code in (0, 42):
+            with self.subTest(code=code):
+                package = self.recovery_package("early recovery exit " + str(code))
+                started = time.monotonic()
+                response, record = self.run_fixture("recover-exit-" + str(code), "recover", package)
+                self.assertFalse(response["ok"])
+                self.assertEqual(response["type"], "System.IO.IOException")
+                self.assertIn("exit 0x" + format(code, "08X"), response["message"])
+                self.assertLess(time.monotonic() - started, 3)
+                self.assert_worker_stopped(record)
+
+    def test_recovery_timeout_and_wrong_pid_stop_only_unready_worker(self):
+        for mode in ("recover-no-ready", "recover-wrong-pid"):
+            with self.subTest(mode=mode):
+                package = self.recovery_package(mode)
+                marker = package / ".launcher-update/worker-ready.json"
+                marker.write_text(json.dumps({"pid": os.getpid()}), encoding="utf-8")
+                started = time.monotonic()
+                response, record = self.run_fixture(mode, "recover", package)
+                elapsed = time.monotonic() - started
+                self.assertFalse(response["ok"])
+                self.assertEqual(response["type"], "System.IO.IOException")
+                self.assertIn("did not become ready", response["message"])
+                self.assertGreaterEqual(elapsed, 10, "Fixture must exercise the production readiness deadline")
+                self.assertLess(elapsed, 13)
+                self.assert_worker_stopped(record)
+                if mode == "recover-no-ready":
+                    self.assertFalse(marker.exists(), "Stale readiness survived the new handoff")
+
+    def test_recovery_invalid_readiness_stops_worker_and_closes_handles(self):
+        for mode in ("recover-bad-ready", "recover-large-ready", "recover-ready-directory"):
+            with self.subTest(mode=mode):
+                package = self.recovery_package(mode)
+                response, record = self.run_fixture(mode, "recover", package)
+                self.assertFalse(response["ok"])
+                self.assertEqual(response["type"], "System.IO.IOException")
+                self.assert_worker_stopped(record)
+        package = self.recovery_package("recovery handle cleanup")
+        response, record = self.run_fixture("recover-bad-ready", "recover-handles", package)
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["after"], response["before"], "Repeated recovery errors leaked process/thread handles")
+        self.assert_worker_stopped(record)
 
     def test_pending_recovery_blocks_backend_before_missing_payload(self):
         for phase in ("prepared", "applying"):
@@ -306,7 +388,7 @@ class DirectPlayTests(unittest.TestCase):
         (target / "file").write_text("fixture", encoding="utf-8")
         for name in (".launcher-update", ".launcher-update/transaction.json", ".launcher-update/runner",
                      ".launcher-update/runner/python.exe", ".launcher-update/runner/release_update.py",
-                     ".launcher-update/runner/python312.dll"):
+                     ".launcher-update/runner/python312.dll", ".launcher-update/worker-ready.json"):
             with self.subTest(name=name):
                 package = self.recovery_package("linked " + name.replace("/", "-"))
                 link = package / name

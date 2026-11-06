@@ -1,0 +1,114 @@
+{
+  "userinterface/localization/localization_amb_s.bxml": {
+    "sha256": "6e36ee7418bcb388c5a0265060c89a3e6aae8dda76ced3bdba64f333dc8171e5",
+    "padding": 237
+  },
+  "userinterface/localization/localization_cit_s.bxml": {
+    "sha256": "f90e8016a64e3210fad6fa4ca54ee68019e2e789af59a6471fc848262761fe0d",
+    "padding": 292
+  },
+  "userinterface/localization/localization_fal_s.bxml": {
+    "sha256": "70e7cbeb2ffa0e93f25b32c6d4af4aee0a03d24b75b251e75facd65a78009c6e",
+    "padding": 72
+  },
+  "userinterface/localization/localization_frontend_s.bxml": {
+    "sha256": "984186087e5c70d31d2a3c5d312ac05592386d3abf7b29023dba332ee9218ddc",
+    "padding": 292
+  },
+  "userinterface/localization/localization_m01_s.bxml": {
+    "sha256": "96f7ea37d5aedf56f780149783ed13d3ae08563e2c133f2110ae1d2441a0d18d",
+    "padding": 8
+  },
+  "userinterface/localization/localization_m02_s.bxml": {
+    "sha256": "0d7afdbc9cf098139c950206ef7b2d75f4a70a3420802ad7392a43943fe9705d",
+    "padding": 16
+  },
+  "userinterface/localization/localization_m03_s.bxml": {
+    "sha256": "9800a970564f4d2bf7ba4bd5fa8bc27dc690be1e83e25108e2e388187f2b664f",
+    "padding": 82
+  },
+  "userinterface/localization/localization_m04_s.bxml": {
+    "sha256": "a676afac403d65ace9e16e714fde36c7c441de3576a385e078c103fd480b487c",
+    "padding": 25
+  },
+  "userinterface/localization/localization_m05_s.bxml": {
+    "sha256": "fc4264eeb03034f44006cadcf9f713ccbb6e33e8add11dc44119a94aadbacf22",
+    "padding": 14
+  },
+  "userinterface/localization/localization_m06_s.bxml": {
+    "sha256": "0c545c14ff9ad9c130cbd3670e94fc081b7a611bfed0a9f7b9a9ecadfb371246",
+    "padding": 8
+  },
+  "userinterface/localization/localization_m07_s.bxml": {
+    "sha256": "e17e1b68a3da18acb3c1d098027cbd60930695e460cc76f6680be75bdcca32f2",
+    "padding": 137
+  },
+  "userinterface/localization/localization_m08_s.bxml": {
+    "sha256": "79bda2a360ae162b8256ccf6e26a595402bf94c7cad2b8fa874056152940f5b6",
+    "padding": 76
+  },
+  "userinterface/localization/localization_m09_s.bxml": {
+    "sha256": "ee00fc78bfe65eb3dd99f72cd30ef675053b8858302921d94d17458e4e76695d",
+    "padding": 36
+  },
+  "userinterface/localization/localization_m10_s.bxml": {
+    "sha256": "9508a1671a5fef9589669c205626618c4439af467125f4d1669b15052ea179af",
+    "padding": 52
+  },
+  "userinterface/localization/localization_m11_s.bxml": {
+    "sha256": "f84e5ed6e9cf9dca0aebadb2e6441f005454a250a1691b8b04d6eab133eb7b43",
+    "padding": 143
+  },
+  "userinterface/localization/localization_m12_s.bxml": {
+    "sha256": "d4daec18ed988a984158fd4b017964021c768f80f31d5993a7c8817890c202f0",
+    "padding": 147
+  },
+  "userinterface/localization/localization_m15_s.bxml": {
+    "sha256": "9fd9c652a2e0248a79c8f7fbe215f7eaa0f765f9669b63f36ddf688a8df68f8e",
+    "padding": 104
+  },
+  "userinterface/localization/localization_m16_s.bxml": {
+    "sha256": "a0bc7d2eb4527ab3abed5406c38c4bddbae5b701de58402abbbd40253ed161c3",
+    "padding": 33
+  },
+  "userinterface/localization/localization_m17_s.bxml": {
+    "sha256": "e0fd6d9d312ea2023f5358efd2f107e2c3c94dd87c6c1c626d6f0fe305c9bd4b",
+    "padding": 36
+  },
+  "userinterface/localization/localization_m19_s.bxml": {
+    "sha256": "e0057c7acaa9f8dac7e5abc2aec23c8739ca4d6bab086d65b4b8d4ec554ff4d4",
+    "padding": 22
+  },
+  "userinterface/localization/localization_m20_s.bxml": {
+    "sha256": "96b87079d81802f27c7f02345b2931b4a0ea649a515099b7a5e107cd5236b12f",
+    "padding": 112
+  },
+  "userinterface/localization/localization_m22_s.bxml": {
+    "sha256": "0f2260fa378168bececb96a88a5df27974f1b44e120064c3512180d23acbcc90",
+    "padding": 3
+  },
+  "userinterface/localization/localization_mgs_s.bxml": {
+    "sha256": "4dbf8f295de1841ddea021eb893cb731545fdcb2df6961d2bd87a24263f668b3",
+    "padding": 12
+  },
+  "userinterface/localization/localization_ps2_s.bxml": {
+    "sha256": "e5272a9ef2263208e44f9d17b8931ba7fee8bf890aaf391b2f40ea0dcea68ed7",
+    "padding": 246
+  },
+  "userinterface/localization/localization_s.bxml": {
+    "sha256": "68a6216c9a7a48f065f22e04793723b2b0f0286bcd479e33d1c22f89a78a1aba",
+    "padding": 1240
+  },
+  "userinterface/localization/localization_tem_s.bxml": {
+    "sha256": "829cd0d72318c01b76f9c2a5fa51148f68d265c723eb865bf7698646f483c9e2",
+    "padding": 719
+  },
+  "userinterface/localization/localization_war_s.bxml": {
+    "sha256": "bc9ee853314bff52114a7557e477ad2203d7944e9ef8e3e6d7a0759074e3b379",
+    "padding": 16
+  },
+  "userinterface/localization/localization_wro_s.bxml": {
+    "sha256": "69dc5a0082d482cd79f28694b8dc2b4d9c03368fcf4fa4b9fb4667376cf8160e",
+    "padding": 62
+  }
+}

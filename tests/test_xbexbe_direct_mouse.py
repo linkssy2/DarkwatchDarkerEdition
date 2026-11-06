@@ -21,6 +21,8 @@ FIXTURE = r'''
 #include "game_info.cpp"
 static darkwatch::ControlsSettings controls;
 darkwatch::ControlsSettings darkwatch::ControlsSnapshot(){return controls;}
+void darkwatch::ControlsWalkInput(int,input::Pad&,bool,bool,uint32_t){}
+uint8_t* kernel::g_base=nullptr;
 static const void* controls_load_table=nullptr;
 static void* controls_save_table=nullptr;
 static const void* audio_load_table=nullptr;
@@ -40,6 +42,7 @@ void darkwatch::settings::SaveCharacters(void*){}
 void darkwatch::language::Load(const void*){}
 void darkwatch::language::Save(void*){}
 bool darkwatch::language::Initialize(const std::filesystem::path&){return true;}
+std::filesystem::path darkwatch::language::MediaDirectory(const std::filesystem::path& root){return root;}
 bool darkwatch::language::Spanish(){return false;}
 std::filesystem::path app::ExeDir(){return {};}
 void kernel::SetGameFileOverlay(const std::string&){}
@@ -55,6 +58,10 @@ int darkwatch::PrepareShaders() { return 0; }
 void DarkwatchGraphicsPad(int, input::Pad&) {}
 // Weapon cycling has its own real input fixture; this fixture isolates aiming.
 void DarkwatchWeaponInput(int, input::Pad&) {}
+// Shoulder switching has a separate production-input fixture.
+void DarkwatchShoulderInput(int, input::Pad&, bool, uint32_t) {}
+// Native sight-event dispatch is exercised by the dedicated sight fixture.
+extern "C" void sub_00216560(X86Context&,uint8_t*){}
 #define CHECK(x) do {if(!(x)){std::fprintf(stderr,"line %d: %s\n",__LINE__,#x);std::exit(90);}} while(0)
 static uint8_t memory[0x500000],before[0x500000];
 static std::set<uint32_t> blocked;
@@ -144,6 +151,35 @@ static void Pitch(double degrees,unsigned top=0,double angle=10,double rate=3){
  CHECK(!std::memcmp(before,memory,sizeof(memory)));++cases;
 }
 int main(){
+ // Native walking gate resolves each local player's own camera, controller and layout.
+ {
+  Reset();constexpr uint32_t game=0x140000,records=0x141000,actor=0x142000,actor2=0x143000;
+  constexpr uint32_t player=0x144000,parts=0x145000,name=0x146000;
+  W(0x4AC9A0,game);W(game+0x44,1);W(game+0x50,1);W(game+0x54,records);
+  W(records+0x10C,0);W(records+0x114,0);W(records+0x128,1);W(records+0x118,actor);W(records+0xA8,name);
+  std::memcpy(memory+name+2,"Default",8);W(actor+0x60,1);W(actor+0x64,parts);W(parts+4,player);
+  W(player,0x4227A4);W(player+0xC,actor);
+  // Captured actual PlayerComponent values: these fields are not input-gate pointers.
+  W(player+0xF4,1066017100);W(player+0x20,0);ZoomCamera(actor);
+  uint32_t found=0;bool right=true;CHECK(WalkTarget(memory,0,found,right)&&found==actor&&!right);
+  CHECK(!WalkTarget(memory,1,found,right));
+  std::memcpy(memory+name+2,"Lefty",6);CHECK(WalkTarget(memory,0,found,right)&&right);
+  std::memcpy(memory+name+2,"unknown",8);CHECK(!WalkTarget(memory,0,found,right));
+  std::memcpy(memory+name+2,"Default",8);
+  W(zoom_camera_list,0x180000);CHECK(!WalkTarget(memory,0,found,right));W(zoom_camera_list,zoom_personal);
+  memory[0x3121]=1;CHECK(!WalkTarget(memory,0,found,right));memory[0x3121]=0;
+  memory[0x3120]=0;CHECK(!WalkTarget(memory,0,found,right));memory[0x3120]=1;
+  W(player+0xC,actor2);CHECK(!WalkTarget(memory,0,found,right));W(player+0xC,actor);
+  W(game+0x44,2);W(game+0x50,2);W(records+0x130+0x10C,1);
+  W(records+0x130+0x114,1);W(records+0x130+0x128,1);W(records+0x130+0x118,actor2);
+  W(records+0x130+0xA8,name);W(actor2+0x60,1);W(actor2+0x64,parts+0x100);W(parts+0x104,player+0x200);
+  W(player+0x200,0x4227A4);W(player+0x20C,actor2);W(player+0x2F4,1066017100);ZoomCamera(actor2,70,70,0x20000);
+  CHECK(WalkTarget(memory,1,found,right)&&found==actor2);CHECK(WalkTarget(memory,0,found,right)&&found==actor);
+  W(records+0x130+0x114,0);CHECK(!WalkTarget(memory,0,found,right));W(records+0x130+0x114,1);
+  W(records+0x130+0x128,0);W(records+0x130+0x114,~0u);
+  CHECK(WalkTarget(memory,0,found,right)&&found==actor);CHECK(!WalkTarget(memory,1,found,right));
+  blocked.insert(parts&~0xFFFu);CHECK(!WalkTarget(memory,0,found,right));blocked.clear();
+ }
  // Walk, jump and derived vampire jump share verified original look callers.
  for(uint32_t r:{0x421FE0u,0x420E50u,0x4223A8u})for(unsigned top=0;top<8;top++){
   Reset(r);Frame(20,-30);Yaw(-1,top);Pitch(-1.5,top);

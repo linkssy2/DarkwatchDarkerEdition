@@ -1,4 +1,4 @@
-"""Synthetic checks for authored character weighting bounds."""
+"""Private-disc secondary joint authoring: rest pose, weights and isolation."""
 import hashlib
 import json
 import math

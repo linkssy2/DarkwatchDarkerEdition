@@ -7,10 +7,15 @@
 #include <map>
 #include <vector>
 #include <toml++/toml.hpp>
+#include "language_portuguese.h"
+#include "language_french.h"
+#include "language_german.h"
+#include "language_italian.h"
 
 namespace darkwatch::language {
 namespace {
-bool requested = false;
+enum class Locale { English, Spanish, Portuguese, French, German, Italian };
+Locale requested = Locale::English;
 std::atomic<bool> enabled{false};
 using Lines = std::map<uint64_t, std::string>;
 Lines catalogue;
@@ -23,13 +28,34 @@ uint64_t ContextId(uint32_t key, std::string_view original) {
 }
 struct Copy {const char* english; const char* spanish;};
 constexpr Copy copy[]{
+    {"SWAP SHOULDER", "CAMBIAR HOMBRO"},
+    {"Switch camera shoulder.", "Cambia el hombro de la cámara."},
+    {"WALK", "CAMINAR"},
+    {"WALK MODE", "MODO DE CAMINAR"},
+    {"Hold to Walk", "Mantener para caminar"},
+    {"Toggle", "Alternar"},
+    {"Hold", "Mantener"},
+    {"Hold to aim while pressed. Toggle to cycle sight mode with each press.", "Mantener para apuntar mientras pulsas. Alternar para cambiar de modo de mira con cada pulsación."},
+    {"Hold or toggle slower movement using Walk Mode.", "Mantén o alterna el movimiento lento según el modo de caminar."},
+    {"Assign Walk below or in Controller Layout. On-foot movement only.", "Asigna Caminar abajo o en Configuración del mando. Solo afecta al movimiento a pie."},
+    {"SHOW HUD", "MOSTRAR HUD"},
+    {"This player's gameplay HUD and reticle. Menus and subtitles stay visible.", "HUD y retícula de este jugador. Los menús y subtítulos siguen visibles."},
+    {"RETICLE COLOR", "COLOR DE RETÍCULA"},
+    {"Normal", "Normal"}, {"Enemy", "Enemigo"}, {"Friendly", "Aliado"},
+    {"COLOR MODE", "MODO DE COLOR"},
+    {"Original", "Original"}, {"Custom", "Personalizado"},
+    {"RED", "ROJO"}, {"GREEN", "VERDE"}, {"BLUE", "AZUL"},
+    {"Edit each target color separately. Original keeps the game's colors and effects.", "Edita cada color por separado. Original conserva los colores y efectos del juego."},
+    {"RESET RETICLE COLORS", "RESTABLECER COLORES"},
     {"NEXT WEAPON", "ARMA SIGUIENTE"},
     {"PREVIOUS WEAPON", "ARMA ANTERIOR"},
     {"Equip the next carried weapon.", "Equipar la siguiente arma que llevas."},
     {"Equip the previous carried weapon.", "Equipar el arma anterior que llevas."},
-    {"GAMEPLAY CHEATS", "TRUCOS"},
+    {"GAMEPLAY OPTIONS", "OPCIONES DE JUEGO"},
     {"CARRY ALL WEAPONS", "LLEVAR TODAS LAS ARMAS"},
-    {"Both players. Turning this off keeps weapons already carried.", "Para ambos jugadores. Al desactivarlo conservas las armas que llevas."},
+    {"KEEP STARTING REVOLVER", "CONSERVAR REVÓLVER INICIAL"},
+    {"Both players. Keep the starting revolver after receiving the Redeemer. Applies at weapon changes and chapter starts.", "Para ambos jugadores. Conserva el revólver inicial al recibir la Redentora. Se aplica al cambiar de arma y al iniciar capítulos."},
+    {"Both players. Extra weapons stay stored until this is on.", "Para ambos. Las armas adicionales quedan guardadas hasta activarlo."},
     {"Gameplay override; menus unchanged.", "Sustituye la acción al jugar, no en menús."},
     {"Start and Back are reserved. Choose another button.", "Start y Back están reservados. Elige otro botón."},
     {"Gameplay button assigned. Apply from Controls to save.", "Botón asignado. Aplica desde Controles para guardar."},
@@ -39,8 +65,12 @@ constexpr Copy copy[]{
     {"SPEECH VOLUME", "VOLUMEN DE VOCES"},
     {"SOUND OUTPUT", "SALIDA DE AUDIO"},
     {"Stereo", "Estéreo"},
-    {"Surround", "Envolvente"},
-    {"Surround uses your device's 5.1 or 7.1 speakers.", "Usa los altavoces 5.1 o 7.1 de tu dispositivo."},
+    {"5.1 Surround", "Envolvente 5.1"},
+    {"7.1 Surround", "Envolvente 7.1"},
+    {"Active output: Stereo.", "Salida activa: estéreo."},
+    {"Active output: 5.1 Surround.", "Salida activa: envolvente 5.1."},
+    {"Active output: 7.1 Surround.", "Salida activa: envolvente 7.1."},
+    {"7.1 unavailable on this device; playback will use 5.1.", "Este dispositivo no admite 7.1; se usará 5.1."},
     {"Surround unavailable. Set up 5.1 or 7.1 speakers, then restart.", "Configura altavoces 5.1 o 7.1 y reinicia para usar sonido envolvente."},
     {"Could not apply audio settings. Reopen Audio and try again.", "No se pudo aplicar el audio. Vuelve a abrir Audio e inténtalo de nuevo."},
     {"Audio applied. Profile volumes save when you leave Options.", "Audio aplicado. Los volúmenes se guardan al salir de Opciones."},
@@ -71,10 +101,10 @@ constexpr Copy copy[]{
     {"PREVIOUS", "ANTERIOR"},
     {"NEXT", "SIGUIENTE"},
     {"CONTINUE", "CONTINUAR"},
-    {"Choose your single-player character.", "Elige tu personaje para un jugador."},
-    {"Continue to choose a chapter or resume your save.", "Continúa para elegir un capítulo o reanudar tu partida."},
+    {"Choose your character.", "Elige tu personaje."},
+    {"Continue to chapter selection.", "Continúa a la selección de capítulos."},
     {"Replay this chapter? Your saved campaign progress will be kept.", "¿Repetir este capítulo? Se conservará el progreso de tu campaña."},
-    {"Could not open Single Player. Try again.", "No se pudo abrir Un jugador. Inténtalo de nuevo."},
+    {"Could not open chapter selection. Try again.", "No se pudo abrir la selección de capítulos. Inténtalo de nuevo."},
     {"CHARACTER SELECTED FOR THIS SESSION. COULD NOT SAVE SETTINGS.", "PERSONAJE ELEGIDO PARA ESTA SESIÓN. NO SE PUDO GUARDAR."},
     {"COULD NOT PREPARE CAMPAIGN. RESTART THE GAME AND TRY AGAIN.", "NO SE PUDO PREPARAR LA CAMPAÑA. REINICIA EL JUEGO E INTÉNTALO DE NUEVO."},
     {"QUIT TO DESKTOP", "SALIR DEL JUEGO"},
@@ -108,11 +138,24 @@ constexpr Copy copy[]{
     {"RESOLUTION", "RESOLUCIÓN"},
     {"ASPECT RATIO", "RELACIÓN DE ASPECTO"},
     {"RENDER RESOLUTION", "RESOLUCIÓN INTERNA"},
+    {"CAMERA VIEW", "VISTA DE CÁMARA"},
+    {"First Person", "Primera persona"},
+    {"Third Person - Centered", "Tercera - centrada"},
+    {"Third Person - Shoulder", "Tercera - hombro"},
+    {"On-foot camera. Each player chooses their own view.", "Cámara a pie. Cada jugador elige su propia vista."},
     {"FIELD OF VIEW", "CAMPO DE VISIÓN"},
     {"WEAPON FOV", "FOV DEL ARMA"},
     {"RETICLE SIZE", "TAMAÑO DE LA MIRA"},
     {"0% = off. 100% = original size.", "0% = desactivada. 100% = tamaño original."},
     {"CUTSCENE BORDERS", "BANDAS DE ESCENAS"},
+    {"FMV SCALING", "ESCALA DE VÍDEOS"},
+    {"MENU ASPECT RATIO", "FORMATO DEL MENÚ"},
+    {"Widescreen", "Panorámico"},
+    {"Original 4:3", "Original 4:3"},
+    {"Menus, logos and loading artwork. Gameplay and movies are unchanged.", "Menús, logos y pantallas de carga. No cambia el juego ni los vídeos."},
+    {"Original Aspect Ratio", "Aspecto original"},
+    {"Fill Screen", "Llenar pantalla"},
+    {"Fill enlarges the picture without stretching or cutting it off.", "Llenar amplía la imagen sin estirarla ni recortarla."},
     {"FPS COUNTER", "CONTADOR DE FPS"},
     {"VERTICAL SYNC", "SINCRONIZACIÓN VERT."},
     {"FPS LIMIT", "LÍMITE DE FPS"},
@@ -147,6 +190,9 @@ constexpr Copy copy[]{
     {"Windowed", "Ventana"},
     {"Automatic", "Automática"},
     {"Widescreen 16:9", "Panorámica 16:9"},
+    {"Widescreen 16:10", "Panorámica 16:10"},
+    {"Ultrawide 21:9", "Ultrapanorámica 21:9"},
+    {"Super Ultrawide 32:9", "Superultrapanorámica 32:9"},
     {"Unlimited", "Sin límite"},
     {"  (Desktop)", "  (Escritorio)"},
     {"Unbound", "Sin asignar"},
@@ -283,7 +329,7 @@ constexpr Copy copy[]{
     {"100% = original. Lower is darker.", "100% = original. Menos es más oscuro."},
     {"Installed gameplay textures. UI unchanged.", "Texturas instaladas. No cambia la interfaz."},
     {"Install the HD texture pack in the launcher.", "Instala el paquete de texturas HD desde el lanzador."},
-    {"Restart after changing aspect ratio.", "Reinicia tras cambiar la relación de aspecto."},
+    {"Restart after changing display aspect ratio.", "Reinicia tras cambiar el formato de pantalla."},
     {"Keep display settings? Reverting in %d seconds.", "¿Conservar ajustes? Se revierten en %d segundos."},
     {"Press ^pcStart", "Pulsa ^pcStart"},
     {"Press ^pcStart to Continue", "Pulsa ^pcStart para continuar"},
@@ -300,31 +346,64 @@ struct FoldLess {
     }
 };
 struct Entry {const char* host; std::string guest;};
-const auto& Copies() {
-    static const auto entries = [] {
+const auto& Copies(Locale locale) {
+    const auto build = [](Locale selected) {
         std::map<std::string_view, Entry, FoldLess> out;
-        for (const auto& item : copy) {
+        const auto add = [&](const char* english, const char* translated) {
             std::string guest;
-            for (const auto* p = reinterpret_cast<const unsigned char*>(item.spanish); *p;) {
+            for (const auto* p = reinterpret_cast<const unsigned char*>(translated); *p;) {
                 unsigned c = *p++;
                 if (c >= 0xC2 && c <= 0xC3 && (*p & 0xC0) == 0x80) c = ((c & 31) << 6) | (*p++ & 63);
                 if (c >= 0xE0 && c <= 0xFC && c != 0xF7) c -= 32;
                 guest += char(c);
             }
-            out.emplace(item.english, Entry{item.spanish, std::move(guest)});
+            out.emplace(english, Entry{translated, std::move(guest)});
+        };
+        switch (selected) {
+        case Locale::Portuguese: for (const auto& item : copy_portuguese) add(item.english, item.portuguese); break;
+        case Locale::French: for (const auto& item : copy_french) add(item.english, item.french); break;
+        case Locale::German: for (const auto& item : copy_german) add(item.english, item.german); break;
+        case Locale::Italian: for (const auto& item : copy_italian) add(item.english, item.italian); break;
+        default: for (const auto& item : copy) add(item.english, item.spanish); break;
         }
         return out;
-    }();
-    return entries;
+    };
+    // Construct only the requested dictionary, once; changing locale needs a restart.
+    switch (locale) {
+    case Locale::Portuguese: { static const auto entries = build(locale); return entries; }
+    case Locale::French: { static const auto entries = build(locale); return entries; }
+    case Locale::German: { static const auto entries = build(locale); return entries; }
+    case Locale::Italian: { static const auto entries = build(locale); return entries; }
+    default: { static const auto entries = build(Locale::Spanish); return entries; }
+    }
 }
 }
 void Load(const void* table) {
     const auto* t = static_cast<const toml::table*>(table);
-    requested = t && (*t)["language"]["text"].is_string() && (*t)["language"]["text"].value_or(std::string{}) == "es";
+    const auto code = t ? (*t)["language"]["text"].value_or(std::string{}) : std::string{};
+    requested = code == "es" ? Locale::Spanish : code == "pt-BR" ? Locale::Portuguese :
+        code == "fr" ? Locale::French : code == "de" ? Locale::German : code == "it" ? Locale::Italian : Locale::English;
     enabled = false;
 }
 void Save(void* table) {
-    if (auto* t = static_cast<toml::table*>(table)) t->insert_or_assign("language", toml::table{{"text", requested ? "es" : "en"}});
+    if (auto* t = static_cast<toml::table*>(table)) t->insert_or_assign("language", toml::table{{"text", Code()}});
+}
+const char* Code() {
+    switch (requested) {
+    case Locale::Spanish: return "es";
+    case Locale::Portuguese: return "pt-BR";
+    case Locale::French: return "fr";
+    case Locale::German: return "de";
+    case Locale::Italian: return "it";
+    default: return "en";
+    }
+}
+std::filesystem::path MediaDirectory(const std::filesystem::path& directory) {
+    if (!Translated()) return {};
+    // The community PT-BR text optionally uses an installed Spanish voice track.
+    const auto path = directory / "language" / (requested == Locale::Portuguese ? "es" : Code()) / "assets";
+    std::error_code error;
+    return std::filesystem::is_directory(path, error) ? path : std::filesystem::path{};
 }
 uint32_t NativeKey(std::string_view key) {
     uint32_t value = 0xFFFFFFFFu;
@@ -339,8 +418,8 @@ uint32_t NativeKey(std::string_view key) {
 bool Initialize(const std::filesystem::path& directory) {
     enabled = false;
     catalogue.clear();
-    if (!requested) return true;
-    const auto path = directory / "language" / "es" / "language_text.bin";
+    if (requested == Locale::English) return true;
+    const auto path = directory / "language" / Code() / "language_text.bin";
     std::error_code error;
     const auto bytes = std::filesystem::file_size(path, error);
     if (error || bytes < 12 || bytes > (8u << 20)) return false;
@@ -389,21 +468,23 @@ bool Initialize(const std::filesystem::path& directory) {
     enabled = true;
     return true;
 }
-bool Spanish() {return enabled.load();}
+bool Spanish() {return enabled.load() && requested == Locale::Spanish;}
+bool Portuguese() {return enabled.load() && requested == Locale::Portuguese;}
+bool Translated() {return enabled.load();}
 const char* Text(const char* english) {
-    if (!english || !Spanish()) return english;
-    const auto& entries = Copies();
+    if (!english || !Translated()) return english;
+    const auto& entries = Copies(requested);
     const auto found = entries.find(english);
     return found == entries.end() ? english : found->second.host;
 }
 const char* Guest(const char* english) {
-    if (!english || !Spanish()) return english;
-    const auto& entries = Copies();
+    if (!english || !Translated()) return english;
+    const auto& entries = Copies(requested);
     const auto found = entries.find(english);
     return found == entries.end() ? english : found->second.guest.c_str();
 }
 std::string Translate(uint32_t key, std::string_view original) {
-    if (!Spanish() || original.size() > 16384) return {};
+    if (!Translated() || original.size() > 16384) return {};
     const auto found = catalogue.find(ContextId(key, original));
     return found == catalogue.end() ? std::string{} : found->second;
 }

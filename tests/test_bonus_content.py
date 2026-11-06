@@ -66,7 +66,9 @@ class BonusImportTests(unittest.TestCase):
                      'character_archive.py', 'character_repaint.py', 'character-catalog.json',
                      'character_boss.py', 'character_boss_effects.py', 'character_spectral_hands.py',
                      'character_hand_seams.py', 'character_secondary.py', 'character_preview.py', 'character_roster.py', 'character_tala.py',
-                     'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'installed_source.py',
+                     'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'character_cinematic.py', 'installed_source.py',
+                     'third_person_animation.py', 'character_reload.py', 'character_weapon_pose.py', 'character_weapon_hold.py', 'character_starter_reload.py',
+                     'body_weapon_grips.inc',
                      'character-art/cassidy-hands-1024.dds', 'character-art/cassidy-hands-256.dds',
                      'character-art/tala-hands-1024.dds', 'character-art/tala-hands-256.dds'):
             (payload/name).write_bytes(b'synthetic character fixture')

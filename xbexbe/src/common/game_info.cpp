@@ -4,6 +4,8 @@
 #include "common/graphics_view.h"
 #include "common/controls.h"
 #include "common/weapon_input.h"
+#include "common/camera_input.h"
+#include "common/sight_mode.h"
 #include "common/audio_settings.h"
 #include "common/character_selection.h"
 #include "common/character_preview.h"
@@ -18,6 +20,8 @@
 
 namespace {
 void InitDirectMouse();
+void ApplyWalkInput(int port, input::Pad& pad);
+void ApplySightInput(int port, input::Pad& pad);
 void LoadFrontendAssets() { darkwatch::SyncAudioDevice(kernel::g_base); darkwatch::InitializeMenuCursor(); darkwatch::skin::Finalize(); darkwatch::preview::Finalize(); darkwatch::InitializeHdUi(); }
 void DrawUi(double fps) { DarkwatchGraphicsUi(fps); DarkwatchMenuUi(fps); }
 }
@@ -38,7 +42,7 @@ const app::GameInfo app::kGame = {
     .window = DarkwatchGraphicsWindow,
     .message = darkwatch::ControlsMessage,
     .ui = DrawUi,
-    .pad = [](int port, input::Pad& pad) { DarkwatchGraphicsPad(port, pad); DarkwatchWeaponInput(port, pad); },
+    .pad = [](int port, input::Pad& pad) { DarkwatchGraphicsPad(port, pad); ApplyWalkInput(port, pad); DarkwatchWeaponInput(port, pad); ApplySightInput(port, pad); },
     .prepare = darkwatch::PrepareShaders,
 };
 
@@ -65,8 +69,7 @@ namespace {
 void InitDirectMouse() {
     gpu::g_shader_hooks = &darkwatch::RenderShaders();
     darkwatch::language::Initialize(app::ExeDir());
-    kernel::SetGameFileOverlay(darkwatch::language::Spanish()
-        ? (app::ExeDir()/"language"/"es"/"assets").string() : std::string{});
+    kernel::SetGameFileOverlay(darkwatch::language::MediaDirectory(app::ExeDir()).string());
     DarkwatchGraphicsInit();
     input::SetMouseToStick(false);
 }
@@ -107,6 +110,101 @@ bool AimComponent(const uint8_t* base, uint32_t actor, uint32_t vtable, uint32_t
         result = component;
     }
     return result != 0;
+}
+
+bool WalkTarget(const uint8_t* base, int port, uint32_t& actor, bool& right_stick) {
+    uint32_t game = 0, players = 0, records = 0, found = 0;
+    uint16_t count = 0;
+    if (port < 0 || port >= 2 || !AimRead(base, 0x4AC9A0, game) ||
+        !AimField(base, game, 0x44, players) || !players || players > 2 ||
+        !AimField(base, game, 0x50, count) || count < players || count > 64 ||
+        !AimField(base, game, 0x54, records) || !records) return false;
+    unsigned seen = 0, ports = 0;
+    for (unsigned i = 0; i < count; ++i) {
+        const uint64_t record = uint64_t(records) + i * 0x130;
+        uint32_t ordinal = 0, input_port = 0; uint8_t local = 0;
+        if (!AimRead(base, record + 0x10C, ordinal)) return false;
+        if (ordinal >= players) continue;
+        if ((seen & (1u << ordinal)) || !AimRead(base, record + 0x114, input_port) ||
+            !AimRead(base, record + 0x128, local)) return false;
+        seen |= 1u << ordinal;
+        if (!local && input_port == ~0u) continue;
+        if (local != 1 || input_port >= 2 || (ports & (1u << input_port))) return false;
+        ports |= 1u << input_port;
+        if (input_port == unsigned(port)) found = uint32_t(record);
+    }
+    if (!found || seen != ((1u << players) - 1) || !AimField(base, found, 0x118, actor)) return false;
+    uint32_t player = 0, component = 0, personal = 0, stack = 0, list = 0, active = 0, type = 0, owner = 0;
+    uint32_t manager = 0;
+    uint8_t enabled = 0, inhibited = 0;
+    if (!AimRead(base, 0x4AC174, manager) || !AimField(base, manager, 0x120, enabled) || !enabled ||
+        !AimField(base, manager, 0x121, inhibited) || inhibited || !AimComponent(base, actor, 0x4227A4, player)) return false;
+    // Movement-state gates belong to the native control owner, not PlayerComponent.
+    // Its native consumers still enforce those gates after reading the scaled pad.
+    // The personal camera is replaced during riding, turret use and cutscenes.
+    if (!AimComponent(base, actor, 0x416444, component) ||
+        !AimField(base, component, 0x70, personal) || !AimField(base, personal, 0, type) || type != 0x423990 ||
+        !AimField(base, personal, 0x18C, owner) || owner != actor ||
+        !AimField(base, component, 0x80, stack) || !AimField(base, stack, 4, count) || !count || count > 64 ||
+        !AimField(base, stack, 8, list) || !list ||
+        !AimRead(base, uint64_t(list) + (count - 1) * 4, active) || active != personal) return false;
+    uint32_t name = 0;
+    std::array<char, 12> preset{};
+    if (!AimField(base, found, 0xA8, name) || !name || !AimRead(base, uint64_t(name) + 2, preset)) return false;
+    for (const auto* value : {"Default", "Chieftain", "Lefty", "Hopalong", "Hoss"}) {
+        if (!std::memcmp(preset.data(), value, std::strlen(value) + 1)) {
+            right_stick = !std::strcmp(value, "Lefty");
+            return true;
+        }
+    }
+    return false;
+}
+
+void ApplyWalkInput(int port, input::Pad& pad) {
+    uint32_t actor = 0; bool right_stick = false;
+    const bool on_foot = input::GetMouseSnapshot().active && WalkTarget(kernel::g_base, port, actor, right_stick);
+    darkwatch::ControlsWalkInput(port, pad, on_foot, right_stick, actor);
+    DarkwatchShoulderInput(port, pad, on_foot, actor);
+}
+
+struct SightState {
+    const uint8_t* base = nullptr;
+    uint32_t actor = 0;
+    uint64_t epoch = 0;
+    bool down = false, armed = false, cancel = false, blocked = true, toggle = true;
+};
+std::mutex sight_lock;
+std::array<SightState, 2> sight_states;
+
+void ApplySightInput(int port, input::Pad& pad) {
+    if (port < 0 || port >= 2) return;
+    const auto frame = input::GetMouseSnapshot();
+    const bool toggle = darkwatch::ControlsSnapshot().sight_toggle[port];
+    uint32_t actor = 0; bool lefty = false;
+    const bool target = WalkTarget(kernel::g_base, port, actor, lefty);
+    const bool active = frame.active && frame.published_us && target;
+    const unsigned action = lefty ? 6 : 7;
+    const bool down = (pad.buttons & (1u << action)) != 0;
+    std::lock_guard guard(sight_lock);
+    auto& state = sight_states[port];
+    if (state.base != kernel::g_base || (actor && actor != state.actor))
+        state = {kernel::g_base, actor, frame.active_epoch};
+    if (!active || frame.active_epoch != state.epoch || toggle != state.toggle) {
+        state.cancel |= state.armed || (state.toggle && !toggle && state.actor);
+        state.armed = false;
+        state.blocked = !active || down;
+        state.epoch = frame.active_epoch;
+    }
+    state.toggle = toggle;
+    if (active && !toggle) {
+        if (state.blocked) {
+            // A held menu/focus/settings button cannot become a fresh sight press.
+            if (down) pad.buttons &= uint16_t(~(1u << action));
+            else state.blocked = false;
+        } else if (down && !state.down) state.armed = true;
+        if (!down && state.armed) { state.cancel = true; state.armed = false; }
+    }
+    state.down = down;
 }
 
 bool ActiveVehicleCamera(const uint8_t* base, uint32_t rider, uint32_t& camera) {
@@ -661,5 +759,53 @@ bool DarkwatchSkipYawAssistance(X86Context& ctx, uint8_t* base) {
 }
 bool DarkwatchSkipPitchAssistance(X86Context& ctx, uint8_t* base) {
     return !darkwatch::ControlsSnapshot().aim_assistance && LocalAimControl(ctx, base, 1);
+}
+
+void DarkwatchResetSightMode() {
+    std::lock_guard guard(sight_lock);
+    sight_states = {};
+}
+
+extern "C" void sub_00216560(X86Context&, uint8_t*);
+void DarkwatchSightRelease(X86Context& ctx, uint8_t* base) {
+    {
+        std::lock_guard guard(sight_lock);
+        if (std::none_of(sight_states.begin(), sight_states.end(), [](const auto& state) { return state.cancel; })) return;
+    }
+    uint32_t type = 0, actor = 0;
+    // 9D08E is ChazControlComponent's update (41F878 + 1C), not PlayerComponent.
+    if (base != kernel::g_base || !AimField(base, ctx.ecx, 0, type) || type != 0x41F878 ||
+        !AimField(base, ctx.ecx, 0xC, actor) || !actor) return;
+    for (unsigned port = 0; port < sight_states.size(); ++port) {
+        uint32_t current = 0, component = 0; bool lefty = false;
+        if (!WalkTarget(base, int(port), current, lefty) || current != actor ||
+            !AimComponent(base, actor, 0x41F878, component) || component != ctx.ecx) continue;
+        std::array<uint8_t, 0x100> scratch{};
+        uint8_t pending = 0;
+        if (ctx.esp < scratch.size() || !AimRead(base, ctx.esp - scratch.size(), scratch) ||
+            !AimField(base, component, 0x30C, pending)) return;
+        bool fresh_hold = false;
+        {
+            std::lock_guard guard(sight_lock);
+            auto& state = sight_states[port];
+            if (state.base != base || state.actor != actor || !state.cancel) return;
+            fresh_hold = state.armed;
+            state.cancel = false;
+        }
+        // Original 9D01D consumes this deferred input; release must not replay it.
+        // A genuinely newer press after release still enters sight after cancellation.
+        if (!fresh_hold) base[uint64_t(component) + 0x30C] = 0;
+        const uint32_t message = ctx.esp - 0x40;
+        const uint32_t words[]{0x41E948, 0x203}; // Original CancelWeaponZoom registration at A7B7B.
+        std::memcpy(base + message, words, sizeof(words));
+        X86Context call = ctx;
+        call.ecx = actor;
+        call.esp = message - 0x20;
+        const uint32_t args[]{0, message};
+        std::memcpy(base + call.esp, args, sizeof(args));
+        // The native call stack grows below the message, never across it.
+        sub_00216560(call, base);
+        return;
+    }
 }
 

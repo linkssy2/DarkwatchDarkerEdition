@@ -1,4 +1,4 @@
-"""Verified Spanish text and optional voices; original disc files stay intact."""
+"""Verified language text and optional voices; original disc files stay intact."""
 from __future__ import annotations
 
 import hashlib
@@ -15,6 +15,8 @@ import zlib
 from gameplay_hd import checked, remove_tree
 
 DIRECTORY = "language/es"
+LANGUAGES = {"es": "Spanish", "fr": "French", "de": "German", "it": "Italian", "pt-BR": "Brazilian Portuguese"}
+DISC_LANGUAGES = {code: name for code, name in LANGUAGES.items() if code != "pt-BR"}
 SETTINGS = "darkwatch_xbe_settings.toml"
 ALLOWED = {"language_text.bin", "assets/audioDlg.pck", "assets/audioMu2.pck",
            *("assets/Movies%d.pck" % n for n in range(1, 5))}
@@ -32,11 +34,12 @@ def selected(current):
     except (tomllib.TOMLDecodeError, UnicodeError):
         # Match the runtime's default without rewriting a damaged settings file.
         return "en"
-    return "es" if isinstance(table, dict) and table.get("text") == "es" else "en"
+    value = table.get("text") if isinstance(table, dict) else None
+    return value if isinstance(value, str) and value in LANGUAGES else "en"
 
 
 def select(current, value):
-    if value not in ("en", "es"):
+    if value != "en" and (not isinstance(value, str) or value not in LANGUAGES):
         raise ValueError("Unsupported language.")
     path = checked(current, SETTINGS)
     if path.exists() and path.stat().st_size > 1024 * 1024:
@@ -81,23 +84,27 @@ def select(current, value):
 class Catalog:
     def __init__(self, raw):
         if len(raw) > 16384:
-            raise ValueError("Spanish pack catalog is too large.")
+            raise ValueError("Language pack catalog is too large.")
         data = json.loads(raw)
         if not isinstance(data, dict):
-            raise ValueError("Invalid Spanish pack catalog.")
+            raise ValueError("Invalid language pack catalog.")
+        self.language = data.get("language")
         self.files = data.get("files", {})
-        if data.get("schema_version") != 1 or data.get("language") != "es" or not isinstance(self.files, dict):
-            raise ValueError("Invalid Spanish pack catalog.")
+        if (data.get("schema_version") != 1 or not isinstance(self.language, str)
+                or self.language not in LANGUAGES or not isinstance(self.files, dict)):
+            raise ValueError("Invalid language pack catalog.")
+        self.directory = "language/" + self.language
+        self.label = LANGUAGES[self.language]
         if "language_text.bin" not in self.files or not set(self.files) <= ALLOWED:
-            raise ValueError("Unexpected Spanish pack resources.")
+            raise ValueError("Unexpected language pack resources.")
         for row in self.files.values():
             if not isinstance(row, dict) or type(row.get("size")) is not int or not 0 < row["size"] <= LIMIT or not isinstance(row.get("sha256"), str) or not re.fullmatch("[0-9a-f]{64}", row["sha256"]):
-                raise ValueError("Invalid Spanish resource identity.")
+                raise ValueError("Invalid language resource identity.")
         if sum(row["size"] for row in self.files.values()) > LIMIT or self.files["language_text.bin"]["size"] > 8 * 1024 ** 2:
-            raise ValueError("Spanish resources exceed the size limit.")
+            raise ValueError("Language resources exceed the size limit.")
 
     def validate(self, current, cancel=lambda: None, full=True):
-        folder = checked(current, DIRECTORY)
+        folder = checked(current, self.directory)
         if not folder.exists():
             return False
         media = {name.removeprefix("assets/") for name in self.files if name.startswith("assets/")}
@@ -123,25 +130,25 @@ class Catalog:
     def install(self, archive, current, cancel, notify, require_closed):
         parent = checked(current, "language")
         parent.mkdir(exist_ok=True)
-        stage_name = ".spanish-stage-" + uuid.uuid4().hex
+        stage_name = "." + ("portuguese" if self.language == "pt-BR" else self.label.lower()) + "-stage-" + uuid.uuid4().hex
         stage = checked(parent, stage_name)
         stage.mkdir()
-        target = checked(parent, "es")
+        target = checked(parent, self.language)
         backup = checked(parent, stage_name + "-previous")
         moved = committed = False
         try:
             source = checked(Path(archive).absolute().parent, Path(archive).name)
             if source.stat().st_size > LIMIT:
-                raise ValueError("Spanish download exceeds the size limit.")
+                raise ValueError(f"{self.label} download exceeds the size limit.")
             with zipfile.ZipFile(source) as bundle:
                 entries = bundle.infolist()
                 if len(entries) != len(self.files) or {e.filename for e in entries} != set(self.files):
-                    raise ValueError("Choose the complete matching Spanish language ZIP.")
+                    raise ValueError(f"Choose the complete matching {self.label} language ZIP.")
                 for index, entry in enumerate(entries):
                     row = self.files[entry.filename]
                     mode = entry.external_attr >> 16
                     if entry.file_size != row["size"] or entry.flag_bits & 1 or stat.S_ISLNK(mode) or (stat.S_IFMT(mode) and not stat.S_ISREG(mode)):
-                        raise ValueError("Invalid Spanish resource in download.")
+                        raise ValueError(f"Invalid {self.label} resource in download.")
                     destination = checked(stage, entry.filename)
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     digest, total = hashlib.sha256(), 0
@@ -150,12 +157,12 @@ class Catalog:
                             cancel()
                             total += len(block)
                             if total > row["size"]:
-                                raise ValueError("Spanish resource exceeds its declared size.")
+                                raise ValueError(f"{self.label} resource exceeds its declared size.")
                             digest.update(block)
                             out.write(block)
                     if total != row["size"] or digest.hexdigest() != row["sha256"]:
-                        raise ValueError("Spanish download is damaged or incompatible.")
-                    notify("progress", "Installing Spanish resources", percent=int(100 * (index + 1) / len(entries)))
+                        raise ValueError(f"{self.label} download is damaged or incompatible.")
+                    notify("progress", f"Installing {self.label} resources", percent=int(100 * (index + 1) / len(entries)))
             cancel()
             require_closed()
             if target.exists():
@@ -170,7 +177,7 @@ class Catalog:
                     os.replace(backup, target)
                 raise
         except (zipfile.BadZipFile, zlib.error, EOFError) as error:
-            raise ValueError("Spanish download is damaged or incompatible.") from error
+            raise ValueError(f"{self.label} download is damaged or incompatible.") from error
         finally:
             if not committed:
                 remove_tree(parent, stage_name)
@@ -179,9 +186,9 @@ class Catalog:
         if not previous or not self.validate(previous, cancel):
             return False
         for name in self.files:
-            target = checked(stage, DIRECTORY + "/" + name)
+            target = checked(stage, self.directory + "/" + name)
             target.parent.mkdir(parents=True, exist_ok=True)
-            copy(checked(previous, DIRECTORY + "/" + name), target)
+            copy(checked(previous, self.directory + "/" + name), target)
         if not self.validate(stage, cancel):
-            raise ValueError("Could not preserve the Spanish language pack.")
+            raise ValueError(f"Could not preserve the {self.label} language pack.")
         return True

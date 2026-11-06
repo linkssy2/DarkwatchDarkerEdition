@@ -18,17 +18,20 @@ import character_archive as pck
 import character_assets as art
 import character_boss
 import character_boss_effects
+import character_cinematic
 import character_repaint
 import character_roster
+import character_tala
 import revolver_content
 import player_corpses
+import third_person_animation
 
-CONTENT_REVISION = 'player-corpses-characters-v14'
-CATALOG_SHA256 = '286ed96e9ff5eacbbf49ae1804861983838f900f6e21b5d8af5d62471ba62e18'
+CONTENT_REVISION = 'character-tala-presentation-v26'
+CATALOG_SHA256 = '2b291f8d135e67ab63ccefbac4323281fcb2fa6726d4793070a6fd293ef14629'
 CHARACTERS = 'xml/actortemplates_characters.bxml'
 INSTALLED = {
-    'packfile.pck': (143437089, 'e28e1da7f73eb182a320e057b8d050b2a67b0bb10961b5775f735b435674f51c'),
-    'LvlSingl.pck': (1794665399, '5968a9080af60f2bfb620406dd1961b3f1676d3c0d1d89584f420eda67355396'),
+    'packfile.pck': (167981663, 'b50962dd5b51663166a529324ed468ecb1d824397b5e0b7ad34d5bca5e63d17f'),
+    'LvlSingl.pck': (2106210883, 'f0d98525ca956342ce6884fea2d18eba1255f3407323bc2294b64e14aa2177e1'),
     'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285'),
 }
 REPAINT = {
@@ -111,7 +114,17 @@ def build_resources(source, payload):
     read, metadata = source.read, source.metadata
     outputs, tables, solo_clips = character_animation.prepare(
         read, art.decode, art.encode, cancel=source.cancel,
-        progress=lambda message: source.report('Preparing Cassidy ' + message))
+        progress=lambda message: source.report('Preparing Cassidy ' + message),
+        arm_maps=character_animation.player_arm_parameters(read, art.decode,
+            character_animation.frames(read(character_animation.CASSIDY)),
+            'characters/cassidy/base_cassidy.bllist'),
+        dual_arm_maps=character_animation.player_arm_parameters(read, art.decode,
+            character_animation.frames(read(character_animation.CASSIDY)),
+            'characters/cassidy/base_cassidy.bllist', dual=True,
+            dual_locators={basis: art.encode(adapt(art.decode(read(path)), art.decode(read('characters/cassidy/base_cassidy.bllist'))))
+                for basis, path, adapt in (
+                    (character_animation.CHAZ, 'characters/player_third/base_chaz.bllist', art.solo_locators),
+                    (character_animation.STORM, 'characters/multiplayer/base_dwstormtrooper_coop.bllist', art.adapt_locators))}))
     source.report('Preparing Cassidy character and hands...')
     original = art.decode(read(CHARACTERS))
     bank = art.decode(read('audio/cassidy/cassidy.babf'))
@@ -276,6 +289,17 @@ def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None)
                                              tala_variants=True, tala_pixels=tala_pixels)
         revolver = revolver_content.prepare(source, groups, extension, spectral, roster)
         corpses = player_corpses.prepare(source, groups, extension, spectral, roster, revolver)
+        fanning = {'packfile.pck': revolver_content.prepare_fanning(
+            source, groups, extension, spectral, roster, revolver, corpses)}
+        cinematic = character_cinematic.prepare(
+            source, groups, extension, spectral, roster, revolver, corpses, fanning)
+        third_person = third_person_animation.prepare(
+            source, groups, extension, spectral, roster, revolver, corpses, fanning, cinematic)
+        source.report('Finishing Boss Tala presentation...')
+        presentation = {'packfile.pck': {character_tala.MODEL + '.rx1': character_tala.presentation(
+            roster['packfile.pck'][character_tala.MODEL + '.rx1'],
+            spectral['packfile.pck'][character_boss.MODEL + '.rx1'])}}
+        source.cancel()
     with tempfile.TemporaryDirectory(prefix='.characters-', dir=assets) as temporary:
         staged = Path(temporary)
         for name in INSTALLED:
@@ -301,18 +325,22 @@ def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None)
                     if previous.parent == staged:
                         previous.unlink()
                 checked_file(current, metadata[proof][name], cancel)
-            if revolver.get(name) or corpses.get(name):
+            if revolver.get(name) or corpses.get(name) or fanning.get(name) or cinematic.get(name) or third_person.get(name) or presentation.get(name):
                 if name == 'LvlSingl.pck':
                     # Keep every intermediate proof, but write each final chapter
                     # table once. Appending its superseded copies crosses 2 GiB.
                     final = {}
-                    for stage in (groups, extension, spectral, roster, revolver, corpses):
+                    for stage in (groups, extension, spectral, roster, revolver, corpses, fanning, cinematic, third_person, presentation):
                         final.update(stage.get(name, {}))
                     source, changes = assets / name, final
                     checked_file(source, metadata['originals'][name], cancel)
                 else:
                     changes = dict(revolver.get(name, {}))
                     changes.update(corpses.get(name, {}))
+                    changes.update(fanning.get(name, {}))
+                    changes.update(cinematic.get(name, {}))
+                    changes.update(third_person.get(name, {}))
+                    changes.update(presentation.get(name, {}))
                     source = current
                 target = staged / (name + '.final')
                 pck.compose_file(source, changes, target, cancel)

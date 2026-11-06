@@ -136,11 +136,13 @@ class ShaderCacheTests(unittest.TestCase):
             cpp.write_text(fixture, encoding='utf-8')
             result = subprocess.run([compiler, '-std=c++20', '-O1', '-fuse-ld=lld', str(cpp), '-ld3dcompiler', '-lbcrypt', '-o', str(exe)], capture_output=True, text=True, timeout=90)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            for mode in ['cold', 'warm', 'cases', 'warm']:
-                result = subprocess.run([str(exe), mode, str(folder / 'owned')], capture_output=True, text=True, timeout=45)
-                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertIn('PASS', result.stdout)
-                print(result.stdout.strip())
+            # Hash filenames and atomic-write suffixes must also work beyond MAX_PATH.
+            for owner in (folder / 'owned', folder / ('x' * 160) / 'deep'):
+                for mode in ['cold', 'warm', 'cases', 'warm']:
+                    result = subprocess.run([str(exe), mode, str(owner)], capture_output=True, text=True, timeout=45)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn('PASS', result.stdout)
+                    print(result.stdout.strip())
             # Two independent processes publish the same key without partial records or clobbered temporaries.
             racers = [subprocess.Popen([str(exe), 'race', str(folder / 'shared')], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for _ in range(2)]
             for process in racers:

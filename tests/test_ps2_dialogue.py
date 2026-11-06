@@ -164,6 +164,23 @@ class DialogueTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             list(dialogue.cue_waves(bad))
 
+    def test_each_locale_uses_its_own_cue_alias_bank_and_never_spanish(self):
+        contents={'audio/dialog_base/dialog_base.babf':catalog([('TEST',['renamed'])]),
+                  'audio/a/a.babf':catalog([('TEST',['renamed'])]),'audio/a/a.xsb':xsb([('TEST',[0])])}
+        for language,suffix in (('fr','f'),('de','g'),('it','i')):
+            with self.subTest(language=language):
+                prefix='audio/dialog_base_'+suffix+'/'
+                audio=Audio({prefix+'dialog_base_'+suffix+'.babf':catalog([('TEST',[language+'-line'])]),
+                             prefix+language+'-line.adx':adx(),
+                             dialogue.SPANISH+'dialog_base_s.babf':b'must not read Spanish'})
+                result=dialogue.map_slots(contents,contents.__getitem__,audio,1,language)
+                self.assertEqual(result,{0:prefix+language+'-line.adx'})
+                del audio.entries[prefix+language+'-line.adx']
+                with self.assertRaisesRegex(ValueError,'missing'):
+                    dialogue.map_slots(contents,contents.__getitem__,audio,1,language)
+        with self.assertRaisesRegex(ValueError,'Unsupported PS2 disc language'):
+            dialogue.convert(None,b'',lambda:None,lambda *a,**kw:None,language='pt-BR')
+
     def test_full_bank_retains_silent_originals_and_other_resources(self):
         source, audio = fixture()
         notifications = []

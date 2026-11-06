@@ -1,4 +1,5 @@
 #include "horse_voice_diagnostic.h"
+#ifndef XBE_RELEASE
 #include <array>
 #include <cstring>
 #include <mutex>
@@ -308,3 +309,5 @@ void DarkwatchHorseVoiceEnd(X86Context& ctx, uint8_t* base) {
         LogStart(s, false);
     }
 }
+
+#endif

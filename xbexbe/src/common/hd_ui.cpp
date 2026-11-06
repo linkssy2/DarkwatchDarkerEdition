@@ -77,11 +77,20 @@ public:
     bool ReplaceTexture(const gpu::TextureDesc& d, const gpu::FormatInfo& fi, const uint8_t* original,
                         uint32_t bytes, const uint32_t* palette, gpu::TextureReplacement& out) override {
         if (!original || fi.depth || d.cube || d.linear || d.depth != 1) return false;
-        if (view::Snapshot().hd_textures &&
-            (spectral_hands_.Replace(d, original, bytes, palette, gameplay_, out) ||
-             gameplay_.Replace(d, original, bytes, palette, out))) return true;
+        const auto settings = view::Snapshot();
+        const auto replace_gameplay = [&] {
+            return settings.hd_textures &&
+                (spectral_hands_.Replace(d, original, bytes, palette, gameplay_, out) ||
+                 gameplay_.Replace(d, original, bytes, palette, out));
+        };
+        // FullBloodEffect also appears in the optional pack. Keep its restored
+        // HUD glow consistent with that pack on or off; native bytes still verify below.
+        const bool prefer_hud_glow = settings.hd_ui && d.levels == 1 && d.format == 15 &&
+            d.width == 64 && d.height == 32 && bytes == 2048 && !palette &&
+            hd::Hash({original, bytes}) == 0x8b4040264f16a2a1ull;
+        if (!prefer_hud_glow && replace_gameplay()) return true;
         if (d.levels != 1) return false;
-        const bool enabled = view::Snapshot().hd_ui;
+        const bool enabled = settings.hd_ui;
         if (enabled && ReplacePromptTexture(d, fi, original, bytes, out)) return true;
         uint64_t source_hash = 0, palette_hash = 0;
         bool hashed = false;
@@ -111,7 +120,7 @@ public:
 #endif
             return true;
         }
-        return false;
+        return prefer_hud_glow && replace_gameplay();
     }
 };
 } // namespace

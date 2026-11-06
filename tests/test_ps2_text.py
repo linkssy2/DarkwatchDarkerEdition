@@ -84,6 +84,44 @@ class Ps2TextTests(unittest.TestCase):
                                          'Otra frase del doblaje'})
         self.assertEqual(report['sources'], {'ps2_same_table': 1})
 
+    def test_locale_reads_only_its_table_and_its_context_corrections(self):
+        original={'userinterface/localization/one_e.bxml':{'line':'A line','button':'Press ^Jump^'}}
+        xbox=archive({p:table(list(rows.items())) for p,rows in original.items()})
+        for language,suffix,label in (('fr','f','french'),('de','g','german'),('it','i','italian')):
+            with self.subTest(language=language):
+                selected='userinterface/localization/one_'+suffix+'.bxml'
+                ps2=Pack({selected:table([('line',language+' text'),('button','Missing prompt')]),
+                          'userinterface/localization/one_s.bxml':b'must not read Spanish'})
+                identity=ps2_text.context_id('button','Press ^Jump^')
+                correction=json.dumps({'schema':1,'contexts':{f'{identity:016x}':language+' ^Jump^'}})
+                reads=[]
+                def read(path,**kwargs):
+                    reads.append(path.name)
+                    return correction
+                with patch.object(ps2_text,'CONTEXT_SHA256',ps2_text.inventory(original)), \
+                     patch.object(Path,'read_text',read):
+                    raw=ps2_text.convert(ps2,xbox,language=language)
+                self.assertEqual(ps2.reads,[selected])
+                self.assertEqual(reads,['ps2-'+label+'-corrections.json'])
+                self.assertEqual(unpack(raw),{identity:language+' ^Jump^',ps2_text.context_id('line','A line'):language+' text'})
+
+    def test_all_native_disc_accents_and_locale_rejections(self):
+        self.assertEqual(ps2_text.normalized('àâäçèêëìîïòôöùûüß'), 'ÀÂÄÇÈÊËÌÎÏÒÔÖÙÛÜß')
+        for invalid in ('œ','ÿ','\x80','\0'):
+            with self.assertRaises(ValueError): ps2_text.normalized(invalid)
+        for language in ('en','pt-BR','../fr',None):
+            with self.assertRaisesRegex(ValueError,'Unsupported PS2 disc language'):
+                ps2_text.convert(Pack({}),b'not opened',language=language)
+
+    def test_new_locales_require_resolved_missing_conflicts_and_semantic_tokens(self):
+        original={'one_e.bxml':{'line':'Press ^Jump^'},'two_e.bxml':{'line':'Press ^Jump^'}}
+        for language,suffix in (('fr','f'),('de','g'),('it','i')):
+            for candidate,reason in (({},'Missing'),
+                ({'one_'+suffix+'.bxml':{'line':'A ^Jump^'},'two_'+suffix+'.bxml':{'line':'B ^Jump^'}},'Conflicting'),
+                ({'one_'+suffix+'.bxml':{'line':'A ^Fire^'}},'semantic tokens')):
+                with self.subTest(language=language,reason=reason),self.assertRaisesRegex(ValueError,reason):
+                    ps2_text.catalogue(original,candidate,{},language)
+
 
 if __name__ == '__main__':
     unittest.main()

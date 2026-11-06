@@ -1,0 +1,9 @@
+Darkwatch Portuguese (Brazil) fan translation
+Original PS2 translation: HNNEWGAMES, version 1.1.
+Project: https://hnnewgamesofficial.blogspot.com/2018/02/darkwatch-portugues-ps2.html
+Partner distribution: https://joao13traducoes.com/2018/02/ps2-darkwatch-hnnewgames/
+Text adaptation, missing dialogue, consistency corrections and PC menu text:
+Darkwatch: Darker Edition.
+This optional package contains translated text only. Original disc files,
+fonts, voices, movies and the patched game image are not included.
+Spanish voices, if selected, are prepared locally from the user's PS2 disc.

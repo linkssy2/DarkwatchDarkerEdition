@@ -26,35 +26,56 @@ std::filesystem::path app::ExeDir(){return std::filesystem::current_path();}
 void* app::Window(){return nullptr;}
 void logx::Write(Level,const char*,...){}
 // Device/mixer behavior has its own native fixture; this boundary observes persistence only.
-static bool enabled;
-static bool available=false, committed=true;
+static audio::SoundOutput requested=audio::SoundOutput::Stereo;
+static unsigned capacity=2;
+static bool committed=true;
 bool mem::IsCommitted(uint32_t address){CHECK(address==0x3C5C14);return committed;}
-void audio::SetSurroundEnabled(bool value){enabled=value;}
-bool audio::SurroundEnabled(){return enabled;}
-bool audio::SurroundAvailable(){return available;}
+void audio::SetSoundOutput(SoundOutput mode){requested=mode;}
+audio::SoundOutput audio::GetSoundOutput(){return requested;}
+void audio::SetSurroundEnabled(bool value){requested=value?SoundOutput::Surround51:SoundOutput::Stereo;}
+bool audio::SurroundEnabled(){return requested!=SoundOutput::Stereo;}
+bool audio::SurroundAvailable(){return capacity>=6;}
 static void Write(const char* text){std::ofstream f("settings.toml");f<<text;CHECK(bool(f));}
 int main(){
+ using audio::SoundOutput;
+ const SoundOutput modes[]{SoundOutput::Stereo,SoundOutput::Surround51,SoundOutput::Surround71};
+ const char* names[]{"stereo","5.1","7.1"};
  // Only a configured surround device enables native rear calculations; writes stay on the guest thread.
  std::vector<uint8_t> guest(0x400000,0xA5);
- for(bool choice:{false,true})for(bool device:{false,true}){
-  enabled=choice;available=device;darkwatch::SyncAudioDevice(guest.data());
-  uint32_t mode;std::memcpy(&mode,guest.data()+0x3C5C14,4);CHECK(mode==(choice&&device?2u:0u));
+ for(auto choice:modes)for(unsigned channels:{2u,6u,8u}){
+  requested=choice;capacity=channels;darkwatch::SyncAudioDevice(guest.data());
+  uint32_t mode;std::memcpy(&mode,guest.data()+0x3C5C14,4);CHECK(mode==(choice!=SoundOutput::Stereo&&channels>=6?2u:0u));
   auto snapshot=guest;darkwatch::SyncAudioDevice(guest.data());CHECK(snapshot==guest);
  }
  for(size_t i=0;i<guest.size();++i)if(i<0x3C5C14||i>=0x3C5C18)CHECK(guest[i]==0xA5);
- auto snapshot=guest;committed=false;enabled=false;darkwatch::SyncAudioDevice(guest.data());
+ auto snapshot=guest;committed=false;requested=SoundOutput::Stereo;darkwatch::SyncAudioDevice(guest.data());
  CHECK(snapshot==guest);darkwatch::SyncAudioDevice(nullptr);committed=true;
  // A first run or old settings file must reset a stale preference to the stereo default.
  audio::SetSurroundEnabled(true);app::Load();CHECK(!audio::SurroundEnabled());
  Write("fps_cap=80\nbrightness=90\n");audio::SetSurroundEnabled(true);app::Load();
  CHECK(!audio::SurroundEnabled()&&app::Snapshot().fps_cap==80&&app::Snapshot().brightness_percent==90);
- // Both choices survive a real save/reload, alongside the existing display preferences.
- for(bool choice:{true,false}){
-  audio::SetSurroundEnabled(choice);CHECK(app::Save());
+ // The requested choice survives fallback hardware and restart. Save a compatible
+ // boolean for rollback; never replace a 7.1 request with the current device mode.
+ for(unsigned i=0;i<3;++i)for(unsigned channels:{2u,6u,8u}){
+  capacity=channels;audio::SetSoundOutput(modes[i]);CHECK(app::Save());
   auto saved=toml::parse_file("settings.toml");
-  CHECK(saved["surround_sound"].is_boolean()&&saved["surround_sound"].value<bool>()==choice);
+  CHECK(saved["sound_output"].value<std::string>()==names[i]);
+  CHECK(saved["surround_sound"].is_boolean()&&saved["surround_sound"].value<bool>()==(i!=0));
   CHECK(saved["fps_cap"].value<int>()==80&&saved["brightness"].value<int>()==90);
-  audio::SetSurroundEnabled(!choice);app::Load();CHECK(audio::SurroundEnabled()==choice);
+  audio::SetSoundOutput(modes[(i+1)%3]);app::Load();CHECK(audio::GetSoundOutput()==modes[i]);
+ }
+ // A legacy surround preference means 5.1. An explicit new setting has precedence,
+ // even when the rollback boolean disagrees, and invalid new settings fail closed.
+ Write("surround_sound=true\n");app::Load();CHECK(audio::GetSoundOutput()==SoundOutput::Surround51);
+ Write("surround_sound=false\n");app::Load();CHECK(audio::GetSoundOutput()==SoundOutput::Stereo);
+ for(unsigned i=0;i<3;++i){
+  const std::string value=std::string("sound_output='")+names[i]+"'\nsurround_sound="+(i?"false":"true")+"\n";
+  Write(value.c_str());app::Load();CHECK(audio::GetSoundOutput()==modes[i]);
+ }
+ for(const char* invalid:{"'auto'","'7.1 Surround'","'STEREO'","''","7.1","true","1","['7.1']","{mode='7.1'}"}){
+  const std::string text=std::string("sound_output=")+invalid+"\nsurround_sound=true\n";
+  Write(text.c_str());audio::SetSoundOutput(SoundOutput::Surround71);app::Load();
+  CHECK(audio::GetSoundOutput()==SoundOutput::Stereo);
  }
  // Do not coerce strings/numbers/arrays/tables into enabling surround; malformed TOML
  // follows the same safe default as a missing file, without poisoning the next valid load.
@@ -65,11 +86,12 @@ int main(){
   Write("surround_sound=true\n");app::Load();CHECK(audio::SurroundEnabled());
  }
  // Callback writes must replace a malformed existing key while preserving unrelated entries.
- toml::table table{{"surround_sound","old value"},{"unrelated",42}};
+ toml::table table{{"surround_sound","old value"},{"sound_output",42},{"unrelated",42}};
  audio::SetSurroundEnabled(false);darkwatch::AudioSave(&table);
  CHECK(table["surround_sound"].is_boolean()&&!table["surround_sound"].value_or(true));
+ CHECK(table["sound_output"].value<std::string>()=="stereo");
  CHECK(table["unrelated"].value<int>()==42);
- std::puts("audio settings: real file roundtrip, legacy/first-run defaults, malformed TOML and strict boolean validation passed");
+ std::puts("audio settings: three-mode roundtrip on 2/6/8-channel devices, native mode, legacy migration, new-key precedence, malformed TOML and strict validation passed");
 }
 '''
 

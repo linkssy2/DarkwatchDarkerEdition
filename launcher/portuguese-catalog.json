@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "language": "pt-BR",
+  "files": {
+    "language_text.bin": {
+      "size": 138804,
+      "sha256": "41b1e3197915aec6698a51a455b65d4ed3b39aca0a42fc2f37b6e3dc02039224"
+    }
+  },
+  "credits": {
+    "translation": "HNNEWGAMES",
+    "source_version": "1.1",
+    "source_language": "Brazilian Portuguese",
+    "author_url": "https://hnnewgamesofficial.blogspot.com/2018/02/darkwatch-portugues-ps2.html",
+    "author_linked_mirror": "https://joao13traducoes.com/2018/02/ps2-darkwatch-hnnewgames/",
+    "adaptation": "Darkwatch: Darker Edition context mapping, missing-string translations and corrections"
+  },
+  "provenance": {
+    "source_patch_sha256": "6a7b41505074214be298f847f81fae72e1cb418ed279b87074cc7181f440f2fe",
+    "source_archive_sha256": "916d13ad7fe3ba914b0c4a73435b8f347f5f9b20977ada1ad2e099fbe7a030a3",
+    "source_packfile_sha256": "acbcb5511871ed40b32bd3fe126a308513dfa518fa514689c55b8014f6d24816",
+    "corrections_sha256": "a5bec42d3f1ed879239e7d179e815847905b6139b54d3fcd274c8b1e0723fa0e",
+    "native_contexts": 2813,
+    "reviewed_corrections": 749,
+    "fan_translations": 2064,
+    "contents": "Translated text and opaque context IDs only; no original English table, fonts, game audio, movies or ISO.",
+    "audio": "No Portuguese dubbing. Optional Spanish audio requires the separate supported PS2 disc import.",
+    "license_metadata": "No explicit redistribution license was supplied with the original fan patch."
+  }
+}

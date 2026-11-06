@@ -1,6 +1,11 @@
 #include "character_runtime.h"
+#include "cpu/x86_ops.h"
 #include "kernel/memory.h"
 #include <cstring>
+#ifndef XBE_RELEASE
+#include <cstdio>
+#include <cstdlib>
+#endif
 
 namespace {
 bool Failed(const char** failure, const char* reason) {
@@ -69,7 +74,7 @@ uint32_t LoadedBank(const uint8_t* base, uint32_t loader, uint32_t id) {
     return found;
 }
 bool Resident(const uint8_t* base, uint32_t loader, uint32_t record, const char** failure, bool tala) {
-    uint32_t type, name, file, definition, refs, id, bank;
+    uint32_t type, name, file, definition, refs, id = 0, bank;
     uint8_t preload;
     const char* bank_name = tala ? "tala" : "cassidy";
     if (!Read(base, record, type) || type != 0x43ED18 ||
@@ -82,8 +87,31 @@ bool Resident(const uint8_t* base, uint32_t loader, uint32_t record, const char*
     if (!Read(base, uint64_t(record) + 16, definition) || !definition ||
         !Read(base, definition, type) || type != 0x43ED44)
         return Failed(failure, "audio bank definition");
-    if (!Read(base, uint64_t(definition) + 4, id) || !(bank = LoadedBank(base, loader, id)))
+    if (!Read(base, uint64_t(definition) + 4, id) || !(bank = LoadedBank(base, loader, id))) {
+#ifndef XBE_RELEASE
+        const auto probe = std::getenv("DARKWATCH_ONLINE_CAMPAIGN_PROBE");
+        if (probe && !std::strcmp(probe, "1")) {
+            uint32_t audio = 0, node = 0, count = 0, loaded = 0;
+            Read(base, 0x4AD2FC, audio); Read(base, uint64_t(audio) + 0x218, node);
+            Read(base, uint64_t(audio) + 0x220, count); Read(base, uint64_t(loader) + 12, loaded);
+            std::fprintf(stderr, "Online audio missing: bank=%s record=%08X definition=%08X request=%u loaded=%u layouts=%u\n",
+                         bank_name, record, definition, id, loaded, count);
+            for (unsigned i = 0; node && i < count && i < 64; ++i) {
+                uint32_t layout = 0, entry = 0, def = 0, request = 0, next = 0; uint8_t active = 0;
+                if (!Read(base, node, layout) || !Read(base, uint64_t(node) + 4, next)) break;
+                Read(base, uint64_t(layout) + 0x10, active);
+                if (LayoutBank(base, layout, entry, bank_name) && entry) {
+                    Read(base, uint64_t(entry) + 16, def); Read(base, uint64_t(def) + 4, request);
+                    std::fprintf(stderr, "Online audio layout: layout=%08X active=%u entry=%08X definition=%08X request=%u resident=%08X\n",
+                                 layout, unsigned(active), entry, def, request, LoadedBank(base, loader, request));
+                }
+                if (next == node) break;
+                node = next;
+            }
+        }
+#endif
         return Failed(failure, "audio bank request not resident");
+    }
     uint32_t state, owned_id, xsb, stream_list, handle, path; uint16_t streams;
     if (!Read(base, bank, type) || type != 0x43EDD4 ||
         !Read(base, uint64_t(bank) + 4, owned_id) || owned_id != id ||
@@ -102,6 +130,12 @@ bool Resident(const uint8_t* base, uint32_t loader, uint32_t record, const char*
     return LoadedBank(base, loader, id) == bank || Failed(failure, "audio bank ownership changed");
 }
 } // namespace
+
+bool DarkwatchAudioBankBudget(X86Context& ctx, uint8_t* base) {
+    uint32_t used = 0;
+    // Campaign banks plus selectable voices exceed Xbox's 8 MiB; keep native allocation/accounting.
+    return Read(base, 0x4B4FB8, used) && uint64_t(used) + ctx.ecx <= 16 * 1024 * 1024;
+}
 
 bool DarkwatchCharacterAudioReady(uint8_t* base, const char** failure, bool tala) {
     if (failure) *failure = nullptr;
@@ -138,3 +172,21 @@ bool DarkwatchCharacterAudioReady(uint8_t* base, const char** failure, bool tala
     }
     return Failed(failure, tala ? "audio Tala bank absent from active layouts" : "audio Cassidy bank absent from active layouts");
 }
+
+#ifndef XBE_RELEASE
+X86_EXTERN_FUNC(__imp__sub_0020E2FD);
+X86_FUNC(sub_0020E2FD) {
+    const auto probe = std::getenv("DARKWATCH_ONLINE_CAMPAIGN_PROBE");
+    static unsigned failures = 0;
+    if (probe && !std::strcmp(probe, "1") && failures++ < 128) {
+        const auto word = [&](uint64_t at) { uint32_t v = 0; Read(base, at, v); return v; };
+        const auto bank = word(uint64_t(ctx.ecx) + 0x20), name = word(uint64_t(bank) + 12);
+        const auto path = name && Span(base, uint64_t(name) + 2, 96) ? reinterpret_cast<const char*>(base + name + 2) : "?";
+        std::fprintf(stderr, "Online audio removal: path=%.96s request=%u state=%u pending=%u total=%u xsb_state=%u xsb_size=%u xsb=%08X mem_state=%u mem_size=%u mem=%08X streams=%u\n",
+            path, word(uint64_t(bank)+4), word(uint64_t(bank)+8), word(uint64_t(ctx.ecx)+0x24), word(0x4B4FB8),
+            word(uint64_t(bank)+0x2C), word(uint64_t(bank)+0x38), word(uint64_t(bank)+0x90),
+            word(uint64_t(bank)+0x68), word(uint64_t(bank)+0x74), word(uint64_t(bank)+0x94), word(uint64_t(bank)+0x98)&65535);
+    }
+    __imp__sub_0020E2FD(ctx, base);
+}
+#endif

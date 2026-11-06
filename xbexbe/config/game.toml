@@ -267,7 +267,7 @@ XOnlineCleanup                                       = 0x36A568
 XOnlineGetUsers                                      = 0x369E76
 XOnlineStartup                                       = 0x36A46B
 
-# Sound voice flags were checked against the original callers.
+# Original behavior verified in private regression evidence.
 IDirectSoundBuffer_Set3DVoiceData                   = 0x3A97B1
 IDirectSoundBuffer_Use3DVoiceData                   = 0x3A97CD
 IDirectSoundStream_Set3DVoiceData                   = 0x3A982E
@@ -307,6 +307,12 @@ at = 0x0022F61A
 call = "DarkwatchBossIntroStart"
 
 # Direct mouse plus optional XBE_PERF witnesses; original evidence: direct-mouse-integration-plan.json.
+# Hold Sight uses the original cancel event at the native ready-input boundary.
+# Original behavior verified in private regression evidence.
+[[hook]]
+at = 0x0009D154
+call = "DarkwatchSightRelease"
+
 [[hook]]
 at = 0x000A286C
 call = "DarkwatchObserveYaw"
@@ -366,6 +372,12 @@ call = "DarkwatchConfigurePlayerCamera"
 at = 0x0021606D
 call = "DarkwatchUpdateCameraView"
 
+# Handheld fire: converge the native eye ray on the selected third-person view.
+# Original 1B0 reply ABI and downstream collision/muzzle path are tested.
+[[hook]]
+at = 0x0001DD2F
+call = "DarkwatchThirdPersonShotAim"
+
 # Dedicated cinematic component, after its original factory stores global ownership.
 [[hook]]
 at = 0x0021AF54
@@ -393,6 +405,11 @@ call = "DarkwatchEndPowerView"
 [[hook]]
 at = 0x001CDA84
 call = "DarkwatchPowerViewProjection"
+
+# Complete movie quad before submission; original bytes/draw: issue35-cutscene-aspect-20261029.
+[[hook]]
+at = 0x001FE199
+call = "DarkwatchFitMovie"
 
 # Only the cinematic manager's two ScreenMaskEffect quads; movie playback is excluded.
 # Original owner/draw evidence: viewmodel-cinematics-20261018/cinematics/.
@@ -697,7 +714,7 @@ call = "DarkwatchMenuRow"
 at = 0x001E9764
 call = "DarkwatchMenuRenderEnd"
 
-# Replaced menu pages have no native contents, including their unfocused fades.
+# Replaced menu pages and disabled gameplay HUDs have no native contents.
 # Retain the original root renderer's fade timer and visibility cleanup.
 [[hook]]
 at = 0x001EC67F
@@ -800,6 +817,19 @@ call = "DarkwatchFatalAssert"
 at = 0x00159E95
 call = "DarkwatchCharacterInitialize"
 
+# Memory wavebanks and soundbank metadata share one native byte budget.
+[[hook]]
+at = 0x0020E33B
+call = "DarkwatchAudioBankBudget"
+on_true = 0x0020E343
+on_false = 0x0020E353
+
+[[hook]]
+at = 0x0020E5E6
+call = "DarkwatchAudioBankBudget"
+on_true = 0x0020E5EE
+on_false = 0x0020E5D1
+
 # Size only the resource metadata arena; original allocation and teardown stay paired.
 [[hook]]
 at = 0x001BD70E
@@ -841,6 +871,12 @@ after = true
 [[hook]]
 at = 0x000FD51A
 call = "DarkwatchCharacterScriptType"
+
+# Honor regular Jericho's selection before a chapter's AsCivilian costume override.
+[[hook]]
+at = 0x00081599
+call = "DarkwatchCharacterModelAlias"
+on_true = 0x000815AD
 
 # Omit only Jericho's separate costume grant on an actual Cassidy player clone.
 [[hook]]
@@ -890,3 +926,9 @@ call = "DarkwatchCharacterVoiceDispatch"
 at = 0x00208127
 call = "DarkwatchCharacterVoiceCreated"
 
+
+# Extras' validated Gunslinger branch, before it builds the chapter-selection link.
+[[hook]]
+at = 0x000E9ECF
+call = "DarkwatchGunslingerSelect"
+on_true = 0x000E9F02

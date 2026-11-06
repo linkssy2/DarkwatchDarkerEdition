@@ -8,6 +8,7 @@ import character_boss as boss
 import character_repaint as rw
 import character_spectral_hands as skin
 import character_secondary as secondary
+import character_tala_shape as shape
 
 VAMPIRE = 'characters/tala/base_cine_tala'
 ORIGINAL_BOSS = 'characters/tala_boss/base_tala_boss'
@@ -92,9 +93,33 @@ def model(read):
     return secondary.prepare_tala(without_wings(boss.scaled_model(original, regular, geometry_count=2)))
 
 
+def presentation(prepared, reference):
+    """Finish the visible body after native hand and animation derivation."""
+    return shape.upper_motion(shape.reshape(prepared, reference))
+
+
+def _arm_maps(read, derived, *, dual=False):
+    delta = boss.body_parameters(read(VAMPIRE+'.rx1'), derived)
+    old = animation.frames(read(VAMPIRE+'.rx1'))
+    target, _, _ = boss.rig(derived, 51)
+    # The existing final Vampire-to-Boss conversion remains in place. Compose
+    # its right-side bind correction out of the intermediate arm mapping.
+    target = {bone: dict(target[bone], frame=old[bone]['frame'], parent=old[bone]['parent'])
+              for bone in range(22)}
+    locators = {basis: art.encode(adapt(art.decode(read(path)), art.decode(read(VAMPIRE+'.bllist'))))
+        for basis, path, adapt in ((animation.CHAZ, 'characters/player_third/base_chaz.bllist', art.solo_locators),
+                                  (animation.STORM, 'characters/multiplayer/base_dwstormtrooper_coop.bllist', art.adapt_locators))} if dual else None
+    arms = animation.player_arm_parameters(read, art.decode, target, VAMPIRE+'.bllist', dual=dual, dual_locators=locators)
+    for basis in arms:
+        arms[basis] = {bone: (left, animation._multiply(delta[bone][0], parent))
+                       for bone, (left, parent) in arms[basis].items()}
+    return arms
+
+
 def animations(read, derived, cancel=lambda: None, progress=lambda message: None):
     outputs, _, _ = animation.prepare(read, art.decode, art.encode,
-        VAMPIRE+'.rx1', 'bosstala', cancel=cancel, progress=progress)
+        VAMPIRE+'.rx1', 'bosstala', cancel=cancel, progress=progress, arm_maps=_arm_maps(read, derived),
+        dual_arm_maps=_arm_maps(read, derived, dual=True))
     delta = boss.body_parameters(read(VAMPIRE+'.rx1'), derived)
     for path in outputs:
         if path.endswith('.sanm'):

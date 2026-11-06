@@ -192,6 +192,30 @@ def run_interactive(root, arguments):
             original_emit = backend.emit
             backend.emit = capture
             if "--language" in arguments:
+                portuguese = notify("Português (Brasil) — tradução HNNEWGAMES\n\n"
+                                    "Use Portuguese text and subtitles?\n"
+                                    "Yes: Português (Brasil)\nNo: Other languages\nCancel: Keep current language\n\n"
+                                    "Install the translation first with --install-portuguese. Close Darkwatch first.", buttons=0x203)
+                if portuguese == 2:
+                    return 0
+                if portuguese == 6:
+                    index = arguments.index("--language")
+                    arguments = arguments[:index] + ["--set-language", "pt-BR"] + arguments[index + 1:]
+                elif portuguese != 7:
+                    raise RuntimeError("Could not open the language selector. Use --set-language en, es, fr, de, it or pt-BR.")
+            for code, label in (("fr", "Français"), ("de", "Deutsch"), ("it", "Italiano")):
+                if "--language" not in arguments:
+                    break
+                choice = notify(f"Game language: {label}\n\nYes: {label}\nNo: Next language\nCancel: Keep current language\n\n"
+                                "Install this language from your European PS2 ISO first. Close Darkwatch before changing languages.", buttons=0x203)
+                if choice == 2:
+                    return 0
+                if choice == 6:
+                    index = arguments.index("--language")
+                    arguments = arguments[:index] + ["--set-language", code] + arguments[index + 1:]
+                elif choice != 7:
+                    raise RuntimeError("Could not open the language selector. Use --set-language with en, es, fr, de, it or pt-BR.")
+            if "--language" in arguments:
                 choice = notify("Game language / Idioma del juego\n\n"
                                 "Yes / Sí: Español\nNo: English\nCancel / Cancelar: Keep current language / No cambiar\n\n"
                                 "Applies on the next launch. Close Darkwatch first.\n"
@@ -202,7 +226,7 @@ def run_interactive(root, arguments):
                     raise RuntimeError("Could not open the language selector. Use --set-language en or --set-language es.")
                 index = arguments.index("--language")
                 arguments = arguments[:index] + ["--set-language", "es" if choice == 6 else "en"] + arguments[index + 1:]
-            if any(arg.partition("=")[0] in ("--import-iso", "--use-iso", "--install-hd-textures", "--install-spanish", "--update")
+            if any(arg.partition("=")[0] in ("--import-iso", "--use-iso", "--install-hd-textures", "--install-spanish", "--install-french", "--install-german", "--install-italian", "--update")
                    for arg in arguments):
                 source_notice = ("Use ISO directly keeps your ISO required: leave it in place for every launch. "
                                  if any(arg.partition("=")[0] == "--use-iso" for arg in arguments) else

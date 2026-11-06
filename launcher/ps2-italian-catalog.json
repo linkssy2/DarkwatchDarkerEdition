@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "language": "it",
+  "files": {
+    "language_text.bin": {
+      "size": 134981,
+      "sha256": "4bd4107a83f7b235d7f15a2ef7cc40d0a80671959f5bb83a07cbdafb23c732b5"
+    },
+    "assets/audioDlg.pck": {
+      "size": 260794904,
+      "sha256": "09d3007951a49cda3efc577cf3fdc9fcf6d22a8a16ab76c38d028006e1b4a675"
+    },
+    "assets/Movies2.pck": {
+      "size": 292771016,
+      "sha256": "909529eef1cd274477383eb2276e3f47c255eef7d355b03d85d1bd9e212cacf6"
+    },
+    "assets/Movies3.pck": {
+      "size": 213652752,
+      "sha256": "e5360091a2620cbbeb9fa2a5bc8e2d4fdacdc284be05234cc85daeecc92cbc47"
+    },
+    "assets/Movies4.pck": {
+      "size": 207535376,
+      "sha256": "2793b67a52bf9b3100e61d69798567c18cf9c09d12af06f7a9b13d0c843dba2c"
+    }
+  }
+}

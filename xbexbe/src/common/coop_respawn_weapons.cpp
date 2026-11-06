@@ -64,7 +64,7 @@ bool Resolve(const uint8_t* base, unsigned ordinal, Player& p) {
     uint32_t players = 0, local = 0, mode = 1, records = 0, pc = 0; uint16_t n = 0;
     if (ordinal > 1 || !Read(base, 0x4AC9A0, p.game) || !p.game ||
         !Read(base, uint64_t(p.game) + 0x44, players) || players != 2 ||
-        !Read(base, uint64_t(p.game) + 0x4C, local) || local != 2 ||
+        !Read(base, uint64_t(p.game) + 0x4C, local) || (local != 1 && local != 2) ||
         !Read(base, uint64_t(p.game) + 0xEC, mode) || mode ||
         !Read(base, uint64_t(p.game) + 0x50, n) || n < 2 || n > 64 ||
         !Read(base, uint64_t(p.game) + 0x54, records) || !Span(base, records, n * 0x130)) return false;
@@ -76,6 +76,13 @@ bool Resolve(const uint8_t* base, unsigned ordinal, Player& p) {
         seen |= 1u << index; if (index == ordinal) p.record = r;
     }
     p.ordinal = ordinal;
+    if (local == 1) {
+        uint8_t online = 0, owned = 0; uint32_t port = ~0u;
+        // The owning peer retains its inventory; replicas receive native actor state.
+        if (!Read(base, uint64_t(p.game) + 0xC, online) || online != 1 || !p.record ||
+            !Read(base, p.record + 0x128, owned) || owned != 1 ||
+            !Read(base, p.record + 0x114, port) || port >= 2) return false;
+    }
     return seen == 3 && p.record && Read(base, p.record + 0x118, p.actor) && p.actor &&
         Component(base, p.actor, 0x4227A4, pc) && Component(base, p.actor, 0x41F29C, p.inventory) &&
         Read(base, uint64_t(p.inventory) + 0x88, p.count) && p.count && p.count <= 64 &&
@@ -90,6 +97,8 @@ bool Weapons(const uint8_t* base, const Player& p, std::vector<Weapon>& out) {
         if (type != 0x41F570 && type != 0x41F308 && type != 0x41F178) continue;
         if (!Read(base, uint64_t(slot) + 8, owner) || owner != p.inventory) return false;
         if (!Text(base, uint64_t(slot) + 4, name)) return false;
+        // Native saves exclude this attachment: restoring the master recreates its left pistol.
+        if (name == "loc_LeftHandDualWield") continue;
         uint16_t n = 1; uint32_t entries = slot + 0xC;
         if (type == 0x41F178 && (!Read(base, uint64_t(slot) + 0xC, n) || n > 64 ||
             !Read(base, uint64_t(slot) + 0x10, entries) || (n && !Span(base, entries, n * 16)))) return false;
