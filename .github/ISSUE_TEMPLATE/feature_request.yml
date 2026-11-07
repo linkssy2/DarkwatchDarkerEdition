@@ -1,0 +1,23 @@
+name: Feature request
+description: "Suggest an improvement to Darkwatch: Darker Edition."
+body:
+  - type: markdown
+    attributes:
+      value: Please check existing issues first. For something that is broken, use the bug report form instead.
+  - type: textarea
+    id: request
+    attributes:
+      label: What would you like to change?
+      description: Describe the feature or improvement and how you would use it.
+    validations:
+      required: true
+  - type: textarea
+    id: reason
+    attributes:
+      label: Why would this help?
+      description: Explain the problem it would solve or the experience it would improve.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Optional. Add relevant platforms, examples, screenshots or alternatives you have considered.

@@ -1,0 +1,88 @@
+name: Bug report
+description: "Report a problem with Darkwatch: Darker Edition."
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check existing issues first. Share what you know; logs and attachments are optional.
+        Reports are public. Review logs for personal information before attaching them, and do not upload ISOs or game files.
+  - type: input
+    id: version
+    attributes:
+      label: Game version
+      description: The Darker Edition version shown in the launcher, or the test build name.
+      placeholder: e.g. 0.7.7
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows
+        - Linux desktop / Proton
+        - Steam Deck / SteamOS
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System details
+      description: If known, include your OS version, GPU, and Proton version on Linux or Steam Deck.
+      placeholder: e.g. Windows 11, RTX 4070; or SteamOS, Proton Experimental
+  - type: dropdown
+    id: installation
+    attributes:
+      label: How was this version installed?
+      options:
+        - Fresh installation
+        - Launcher's Install Update button
+        - Linux launcher update
+        - Manually copied an update over an existing installation
+        - Other / not sure
+  - type: input
+    id: update_details
+    attributes:
+      label: Installation or update details
+      description: If relevant, give the previous version, whether the same folder was used, and whether you use the ISO directly or imported files. A full personal folder path is not needed.
+  - type: input
+    id: input
+    attributes:
+      label: Controls
+      description: Keyboard/mouse or controller model? For Steam, include the Steam Input layout if known. For controller problems, say whether it was connected before launch or plugged in later.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Tell us how to reach the problem, including the chapter or menu where it happens.
+      placeholder: |
+        1. Start...
+        2. Select...
+        3. The problem happens when...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: What should happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Describe what happens instead and whether it happens every time.
+    validations:
+      required: true
+  - type: textarea
+    id: settings
+    attributes:
+      label: Relevant settings
+      description: If relevant, include single-player/co-op, selected character, camera mode, FPS limit, HD settings, or other options involved.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs, screenshots or video
+      description: Optional. Attach a screenshot, video or logs from an affected session. If using the launcher's opt-in diagnostics, enable them before reproducing the problem. Do not paste passwords or other private information.
