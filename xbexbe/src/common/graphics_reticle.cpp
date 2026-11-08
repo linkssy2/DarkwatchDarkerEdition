@@ -2,6 +2,7 @@
 #include "graphics_camera.h"
 #include "graphics_hud.h"
 #include "graphics_view.h"
+#include "graphics_viewport.h"
 #include <cmath>
 #include <cstring>
 #include "cpu/x86_context.h"
@@ -21,12 +22,11 @@ uint32_t Read(const uint8_t* base, uint32_t address) {
     return value;
 }
 bool Player(const uint8_t* base, uint32_t camera, uint32_t& player) {
-    if (!Span(base, camera, 0x68) || Read(base, camera) != 0x43F97C ||
-        Read(base, camera + 0x58) || Read(base, camera + 0x60) != 0x3F800000) return false;
-    const uint32_t top = Read(base, camera + 0x5C), height = Read(base, camera + 0x64);
-    player = 0;
-    if (height == 0x3EFEB852 && (top == 0 || top == 0x3F00A3D7)) player = top ? 1 : 0;
-    else if (top || height != 0x3F800000) return false;
+    if (!Span(base, camera, 0x68) || Read(base, camera) != 0x43F97C) return false;
+    const auto view = darkwatch::viewport::Identify(Read(base, camera + 0x58), Read(base, camera + 0x5C),
+        Read(base, camera + 0x60), Read(base, camera + 0x64));
+    if (view.kind == darkwatch::viewport::Kind::Invalid) return false;
+    player = view.player;
     return true;
 }
 }

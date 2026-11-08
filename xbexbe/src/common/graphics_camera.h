@@ -4,6 +4,7 @@
 
 struct X86Context;
 // Original single-player/two-player camera creation; other layouts are untouched.
+void DarkwatchPreparePlayerViewport(X86Context& ctx, uint8_t* base);
 void DarkwatchConfigurePlayerCamera(X86Context& ctx, uint8_t* base);
 // Correct the separately owned cinematic camera before its first rendered frame.
 void DarkwatchConfigureCinematicCamera(X86Context& ctx, uint8_t* base);
@@ -11,6 +12,15 @@ void DarkwatchConfigureCinematicCamera(X86Context& ctx, uint8_t* base);
 void DarkwatchUpdateCameraView(X86Context& ctx, uint8_t* base);
 // Keep the third-person reticle centered on its native camera-target aiming ray.
 bool DarkwatchThirdPersonReticle(const uint8_t* base, uint32_t player, float& ndc_x, float& ndc_y);
+// Live on-foot body visible in third-person or to the other local co-op player.
+bool DarkwatchThirdPersonPlayer(const X86Context& ctx, uint8_t* base, uint32_t actor, uint32_t control);
+// Body presentation also follows a first-person co-op owner's unmodified native aim.
+bool DarkwatchThirdPersonBodyAimTarget(const X86Context& ctx, uint8_t* base, uint32_t actor,
+                                      std::array<float, 3>& target);
+// Capture the current external view at the original player-death state boundary.
+// This render-only view does not make a dead player eligible for aiming or actions.
+bool DarkwatchBeginThirdPersonDeath(const X86Context& ctx, uint8_t* base, uint32_t actor);
+void DarkwatchEndThirdPersonDeath(uint8_t* base, uint32_t actor);
 // Recompute the current collision-swept camera target without advancing hands.
 // A zero component resolves the primary weapon; explicit components support offhand fire.
 bool DarkwatchThirdPersonAimTarget(const X86Context& ctx, uint8_t* base, uint32_t actor,

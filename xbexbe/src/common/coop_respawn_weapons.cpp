@@ -9,7 +9,7 @@
 #include <vector>
 
 // The original cooperative respawner destroys the old player and creates a
-// default-equipped one. Preserve only on-foot guns for Carry All, using the
+// default-equipped one. Preserve on-foot weapons for Carry All, using the
 // original format-3 weapon serializer; clothes, runes and scripted loadouts keep
 // their normal spawn/restore paths. No guest actor references survive in bytes.
 X86_EXTERN_FUNC(__imp__sub_000C32AD);
@@ -42,7 +42,7 @@ bool Text(const uint8_t* base, uint64_t at, std::string& value) {
 }
 unsigned Identity(const std::string& name) {
     constexpr const char* names[]{"BasicPistol", "Revolver", "DoublePistol", "Crossbow",
-        "RocketLauncher", "Rifle", "Shotgun", "SniperRifle"};
+        "RocketLauncher", "Rifle", "Shotgun", "SniperRifle", "Scepter"};
     for (unsigned i = 0; i < std::size(names); ++i) if (name == names[i]) return i + 1;
     return 0;
 }
@@ -121,7 +121,7 @@ bool Weapons(const uint8_t* base, const Player& p, std::vector<Weapon>& out) {
             identities |= 1u << identity; out.push_back({actor, type, i, identity, name});
         }
     }
-    return !out.empty() && out.size() <= 8;
+    return !out.empty() && out.size() <= 9;
 }
 struct Snapshot { const uint8_t* base = nullptr; Player player; uint32_t respawner = 0; std::vector<Weapon> weapons; std::vector<uint8_t> bytes; };
 std::array<Snapshot, 2> pending;
@@ -167,8 +167,8 @@ bool Capture(X86Context& ctx, uint8_t* base, Snapshot& snap) {
     s.Invoke(0xC2148, s.at + 0x20); return ok;
 }
 bool Restore(X86Context& ctx, uint8_t* base, Snapshot& snap, const Player& player) {
-    if (snap.bytes.empty() || snap.bytes.size() > capacity || snap.weapons.empty() || snap.weapons.size() > 8) return false;
-    std::array<uint32_t, 8> slots{}, actors{}, items{};
+    if (snap.bytes.empty() || snap.bytes.size() > capacity || snap.weapons.empty() || snap.weapons.size() > 9) return false;
+    std::array<uint32_t, 9> slots{}, actors{}, items{};
     for (unsigned i = 0; i < snap.weapons.size(); ++i) {
         const auto& old = snap.weapons[i]; uint32_t type = 0, owner = 0; std::string name;
         if (old.slot_index >= player.count || !Read(base, uint64_t(player.slots) + old.slot_index * 4, slots[i]) ||

@@ -62,13 +62,13 @@ class BonusImportTests(unittest.TestCase):
         (payload / "runtime").mkdir(parents=True)
         (payload / "hd_ui").mkdir()
         (payload / "character-art").mkdir()
-        for name in ('character_content.py', 'character_animation.py', 'character_assets.py',
+        for name in ('character_content.py', 'character_update.py', 'character-update.json.gz', 'character_animation.py', 'character_assets.py',
                      'character_archive.py', 'character_repaint.py', 'character-catalog.json',
                      'character_boss.py', 'character_boss_effects.py', 'character_spectral_hands.py',
                      'character_hand_seams.py', 'character_secondary.py', 'character_preview.py', 'character_roster.py', 'character_tala.py',
-                     'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'character_cinematic.py', 'installed_source.py',
-                     'third_person_animation.py', 'character_reload.py', 'character_weapon_pose.py', 'character_weapon_hold.py', 'character_starter_reload.py',
-                     'body_weapon_grips.inc',
+                     'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'enemy_blood.py', 'character_cinematic.py', 'installed_source.py',
+                     'third_person_animation.py', 'character_reload.py', 'character_weapon_pose.py', 'character_weapon_hold.py', 'character_weapon_shoulder.py', 'character_starter_reload.py',
+                     'body_weapon_grips.inc', 'body_reload_parts.inc',
                      'character-art/cassidy-hands-1024.dds', 'character-art/cassidy-hands-256.dds',
                      'character-art/tala-hands-1024.dds', 'character-art/tala-hands-256.dds'):
             (payload/name).write_bytes(b'synthetic character fixture')

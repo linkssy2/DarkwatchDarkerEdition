@@ -10,8 +10,8 @@
 namespace {
 struct ArchivePin { const char* guest_path; uint64_t size; std::string_view sha256; };
 constexpr std::array<ArchivePin, 3> kCharacterArchives{{
-    {"D:\\packfile.pck", 167981663, "b50962dd5b51663166a529324ed468ecb1d824397b5e0b7ad34d5bca5e63d17f"},
-    {"D:\\LvlSingl.pck", 2106210883, "f0d98525ca956342ce6884fea2d18eba1255f3407323bc2294b64e14aa2177e1"},
+    {"D:\\packfile.pck", 176743625, "fd642c3700c3f33537deba8d19ee1d731ca599bfcf27e4a88c6c8ea685941ae7"},
+    {"D:\\LvlSingl.pck", 2378623555, "d458ea662037bfaf28ecc11a68dae330a63c79b5a072e934e0c08e9b414ef140"},
     {"D:\\audio.pck", 152395109, "33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285"},
 }};
 

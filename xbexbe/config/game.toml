@@ -339,6 +339,11 @@ after = true
 at = 0x000BE1DE
 call = "DarkwatchHorseMousePitch"
 
+# Resolved horse lean actions follow the same camera-facing direction as steering.
+[[hook]]
+at = 0x00076846
+call = "DarkwatchHorseLean"
+
 # Stationary and vehicle-mounted guns share this manual angle integration.
 # Preserve the controller contribution, then apply raw look before native clamps.
 [[hook]]
@@ -363,6 +368,10 @@ call = "DarkwatchGraphicsLabel"
 after = true
 
 # Fullscreen player-camera Hor+; original caller/table/setter evidence: graphics-settings-20261016/camera-contract.json.
+[[hook]]
+at = 0x000F9B52
+call = "DarkwatchPreparePlayerViewport"
+
 [[hook]]
 at = 0x000F9B78
 call = "DarkwatchConfigurePlayerCamera"

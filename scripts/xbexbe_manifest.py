@@ -67,6 +67,11 @@ def collect_manifest(root: Path, configuration: str, release: bool = False) -> t
         checked_file(generated_root / f"x86_recomp.{index}.cpp")
     generated = tree_record(root, [p for p in generated_root.rglob("*") if p.is_file()])
 
+    character_catalog = file_record(root, root / "launcher/character-catalog.json")
+    character_keys = checked_file(project / "src/common/character_runtime_data.h").read_text(encoding="utf-8")
+    if "// Character catalog SHA256: " + character_catalog["sha256"] not in character_keys.splitlines():
+        raise ProvenanceError("Character dependency keys are stale; regenerate them for the current character catalog")
+
     executable = file_record(root, output / "darkwatch_xbe.exe")
     symbols = file_record(root, output / "darkwatch_xbe.pdb")
     if not executable["size"] or not symbols["size"]:
@@ -75,7 +80,8 @@ def collect_manifest(root: Path, configuration: str, release: bool = False) -> t
     host_paths += [p for p in (project / "config").rglob("*") if p.is_file()]
     checked_file(project / "src/common/game_info.cpp")
     host_paths += [project / "CMakeLists.txt", output / "darkwatch_xbe_xbe.cpp", output / "CMakeCache.txt"]
-    host_paths.extend(root / name for name in ("launcher/body_weapon_grips.inc", "launcher/assets/insignia.ico"))
+    host_paths.extend(root / name for name in ("launcher/body_weapon_grips.inc", "launcher/body_reload_parts.inc", "launcher/assets/insignia.ico"))
+    host_paths.append(root / "launcher/character-catalog.json")
 
     dependencies = []
     for name in ("zydis", "tomlplusplus", "imgui", "sdl3"):

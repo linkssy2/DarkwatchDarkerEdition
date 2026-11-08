@@ -46,6 +46,19 @@ def table_encoded(tree, strings):
 
 
 class EncodedResourceTests(unittest.TestCase):
+    def test_repeated_area_layout_is_reused_without_cross_variant_state(self):
+        raw = bytearray(art.encode(resource_tree([('body/a', 'ModelResource')])))
+        art._resource_layout.cache_clear()
+        for path in ('first', 'second', 'first'):
+            deps = [(path, 'ModelResource')]
+            self.assertEqual(art.append_resource_bytes(raw, deps), reference(raw, deps))
+        self.assertEqual(art._resource_layout.cache_info().misses, 1)
+        self.assertEqual(art._resource_layout.cache_info().hits, 2)
+        raw[raw.index(b'body/a') + 5] = ord('b')
+        self.assertEqual(art.append_resource_bytes(raw, []), reference(raw, []))
+        self.assertEqual(art._resource_layout.cache_info().misses, 2)
+        self.assertEqual(art._resource_layout.cache_info().currsize, 1)
+
     def test_resident_resource_selector_matches_decoded_list_and_fallback(self):
         original = resource_tree([('Body\\A', 'ModelResource'), ('body/b', 'OtherResource')])
         canonical = art.encode(original)

@@ -9,6 +9,7 @@ import struct
 
 import character_weapon_pose as p
 import character_spectral_hands as skin
+import character_weapon_shoulder as shoulder
 
 PREFIX='characters/player_two/weaponhold/'
 HOLD_BONES=tuple(range(12,22))
@@ -224,3 +225,196 @@ def prepare_table(raw,read,read_original,target_model,target_locator,basis,actor
         raw,clips=_prepare_weapon(raw,composed,read_original,target_model,target_locator,basis,actor,offsets,weapon)
         additions.update(clips)
     return raw,additions
+
+
+class AimedMotion(p.SupportRetarget):
+    # Arms and their spine ancestors need one basis before native pose mixing;
+    # opposite chest/arm rotations do not cancel after interpolation.
+    arm_bones=(7,8,9,*HOLD_BONES)
+
+    def relaxed_arm(self,base):
+        pose=p.world(base,self.parents);local=dict(base)
+        up=p.unit(p.sub(pose[9][1],pose[7][1]));side=p.sub(pose[18][1],pose[13][1])
+        side=p.unit(p.sub(side,p.scale(up,p.dot(side,up))));forward=p.unit(p.cross(side,up))
+        for bone,child,reach in((18,19,-.05),(19,20,.18)):
+            pose=p.world(local,self.parents)
+            direction=p.add(p.scale(up,-1.),p.add(p.scale(side,.10),p.scale(forward,reach)))
+            rotation=p.a._multiply(pose[bone][0],p.align(p.sub(pose[child][1],pose[bone][1]),direction))
+            local[bone]=p.a._multiply(rotation,p.a._inverse(pose[self.parents[bone]][0])),local[bone][1]
+        return local
+
+    def bake_motion(self,data,ready,*,free_arm=False):
+        # Preserve the authored swing below the shoulder instead of the raised
+        # running pose; the trigger arm keeps the native aim-mixing basis.
+        self.arm_bones=(7,8,9,*range(12,17))if free_arm else(7,8,9,*HOLD_BONES)
+        clip=p.Clip(data,self.bones)
+        base=p.Clip(ready,self.bones).pose(self.target,.5)
+        if any(clip.parts[4]['indices'][bone]==p.MISSING for bone in self.arm_bones):
+            raise ValueError('Incomplete aimed-motion rotation chain')
+        output=bytearray(self._encode_rotations(clip,lambda phase:base,{0.,1.}))
+        if free_arm:
+            relaxed=self.relaxed_arm(base);cache={};self.arm_bones=tuple(range(17,22))
+            def sample(phase):
+                if phase not in cache:
+                    local=clip.pose(self.target,phase)
+                    for bone in self.arm_bones:
+                        rest=p.a._to_quaternion(relaxed[bone][0]);swing=p.a._to_quaternion(local[bone][0])
+                        if p.dot(rest,swing)<0:swing=p.scale(swing,-1.)
+                        rotation=p.unit(p.add(p.scale(rest,.55),p.scale(swing,.45)))
+                        local[bone]=p.a._quaternion_matrix(rotation),local[bone][1]
+                    cache[phase]=local
+                return cache[phase]
+            output=bytearray(self._encode_rotations(p.Clip(bytes(output),self.bones),sample,(),synchronize=False))
+        part=p.b.sections(output,self.bones)[1].get(8)
+        if part is None:raise ValueError('Missing aimed-motion socket translations')
+        for bone in(16,21):
+            first=part['indices'][bone]
+            if first==p.MISSING:raise ValueError('Missing aimed-motion socket translation')
+            stop=min([x for x in part['indices']if first<x<p.MISSING]+[part['count']])
+            for index in range(first,stop):
+                struct.pack_into('<3f',output,part['keys']+index*part['stride']+4,*base[bone][1])
+        return bytes(output)
+
+
+def _one_handed_sources(references,read_original):
+    """Find unsolved adapted clips, including when updating a frozen old pack."""
+    ready=references['PISTOL','STAND'];original=p._original(ready)
+    if not original.endswith('/dwagentmale_readystand_ub.sanm'):
+        raise ValueError('Unrecognized one-handed motion source basis')
+    prefix=ready[:-len(original)]
+    tree=p.art.decode(read_original('characters/multiplayer/multiplayeranimation.bxml'))
+    result={}
+    for group in tree['children']:
+        name=group['attributes'].get('ToolName')
+        if name not in('Movement UB Pistol','Crouch Movement Pistol'):continue
+        for node in group['children']:
+            key=_motion_key(name,node)
+            if key in result:raise ValueError('Ambiguous one-handed source motion')
+            flags={c['attributes']['Flag']for c in node['children']if c['name']=='Modifier'}
+            if not {'PISTOL','REVOLVER','OUT_OF_VEHICLE'}<=flags:
+                raise ValueError('Unsupported one-handed source motion')
+            result[key]=prefix+p.art.norm(node['attributes']['Name'])+'.sanm'
+    if len(result)!=14:raise ValueError('Incomplete one-handed source motion')
+    return result
+
+
+def _motion_key(group,node):
+    attributes=node['attributes']
+    return(group,attributes['AnimationID'],attributes.get('LocomotionMinRate'),
+           attributes.get('LocomotionMaxRate')if not group.startswith('Crouch ')else None)
+
+
+class ShotgunSupport(p.SupportRetarget):
+    arm_bones=(18,19,20,21)
+
+    def shift_grip(self,local,new_offset,old_offset=0.):
+        # A small inward support contact keeps the fingers on the fore-end
+        # during native partial-weight aiming. Never move the trigger hand.
+        before=p.world(local,self.parents);result=dict(before)
+        mount=p.mul(self.target_grip,before[16])
+        shift=p.rotate((0.,0.,new_offset-old_offset),mount[0])
+        s,e,w=(before[bone][1]for bone in(18,19,20))
+        middle,endpoint=p.solve(s,e,w,p.add(w,shift))
+        result[18]=p.a._multiply(before[18][0],p.align(p.sub(e,s),p.sub(middle,s))),s
+        result[19]=p.a._multiply(before[19][0],p.align(p.sub(w,e),p.sub(endpoint,middle))),middle
+        result[20]=before[20][0],endpoint
+        result[21]=p.mul(p.mul(before[21],p.inverse(before[20])),result[20])
+        return p.localize(result,self.parents)
+
+
+def _prepare_shotgun_support(raw,read,read_original,model,locator,basis,actor):
+    affected={'CassidySolo','CassidySpectralSolo','TalaSolo','VampireTalaSolo',
+              'BossTalaSolo','CassidyPlayerTwo','CassidySpectralPlayerTwo','TalaCoop'}
+    if actor not in affected:return raw,{}
+    tree=p.art.decode(raw);rows=[];ready=None;prefix=PREFIX+'support/'
+    for group in tree['children']:
+        name=group['attributes'].get('ToolName')
+        if name not in('Alert Poses UB','Shotgun Aim','Weapon Shoot'):continue
+        for node in group['children']:
+            if node['name']!='KeyframeAnimation':continue
+            flags={c['attributes']['Flag']for c in node['children']if c['name']=='Modifier'}
+            if not {'SHOTGUN','STAND'}<=flags:continue
+            if flags&p.WEAPONS!={'SHOTGUN'}:raise ValueError('Mixed Shotgun support selector')
+            path=p.art.norm(node['attributes']['Name'])+'.sanm';rows.append((node,path))
+            if name=='Alert Poses UB':
+                if ready is not None:raise ValueError('Duplicate Shotgun support reference')
+                ready=path
+    if ready is None:raise ValueError('Missing Shotgun support reference')
+    if ready.startswith(prefix):return raw,{}
+    expected=CONTACT_MODELS[actor]
+    if isinstance(expected,str):expected=(expected,)
+    if hashlib.sha256(model).hexdigest()not in expected:raise ValueError('Unrecognized Shotgun support model')
+    data=read(ready);bones=struct.unpack_from('<I',data,8)[0]
+    source_locator=basis[:-4]+('_coop.bllist'if basis==p.a.STORM else'.bllist')
+    solver=ShotgunSupport(read_original(basis),model,p._grip(read_original(source_locator)),p._grip(locator),bones)
+    additions={};cache={}
+    for node,path in rows:
+        if path not in cache:
+            original=read(path)
+            output=(solver.bake_grip_delta(data,original,.012)if struct.unpack_from('<I',original,20)[0]&0x10000000
+                    else solver.bake_grip(original,.012))
+            name=prefix+hashlib.sha256(output).hexdigest()[:24];cache[path]=name;additions[name+'.sanm']=output
+        node['attributes']['Name']=cache[path]
+    return p.art.encode(tree),additions
+
+
+def prepare_aimed_motion_table(raw,read,read_original,model,locator,basis,actor,offsets):
+    """Share ready aim through directional and jump blends; keep native legs."""
+    if actor not in p.GRIP_ACTORS or basis not in(p.a.CHAZ,p.a.STORM):
+        raise ValueError('Unsupported aimed-motion body rig')
+    raw,adjusted=shoulder.prepare_table(raw,read,read_original,model,locator,basis,actor,offsets)
+    previous=read
+    read=lambda path:adjusted[path]if path in adjusted else previous(path)
+    raw,support=_prepare_shotgun_support(raw,read,read_original,model,locator,basis,actor)
+    adjusted.update(support)
+    tree=p.art.decode(raw);references={}
+    for group in tree['children']:
+        name=group['attributes'].get('ToolName')
+        if name not in('Alert Poses UB','Crouch Alert Poses'):continue
+        stance='CROUCH'if name=='Crouch Alert Poses'else'STAND'
+        for node in group['children']:
+            if node['name']!='KeyframeAnimation' or node['attributes'].get('AnimationID')!='IDLE':continue
+            flags={c['attributes']['Flag']for c in node['children']if c['name']=='Modifier'}
+            for flag in flags&p.WEAPONS:
+                key=flag,stance
+                if key in references:raise ValueError('Duplicate aimed-motion ready reference')
+                references[key]=p.art.norm(node['attributes']['Name'])+'.sanm'
+    weapons=dict(PISTOL='BasicPistol',REVOLVER='Revolver',DOUBLEPISTOL='DoublePistol',RIFLE='Rifle',
+                 SNIPERRIFLE='SniperRifle',CROSSBOW='Crossbow',SHOTGUN='Shotgun',RAILRCKT='RocketLauncher')
+    if set(references)!={(flag,stance)for flag in weapons for stance in('STAND','CROUCH')}:
+        raise ValueError('Incomplete aimed-motion weapon references')
+    first=read(next(iter(references.values())));bones=struct.unpack_from('<I',first,8)[0]
+    source_locator=basis[:-4]+('_coop.bllist'if basis==p.a.STORM else'.bllist')
+    solver=AimedMotion(read_original(basis),model,p._grip(read_original(source_locator)),p._grip(locator),bones)
+    free_sources=_one_handed_sources(references,read_original)
+    additions=dict(adjusted);cache={};found=set()
+    for group in tree['children']:
+        name=group['attributes'].get('ToolName','')
+        if not name.startswith(('Jump ','Vampire Jump ','Movement UB ','Crouch Movement ')):continue
+        if name.endswith((' Flag',' Core')):continue
+        rows=[]
+        for node in group['children']:
+            if node['name']!='KeyframeAnimation':raise ValueError('Unexpected aimed-motion action')
+            flags={c['attributes']['Flag']for c in node['children']if c['name']=='Modifier'}
+            selected=flags&weapons.keys()
+            if not selected or 'OUT_OF_VEHICLE'not in flags:raise ValueError('Unsupported aimed-motion selector')
+            stance='CROUCH'if'CROUCH'in flags else'STAND'
+            path=p.art.norm(node['attributes']['Name'])+'.sanm'
+            for flag in sorted(selected):
+                free_arm=flag in('PISTOL','REVOLVER')and name in('Movement UB Pistol','Crouch Movement Pistol')
+                source=free_sources[_motion_key(name,node)]if free_arm else path
+                key=source,flag,stance,free_arm
+                if key not in cache:
+                    clip=solver.bake_motion(read(source),read(references[flag,stance]),free_arm=free_arm)
+                    destination=PREFIX+'motion/'+hashlib.sha256(clip).hexdigest()[:24]
+                    cache[key]=destination;additions[destination+'.sanm']=clip
+                replacement=copy.deepcopy(node);replacement['attributes']['Name']=cache[key]
+                # The core crouch loop has no speed ceiling. Keep its armed
+                # upper body present while the incoming run speed decelerates.
+                if name.startswith('Crouch Movement ')and node['attributes']['AnimationID']=='LOCO_FORWARD':
+                    replacement['attributes'].pop('LocomotionMaxRate',None)
+                replacement['children']=[c for c in replacement['children']if not(c['name']=='Modifier'and c['attributes']['Flag']in selected-{flag})]
+                rows.append(replacement);found.add(flag)
+        group['children']=rows;group['attributes']['KeyedAnimationCount']=str(len(rows))
+    if found!=set(weapons):raise ValueError('Incomplete aimed-motion weapon coverage')
+    return p.art.encode(tree),additions

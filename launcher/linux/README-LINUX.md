@@ -1,8 +1,11 @@
-# Darkwatch: Darker Edition 0.7.7 — Experimental Linux / Proton
+# Darkwatch: Darker Edition 0.7.8 — Experimental Linux / Proton
 
 This package runs the Windows port through Proton. Community gameplay results
 are recorded below; this update still needs live testing across Linux systems.
 Co-op remains beta. Supply your own supported original Xbox Darkwatch ISO or XISO.
+
+Thanks to [@brandonsoto](https://github.com/brandonsoto) for Steam Deck and live
+Linux testing and feedback.
 
 Keep using the existing separate 0.7 HD texture pack; this update does not need
 a new pack or reinstallation of an already installed pack.
@@ -41,9 +44,11 @@ setup is required for this route.
    does not matter. Set **Launch Options** to:
 
    ```text
-   -B "linux/run_backend.py" --interactive --play
+   PROTON_LOG=0 %command% -B "linux/run_backend.py" --interactive --play
    ```
 
+   A Steam Deck user confirmed this complete Launch Options command works.
+   `PROTON_LOG=0` keeps Proton's diagnostic log off during normal play.
    This uses **direct ISO playback**: keep the ISO in `assets/` for play and
    updates. Only the resources requiring preparation are copied locally.
 
@@ -80,17 +85,29 @@ closes. The Windows graphical launcher and its direct-play shortcut have not
 been verified under Proton, so use the Linux package's bundled Python target
 above instead of adding either graphical `.exe`.
 
-Steam also accepts environment options before `%command%`. For example, to
-enable Proton's own diagnostic log, use:
+Steam accepts environment options before `%command%`. To enable Proton's own
+diagnostic log, use:
 
 ```text
 PROTON_LOG=1 %command% -B "linux/run_backend.py" --interactive --play
 ```
 
+With **MangoHud already installed**, a Steam Deck user confirmed this command
+for Proton logging with the MangoHud overlay:
+
+```text
+PROTON_LOG=1 mangohud %command% -B "linux/run_backend.py" --interactive --play
+```
+
+These options are separate from Darkwatch's own opt-in game and launcher logs.
+To collect those too, enable **Diagnostic logging** as described under
+**Reporting a failure** below. MangoHud does not enable the game's diagnostic
+logging by itself. Without MangoHud installed, use the command without `mangohud`.
+
 Put any other Proton/driver variables before `%command%` and keep the Python
 arguments after it. The Steam adapter leaves these options and Steam's chosen
-compatibility tool unchanged. Remove the diagnostic option when finished if
-you no longer need its log. This setup route needs no terminal or `.sh` command;
+compatibility tool unchanged. Restore the normal `PROTON_LOG=0 %command%`
+play command when finished. This setup route needs no terminal or `.sh` command;
 manual updates below can also be completed with a file manager.
 
 ## Checking for new releases
@@ -418,6 +435,14 @@ Normal play has no test timer. Diagnostic logging is off by default.
 Enable it before reproducing an issue with Manage installation > Diagnostic
 logging, or ./Darkwatch.sh --set-diagnostics on. Logs stay locally in
 GameData/logs; nothing uploads automatically. Disable it afterward with off.
-The Steam setup route accepts --set-diagnostics on in place of --play.
+For the Steam setup route, temporarily set Launch Options to:
+
+```text
+PROTON_LOG=0 %command% -B "linux/run_backend.py" --interactive --set-diagnostics on
+```
+
+Launch it once to save the setting, then restore the normal play command or the
+Proton/MangoHud diagnostic command above. To stop Darkwatch's own logging, repeat
+this setup step with `--set-diagnostics off` before restoring normal play.
 Logs include local paths, settings and devices; review before sharing.
 Logging is size-limited and can affect timing.

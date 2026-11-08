@@ -97,8 +97,9 @@ class CharacterPreviewTests(unittest.TestCase):
             payload = b'generated private preview'
             record = dict(version=preview.VERSION, size=len(payload), sha256=hashlib.sha256(payload).hexdigest())
             backend = object.__new__(setup.Setup)
+            backend.verified_files = {}
             backend.check_cancel = lambda: None; backend.notify = lambda *a, **kw: None
-            backend.digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+            backend.digest = lambda p, cached=False: hashlib.sha256(p.read_bytes()).hexdigest()
             def prepare(assets, destination, cancel):
                 self.assertEqual(assets, current/'assets'); cancel(); destination.write_bytes(payload); return record
             with patch.object(setup, 'require_closed'), patch.object(preview, 'prepare', side_effect=prepare) as converter:

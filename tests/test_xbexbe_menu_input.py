@@ -55,7 +55,8 @@ int main(){
  auto pad=Poll(0);CHECK(!pad.buttons&&pad.analog[0]==255&&pad.analog[6]==0&&pad.analog[7]==0);
  CHECK(!GetMouseSnapshot().active&&!GetMouseSnapshot().dx&&!GetMouseSnapshot().dy);
  fake_pads[0].buttons[SDL_GAMEPAD_BUTTON_EAST]=true;pad=Poll(0);CHECK(pad.analog[1]==255&&GetLastDevice().controller);
- PointerPosition(801,400,2560,1440);CHECK(!GetLastDevice().controller);Poll(0);CHECK(!GetLastDevice().controller);
+ PointerPosition(801,400,2560,1440);CHECK(GetLastDevice().controller); // Resizing does not claim mouse ownership.
+ PointerPosition(802,400,2560,1440);CHECK(!GetLastDevice().controller);Poll(0);CHECK(!GetLastDevice().controller);
  fake_pads[0].buttons[SDL_GAMEPAD_BUTTON_EAST]=false;Poll(0);
  SetActive(false);CHECK(!GetPointerSnapshot().active&&GetPointerSnapshot().epoch!=pointer_epoch);
  p=GetPointerSnapshot();PointerButton(1,true);PointerWheel(120);CHECK(GetPointerSnapshot().left_presses==p.left_presses&&GetPointerSnapshot().wheel==p.wheel);
@@ -88,6 +89,44 @@ int main(){
  fake_pads[0].buttons[SDL_GAMEPAD_BUTTON_START]=true;Tap('P');Frame();CHECK(Poll(0).buttons&0x10);
  fake_pads[0].buttons[SDL_GAMEPAD_BUTTON_START]=false;Frame();CHECK(!(Poll(0).buttons&0x10));
  SetTitleScreen(false);Tap('P');Frame();CHECK(Poll(0).buttons&0x10);
+ // Controller takes the menu pointer; only genuine motion restores it.
+ PointerPosition(20,30,1280,720);PointerPosition(21,30,1280,720);
+ PointerButton(1,true);PointerButton(1,false);p=GetPointerSnapshot();CHECK(p.enabled);
+ fake_pads[0].buttons[SDL_GAMEPAD_BUTTON_SOUTH]=true;Poll(0);
+ auto disabled=GetPointerSnapshot();CHECK(!disabled.enabled&&disabled.epoch!=p.epoch);
+ PointerPosition(21,30,1280,720);PointerButton(1,true);PointerButton(1,false);PointerWheel(120);Tap(1);
+ CHECK(!GetPointerSnapshot().enabled&&GetPointerSnapshot().left_presses==disabled.left_presses&&GetPointerSnapshot().wheel==disabled.wheel&&GetLastDevice().controller);
+ NotePcActivity();Tap('Z');PointerButton(0x1B,true);PointerButton(0x1B,false);
+ CHECK(!GetPointerSnapshot().enabled&&GetPointerSnapshot().key_presses>disabled.key_presses&&GetPointerSnapshot().back_presses==disabled.back_presses+1);
+ SetActive(false);PointerPosition(22,30,1280,720);SetActive(true);CHECK(!GetPointerSnapshot().enabled);
+ PointerPosition(23,30,2560,1440);CHECK(!GetPointerSnapshot().enabled);
+ PointerPosition(24,30,2560,1440,false);CHECK(!GetPointerSnapshot().enabled);
+ auto restore_epoch=GetPointerSnapshot().epoch;PointerPosition(25,30,2560,1440);
+ CHECK(GetPointerSnapshot().enabled&&GetPointerSnapshot().epoch==restore_epoch);Poll(0);CHECK(GetPointerSnapshot().enabled);
+ // Host panels have captured native PC input; foreground motion still returns their pointer.
+ fake_pads[0].axes[SDL_GAMEPAD_AXIS_RIGHTX]=17000;Poll(0);CHECK(!GetPointerSnapshot().enabled);
+ SetActive(false);NotePcActivity();CHECK(!GetPointerSnapshot().enabled);NotePcActivity(true);CHECK(GetPointerSnapshot().enabled);SetActive(true);
+ // Co-op player 2 cannot hide player 1's mouse pointer.
+ SetCoopKeyboard(true);fake_pads[0].buttons[SDL_GAMEPAD_BUTTON_EAST]=true;Poll(1);CHECK(GetPointerSnapshot().enabled);
+ SetCoopKeyboard(false);SetMenuMode(false);
+ // Taking a menu over with a controller cancels held Mouse3/4/5 bindings, but not keyboard input.
+ fake_pads[0]=SDL_Gamepad{1};Poll(0);SetMenuMode(true);
+ for(unsigned mouse_key:{4u,5u,6u}){
+  bindings=DefaultPcBindings();bindings[0]={{mouse_key,0}};bindings[1]={{'N',0}};CHECK(SetPcBindings(bindings));
+  NotePcActivity(true);Key(mouse_key,true);Key('N',true);Frame();CHECK((Poll(0).buttons&3)==3);
+  // Leave both a held frame and another pending mouse edge to discard.
+  Key(mouse_key,false);Key(mouse_key,true);
+  fake_pads[0].buttons[SDL_GAMEPAD_BUTTON_SOUTH]=true;pad=Poll(0);
+  CHECK(!GetPointerSnapshot().enabled&&(pad.buttons&3)==2);
+  CHECK(!g_held[mouse_key]&&!g_pressed[mouse_key]&&!g_frame_keys[mouse_key]&&g_menu_key_held[mouse_key]);
+  CHECK(g_menu_key_held['N']);Key(mouse_key,false);Frame();CHECK((Poll(0).buttons&3)==2&&!g_menu_key_held[mouse_key]);
+  Frame();CHECK((Poll(0).buttons&3)==2);Key('N',false);Frame();CHECK(!(Poll(0).buttons&3));
+  fake_pads[0].buttons[SDL_GAMEPAD_BUTTON_SOUTH]=false;Poll(0);
+ }
+ // Outside menus, a physical controller still mixes with held mouse/keyboard gameplay bindings.
+ SetMenuMode(false);NotePcActivity(true);Key(6,true);Key('N',true);Frame();
+ fake_pads[0].buttons[SDL_GAMEPAD_BUTTON_SOUTH]=true;CHECK((Poll(0).buttons&3)==3);
+ CHECK(g_held[6]&&g_frame_keys[6]&&g_held['N']);Key(6,false);Key('N',false);Frame();CHECK(!(Poll(0).buttons&3));
  std::puts("menu input: pointer edges/epochs, gameplay wheel/menu-scroll isolation, contextual consumption, raw-motion isolation, custom pause, controller preservation and last-device activity passed");
 }
 '''

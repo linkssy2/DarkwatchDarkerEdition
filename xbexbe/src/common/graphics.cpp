@@ -403,9 +403,9 @@ struct MenuRow {
         const auto pos = ImGui::GetWindowPos();
         a = {pos.x + 70 * scale, pos.y + y * scale - ImGui::GetScrollY()};
         b = {pos.x + 925 * scale, a.y + 46 * scale};
-        const auto* window = ImGui::GetCurrentWindow();
+        auto* window = ImGui::GetCurrentWindow();
         const auto& nav = window->NavRectRel[0];
-        const float nav_y = pos.y + nav.GetCenter().y;
+        const float nav_y = ImGui::WindowRectRelToAbs(window, nav).GetCenter().y;
         selected = (ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(a, b)) ||
             (GImGui->NavWindow == window && GImGui->NavId && nav_y >= a.y && nav_y < b.y);
         layers.Split(draw, 2); layers.SetCurrentChannel(draw, 1);
@@ -463,6 +463,26 @@ void Hint(const char* text) {
     ImGui::PopTextWrapPos(); ImGui::SetWindowFontScale(font_scale);
 }
 
+// Flow translated help with its setting instead of reserving fixed blank gaps.
+struct SettingsLayout {
+    float scale, y = 8;
+    explicit SettingsLayout(float value) : scale(value) {}
+    void Place() const { ImGui::SetCursorPos({88 * scale, y * scale}); }
+    void Finish() { y = ImGui::GetCursorPosY() / scale + 10; }
+    void Section(const char* title) {
+        if (y > 8) y += 12;
+        Place();
+        ImGui::TextUnformatted(language::Text(title));
+        Finish();
+    }
+    float Row() { const float top = y; y += 56; return top; }
+    void Help(const char* text) {
+        ImGui::SetCursorPos({88 * scale, (y - 8) * scale});
+        Hint(text);
+        Finish();
+    }
+};
+
 std::string BindingLabel(uint32_t key) {
     switch (key) {
         case VK_LEFT: return "\xE2\x86\x90";
@@ -496,6 +516,12 @@ void PadNavigation() {
     if ((p & 32) && !(previous & 32))
         g_gamepad_back_consumed = GImGui->ActiveId != 0 || !GImGui->OpenPopupStack.empty();
     if (p && p != previous) {
+        // A click outside the panel clears ImGui focus; the next pad action must reclaim it.
+        if (g_open && !GImGui->NavWindow) {
+            auto* window = ImGui::FindWindowByName(g_coop ? "Co-op" : g_quit ? "Quit to Desktop" :
+                g_characters ? "Characters" : g_audio ? "Audio" : g_controls ? "Controls" : "Graphics");
+            if (window && window->WasActive) ImGui::FocusWindow(window, ImGuiFocusRequestFlags_RestoreFocusedChild);
+        }
         GImGui->NavDisableHighlight = false;
         GImGui->NavDisableMouseHover = true;
     }
@@ -706,47 +732,47 @@ void ControlsContent(float scale, bool just_opened) {
     ImGui::SetCursorPos({0, 132 * scale});
     ImGui::BeginChild("Controls scroll", {938 * scale, 308 * scale + extra_height}, ImGuiChildFlags_NavFlattened);
     ImGui::BeginDisabled(capturing || g_conflict_action >= 0);
+    SettingsLayout layout(scale);
     if (!player_two) {
-    { MenuRow row("MOUSE SENSITIVITY", 8, scale);
-      float sensitivity = g_controls_draft.mouse_millidegrees / 50.f;
-      if (ImGui::SliderFloat("##mouse sensitivity", &sensitivity, .02f, 20.f, "%.2fx", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_Logarithmic))
-          g_controls_draft.mouse_millidegrees = uint32_t(std::lround(sensitivity * 50.f));
-      if (just_opened) ImGui::SetItemDefaultFocus(); }
-    { MenuRow row("ZOOM SENSITIVITY", 64, scale);
-      int zoom = int(g_controls_draft.zoom_sensitivity_percent);
-      if (ImGui::SliderInt("##zoom sensitivity", &zoom, 10, 200, "%d%%", ImGuiSliderFlags_AlwaysClamp))
-          g_controls_draft.zoom_sensitivity_percent = uint32_t(zoom);
-      ImGui::SetCursorPos({88 * scale, 110 * scale});
-      Hint("Mouse speed after zoom compensation. 100% matches normal aiming near the crosshair.");
+        layout.Section("MOUSE");
+        { MenuRow row("MOUSE SENSITIVITY", layout.Row(), scale);
+          float sensitivity = g_controls_draft.mouse_millidegrees / 50.f;
+          if (ImGui::SliderFloat("##mouse sensitivity", &sensitivity, .02f, 20.f, "%.2fx", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_Logarithmic))
+              g_controls_draft.mouse_millidegrees = uint32_t(std::lround(sensitivity * 50.f));
+          if (just_opened) ImGui::SetItemDefaultFocus(); }
+        { MenuRow row("ZOOM SENSITIVITY", layout.Row(), scale);
+          int zoom = int(g_controls_draft.zoom_sensitivity_percent);
+          if (ImGui::SliderInt("##zoom sensitivity", &zoom, 10, 200, "%d%%", ImGuiSliderFlags_AlwaysClamp))
+              g_controls_draft.zoom_sensitivity_percent = uint32_t(zoom); }
+        layout.Help("Mouse speed after zoom compensation. 100% matches normal aiming near the crosshair.");
     }
-    }
-    const float sight_y = player_two ? 8.f : 180.f;
-    { MenuRow row("SIGHT MODE", sight_y, scale);
+    layout.Section("AIMING AND MOVEMENT");
+    { MenuRow row("SIGHT MODE", layout.Row(), scale);
       int mode = g_controls_draft.sight_toggle[ControlsPort()] ? 1 : 0;
       if (Choice("##sight mode", &mode, "Hold\0Toggle\0"))
           g_controls_draft.sight_toggle[ControlsPort()] = mode != 0;
-      if (player_two && just_opened) ImGui::SetItemDefaultFocus();
-    }
-    ImGui::SetCursorPos({88 * scale, (sight_y + 48) * scale});
-    Hint("Hold to aim while pressed. Toggle to cycle sight mode with each press.");
+      if (player_two && just_opened) ImGui::SetItemDefaultFocus(); }
+    layout.Help("Hold to aim while pressed. Toggle to cycle sight mode with each press.");
+    { MenuRow row("WALK MODE", layout.Row(), scale);
+      int mode = g_controls_draft.walk_toggle[ControlsPort()] ? 1 : 0;
+      if (Choice("##walk mode", &mode, "Hold to Walk\0Toggle\0"))
+          g_controls_draft.walk_toggle[ControlsPort()] = mode != 0; }
+    layout.Help("Assign Walk below or in Controller Layout. On-foot movement only.");
     if (!player_two) {
-    { MenuRow row("AIMING ASSISTANCE", 292, scale); Toggle("##aim assistance", g_controls_draft.aim_assistance); }
-    { MenuRow row("LOOK CENTERING", 348, scale); Toggle("##look centering", g_controls_draft.aim_centering); }
-    ImGui::SetCursorPos({88 * scale, 404 * scale});
-    ImGui::PushTextWrapPos(900 * scale);
-    Hint("Aiming assistance attracts the view near targets. Look centering recenters your view.");
-    ImGui::PopTextWrapPos();
+        { MenuRow row("AIMING ASSISTANCE", layout.Row(), scale); Toggle("##aim assistance", g_controls_draft.aim_assistance); }
+        { MenuRow row("LOOK CENTERING", layout.Row(), scale); Toggle("##look centering", g_controls_draft.aim_centering); }
+        layout.Help("Aiming assistance attracts the view near targets. Look centering recenters your view.");
     }
-    const float controller_y = player_two ? 120.f : 464.f;
+    layout.Section("CONTROLLER");
     ImGui::BeginDisabled(!g_original_draft.controls_available);
-    { MenuRow row("INVERT LOOK", controller_y, scale); Toggle("##invert look", g_original_draft.invert); }
-    { MenuRow row("PAD VIBRATION", controller_y + 56, scale); Toggle("##vibration", g_original_draft.vibration); }
-    { MenuRow row("PAD SENSITIVITY", controller_y + 112, scale);
+    { MenuRow row("INVERT LOOK", layout.Row(), scale); Toggle("##invert look", g_original_draft.invert); }
+    { MenuRow row("PAD VIBRATION", layout.Row(), scale); Toggle("##vibration", g_original_draft.vibration); }
+    { MenuRow row("PAD SENSITIVITY", layout.Row(), scale);
       ImGui::SliderInt("##controller sensitivity", &g_original_draft.sensitivity,
                       g_original_draft.sensitivity_min, g_original_draft.sensitivity_max); }
     ImGui::EndDisabled();
-    ImGui::SetCursorPos({88 * scale, (controller_y + 172) * scale});
-    if (!g_original_draft.controls_available) ImGui::TextDisabled("%s", language::Text("Original settings are unavailable on this page."));
+    if (!g_original_draft.controls_available) layout.Help("Original settings are unavailable on this page.");
+    layout.Place();
     if (g_layout_returned) {ImGui::SetKeyboardFocusHere(); g_layout_returned = false;}
     if (MenuButton("CONTROLLER LAYOUT...")) {
         ControlsCancelCapture(); g_capture_action = -1;
@@ -758,39 +784,19 @@ void ControlsContent(float scale, bool just_opened) {
         g_released = false; g_pad = 0;
     }
     if (KnownPreset()) {ImGui::SameLine(); ImGui::TextDisabled(language::Text("Current: %s"), language::Text(kPresetNames[g_original_draft.controller_preset]));}
-    if (player_two) {
-        ImGui::SetCursorPos({88 * scale, 352 * scale});
-        ImGui::PushTextWrapPos(900 * scale);
-        Hint("Player 2 settings. Use Controller Layout to change buttons.");
-        ImGui::PopTextWrapPos();
-    }
-    const float walk_y = player_two ? 412.f : 702.f;
-    { MenuRow row("WALK MODE", walk_y, scale);
-      int mode = g_controls_draft.walk_toggle[ControlsPort()] ? 1 : 0;
-      if (Choice("##walk mode", &mode, "Hold to Walk\0Toggle\0"))
-          g_controls_draft.walk_toggle[ControlsPort()] = mode != 0;
-    }
-    ImGui::SetCursorPos({88 * scale, (walk_y + 48) * scale});
-    Hint("Assign Walk below or in Controller Layout. On-foot movement only.");
-    const float gameplay_y = walk_y + 112;
-    ImGui::SetCursorPos({88 * scale, gameplay_y * scale});
-    ImGui::TextUnformatted(language::Text("GAMEPLAY OPTIONS"));
-    { MenuRow row("CARRY ALL WEAPONS", gameplay_y + 38, scale);
+    layout.Finish();
+    if (player_two) layout.Help("Player 2 settings. Use Controller Layout to change buttons.");
+    layout.Section("GAMEPLAY OPTIONS");
+    { MenuRow row("CARRY ALL WEAPONS", layout.Row(), scale);
       Toggle("##carry all weapons", g_controls_draft.carry_all_weapons); }
-    ImGui::SetCursorPos({88 * scale, (gameplay_y + 94) * scale});
-    ImGui::PushTextWrapPos(900 * scale);
-    Hint("Both players. Extra weapons stay stored until this is on.");
-    ImGui::PopTextWrapPos();
-    { MenuRow row("KEEP STARTING REVOLVER", gameplay_y + 150, scale);
+    layout.Help("Both players. Extra weapons stay stored until this is on.");
+    { MenuRow row("KEEP STARTING REVOLVER", layout.Row(), scale);
       Toggle("##keep starting revolver", g_controls_draft.keep_starting_revolver); }
-    ImGui::SetCursorPos({88 * scale, (gameplay_y + 198) * scale});
-    ImGui::PushTextWrapPos(900 * scale);
-    Hint("Both players. Keep the starting revolver after receiving the Redeemer. Applies at weapon changes and chapter starts.");
-    ImGui::PopTextWrapPos();
+    layout.Help("Both players. Keep the starting revolver after receiving the Redeemer. Applies at weapon changes and chapter starts.");
     if (!player_two) {
-    ImGui::SetCursorPos({88 * scale, 1092 * scale});
+    layout.Section("KEYBOARD AND MOUSE BINDINGS");
+    layout.Place();
     ImGui::BeginGroup(); ImGui::PushTextWrapPos(912 * scale);
-    ImGui::TextUnformatted(language::Text("KEYBOARD AND MOUSE BINDINGS"));
     Hint("Select a binding, then press a key, mouse button, or scroll the wheel. Escape cancels; Backspace clears.");
     if (ImGui::BeginTable("Bindings", 3, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg, {824 * scale, 0})) {
         ImGui::TableSetupColumn(language::Text("ACTION"), ImGuiTableColumnFlags_WidthStretch);
@@ -1466,12 +1472,14 @@ void DarkwatchGraphicsUi(double fps) {
     ImGui::SetCursorPos({0, 132 * scale});
     ImGui::BeginChild("Graphics scroll", {938 * scale, 308 * scale + extra_height}, ImGuiChildFlags_NavFlattened);
     char text[96];
-    { MenuRow row("DISPLAY MODE", 8, scale);
+    SettingsLayout layout(scale);
+    layout.Section("DISPLAY");
+    { MenuRow row("DISPLAY MODE", layout.Row(), scale);
     int mode = int(g_draft.display_mode);
     if (just_opened) ImGui::SetKeyboardFocusHere();
     if (Choice("##display", &mode, "Fullscreen\0Borderless\0Windowed\0")) g_draft.display_mode = app::DisplayMode(mode);
     }
-    { MenuRow row("RESOLUTION", 64, scale);
+    { MenuRow row("RESOLUTION", layout.Row(), scale);
     bool borderless = g_draft.display_mode == app::DisplayMode::Borderless;
     app::Mode resolution = borderless || !g_draft.width || !g_draft.height ? app::Desktop() : app::Mode{g_draft.width,g_draft.height};
     std::snprintf(text, sizeof(text), "%u x %u%s", resolution.width, resolution.height, borderless ? language::Text("  (Desktop)") : "");
@@ -1487,64 +1495,28 @@ void DarkwatchGraphicsUi(double fps) {
     }
     ImGui::EndDisabled();
     }
-    { MenuRow row("ASPECT RATIO", 120, scale);
+    { MenuRow row("ASPECT RATIO", layout.Row(), scale);
     int aspect = int(g_draft.aspect_ratio);
     if (Choice("##aspect", &aspect, "Automatic\0Widescreen 16:9\0Original 4:3\0Ultrawide 21:9\0Super Ultrawide 32:9\0Widescreen 16:10\0")) g_draft.aspect_ratio = app::AspectRatio(aspect);
     }
-    { MenuRow row("RENDER RESOLUTION", 176, scale);
+    { MenuRow row("BRIGHTNESS", layout.Row(), scale);
+    int brightness = int(g_draft.brightness_percent);
+    if (ImGui::SliderInt("##brightness", &brightness, 50, 150, "%d%%", ImGuiSliderFlags_AlwaysClamp))
+        g_draft.brightness_percent = uint32_t(brightness);
+    layout.Help("100% = original. Lower is darker.");
+    }
+    layout.Section("PERFORMANCE");
+    { MenuRow row("RENDER RESOLUTION", layout.Row(), scale);
     int percent = int(g_draft.render_percent);
     if (ImGui::SliderInt("##internal", &percent, 25, 200, "%d%%", ImGuiSliderFlags_AlwaysClamp)) g_draft.render_percent = uint32_t(percent);
     auto render = app::RenderSize(g_draft);
-    ImGui::SetCursorPos({430 * scale, 222 * scale});
-    std::snprintf(text, sizeof(text), language::Text("%u x %u rendering"), render.width, render.height); Hint(text);
+    std::snprintf(text, sizeof(text), language::Text("%u x %u rendering"), render.width, render.height); layout.Help(text);
     }
-    { MenuRow row("CAMERA VIEW", 265, scale);
-    int camera_mode = int(g_view_draft.camera_mode);
-    if (Choice("##camera_mode", &camera_mode, "First Person\0Third Person - Centered\0Third Person - Shoulder\0"))
-        g_view_draft.camera_mode = view::CameraMode(camera_mode);
-    ImGui::SetCursorPos({88 * scale, 311 * scale});
-    Hint("On-foot camera. Each player chooses their own view.");
-    }
-    { MenuRow row("FIELD OF VIEW", 354, scale);
-    int fov = int(g_view_draft.fov_percent);
-    if (ImGui::SliderInt("##fov", &fov, 50, 200, "%d%%", ImGuiSliderFlags_AlwaysClamp)) g_view_draft.fov_percent = uint32_t(fov);
-    ImGui::SetCursorPos({430 * scale, 400 * scale});
-    Hint("100% = original view. Zoom is preserved.");
-    }
-    { MenuRow row("WEAPON FOV", 443, scale);
-    int weapon_fov = int(g_view_draft.viewmodel_fov_percent);
-    if (ImGui::SliderInt("##weapon_fov", &weapon_fov, 50, 150, "%d%%", ImGuiSliderFlags_AlwaysClamp)) g_view_draft.viewmodel_fov_percent = uint32_t(weapon_fov);
-    ImGui::SetCursorPos({430 * scale, 489 * scale});
-    Hint("Changes gun and hand framing.");
-    }
-    { MenuRow row("RETICLE SIZE", 532, scale);
-    int reticle = int(g_view_draft.reticle_percent);
-    if (ImGui::SliderInt("##reticle", &reticle, 0, 200, "%d%%", ImGuiSliderFlags_AlwaysClamp)) g_view_draft.reticle_percent = uint32_t(reticle);
-    ImGui::SetCursorPos({430 * scale, 578 * scale});
-    Hint("0% = off. 100% = original size.");
-    }
-    { MenuRow row("CUTSCENE BORDERS", 621, scale);
-    Toggle("##cutscene_borders", g_view_draft.cutscene_borders);
-    ImGui::SetCursorPos({430 * scale, 667 * scale});
-    Hint("Level cutscenes only.");
-    ImGui::SetCursorPos({430 * scale, 710 * scale});
-    if (MenuButton("RESET VIEW DEFAULTS", {482 * scale, 39 * scale})) {
-        g_view_draft.fov_percent = g_view_draft.reticle_percent = g_view_draft.viewmodel_fov_percent = 100;
-        g_view_draft.camera_mode = view::CameraMode::FirstPerson;
-        g_view_draft.cutscene_borders = true;
-        g_view_draft.show_hud = true;
-        g_view_draft.reticle_normal_color = g_view_draft.reticle_enemy_color = g_view_draft.reticle_friendly_color = 0x1000000;
-    }
-    }
-    { MenuRow row("FPS COUNTER", 766, scale);
-    int fps_enabled = g_view_draft.show_fps ? 1 : 0;
-    if (Choice("##fps", &fps_enabled, "Off\0On\0")) g_view_draft.show_fps = fps_enabled != 0;
-    }
-    { MenuRow row("VERTICAL SYNC", 822, scale);
+    { MenuRow row("VERTICAL SYNC", layout.Row(), scale);
     int vsync = g_draft.vsync ? 1 : 0;
     if (Choice("##vsync", &vsync, "Off\0On\0")) g_draft.vsync = vsync != 0;
     }
-    { MenuRow row("FPS LIMIT", 878, scale);
+    { MenuRow row("FPS LIMIT", layout.Row(), scale);
     if (g_draft.fps_cap) std::snprintf(text, sizeof(text), "%u FPS", g_draft.fps_cap);
     else std::snprintf(text, sizeof(text), "%s", language::Text("Unlimited"));
     if (ImGui::BeginCombo("##cap", text)) {
@@ -1559,79 +1531,78 @@ void DarkwatchGraphicsUi(double fps) {
         ImGui::EndCombo();
     }
     }
-    { MenuRow row("MSAA", 934, scale);
+    { MenuRow row("FPS COUNTER", layout.Row(), scale);
+    int fps_enabled = g_view_draft.show_fps ? 1 : 0;
+    if (Choice("##fps", &fps_enabled, "Off\0On\0")) g_view_draft.show_fps = fps_enabled != 0;
+    }
+    { MenuRow row("MSAA", layout.Row(), scale);
     int msaa = g_draft.msaa_samples == 4 ? 2 : g_draft.msaa_samples == 2 ? 1 : 0;
     if (Choice("##msaa", &msaa, "Off\0" "2x\0" "4x\0")) g_draft.msaa_samples = 1u << msaa;
-    ImGui::SetCursorPos({430 * scale, 980 * scale});
     const uint32_t active_samples = gpu::MsaaSamples();
-    std::snprintf(text, sizeof(text), language::Text("Active: %s - GPU support required"), active_samples == 4 ? "4x" : active_samples == 2 ? "2x" : language::Text("Off")); Hint(text);
+    std::snprintf(text, sizeof(text), language::Text("Active: %s - GPU support required"), active_samples == 4 ? "4x" : active_samples == 2 ? "2x" : language::Text("Off")); layout.Help(text);
     }
-    { MenuRow row("TEXTURE FILTERING", 1023, scale);
+    { MenuRow row("TEXTURE FILTERING", layout.Row(), scale);
     constexpr uint32_t aniso_values[]{0, 1, 2, 4, 8, 16};
     int aniso = 0;
     for (unsigned i = 0; i < std::size(aniso_values); ++i) if (g_draft.aniso == aniso_values[i]) aniso = int(i);
     if (Choice("##aniso", &aniso, "Original\0" "1x\0" "2x\0" "4x\0" "8x\0" "16x\0")) g_draft.aniso = aniso_values[aniso];
     }
-    { MenuRow row("HD ARTWORK", 1079, scale);
+    layout.Section("ARTWORK");
+    { MenuRow row("HD ARTWORK", layout.Row(), scale);
     int hd_ui = g_view_draft.hd_ui ? 1 : 0;
     if (Choice("##hd_ui", &hd_ui, "Off\0On\0")) g_view_draft.hd_ui = hd_ui != 0;
-    ImGui::SetCursorPos({430 * scale, 1125 * scale});
-    Hint("HD menus, fonts and HUD.");
-    }
-    { MenuRow row("SUBTITLES", 1168, scale);
-    ImGui::BeginDisabled(!g_subtitles_available);
-    Toggle("##subtitles", g_subtitles_draft);
-    ImGui::EndDisabled();
-    }
-    { MenuRow row("BRIGHTNESS", 1224, scale);
-    int brightness = int(g_draft.brightness_percent);
-    if (ImGui::SliderInt("##brightness", &brightness, 50, 150, "%d%%", ImGuiSliderFlags_AlwaysClamp))
-        g_draft.brightness_percent = uint32_t(brightness);
-    ImGui::SetCursorPos({430 * scale, 1270 * scale});
-    Hint("100% = original. Lower is darker.");
+    layout.Help("HD menus, fonts and HUD.");
     }
     { const bool available = GameplayTexturesAvailable();
     ImGui::BeginDisabled(!available);
-    { MenuRow row("HD TEXTURES", 1313, scale);
+    { MenuRow row("HD TEXTURES", layout.Row(), scale);
     bool enabled = available && g_view_draft.hd_textures;
     Toggle("##hd_textures", enabled);
     if (available) g_view_draft.hd_textures = enabled;
     }
     ImGui::EndDisabled();
-    ImGui::SetCursorPos({430 * scale, 1359 * scale});
-    Hint(available ? "Installed gameplay textures. UI unchanged." : "Install the HD texture pack in the launcher.");
+    layout.Help(available ? "Installed gameplay textures. UI unchanged." : "Install the HD texture pack in the launcher.");
     }
-    { MenuRow row("FOREVER RAGDOLLS", 1402, scale);
-    Toggle("##forever_ragdolls", g_view_draft.forever_ragdolls);
-    ImGui::SetCursorPos({430 * scale, 1448 * scale});
-    Hint("Keep bodies interactive until level changes. May reduce performance.");
-    }
-    { MenuRow row("FMV SCALING", 1491, scale);
-    int fit = g_view_draft.movie_aspect_fit ? 0 : 1;
-    if (Choice("##movie_scaling", &fit, "Original Aspect Ratio\0Fill Screen\0"))
-        g_view_draft.movie_aspect_fit = fit == 0;
-    ImGui::SetCursorPos({430 * scale, 1537 * scale});
-    Hint("Fill enlarges the picture without stretching or cutting it off.");
-    }
-    { MenuRow row("MENU ASPECT RATIO", 1580, scale);
+    { MenuRow row("MENU ASPECT RATIO", layout.Row(), scale);
     int original_ui = g_view_draft.original_ui_aspect ? 1 : 0;
     if (Choice("##ui_aspect", &original_ui, "Widescreen\0Original 4:3\0"))
         g_view_draft.original_ui_aspect = original_ui != 0;
-    ImGui::SetCursorPos({88 * scale, 1628 * scale});
-    Hint("Menus, logos and loading artwork. Gameplay and movies are unchanged.");
+    layout.Help("Menus, logos and loading artwork. Gameplay and movies are unchanged.");
     }
-    { MenuRow row("SHOW HUD", 1692, scale);
+    layout.Section("CAMERA");
+    { MenuRow row("CAMERA VIEW", layout.Row(), scale);
+    int camera_mode = int(g_view_draft.camera_mode);
+    if (Choice("##camera_mode", &camera_mode, "First Person\0Third Person - Centered\0Third Person - Shoulder\0"))
+        g_view_draft.camera_mode = view::CameraMode(camera_mode);
+    layout.Help("On-foot camera. Each player chooses their own view.");
+    }
+    { MenuRow row("FIELD OF VIEW", layout.Row(), scale);
+    int fov = int(g_view_draft.fov_percent);
+    if (ImGui::SliderInt("##fov", &fov, 50, 200, "%d%%", ImGuiSliderFlags_AlwaysClamp)) g_view_draft.fov_percent = uint32_t(fov);
+    layout.Help("100% = original view. Zoom is preserved.");
+    }
+    { MenuRow row("WEAPON FOV", layout.Row(), scale);
+    int weapon_fov = int(g_view_draft.viewmodel_fov_percent);
+    if (ImGui::SliderInt("##weapon_fov", &weapon_fov, 50, 150, "%d%%", ImGuiSliderFlags_AlwaysClamp)) g_view_draft.viewmodel_fov_percent = uint32_t(weapon_fov);
+    layout.Help("Changes gun and hand framing.");
+    }
+    layout.Section("HUD AND RETICLE");
+    { MenuRow row("SHOW HUD", layout.Row(), scale);
     Toggle("##show_hud", g_view_draft.show_hud);
-    ImGui::SetCursorPos({88 * scale, 1740 * scale});
-    Hint("This player's gameplay HUD and reticle. Menus and subtitles stay visible.");
+    layout.Help("This player's gameplay HUD and reticle. Menus and subtitles stay visible.");
     }
-    { MenuRow row("RETICLE COLOR", 1804, scale);
+    { MenuRow row("RETICLE SIZE", layout.Row(), scale);
+    int reticle = int(g_view_draft.reticle_percent);
+    if (ImGui::SliderInt("##reticle", &reticle, 0, 200, "%d%%", ImGuiSliderFlags_AlwaysClamp)) g_view_draft.reticle_percent = uint32_t(reticle);
+    layout.Help("0% = off. 100% = original size.");
+    }
+    { MenuRow row("RETICLE COLOR", layout.Row(), scale);
     Choice("##reticle target", &g_reticle_color_target, "Normal\0Enemy\0Friendly\0");
     }
     uint32_t& color = g_reticle_color_target == 1 ? g_view_draft.reticle_enemy_color :
         g_reticle_color_target == 2 ? g_view_draft.reticle_friendly_color : g_view_draft.reticle_normal_color;
     const uint32_t original = g_reticle_color_target == 1 ? 0xD0100Bu : g_reticle_color_target == 2 ? 0x00CE00u : 0xFFFFFFu;
-    { MenuRow row("COLOR MODE", 1860, scale);
+    { MenuRow row("COLOR MODE", layout.Row(), scale);
     int custom = color <= 0xFFFFFF ? 1 : 0;
     if (Choice("##reticle color mode", &custom, "Original\0Custom\0")) color = custom ? original : 0x1000000;
     }
@@ -1642,17 +1613,54 @@ void DarkwatchGraphicsUi(double fps) {
     constexpr const char* channels[]{"RED", "GREEN", "BLUE"};
     constexpr const char* color_ids[]{"##reticle red", "##reticle green", "##reticle blue"};
     for (unsigned channel = 0; channel < 3; ++channel) {
-        MenuRow row(channels[channel], 1916 + channel * 56, scale);
+        MenuRow row(channels[channel], layout.Row(), scale);
         if (ImGui::SliderInt(color_ids[channel], &rgb[channel], 0, 255, "%d", ImGuiSliderFlags_AlwaysClamp))
             color = uint32_t(rgb[0] << 16 | rgb[1] << 8 | rgb[2]);
     }
     ImGui::EndDisabled();
-    ImGui::SetCursorPos({88 * scale, 2084 * scale});
     ImGui::BeginGroup();
-    Hint("Edit each target color separately. Original keeps the game's colors and effects.");
+    layout.Help("Edit each target color separately. Original keeps the game's colors and effects.");
+    layout.Place();
     if (MenuButton("RESET RETICLE COLORS", {482 * scale, 39 * scale}))
         g_view_draft.reticle_normal_color = g_view_draft.reticle_enemy_color = g_view_draft.reticle_friendly_color = 0x1000000;
     ImGui::EndGroup();
+    layout.Finish();
+    layout.Section("CINEMATICS");
+    { MenuRow row("SUBTITLES", layout.Row(), scale);
+    ImGui::BeginDisabled(!g_subtitles_available);
+    Toggle("##subtitles", g_subtitles_draft);
+    ImGui::EndDisabled();
+    }
+    { MenuRow row("FMV SCALING", layout.Row(), scale);
+    int fit = g_view_draft.movie_aspect_fit ? 0 : 1;
+    if (Choice("##movie_scaling", &fit, "Original Aspect Ratio\0Fill Screen\0"))
+        g_view_draft.movie_aspect_fit = fit == 0;
+    layout.Help("Fill enlarges the picture without stretching or cutting it off.");
+    }
+    { MenuRow row("CUTSCENE BORDERS", layout.Row(), scale);
+    Toggle("##cutscene_borders", g_view_draft.cutscene_borders);
+    layout.Help("Level cutscenes only.");
+    layout.Place();
+    if (MenuButton("RESET VIEW DEFAULTS", {482 * scale, 39 * scale})) {
+        g_view_draft.fov_percent = g_view_draft.reticle_percent = g_view_draft.viewmodel_fov_percent = 100;
+        g_view_draft.camera_mode = view::CameraMode::FirstPerson;
+        g_view_draft.cutscene_borders = true;
+        g_view_draft.show_hud = true;
+        g_view_draft.reticle_normal_color = g_view_draft.reticle_enemy_color = g_view_draft.reticle_friendly_color = 0x1000000;
+    }
+    layout.Finish();
+    }
+    layout.Section("WORLD AND CO-OP");
+    { MenuRow row("FOREVER RAGDOLLS", layout.Row(), scale);
+    Toggle("##forever_ragdolls", g_view_draft.forever_ragdolls);
+    layout.Help("Keep bodies interactive until level changes. May reduce performance.");
+    }
+    { MenuRow row("CO-OP SPLIT SCREEN", layout.Row(), scale);
+    int split = g_view_draft.vertical_split ? 1 : 0;
+    if (Choice("##split_layout", &split, "Top and Bottom\0Side by Side\0"))
+        g_view_draft.vertical_split = split != 0;
+    layout.Help("Both players. Applies when the next co-op mission loads.");
+    }
     ImGui::Dummy({1, 12 * scale});
     EndSettingsChild();
     ImGui::SetCursorPos({220 * scale, 507 * scale + extra_height});

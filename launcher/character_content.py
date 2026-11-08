@@ -25,13 +25,14 @@ import character_tala
 import revolver_content
 import player_corpses
 import third_person_animation
+import enemy_blood
 
-CONTENT_REVISION = 'character-tala-presentation-v26'
-CATALOG_SHA256 = '2b291f8d135e67ab63ccefbac4323281fcb2fa6726d4793070a6fd293ef14629'
+CONTENT_REVISION = 'character-reload-path-v34'
+CATALOG_SHA256 = '54abf31136b339780f0864b2fc4e65828d7f482df08c807e8baeb307416eeb12'
 CHARACTERS = 'xml/actortemplates_characters.bxml'
 INSTALLED = {
-    'packfile.pck': (167981663, 'b50962dd5b51663166a529324ed468ecb1d824397b5e0b7ad34d5bca5e63d17f'),
-    'LvlSingl.pck': (2106210883, 'f0d98525ca956342ce6884fea2d18eba1255f3407323bc2294b64e14aa2177e1'),
+    'packfile.pck': (176743625, 'fd642c3700c3f33537deba8d19ee1d731ca599bfcf27e4a88c6c8ea685941ae7'),
+    'LvlSingl.pck': (2378623555, 'd458ea662037bfaf28ecc11a68dae330a63c79b5a072e934e0c08e9b414ef140'),
     'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285'),
 }
 REPAINT = {
@@ -265,10 +266,23 @@ def build_spectral(source, groups, extension):
     return result
 
 
-def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None):
+def _discard_replaced_chapters(latest, *previous):
+    # Later chapter stages read the latest resource for each path. The final
+    # archive uses that same merge, so release superseded multi-GB tables now.
+    for stage in previous:
+        chapters = stage.get('LvlSingl.pck', {})
+        for path in latest.get('LvlSingl.pck', {}):
+            chapters.pop(path, None)
+
+
+def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None, *, previous_assets=None):
     """Create verified copies inside a caller-owned, uncommitted install stage."""
     assets, payload = Path(assets), Path(payload)
     metadata = catalog(payload)
+    if previous_assets is not None:
+        import character_update
+        if character_update.try_prepare(assets, payload, previous_assets, metadata, cancel, progress):
+            return
     with ExitStack() as stack:
         streams = {}
         for name, pin in metadata['originals'].items():
@@ -288,13 +302,19 @@ def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None)
         roster, _ = character_roster.prepare(source, groups, extension, spectral,
                                              tala_variants=True, tala_pixels=tala_pixels)
         revolver = revolver_content.prepare(source, groups, extension, spectral, roster)
+        _discard_replaced_chapters(revolver, groups, extension, spectral, roster)
         corpses = player_corpses.prepare(source, groups, extension, spectral, roster, revolver)
+        _discard_replaced_chapters(corpses, groups, extension, spectral, roster, revolver)
         fanning = {'packfile.pck': revolver_content.prepare_fanning(
             source, groups, extension, spectral, roster, revolver, corpses)}
         cinematic = character_cinematic.prepare(
             source, groups, extension, spectral, roster, revolver, corpses, fanning)
+        _discard_replaced_chapters(cinematic, groups, extension, spectral, roster, revolver, corpses, fanning)
         third_person = third_person_animation.prepare(
             source, groups, extension, spectral, roster, revolver, corpses, fanning, cinematic)
+        _discard_replaced_chapters(third_person, groups, extension, spectral, roster, revolver, corpses, fanning, cinematic)
+        third_person['packfile.pck'][CHARACTERS] = art.encode(enemy_blood.append(
+            art.decode(third_person['packfile.pck'][CHARACTERS])))
         source.report('Finishing Boss Tala presentation...')
         presentation = {'packfile.pck': {character_tala.MODEL + '.rx1': character_tala.presentation(
             roster['packfile.pck'][character_tala.MODEL + '.rx1'],
@@ -302,51 +322,56 @@ def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None)
         source.cancel()
     with tempfile.TemporaryDirectory(prefix='.characters-', dir=assets) as temporary:
         staged = Path(temporary)
-        for name in INSTALLED:
+        for archive_index, name in enumerate(INSTALLED, 1):
             cancel()
-            progress('Preparing character resources...')
+            progress(f'Preparing character archive {archive_index}/{len(INSTALLED)}: {name}')
             current = assets / name
             checked_file(current, metadata['originals'][name], cancel)
+            if name == 'LvlSingl.pck':
+                # The final chapter archive is composed from the original, not
+                # from superseded intermediate tables. Its exact installed pin
+                # verifies every final resource without writing those copies.
+                changes = {}
+                for stage in (groups, extension, spectral, roster, revolver, corpses, fanning, cinematic, third_person, presentation):
+                    changes.update(stage.get(name, {}))
+                target = staged / (name + '.final')
+                progress(f'Writing updated animations: {len(changes):,} resources in {name}')
+                pck.compose_file(current, changes, target, cancel)
+                current = target
             if name == 'packfile.pck':
                 current = staged / (name + '.base')
                 current.write_bytes(bonus_content.patch_pack((assets / name).read_bytes()))
             # Keep every intermediate proof on disk instead of retaining several
             # multi-gigabyte archive copies in memory.
-            stages = ((groups[name], 'v7_archives'),
+            stages = () if name == 'LvlSingl.pck' else ((groups[name], 'v7_archives'),
                       (extension.get(name), 'base_archives'),
                       (spectral.get(name), 'spectral_archives'),
                       (roster.get(name) or None, 'roster_archives'))
             for index, (changes, proof) in enumerate(stages):
                 cancel()
                 if changes is not None:
+                    progress(f'Writing {name}: preparation step {index + 1}/{len(stages) + 1}')
                     target = staged / f'{name}.{index}'
                     pck.compose_file(current, changes, target, cancel)
                     previous, current = current, target
                     if previous.parent == staged:
                         previous.unlink()
                 checked_file(current, metadata[proof][name], cancel)
-            if revolver.get(name) or corpses.get(name) or fanning.get(name) or cinematic.get(name) or third_person.get(name) or presentation.get(name):
-                if name == 'LvlSingl.pck':
-                    # Keep every intermediate proof, but write each final chapter
-                    # table once. Appending its superseded copies crosses 2 GiB.
-                    final = {}
-                    for stage in (groups, extension, spectral, roster, revolver, corpses, fanning, cinematic, third_person, presentation):
-                        final.update(stage.get(name, {}))
-                    source, changes = assets / name, final
-                    checked_file(source, metadata['originals'][name], cancel)
-                else:
-                    changes = dict(revolver.get(name, {}))
-                    changes.update(corpses.get(name, {}))
-                    changes.update(fanning.get(name, {}))
-                    changes.update(cinematic.get(name, {}))
-                    changes.update(third_person.get(name, {}))
-                    changes.update(presentation.get(name, {}))
-                    source = current
+            if name != 'LvlSingl.pck' and (revolver.get(name) or corpses.get(name) or fanning.get(name) or cinematic.get(name) or third_person.get(name) or presentation.get(name)):
+                changes = dict(revolver.get(name, {}))
+                changes.update(corpses.get(name, {}))
+                changes.update(fanning.get(name, {}))
+                changes.update(cinematic.get(name, {}))
+                changes.update(third_person.get(name, {}))
+                changes.update(presentation.get(name, {}))
+                source = current
                 target = staged / (name + '.final')
+                progress(f'Writing updated animations: {len(changes):,} resources in {name}')
                 pck.compose_file(source, changes, target, cancel)
                 if current.parent == staged:
                     current.unlink()
                 current = target
+            progress(f'Verifying completed character archive {archive_index}/{len(INSTALLED)}: {name}')
             checked_file(current, metadata['installed'][name], cancel)
             os.replace(current, staged / name)
         # No original in this stage is replaced until all copies pass their pins.

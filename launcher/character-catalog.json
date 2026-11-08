@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "content_revision": "character-tala-presentation-v26",
+  "content_revision": "character-reload-path-v34",
   "originals": {
     "audio.pck": {
       "size": 137741272,
@@ -4087,6 +4087,66 @@
       "offset": 4557507,
       "size": 4032,
       "sha256": "f6649865168c984233ca6762eec1f1e0c665bafa4bfb74c6d6feb769a91bccf3"
+    },
+    "accessories/weapons/dwcrossbow/base_pov_dwcrossbow.rx1": {
+      "archive": "packfile.pck",
+      "offset": 2697216,
+      "size": 378628,
+      "sha256": "e7ba4cfda7d83395babf8933136d6d9cb14150137f60b43aad8fe4e6ffe8f5d4"
+    },
+    "accessories/weapons/dwcrossbow/sanm/pov_dwcrossbow_reload.sanm": {
+      "archive": "packfile.pck",
+      "offset": 2521088,
+      "size": 45120,
+      "sha256": "9c230099ff65ff897524eb7342f62867e21d2d589e0516e43bdcdcfebc355c4c"
+    },
+    "characters/player_first/sanm/lo/pov_chaz_reload_dwcrossbow.sanm": {
+      "archive": "packfile.pck",
+      "offset": 23751968,
+      "size": 15492,
+      "sha256": "3e381bd6737c537acf13e6abe7c6678a0d8c0ef82f5c53353bfeaf9e1374cf9f"
+    },
+    "accessories/weapons/dwrailrocket/sanm/lo/pov_dwrailrocket_reload.sanm": {
+      "archive": "packfile.pck",
+      "offset": 3589812,
+      "size": 3772,
+      "sha256": "4eda6b10ce45c43c5b12bdfe16dff514262a59d6caf9512cfe831636132b019a"
+    },
+    "characters/player_first/sanm/lo/pov_chaz_reload_dwrailrocket.sanm": {
+      "archive": "packfile.pck",
+      "offset": 23767844,
+      "size": 18700,
+      "sha256": "3df3bb777921e6420d04330906459855746a3ded77b4243a5641ee76cdfd681e"
+    },
+    "accessories/weapons/dwsniperrifle/base_pov_dwsniperrifle.rx1": {
+      "archive": "packfile.pck",
+      "offset": 6871040,
+      "size": 385438,
+      "sha256": "ce28e0aa0ff619b2cda6567959417df6a10a901e36a498b90bc68cb30718ea86"
+    },
+    "accessories/weapons/dwsniperrifle/sanm/pov_dwsniperrifle_reload.sanm": {
+      "archive": "packfile.pck",
+      "offset": 6508564,
+      "size": 7668,
+      "sha256": "c889774724456500b5cb82048593839d58e2317c6b950adfbafa49e29695534c"
+    },
+    "characters/player_first/sanm/med/pov_chaz_reload_dwsniperrifle.sanm": {
+      "archive": "packfile.pck",
+      "offset": 24147968,
+      "size": 48768,
+      "sha256": "24ca78c743eab7251dd4723a23710c44de1e804f4a6f918e45e47bc9744108f4"
+    },
+    "characters/player_first/sanm/med/pov_chaz_prereload_dwrifle.sanm": {
+      "archive": "packfile.pck",
+      "offset": 24053847,
+      "size": 7852,
+      "sha256": "ed454ceeaf5521917d9d385e30887973234fa3ba02c1ce49b39e8ccc02250494"
+    },
+    "characters/player_first/sanm/med/pov_chaz_postreload_dwrifle.sanm": {
+      "archive": "packfile.pck",
+      "offset": 24023165,
+      "size": 16584,
+      "sha256": "0046ff761a34f33977c88de9e8190e60cc24850a395734604aa8ea7dc189f4b4"
     }
   },
   "v7_outputs": {
@@ -7387,12 +7447,12 @@
   },
   "installed": {
     "packfile.pck": {
-      "size": 167981663,
-      "sha256": "b50962dd5b51663166a529324ed468ecb1d824397b5e0b7ad34d5bca5e63d17f"
+      "size": 176743625,
+      "sha256": "fd642c3700c3f33537deba8d19ee1d731ca599bfcf27e4a88c6c8ea685941ae7"
     },
     "LvlSingl.pck": {
-      "size": 2106210883,
-      "sha256": "f0d98525ca956342ce6884fea2d18eba1255f3407323bc2294b64e14aa2177e1"
+      "size": 2378623555,
+      "sha256": "d458ea662037bfaf28ecc11a68dae330a63c79b5a072e934e0c08e9b414ef140"
     },
     "audio.pck": {
       "size": 152395109,

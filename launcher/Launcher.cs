@@ -17,9 +17,9 @@ using Microsoft.Win32;
 #if !DIRECT_PLAY
 [assembly: AssemblyTitle("Darkwatch: Darker Edition")]
 [assembly: AssemblyProduct("Darkwatch: Darker Edition")]
-[assembly: AssemblyVersion("0.7.7.0")]
-[assembly: AssemblyFileVersion("0.7.7.0")]
-[assembly: AssemblyInformationalVersion("0.7.7")]
+[assembly: AssemblyVersion("0.7.8.0")]
+[assembly: AssemblyFileVersion("0.7.8.0")]
+[assembly: AssemblyInformationalVersion("0.7.8")]
 #endif
 
 namespace DarkwatchDarkerEdition
@@ -87,7 +87,7 @@ namespace DarkwatchDarkerEdition
                 case "A launcher update is in progress. Close and reopen the launcher to finish recovery before playing or installing.": return "Hay una actualización del lanzador en curso. Ciérralo y vuelve a abrirlo para completar la recuperación antes de jugar o instalar.";
                 case "A previous update needs recovery. Restart the launcher first.": return "Es necesario recuperar una actualización anterior. Reinicia primero el lanzador.";
                 case "Start the update using the launcher Update button.": return "Inicia la actualización con el botón de actualización del lanzador.";
-                case "Installed. Files are verified before every launch.": return "Instalado. Los archivos se verifican antes de cada inicio.";
+                case "Ready to play. Use Verify Files for a full check.": return "Listo para jugar. Usa Verificar archivos para una comprobación completa.";
                 case "All installed files verified.": return "Todos los archivos instalados están verificados.";
                 case "Installed files verified": return "Archivos instalados verificados";
                 case "Checking launcher files": return "Comprobando los archivos del lanzador";

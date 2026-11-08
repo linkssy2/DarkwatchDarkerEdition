@@ -13,7 +13,7 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 import zipfile
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "launcher"))
@@ -143,12 +143,12 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         shutil.copyfile(ROOT / "launcher/gameplay_hd.py", self.payload / "gameplay_hd.py")
         shutil.copyfile(ROOT / "launcher/language_pack.py", self.payload / "language_pack.py")
         for name in ('character_animation.py', 'character_archive.py', 'character_assets.py',
-                     'character_repaint.py', 'character_content.py', 'character_boss.py',
+                     'character_repaint.py', 'character_content.py', 'character_update.py', 'character-update.json.gz', 'character_boss.py',
                      'character_boss_effects.py', 'character_spectral_hands.py', 'character_hand_seams.py',
                      'character_secondary.py', 'character_preview.py', 'character_roster.py', 'character_tala.py',
-                     'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'character_cinematic.py',
-                     'third_person_animation.py', 'character_reload.py', 'character_weapon_pose.py', 'character_weapon_hold.py', 'character_starter_reload.py',
-                     'body_weapon_grips.inc',
+                     'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'enemy_blood.py', 'character_cinematic.py',
+                     'third_person_animation.py', 'character_reload.py', 'character_weapon_pose.py', 'character_weapon_hold.py', 'character_weapon_shoulder.py', 'character_starter_reload.py',
+                     'body_weapon_grips.inc', 'body_reload_parts.inc',
                      'character-catalog.json'):
             shutil.copyfile(ROOT / 'launcher' / name, self.payload / name)
         (self.payload / 'character-art').mkdir()
@@ -169,7 +169,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
                                    PATCHES=((0, b"or", b"OR"), (9, b"te", b"TE"), (17, b"fi", b"FI")))
         selectors.start()
         self.addCleanup(selectors.stop)
-        def fixture_characters(assets, payload, cancel, progress):
+        def fixture_characters(assets, payload, cancel, progress, *, previous_assets=None):
             # Archive/character conversion has its own tests. Here the tiny
             # synthetic disc exercises the real outer installation transaction.
             cancel()
@@ -233,6 +233,20 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
     def install_direct(self):
         with setup.exclusive(self.install):
             return Path(self.backend.use_iso(self.iso)["install_dir"])
+
+    def test_incremental_update_payload_must_be_complete(self):
+        for name in ('character_update.py', 'character-update.json.gz'):
+            with self.subTest(file=name):
+                path = self.payload / name
+                data = path.read_bytes()
+                path.unlink()
+                self.repin()
+                try:
+                    with self.assertRaisesRegex(setup.SetupError, 'Required package file is missing'):
+                        setup.Setup(self.package, self.install, notify=lambda *a, **k: None)
+                finally:
+                    path.write_bytes(data)
+                    self.repin()
 
     def test_direct_iso_keeps_source_and_only_prepared_host_assets(self):
         before = self.iso.read_bytes()
@@ -364,7 +378,16 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         record['content_revision'] = 'older-direct-content'
         setup.write_json(current / 'install.json', record)
         self.assertTrue(self.backend.status()['update_available'])
-        self.assertTrue(self.backend.update()['ready'])
+        convert = characters.prepare
+        def checked_conversion(stage_assets, payload, cancel, progress, *, previous_assets=None):
+            self.assertEqual(previous_assets, current / 'assets')
+            self.assertNotEqual(stage_assets, previous_assets)
+            self.assertEqual(self.snapshot(previous_assets), assets)
+            self.assertEqual((stage_assets / 'packfile.pck').read_bytes(), self.data['packfile.pck'])
+            return convert(stage_assets, payload, cancel, progress, previous_assets=previous_assets)
+        with patch.object(characters, 'prepare', side_effect=checked_conversion) as conversion:
+            self.assertTrue(self.backend.update()['ready'])
+        self.assertEqual(conversion.call_count, 1)
         self.assertEqual(self.backend.active(), current)
         self.assertEqual(list((self.install / 'versions').iterdir()), [current])
         self.assertEqual(self.snapshot(current / 'assets'), assets)
@@ -634,13 +657,109 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         self.assertTrue(self.backend.update()['ready'])
         self.assertFalse((current / 'source-recovery').exists())
 
+    def test_runtime_update_reuses_verified_inputs_but_hashes_package_and_new_outputs(self):
+        current = self.install_disc()
+        with (current / 'assets/packfile.pck').open('rb') as source:
+            if setup.file_identity(source)[-1] is None:
+                self.skipTest('A reliable filesystem change clock is required for cache reuse')
+        self.update_fixture(current)
+        with patch.object(setup, 'hash_stream', wraps=setup.hash_stream) as hashes:
+            self.assertTrue(self.backend.update()['ready'])
+        paths = [Path(call.args[0].name) for call in hashes.call_args_list]
+        installed_inputs = {current / relative for relative, _, _ in self.backend.installed_files(current)}
+        self.assertFalse(installed_inputs.intersection(paths))
+        # A prior installed receipt never authenticates this download or the
+        # staged replacement. Every package file and newly copied output is read.
+        self.assertTrue({self.package / relative for relative in self.backend.files}.issubset(paths))
+        staged = [path for path in paths if path.parent.name.startswith('.update-')]
+        self.assertEqual([path.name for path in staged], ['new-runtime.dll'])
+        self.assertEqual((current / 'new-runtime.dll').read_bytes(), b'updated runtime dependency')
+
+    def test_runtime_update_rechecks_same_size_assets_with_restored_mtime(self):
+        current = self.install_disc()
+        self.update_fixture(current)
+        path = current / 'assets/packfile.pck'
+        old, raw = path.stat(), path.read_bytes()
+        path.write_bytes(bytes([raw[0] ^ 1]) + raw[1:])
+        os.utime(path, ns=(old.st_atime_ns, old.st_mtime_ns))
+        before = self.snapshot(current)
+        with patch.object(setup, 'hash_stream', wraps=setup.hash_stream) as hashes:
+            with self.assertRaisesRegex(setup.SetupError, 'Installed game data is damaged: packfile.pck'):
+                self.backend.update()
+        self.assertIn(path, [Path(call.args[0].name) for call in hashes.call_args_list])
+        self.assertEqual(self.snapshot(current), before)
+        self.assertFalse(list(current.glob('.update-*')))
+
+    def test_runtime_update_rechecks_changed_runtime_and_artwork_inputs(self):
+        current = self.install_disc()
+        self.update_fixture(current)
+        changed = [current / setup.EXE, current / 'hd-ui.pack']
+        for path in changed:
+            old, raw = path.stat(), path.read_bytes()
+            path.write_bytes(bytes([raw[0] ^ 1]) + raw[1:])
+            os.utime(path, ns=(old.st_atime_ns, old.st_mtime_ns))
+        with patch.object(setup, 'hash_stream', wraps=setup.hash_stream) as hashes, \
+                patch.object(self.backend, 'build_hd', wraps=self.backend.build_hd) as artwork:
+            self.assertTrue(self.backend.update()['ready'])
+        paths = [Path(call.args[0].name) for call in hashes.call_args_list]
+        self.assertTrue(set(changed).issubset(paths))
+        artwork.assert_called_once()
+        self.assertEqual(sha((current / setup.EXE).read_bytes()), self.backend.files['payload/runtime/' + setup.EXE])
+        self.assertEqual((current / 'hd-ui.pack').read_bytes(), b'synthetic HD pack')
+
+    def test_runtime_update_without_trustworthy_cache_hashes_every_installed_input(self):
+        current = self.install_disc()
+        self.update_fixture(current)
+        identity = setup.file_identity
+        def unavailable(source):
+            value = identity(source)
+            value[-1] = None
+            return value
+        for mode in ('missing', 'unknown_clock'):
+            with self.subTest(mode=mode):
+                if mode == 'missing':
+                    (current / setup.VERIFIED_FILES).unlink()
+                with patch.object(setup, 'file_identity', side_effect=unavailable if mode == 'unknown_clock' else identity), \
+                        patch.object(setup, 'hash_stream', wraps=setup.hash_stream) as hashes:
+                    self.assertTrue(self.backend.update()['ready'])
+                paths = {Path(call.args[0].name) for call in hashes.call_args_list}
+                inputs = {current / 'assets' / item['path'] for item in self.backend.assets}
+                inputs.update((current / setup.EXE, current / 'hd-ui.pack'))
+                self.assertTrue(inputs.issubset(paths))
+
+    def test_runtime_update_staged_copy_is_verified_before_commit(self):
+        current = self.install_disc()
+        self.update_fixture(current)
+        before = self.snapshot(current)
+        copy_file = self.backend.copy_file
+        def damaged(source, destination):
+            result = copy_file(source, destination)
+            if destination.name == 'new-runtime.dll':
+                raw = destination.read_bytes()
+                destination.write_bytes(bytes([raw[0] ^ 1]) + raw[1:])
+            return result
+        with patch.object(self.backend, 'copy_file', side_effect=damaged):
+            with self.assertRaisesRegex(setup.SetupError, 'Runtime changed during update'):
+                self.backend.update()
+        self.assertEqual(self.snapshot(current), before)
+        self.assertFalse(list(current.glob('.update-*')))
+
     def test_content_update_restores_originals_and_keeps_same_install(self):
         current = self.install_disc()
         original_assets = self.snapshot(current / 'assets')
         (current / 'hdd').mkdir()
         (current / 'hdd/progress').write_bytes(b'progress')
         self.update_fixture(current, content=True)
-        self.assertTrue(self.backend.update()['ready'])
+        convert = characters.prepare
+        def checked_conversion(stage_assets, payload, cancel, progress, *, previous_assets=None):
+            self.assertEqual(previous_assets, current / 'assets')
+            self.assertNotEqual(stage_assets, previous_assets)
+            self.assertEqual(self.snapshot(previous_assets), original_assets)
+            self.assertEqual((stage_assets / 'packfile.pck').read_bytes(), self.data['packfile.pck'])
+            return convert(stage_assets, payload, cancel, progress, previous_assets=previous_assets)
+        with patch.object(characters, 'prepare', side_effect=checked_conversion) as conversion:
+            self.assertTrue(self.backend.update()['ready'])
+        self.assertEqual(conversion.call_count, 1)
         self.assertEqual(self.snapshot(current / 'assets'), original_assets)
         self.assertEqual((current / 'hdd/progress').read_bytes(), b'progress')
         self.assertEqual(self.backend.active(), current)
@@ -664,11 +783,12 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
                   sum(size for size, _ in characters.INSTALLED.values()) +
                   max(size for size, _ in characters.INSTALLED.values()))
         convert = characters.prepare
-        def checked_conversion(assets, payload, cancel, progress):
+        def checked_conversion(assets, payload, cancel, progress, *, previous_assets=None):
             self.assertEqual({path.name for path in assets.iterdir()},
                              {'default.xbe', 'LvlMulti.pck', 'packfile.pck'})
             self.assertEqual((assets / 'LvlMulti.pck').read_bytes(), self.data['LvlMulti.pck'])
-            return convert(assets, payload, cancel, progress)
+            self.assertEqual(previous_assets, current / 'assets')
+            return convert(assets, payload, cancel, progress, previous_assets=previous_assets)
         with patch.object(characters, 'prepare', side_effect=checked_conversion), \
                 patch.object(self.backend, 'copy_file', wraps=self.backend.copy_file) as copied, \
                 patch.object(setup.shutil, 'disk_usage', return_value=SimpleNamespace(free=needed)):
@@ -723,6 +843,20 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
             with self.assertRaisesRegex(setup.SetupError, 'Close Darkwatch'):
                 self.backend.update()
         self.assertEqual(self.snapshot(current), before)
+
+    def test_content_update_rejects_wrong_reused_output_before_commit(self):
+        current = self.install_disc()
+        self.update_fixture(current, content=True)
+        before = self.snapshot(current)
+        def invalid_reuse(stage_assets, payload, cancel, progress, *, previous_assets=None):
+            self.assertEqual(previous_assets, current / 'assets')
+            self.assertNotEqual(stage_assets, previous_assets)
+            (stage_assets / 'packfile.pck').write_bytes(b'invalid cached output')
+        with patch.object(characters, 'prepare', side_effect=invalid_reuse):
+            with self.assertRaisesRegex(setup.SetupError, 'Updated character data failed verification'):
+                self.backend.update()
+        self.assertEqual(self.snapshot(current), before)
+        self.assertFalse(list(current.glob('.update-*')))
 
     def test_interrupted_commit_is_retryable_before_play(self):
         current = self.install_disc()
@@ -975,7 +1109,10 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         shutil.move(str(self.package), moved)
         backend = setup.Setup(moved, moved / "GameData", notify=lambda *args, **kw: None)
         relocated = backend.verify()
-        self.assertEqual(self.snapshot(moved), original)
+        receipt = relocated.relative_to(moved).as_posix() + '/' + setup.VERIFIED_FILES
+        self.assertEqual({k: v for k, v in self.snapshot(moved).items() if k != receipt},
+                         {k: v for k, v in original.items() if k != receipt})
+        self.assertEqual(setup.read_json(relocated / setup.VERIFIED_FILES)['binding']['install'], str(relocated))
         self.assertFalse(self.package.exists())
         self.assertFalse(Path(os.environ["LOCALAPPDATA"]).exists())
         children = []
@@ -1021,6 +1158,225 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         self.assertEqual((self.install / "active.json").read_bytes(), pointer)
         for name, contents in original.items():
             self.assertEqual(self.snapshot(current / name), contents)
+
+    def test_repeat_launch_reuses_import_verification_but_explicit_verify_reads_bytes(self):
+        current = self.install_disc()
+        # A new backend represents a separate non-launcher invocation.
+        backend = setup.Setup(self.package, self.install, notify=self.backend.notify)
+        self.events.clear()
+        with patch.object(setup, 'hash_stream', wraps=setup.hash_stream) as hashes:
+            backend.play()
+        hashes.assert_not_called()
+        self.assertFalse(any(e.get('preparing') or e['event'] == 'shader_prepare' for e in self.events))
+        with patch.object(setup, 'hash_stream', wraps=setup.hash_stream) as hashes:
+            backend.verify()
+        self.assertEqual(hashes.call_count, len(backend.installed_files(current)) + 1)  # private previews
+
+    def test_repeat_launch_hashes_only_changed_file_and_rejects_preserved_mtime_edit(self):
+        current = self.install_disc()
+        path = current / 'assets/audio.pck'
+        previous = path.stat()
+        os.utime(path, ns=(previous.st_atime_ns, previous.st_mtime_ns + 1000000000))
+        with patch.object(setup, 'hash_stream', wraps=setup.hash_stream) as hashes:
+            self.backend.play()
+        self.assertEqual(hashes.call_count, 1)
+        previous = path.stat()
+        before = (current / setup.VERIFIED_FILES).read_bytes()
+        raw = path.read_bytes()
+        path.write_bytes(bytes([raw[0] ^ 1]) + raw[1:])
+        os.utime(path, ns=(previous.st_atime_ns, previous.st_mtime_ns))
+        with patch.object(subprocess, 'Popen') as spawn:
+            with self.assertRaisesRegex(setup.SetupError, 'Missing or damaged'):
+                self.backend.play()
+        spawn.assert_not_called()
+        self.assertEqual((current / setup.VERIFIED_FILES).read_bytes(), before)
+
+    def test_repeat_launch_rejects_same_size_atomic_replacement_with_original_mtime(self):
+        current = self.install_disc()
+        path = current / setup.EXE
+        old = path.stat()
+        replacement = current / 'replacement.tmp'
+        replacement.write_bytes(bytes(path.stat().st_size))
+        os.utime(replacement, ns=(old.st_atime_ns, old.st_mtime_ns))
+        os.replace(replacement, path)
+        with patch.object(subprocess, 'Popen') as spawn:
+            with self.assertRaisesRegex(setup.SetupError, 'Missing or damaged'):
+                self.backend.play()
+        spawn.assert_not_called()
+
+    def test_repeat_launch_stale_malformed_or_missing_receipt_requires_verification(self):
+        current = self.install_disc()
+        path = current / setup.VERIFIED_FILES
+        original = setup.read_json(path)
+        for field in ('package_sha256', 'content_revision', 'install'):
+            broken = json.loads(json.dumps(original))
+            broken['binding'][field] = 'different'
+            setup.write_json(path, broken)
+            with patch.object(setup, 'hash_stream', wraps=setup.hash_stream) as hashes:
+                self.backend.play()
+            self.assertEqual(hashes.call_count, len(self.backend.installed_files(current)) + 1)
+        for data in (b'not json', b'[]'):
+            path.write_bytes(data)
+            with patch.object(setup, 'hash_stream', wraps=setup.hash_stream) as hashes:
+                self.backend.play()
+            self.assertGreater(hashes.call_count, 0)
+        path.unlink()
+        with patch.object(setup, 'hash_stream', wraps=setup.hash_stream) as hashes:
+            self.backend.play()
+        self.assertGreater(hashes.call_count, 0)
+
+    def test_repeat_launch_direct_iso_reuses_full_disc_check_and_detects_changed_bytes(self):
+        current = self.install_direct()
+        with patch.object(self.backend, 'read_iso_files', wraps=self.backend.read_iso_files) as disc:
+            with patch.object(setup, 'hash_stream', wraps=setup.hash_stream) as hashes:
+                self.backend.play()
+        disc.assert_not_called()
+        hashes.assert_not_called()
+        with patch.object(self.backend, 'read_iso_files', wraps=self.backend.read_iso_files) as disc:
+            self.backend.verify()
+        disc.assert_called_once()
+        old = self.iso.stat()
+        with self.iso.open('r+b') as output:
+            output.seek(43 * 2048)  # audio.pck, outside the copied prepared override
+            output.write(b'X')
+        os.utime(self.iso, ns=(old.st_atime_ns, old.st_mtime_ns))
+        with patch.object(subprocess, 'Popen') as spawn:
+            with self.assertRaisesRegex(setup.SetupError, 'damaged or unsupported audio.pck'):
+                self.backend.play()
+        spawn.assert_not_called()
+
+    def test_repeat_launch_language_verifies_changed_catalog_files(self):
+        current = self.install_disc()
+        data = b'synthetic translated captions'
+        catalog = language_pack.Catalog(json.dumps(dict(schema_version=1, language='es',
+            files={'language_text.bin': dict(size=len(data), sha256=sha(data))})).encode())
+        self.backend.ps2_language_catalog = catalog
+        folder = current / catalog.directory
+        folder.mkdir(parents=True)
+        path = folder / 'language_text.bin'
+        path.write_bytes(data)
+        language_pack.select(current, 'es')
+        with patch.object(setup, 'hash_stream', wraps=setup.hash_stream) as hashes:
+            self.backend.play()
+        self.assertEqual(hashes.call_count, 1)
+        with patch.object(setup, 'hash_stream', wraps=setup.hash_stream) as hashes:
+            self.backend.play()
+        hashes.assert_not_called()
+        old = path.stat()
+        path.write_bytes(b'X' + data[1:])
+        os.utime(path, ns=(old.st_atime_ns, old.st_mtime_ns))
+        with patch.object(subprocess, 'Popen') as spawn:
+            with self.assertRaisesRegex(setup.SetupError, 'Spanish needs'):
+                self.backend.play()
+            path.unlink()
+            with self.assertRaisesRegex(setup.SetupError, 'Spanish needs'):
+                self.backend.play()
+        spawn.assert_not_called()
+
+    def test_repeat_launch_changed_during_hash_cancel_and_cache_write_failure_are_safe(self):
+        current = self.install_disc()
+        receipt = current / setup.VERIFIED_FILES
+        receipt.unlink()
+        raw_hash = setup.hash_stream
+        def changing(source, cancel):
+            result = raw_hash(source, cancel)
+            path = Path(source.name)
+            before = path.stat()
+            os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 1000000000))
+            return result
+        with patch.object(setup, 'hash_stream', side_effect=changing), patch.object(subprocess, 'Popen') as spawn:
+            with self.assertRaisesRegex(setup.SetupError, 'File changed while verifying'):
+                self.backend.play()
+        spawn.assert_not_called()
+        self.assertFalse(receipt.exists())
+        with patch.object(self.backend, 'check_cancel', side_effect=setup.Cancelled('fixture cancel')):
+            with self.assertRaises(setup.Cancelled):
+                self.backend.play()
+        self.assertFalse(receipt.exists())
+        original_write = setup.write_json
+        def read_only(path, value):
+            if path.name == setup.VERIFIED_FILES:
+                raise PermissionError('fixture read-only cache')
+            return original_write(path, value)
+        with patch.object(setup, 'write_json', side_effect=read_only):
+            self.backend.play()
+        self.assertFalse(receipt.exists())
+        self.assertTrue((current / 'worker-ran.txt').exists())
+
+    def test_repeat_launch_unknown_change_clock_never_uses_identity_cache(self):
+        current = self.install_disc()
+        identity = setup.file_identity
+        def unavailable(source):
+            values = identity(source)
+            values[-1] = None
+            return values
+        with patch.object(setup, 'file_identity', side_effect=unavailable):
+            with patch.object(setup, 'hash_stream', wraps=setup.hash_stream) as hashes:
+                self.backend.play()
+        self.assertEqual(hashes.call_count, len(self.backend.installed_files(current)) + 1)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows filesystem change-clock admission')
+    def test_repeat_launch_fat_or_unsupported_windows_clock_falls_back_to_hashes(self):
+        current = self.install_disc()
+        def volume(handle, label, capacity, serial, maximum, flags, filesystem, length):
+            filesystem.value = 'exFAT'
+            return 1
+        query = Mock(return_value=1)
+        kernel = SimpleNamespace(GetFileInformationByHandleEx=query,
+                                 GetVolumeInformationByHandleW=Mock(side_effect=volume))
+        for functions in (kernel, SimpleNamespace()):
+            with patch.object(setup.ctypes, 'WinDLL', return_value=functions):
+                with patch.object(setup, 'hash_stream', wraps=setup.hash_stream) as hashes:
+                    self.backend.play()
+            self.assertEqual(hashes.call_count, len(self.backend.installed_files(current)) + 1)
+        query.assert_not_called()
+
+    def test_repeat_launch_after_runtime_update_keeps_verified_iso_and_new_runtime(self):
+        current = self.install_direct()
+        (self.payload / 'runtime/new-runtime.dll').write_bytes(b'new runtime')
+        self.repin()
+        backend = setup.Setup(self.package, self.install, notify=self.backend.notify)
+        self.events.clear()
+        backend.update()
+        self.assertTrue(any(e.get('preparing') for e in self.events))
+        receipt = setup.read_json(current / setup.VERIFIED_FILES)
+        self.assertTrue(all('.update-' not in name for name in receipt['files']))
+        backend = setup.Setup(self.package, self.install, notify=self.backend.notify)
+        with patch.object(backend, 'read_iso_files', wraps=backend.read_iso_files) as disc:
+            with patch.object(setup, 'hash_stream', wraps=setup.hash_stream) as hashes:
+                backend.play()
+        disc.assert_not_called()
+        hashes.assert_not_called()
+        (current / 'new-runtime.dll').unlink()
+        with patch.object(subprocess, 'Popen') as spawn:
+            with self.assertRaisesRegex(setup.SetupError, 'Missing or damaged'):
+                backend.play()
+        spawn.assert_not_called()
+
+    def test_repeat_launch_moved_install_invalidates_old_paths(self):
+        current = self.install_disc()
+        moved_root = self.package / 'MovedGameData'
+        self.install.rename(moved_root)
+        backend = setup.Setup(self.package, moved_root, notify=self.backend.notify)
+        with patch.object(setup, 'hash_stream', wraps=setup.hash_stream) as hashes:
+            backend.play()
+        moved = moved_root / 'versions' / current.name
+        self.assertEqual(hashes.call_count, len(backend.installed_files(moved)) + 1)
+        self.assertEqual(setup.read_json(moved / setup.VERIFIED_FILES)['binding']['install'], str(moved))
+
+    def test_repeat_launch_missing_iso_or_changed_marker_never_starts(self):
+        current = self.install_direct()
+        marker = current / setup.DISC_SOURCE
+        original = marker.read_bytes()
+        marker.write_text('schema_version = 1\npath = "wrong.iso"\n')
+        with patch.object(subprocess, 'Popen') as spawn:
+            with self.assertRaisesRegex(setup.SetupError, 'ISO source record differs'):
+                self.backend.play()
+            marker.write_bytes(original)
+            self.iso.unlink()
+            with self.assertRaisesRegex(setup.SetupError, 'ISO is unavailable'):
+                self.backend.play()
+        spawn.assert_not_called()
 
     @unittest.skipUnless(os.name == "nt", "Previous Windows launcher migration")
     def test_first_import_adopts_prior_saves_without_using_legacy_for_play(self):

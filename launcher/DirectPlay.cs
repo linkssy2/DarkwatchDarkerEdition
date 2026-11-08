@@ -9,9 +9,9 @@ using System.Windows;
 
 [assembly: AssemblyTitle("Play Darkwatch: Darker Edition")]
 [assembly: AssemblyProduct("Darkwatch: Darker Edition")]
-[assembly: AssemblyVersion("0.7.7.0")]
-[assembly: AssemblyFileVersion("0.7.7.0")]
-[assembly: AssemblyInformationalVersion("0.7.7")]
+[assembly: AssemblyVersion("0.7.8.0")]
+[assembly: AssemblyFileVersion("0.7.8.0")]
+[assembly: AssemblyInformationalVersion("0.7.8")]
 
 namespace DarkwatchDarkerEdition
 {
@@ -22,7 +22,7 @@ namespace DarkwatchDarkerEdition
             var json = new JavaScriptSerializer();
             string failure = null;
             string language = "en";
-            bool started = false, cancelled = false;
+            bool started = false, cancelled = false, preparing = false;
             // Use the same verified installation and launch lock as the full launcher.
             using (var process = new Process { StartInfo = SetupProcess.Create(package, installRoot, "--play", cancelFile: cancelFile) }) {
                 if (!process.Start()) throw new IOException("The game setup helper could not start.");
@@ -32,13 +32,17 @@ namespace DarkwatchDarkerEdition
                     Dictionary<string, object> item;
                     try { item = json.Deserialize<Dictionary<string, object>>(line); }
                     catch (ArgumentException) { continue; }
-                    object kind, message, ready, pid, wasCancelled, selectedLanguage;
+                    object kind, message, ready, pid, wasCancelled, selectedLanguage, needsPreparation;
                     if (item == null || !item.TryGetValue("event", out kind)) continue;
                     if (item.TryGetValue("language", out selectedLanguage)) language = Object.Equals(selectedLanguage, "es") ? "es" : "en";
                     if (Object.Equals(kind, "error") && item.TryGetValue("message", out message))
                         failure = Convert.ToString(message);
                     if (Object.Equals(kind, "error") && item.TryGetValue("cancelled", out wasCancelled) && Object.Equals(wasCancelled, true)) cancelled = true;
-                    if ((Object.Equals(kind, "shader_prepare") || (Object.Equals(kind, "progress") && item.ContainsKey("message"))) && progress != null) {
+                    if (Object.Equals(kind, "shader_prepare") ||
+                        (Object.Equals(kind, "progress") && item.TryGetValue("preparing", out needsPreparation) && Object.Equals(needsPreparation, true)))
+                        preparing = true;
+                    // Routine verification and a warm shader cache must not open a launcher window.
+                    if (preparing && (Object.Equals(kind, "shader_prepare") || (Object.Equals(kind, "progress") && item.ContainsKey("message"))) && progress != null) {
                         item["language"] = language;
                         progress(item);
                     }

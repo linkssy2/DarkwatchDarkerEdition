@@ -3,6 +3,20 @@
 namespace darkwatch::language {
 struct GermanCopy { const char* english; const char* german; };
 inline constexpr GermanCopy copy_german[]{
+    {"DISPLAY", "ANZEIGE"},
+    {"PERFORMANCE", "LEISTUNG"},
+    {"ARTWORK", "GRAFIKSTIL"},
+    {"CAMERA", "KAMERA"},
+    {"HUD AND RETICLE", "HUD UND FADENKREUZ"},
+    {"CINEMATICS", "ZWISCHENSEQUENZEN"},
+    {"WORLD AND CO-OP", "WELT UND KOOP"},
+    {"MOUSE", "MAUS"},
+    {"AIMING AND MOVEMENT", "ZIELEN UND BEWEGUNG"},
+    {"CONTROLLER", "CONTROLLER"},
+    {"CO-OP SPLIT SCREEN", "KOOP-BILDSCHIRMTEILUNG"},
+    {"Top and Bottom", "Oben und unten"},
+    {"Side by Side", "Nebeneinander"},
+    {"Both players. Applies when the next co-op mission loads.", "Für beide Spieler. Gilt ab dem Laden der nächsten Koop-Mission."},
     {"SWAP SHOULDER", "SCHULTER WECHSELN"},
     {"Switch camera shoulder.", "Wechselt die Kameraschulter."},
     {"WALK", "GEHEN"},

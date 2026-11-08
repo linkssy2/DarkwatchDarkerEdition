@@ -8,11 +8,13 @@
 | `xbexbe/src/common/game_info.cpp` | Title registration and original-game integration. |
 | `graphics.*`, `graphics_route.*`, `settings_skin.h` | Graphics/Controls/Audio panels, input routing and HD/original menu artwork. |
 | `graphics_camera.*`, `third_person_aim.*`, `third_person_body.*`, `third_person_visibility.*` | Per-player camera views, smooth shoulder swaps, current aim target and body presentation with native action ownership. |
+| `third_person_locomotion.*`, `third_person_reload.*` | Aimed movement/action facing and reload continuity across stance changes. |
 | `starter_grip.cpp`, `launcher/body_weapon_grips.inc` | Shared measured per-character/per-weapon grip corrections. |
 | `graphics_view.*`, `graphics_reticle.*`, `graphics_hud.*` | Saved FOV/view choices, reticle appearance and per-player HUD layout. |
 | `graphics_cinematic.*`, `graphics_presentation.*` | In-game cinematics, final UI/subtitles and separate frontend aspect ratio. |
 | `controls.*`, `camera_input.*`, `weapon_input.*`, `native_menu.*`, `prompts.*` | Bindings, local player ownership, mouse/controller navigation and prompts. |
 | `coop.*`, `coop_characters.*`, `character_selection.*`, `character_preview.*` | Local split-screen setup, character selection and preview. |
+| `graphics_viewport.h` | Identification of active full, top/bottom and side-by-side player viewports. |
 | `character_runtime.*`, `character_content.*`, `character_audio.*` | Guarded actor admission, generated identity metadata and voice-bank selection. |
 | `carry_all_weapons.*`, `revolver_ammo.cpp`, `grenade_switch.cpp`, `coop_respawn_weapons.*` | Optional inventory rules, ammo handling, grenade selection and local respawn restoration. |
 | `campaign_replay.*`, `coop_saves.*`, `save_storage.*`, `save_profile_io.*` | Replay isolation, separate progression, atomic save writes and recovery. |
@@ -23,12 +25,16 @@
 | `gameplay_textures.h`, `gameplay_texture_assets.h` | Optional gameplay HD loading and fingerprints. |
 | `launcher/MainWindow.xaml`, `Launcher.cs`, `SetupProcess.cs`, `DirectPlay.cs` | Portable Windows launcher, grouped setup, background preparation and direct play. |
 | `launcher/setup_backend.py`, `installed_source.py` | Verified import, direct ISO selection, recovery records and prepared overrides. |
+| `launcher/character_update.py`, `character-update.json.gz` | Verified reuse of installed character resources with exact final archive checks and safe rebuild fallback. The compressed recipe contains names, numeric layout metadata and hashes, not game payload bytes. |
+| `launcher/enemy_blood.py` | Restores native ground-blood components while preserving existing actor fields. |
 | `launcher/character_*.py`, `third_person_animation.py` | Own-disc roster, coat, grip and animation preparation; no original model or animation payload is included. |
 | `launcher/character_reload.py`, `character_starter_reload.py`, `character_weapon_pose.py`, `character_weapon_hold.py` | Body-action timing, smooth starter reload phases, visible aim and support-hand contact. |
 | `launcher/ps2_*.py`, `language_pack.py`, language catalogs | Local import of text, dialogue and compatible movie audio from supported PS2 discs. |
 | `launcher/release_check.py`, `release_download.py`, `release_update.py` | Release discovery, verified download and managed-file update with rollback. |
 | `launcher/linux/`, `tools/package_linux.py` | Experimental Proton launcher and exact Windows-payload packaging. |
 | `tools/intake.py`, `scripts/` | Disc parsing/extraction and native/launcher build entrypoints. |
+| `scripts/release_source.py` | Checks that an audited source inventory exactly matches the public main commit and release tag before publication. |
+| `.github/ISSUE_TEMPLATE/` | Bug-report and feature-request forms. |
 | `tests/` | Selected synthetic regressions that do not ship original instructions or private captures. |
 | `licenses/`, `CREDITS.md` | Required dependency and artwork attribution. |
 
@@ -36,8 +42,10 @@ Generated guest C++ and original disc resources are excluded. Authored host wrap
 may use `X86_FUNC` names to call locally generated original functions. The runtime
 data headers contain identities/layout metadata, not original model or texture data.
 
-Character preparation verifies original, intermediate and final archive identities
-before committing changes. Direct ISO mode keeps prepared overrides separately and
+Character preparation validates original inputs and every final archive identity
+before committing changes. Authenticated unchanged installed inputs can reuse the
+file-identity cache; new packages and generated outputs are fully checked.
+Direct ISO mode keeps prepared overrides separately and
 reads the remaining data from the retained ISO. Updates preserve installation
 records, saves, language content and compatible HD resources.
 

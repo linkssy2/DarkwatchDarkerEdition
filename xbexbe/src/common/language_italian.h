@@ -3,6 +3,20 @@
 namespace darkwatch::language {
 struct ItalianCopy { const char* english; const char* italian; };
 inline constexpr ItalianCopy copy_italian[]{
+    {"DISPLAY", "SCHERMO"},
+    {"PERFORMANCE", "PRESTAZIONI"},
+    {"ARTWORK", "GRAFICA"},
+    {"CAMERA", "VISUALE"},
+    {"HUD AND RETICLE", "HUD E MIRINO"},
+    {"CINEMATICS", "FILMATI"},
+    {"WORLD AND CO-OP", "MONDO E COOP"},
+    {"MOUSE", "MOUSE"},
+    {"AIMING AND MOVEMENT", "MIRA E MOVIMENTO"},
+    {"CONTROLLER", "CONTROLLER"},
+    {"CO-OP SPLIT SCREEN", "SCHERMO DIVISO COOP"},
+    {"Top and Bottom", "Sopra e sotto"},
+    {"Side by Side", "Affiancato"},
+    {"Both players. Applies when the next co-op mission loads.", "Per entrambi i giocatori. Si applica caricando la prossima missione cooperativa."},
     {"SWAP SHOULDER", "CAMBIA SPALLA"},
     {"Switch camera shoulder.", "Cambia la spalla della telecamera."},
     {"WALK", "CAMMINA"},

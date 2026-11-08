@@ -1,7 +1,7 @@
 """Own-disc setup; JSONL status/progress/result/error events are the WPF contract.
 
 Import stages a new version, preserves saves, then atomically switches active.json.
-Play verifies installed bytes before starting the release runtime. The separate
+Play reuses unchanged verified files before starting the release runtime. The separate
 release-check action reads public metadata and never changes installed data.
 """
 from __future__ import annotations
@@ -16,6 +16,7 @@ from pathlib import Path
 import queue
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -57,10 +58,55 @@ PARTITIONS = (0, 0x18300000)
 EXE = "darkwatch_xbe.exe"
 SETTINGS = "darkwatch_xbe_settings.toml"
 DISC_SOURCE = "disc-source.toml"
-PACKAGE_VERSION = "0.7.7"
+PACKAGE_VERSION = "0.7.8"
 RELEASE_PROFILE = {"name": "release-candidate", "diagnostics": False, "strict_assets": True}
 # Maximum time without a completed shader, not a limit on the whole preparation.
 SHADER_PREPARE_TIMEOUT = 15 * 60
+VERIFIED_FILES = ".verified-files.json"
+
+
+def file_identity(source):
+    """Bind a verified byte stream to the filesystem's identity and change clock."""
+    value = os.fstat(source.fileno())
+    change = value.st_ctime_ns
+    if (not stat.S_ISREG(value.st_mode) or value.st_nlink != 1 or not value.st_ino or
+            getattr(value, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)):
+        change = None
+    elif os.name == "nt":
+        # Windows st_ctime is creation time, so it cannot detect a same-size edit
+        # with restored mtime. FileBasicInfo supplies the actual metadata clock.
+        import msvcrt
+        class BasicInfo(ctypes.Structure):
+            _fields_ = [(name, ctypes.c_longlong) for name in
+                        ("creation", "access", "write", "change")] + [("attributes", ctypes.c_ulong)]
+        info = BasicInfo()
+        try:
+            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            query = kernel.GetFileInformationByHandleEx
+            volume = kernel.GetVolumeInformationByHandleW
+        except (AttributeError, OSError):
+            return [value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns, None]
+        handle = msvcrt.get_osfhandle(source.fileno())
+        query.argtypes = (ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong)
+        query.restype = ctypes.c_int
+        filesystem = ctypes.create_unicode_buffer(32)
+        volume.argtypes = (ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_ulong, ctypes.c_void_p,
+                           ctypes.c_void_p, ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_ulong)
+        volume.restype = ctypes.c_int
+        # FAT/exFAT do not provide a reliable metadata change clock. Unknown
+        # filesystems (including unsupported Wine calls) keep full verification.
+        reliable = volume(handle, None, 0, None, None, None, filesystem, len(filesystem))
+        change = (info.change if reliable and filesystem.value.upper() in ("NTFS", "REFS") and
+                  query(handle, 0, ctypes.byref(info), ctypes.sizeof(info)) and info.change > 0 else None)
+    return [value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns, change]
+
+
+def hash_stream(source, cancel):
+    digest = hashlib.sha256()
+    while chunk := source.read(CHUNK):
+        cancel()
+        digest.update(chunk)
+    return digest.hexdigest()
 
 
 def game_environment():
@@ -228,6 +274,8 @@ class Setup:
         safe_path(self.root, "active.json")
         self.cancel_file = Path(cancel_file) if cancel_file else None
         self.notify = notify
+        self.verified_files = {}
+        self.verified_iso = None
         manifest = read_json(self.package / "package-manifest.json")
         if manifest.get("complete") is not True or manifest.get("version") != PACKAGE_VERSION:
             raise SetupError("This launcher package is incomplete or incompatible. Extract a fresh complete package.")
@@ -246,14 +294,15 @@ class Setup:
             sort_keys=True).encode()).hexdigest()
         for path in ("payload/supported-disc.json", "payload/intake.py", "payload/bonus_content.py", "payload/installed_source.py",
                      "payload/gameplay_hd.py", "payload/gameplay-hd-catalog.json", "payload/hd_ui/overrides.toml",
-                     "payload/character_content.py", "payload/character_animation.py", "payload/character_assets.py",
+                     "payload/character_content.py", "payload/character_update.py", "payload/character-update.json.gz",
+                     "payload/character_animation.py", "payload/character_assets.py",
                      "payload/character_archive.py", "payload/character_repaint.py", "payload/character-catalog.json",
                      "payload/character_boss.py", "payload/character_boss_effects.py", "payload/character_spectral_hands.py",
                      "payload/character_hand_seams.py", "payload/character_secondary.py", "payload/character_preview.py",
                      "payload/character_roster.py", "payload/character_tala.py",
-                     "payload/revolver_content.py", "payload/revolver_scripts.py", "payload/player_corpses.py", "payload/character_cinematic.py",
+                     "payload/revolver_content.py", "payload/revolver_scripts.py", "payload/player_corpses.py", "payload/enemy_blood.py", "payload/character_cinematic.py",
                      "payload/third_person_animation.py", "payload/character_reload.py", "payload/character_weapon_pose.py",
-                     "payload/character_weapon_hold.py", "payload/character_starter_reload.py",
+                     "payload/character_weapon_hold.py", "payload/character_weapon_shoulder.py", "payload/character_starter_reload.py",
                      "payload/body_weapon_grips.inc",
                      "payload/character-art/cassidy-hands-1024.dds", "payload/character-art/cassidy-hands-256.dds",
                      "payload/character-art/tala-hands-1024.dds", "payload/character-art/tala-hands-256.dds",
@@ -313,13 +362,77 @@ class Setup:
         if self.cancel_file and self.cancel_file.exists():
             raise Cancelled("Cancelled. Your previous installation and saves were kept.")
 
-    def digest(self, path):
-        digest = hashlib.sha256()
+    def digest(self, path, cached=False):
+        key = str(path.absolute())
         with path.open("rb") as source:
-            while chunk := source.read(CHUNK):
-                self.check_cancel()
-                digest.update(chunk)
-        return digest.hexdigest()
+            before = file_identity(source)
+            record = self.verified_files.get(key, {}) if cached and before[-1] is not None else {}
+            result = record.get("sha256") if record.get("identity") == before else None
+            if not isinstance(result, str) or not re.fullmatch("[0-9a-f]{64}", result):
+                result = hash_stream(source, self.check_cancel)
+            if file_identity(source) != before:
+                raise SetupError(f"File changed while verifying: {path.name}. Please retry.")
+        self.check_cancel()
+        self.verified_files[key] = dict(identity=before, sha256=result)
+        return result
+
+    def remember_verified(self, path, digest):
+        """Record a just-authenticated transaction output without reading it twice."""
+        with path.open("rb") as source:
+            self.verified_files[str(path.absolute())] = dict(identity=file_identity(source), sha256=digest)
+
+    def verification_binding(self, current):
+        metadata = read_json(safe_path(current, "install.json"))
+        return dict(install=str(current.absolute()), package_sha256=self.package_sha256,
+                    disc_sha256=self.files["payload/supported-disc.json"],
+                    content_revision=character_content.CONTENT_REVISION,
+                    source={key: metadata.get(key) for key in
+                            ("source_mode", "iso_path", "iso_size", "iso_mtime_ns")})
+
+    def load_verification(self, current, installed=False):
+        self.verified_files = {}
+        self.verified_iso = None
+        try:
+            receipt = read_json(safe_path(current, VERIFIED_FILES))
+            binding = self.verification_binding(current)
+            if installed:
+                metadata = read_json(safe_path(current, "install.json"))
+                binding.update(package_sha256=metadata.get("package_sha256"), content_revision=metadata.get("content_revision"))
+            if (receipt.get("schema_version") != 1 or receipt.get("binding") != binding or
+                    not isinstance(receipt.get("files"), dict) or len(receipt["files"]) > 4096):
+                return
+            # Keys are never opened from this receipt. Only independently selected
+            # installed/catalog paths may look up their matching prior identity.
+            self.verified_files = {key: value for key, value in receipt["files"].items() if isinstance(value, dict)}
+            self.verified_iso = receipt.get("iso")
+        except (OSError, ValueError, TypeError):
+            pass  # Missing/stale cache means a full byte check, never acceptance.
+
+    def save_verification(self, current):
+        try:
+            relative = [name for name, _, _ in self.installed_files(current)] + [character_preview.NAME]
+            catalogs = [self.disc_catalog(code) for code in language_pack.DISC_LANGUAGES]
+            catalogs.append(getattr(self, "portuguese_catalog", None))
+            relative.extend(catalog.directory + "/" + name for catalog in catalogs if catalog for name in catalog.files)
+            allowed = {str(safe_path(current, name).absolute()) for name in relative}
+            files = {key: value for key, value in self.verified_files.items()
+                     if key in allowed}
+            write_json(safe_path(current, VERIFIED_FILES), dict(schema_version=1,
+                       binding=self.verification_binding(current), files=files, iso=self.verified_iso))
+        except (OSError, ValueError, TypeError):
+            pass  # Read-only installs may still play after successful verification.
+
+    def verify_iso(self, current, record, cached=False):
+        self.validate_iso_marker(current, record)
+        with self.open_iso(record["iso_path"], record) as (source, _, entries, _):
+            identity = file_identity(source)
+            receipt = dict(path=record["iso_path"], identity=identity,
+                           disc_sha256=self.files["payload/supported-disc.json"])
+            if not cached or identity[-1] is None or self.verified_iso != receipt:
+                self.read_iso_files(source, entries, verify_all=True)
+            if file_identity(source) != identity:
+                raise SetupError("The source ISO changed while verifying. Retry with an unchanged file.")
+            self.verified_iso = receipt
 
     def active(self, root=None):
         root = self.root if root is None else root
@@ -460,6 +573,8 @@ class Setup:
                     self.notify("progress", f"Verifying disc {item['path']}", percent=5 + int(done * 80 / max(1, total)))
                 if digest.hexdigest() != item["sha256"]:
                     raise SetupError(f"This ISO contains a damaged or unsupported {item['path']}. Your previous installation was kept.")
+            if target is not None and item["path"] in names:
+                self.remember_verified(safe_path(target, item["path"]), item["sha256"])
 
     def iso_preparation_names(self):
         # LvlMulti supplies player animation resources but remains on the ISO after conversion.
@@ -555,7 +670,7 @@ class Setup:
                         **source_fields, message=str(error))
         hd = self.hd_status(current)
         return dict(installed=True, ready=True, update_available=False, hd_textures_installed=hd,
-                    message=self.hd_warning or "Installed. Files are verified before every launch.", install_dir=str(current),
+                    message=self.hd_warning or "Ready to play. Use Verify Files for a full check.", install_dir=str(current),
                     **source_fields, **self.language_status(current))
 
     def language_status(self, current):
@@ -579,7 +694,7 @@ class Setup:
         return dict(language=language_pack.selected(current), **installed,
                     spanish_audio_installed=available, portuguese_installed=portuguese)
 
-    def prepare_previews(self, current):
+    def prepare_previews(self, current, cached=False):
         """Upgrade the local menu cache without requiring another ISO import."""
         metadata = read_json(safe_path(current, "install.json"))
         record = metadata.get("character_preview", {})
@@ -587,35 +702,46 @@ class Setup:
         if (isinstance(record, dict) and record.get("version") == character_preview.VERSION and
                 isinstance(record.get("size"), int) and 16 < record["size"] <= character_preview.MAX_BYTES and
                 isinstance(record.get("sha256"), str) and re.fullmatch("[0-9a-f]{64}", record["sha256"]) and
-                path.is_file() and path.stat().st_size == record["size"] and self.digest(path) == record["sha256"]):
+                path.is_file() and path.stat().st_size == record["size"] and self.digest(path, cached=cached) == record["sha256"]):
             return
         require_closed()
-        self.notify("progress", "Preparing character previews from your disc", percent=98)
+        self.notify("progress", "Preparing character previews from your disc", percent=98, preparing=True)
         record = character_preview.prepare(safe_path(current, "assets"), path, self.check_cancel)
+        self.remember_verified(path, record["sha256"])
         metadata["character_preview"] = record
         write_json(safe_path(current, "install.json"), metadata)
 
-    def spanish_valid(self, current):
-        return bool(self.ps2_language_catalog and
-                    self.ps2_language_catalog.validate(current, self.check_cancel))
+    def language_valid(self, current, catalog, cached=False):
+        if not catalog or not catalog.validate(current, self.check_cancel, full=False):
+            return False
+        return all(self.digest(language_pack.checked(current, catalog.directory + "/" + name), cached=cached) == row["sha256"]
+                   for name, row in catalog.files.items())
+
+    def remember_language(self, current, catalog):
+        for name, row in catalog.files.items():
+            self.remember_verified(language_pack.checked(current, catalog.directory + "/" + name), row["sha256"])
+
+    def spanish_valid(self, current, cached=False):
+        return self.language_valid(current, self.ps2_language_catalog, cached)
 
     def disc_catalog(self, language):
         # Retain the Spanish attribute for older setup callers and fixtures.
         return self.ps2_language_catalog if language == "es" else getattr(self, "disc_language_catalogs", {}).get(language)
 
-    def disc_language_valid(self, current, language):
+    def disc_language_valid(self, current, language, cached=False):
         catalog = self.disc_catalog(language)
-        return bool(catalog and catalog.validate(current, self.check_cancel))
+        return self.language_valid(current, catalog, cached)
 
-    def portuguese_valid(self, current):
+    def portuguese_valid(self, current, cached=False):
         catalog = getattr(self, "portuguese_catalog", None)
-        return bool(catalog and catalog.validate(current, self.check_cancel))
+        return self.language_valid(current, catalog, cached)
 
     def install_portuguese(self):
         require_closed()
         current = self.active()
         if not current or not self.status()["ready"]:
             raise SetupError("Import or repair your Darkwatch ISO before installing Portuguese.")
+        self.load_verification(current)
         self.verify_package()
         archive = "payload/portuguese-text.zip"
         catalog = getattr(self, "portuguese_catalog", None)
@@ -625,6 +751,8 @@ class Setup:
         if shutil.disk_usage(self.root).free < needed:
             raise SetupError("Not enough free space to install the Portuguese translation.")
         catalog.install(safe_path(self.package, archive), current, self.check_cancel, self.notify, require_closed)
+        self.remember_language(current, catalog)
+        self.save_verification(current)
         return dict(installed=True, ready=True, update_available=False, install_dir=str(current),
                     **self.language_status(current),
                     message="Portuguese installed. Choose Português (Brasil) before starting. Spanish voices use the optional PS2 Spanish install.")
@@ -641,6 +769,7 @@ class Setup:
         current = self.active()
         if not current or not self.status()["ready"]:
             raise SetupError(f"Import or repair your Darkwatch ISO before installing {label}.")
+        self.load_verification(current)
         self.verify_package()
         archive = Path(archive).absolute()
         if archive.suffix.lower() != ".iso":
@@ -668,6 +797,8 @@ class Setup:
             options = {} if language == "es" else {"language": language}
             ps2_spanish.prepare(archive, assets, prepared, self.check_cancel, self.notify, **options)
             catalog.install(prepared, current, self.check_cancel, self.notify, require_closed)
+        self.remember_language(current, catalog)
+        self.save_verification(current)
         return dict(installed=True, ready=True, update_available=False, install_dir=str(current), **self.language_status(current),
                     message=("Spanish installed. Choose Español before starting the game." if language == "es" else
                              f"{label} installed. Choose the language before starting the game."))
@@ -677,6 +808,7 @@ class Setup:
         current = self.active()
         if not current or not self.status()["ready"]:
             raise SetupError("Import or repair your Darkwatch ISO before choosing a language.")
+        self.load_verification(current)
         if value in language_pack.DISC_LANGUAGES:
             self.verify_package()
             if not self.disc_language_valid(current, value):
@@ -689,6 +821,7 @@ class Setup:
         self.check_cancel()
         require_closed()
         language_pack.select(current, value)
+        self.save_verification(current)
         return dict(installed=True, ready=True, update_available=False, install_dir=str(current), **self.language_status(current),
                     message=("Idioma: español. Se aplicará al iniciar el juego." if value == "es" else
                              "Idioma: português do Brasil. Será aplicado ao iniciar o jogo." if value == "pt-BR" else
@@ -727,15 +860,15 @@ class Setup:
                 if "file" in region and "payload/hd_ui/" + region["file"] not in self.files:
                     raise SetupError("The HD artwork package is incomplete.")
 
-    def verify(self, optional=True):
+    def verify(self, optional=True, cached=False):
         current = self.active()
         if not current:
             raise SetupError("Import your own Darkwatch ISO first.")
+        if cached:
+            self.load_verification(current)
         record = read_json(safe_path(current, "install.json"))
         if record.get("source_mode") == "iso":
-            self.validate_iso_marker(current, record)
-            with self.open_iso(record["iso_path"], record) as (source, _, entries, _):
-                self.read_iso_files(source, entries, verify_all=True)
+            self.verify_iso(current, record, cached)
         files = self.installed_files(current)
         total = sum(size for _, size, _ in files)
         done = 0
@@ -743,11 +876,11 @@ class Setup:
             self.check_cancel()
             self.notify("progress", f"Verifying {relative}", percent=int(done * 100 / max(1, total)))
             path = safe_path(current, relative)
-            if not path.is_file() or path.stat().st_size != size or self.digest(path) != digest:
+            if not path.is_file() or path.stat().st_size != size or self.digest(path, cached=cached) != digest:
                 raise SetupError(f"Missing or damaged installed file: {relative}. Import your ISO again to repair it.")
             done += size
         # Core files are verified before a missing/outdated private preview is repaired.
-        self.prepare_previews(current)
+        self.prepare_previews(current, cached)
         if optional:
             self.hd_verified = self.hd_status(current, full=True)
             for language, label in language_pack.DISC_LANGUAGES.items():
@@ -756,6 +889,7 @@ class Setup:
             if safe_path(current, "language/pt-BR").exists() and not self.portuguese_valid(current):
                 self.hd_warning = "The Portuguese translation needs repair. Install Portuguese again; previous files are kept."
         self.notify("progress", "Installed files verified", percent=100)
+        self.save_verification(current)
         return current
 
     def find_volume(self, source, size):
@@ -930,10 +1064,12 @@ class Setup:
     def update(self):
         """Replace prepared files in place; user data and optional packs stay put."""
         require_closed()
+        self.notify("progress", "Preparing game update", percent=0, preparing=True)
         self.verify_package()
         current = self.active()
         if not current:
             raise SetupError("Choose Use Existing Install or import your Xbox ISO once.")
+        self.load_verification(current, installed=True)
         metadata = read_json(safe_path(current, "install.json"))
         if metadata.get("disc_sha256") != self.files["payload/supported-disc.json"]:
             raise SetupError("The installed disc revision does not match this update.")
@@ -955,7 +1091,7 @@ class Setup:
                 continue  # Restored originals are authenticated before conversion below.
             size, digest = character_content.INSTALLED.get(name, (item["size"], item["sha256"]))
             source = safe_path(current, "assets/" + name)
-            if not source.is_file() or source.stat().st_size != size or self.digest(source) != digest:
+            if not source.is_file() or source.stat().st_size != size or self.digest(source, cached=True) != digest:
                 raise SetupError(f"Installed game data is damaged: {name}. Repair from your ISO; your saves are kept.")
         needed = 512 * 1024 * 1024 + sum(safe_path(self.package, name).stat().st_size for name in self.files if name.startswith("payload/runtime/"))
         if rebuild:
@@ -981,20 +1117,22 @@ class Setup:
                         if item["path"] in self.iso_preparation_names() - character_content.INSTALLED.keys():
                             self.copy_file(safe_path(current, "assets/" + item["path"]), safe_path(assets, item["path"]))
                 character_content.prepare(assets, self.package / "payload", self.check_cancel,
-                                          lambda message: self.notify("progress", message, percent=40))
+                                          lambda message: self.notify("progress", message, percent=40),
+                                          previous_assets=safe_path(current, "assets"))
                 for name, (size, digest) in character_content.INSTALLED.items():
                     path = safe_path(assets, name)
                     if path.stat().st_size != size or self.digest(path) != digest:
                         raise SetupError("Updated character data failed verification; no installed files were changed.")
                     replacements.append("assets/" + name)
                 metadata["character_preview"] = character_preview.prepare(assets, stage / character_preview.NAME, self.check_cancel)
+                self.remember_verified(stage / character_preview.NAME, metadata["character_preview"]["sha256"])
                 replacements.append(character_preview.NAME)
             for name, digest in self.files.items():
                 if not name.startswith("payload/runtime/") or name.endswith("/darkwatch_hd_ui_builder.exe"):
                     continue
                 relative = name.removeprefix("payload/runtime/")
                 existing = safe_path(current, relative)
-                if existing.is_file() and self.digest(existing) == digest:
+                if existing.is_file() and self.digest(existing, cached=True) == digest:
                     continue
                 destination = safe_path(stage, relative)
                 destination.parent.mkdir(parents=True, exist_ok=True)
@@ -1005,7 +1143,7 @@ class Setup:
             artwork = safe_path(current, "hd-ui.pack")
             hd = metadata.get("hd_ui", {})
             if (rebuild or metadata.get("artwork_sha256") != self.artwork_sha256 or not artwork.is_file()
-                    or artwork.stat().st_size != hd.get("size") or self.digest(artwork) != hd.get("sha256")):
+                    or artwork.stat().st_size != hd.get("size") or self.digest(artwork, cached=True) != hd.get("sha256")):
                 self.notify("progress", "Updating HD interface", percent=90)
                 self.build_hd(stage, assets)
                 artwork = stage / "hd-ui.pack"
@@ -1019,10 +1157,14 @@ class Setup:
             for relative in replacements:
                 destination = safe_path(current, relative)
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                os.replace(safe_path(stage, relative), destination)
+                source = safe_path(stage, relative)
+                verified = self.verified_files[str(source.absolute())]["sha256"]
+                os.replace(source, destination)
+                self.remember_verified(destination, verified)
             metadata.update(content_revision=character_content.CONTENT_REVISION,
                             package_sha256=self.package_sha256, artwork_sha256=self.artwork_sha256)
             write_json(current / "install.json", metadata)
+        self.save_verification(current)
         result = self.status()
         result["message"] = ("Game updated. Your ISO, prepared resources, saves, settings and add-ons were reused."
                              if direct else "Game updated. Your installed data, saves, settings and add-ons were reused; no ISO was needed.")
@@ -1076,6 +1218,7 @@ class Setup:
     def import_iso(self, iso, direct=False):
         iso = Path(iso).absolute()
         require_closed()
+        self.notify("progress", "Preparing your game", percent=0, preparing=True)
         self.verify_package()
         previous = self.active()
         versions = safe_path(self.root, "versions")
@@ -1087,6 +1230,7 @@ class Setup:
         try:
             with iso.open("rb") as source:
                 original_stat = os.fstat(source.fileno())
+                original_identity = file_identity(source)
                 offset, entries = self.find_volume(source, original_stat.st_size)
                 # Streamed archive conversion retains its input until the next
                 # output is verified, in addition to the final staged files.
@@ -1106,17 +1250,21 @@ class Setup:
                 if shutil.disk_usage(self.root).free < needed:
                     raise SetupError(f"Not enough free space. Keep at least {needed / (1024 ** 3):.1f} GB free for installation, plus space for your saved data and cache.")
                 self.read_iso_files(source, entries, stage / "assets", names, verify_all=True)
-                final_stat = os.fstat(source.fileno())
-                if (original_stat.st_size, original_stat.st_mtime_ns) != (final_stat.st_size, final_stat.st_mtime_ns):
+                if original_identity != file_identity(source):
                     raise SetupError("The source ISO changed during import. Please retry with an unchanged file.")
             source_record = dict(source_mode="extracted")
             if direct:
                 source_record = dict(source_mode="iso", iso_path=str(iso),
                                      iso_size=original_stat.st_size, iso_mtime_ns=original_stat.st_mtime_ns)
+                self.verified_iso = dict(path=str(iso), identity=original_identity,
+                                         disc_sha256=self.files["payload/supported-disc.json"])
             else:
+                self.verified_iso = None
                 installed_source.capture(stage / "assets", stage / "source-recovery", self.originals(), self.check_cancel)
             character_content.prepare(stage / "assets", self.package / "payload", self.check_cancel,
                                       lambda message: self.notify("progress", message, percent=86))
+            for name, (_, digest) in character_content.INSTALLED.items():
+                self.remember_verified(stage / "assets" / name, digest)
             if direct:
                 for name in names - {"default.xbe", *character_content.INSTALLED}:
                     safe_path(stage, "assets/" + name).unlink(missing_ok=True)
@@ -1132,6 +1280,7 @@ class Setup:
             self.build_hd(stage)
             self.notify("progress", "Preparing character previews from your disc", percent=88)
             preview = character_preview.prepare(stage / "assets", stage / character_preview.NAME, self.check_cancel)
+            self.remember_verified(stage / character_preview.NAME, preview["sha256"])
             self.check_cancel()
             require_closed()
             self.notify("progress", "Preserving saves, controls, and shader cache", percent=97)
@@ -1143,6 +1292,8 @@ class Setup:
                         continue
                     try:
                         preserved = catalog.preserve(user_data, stage, self.check_cancel, self.copy_file)
+                        if preserved:
+                            self.remember_language(stage, catalog)
                         if not preserved and user_data and safe_path(user_data, catalog.directory).exists():
                             self.notify("progress", f"Previous {label} files were kept in the old installation. Import your PS2 ISO or choose English.", percent=97)
                     except Cancelled:
@@ -1154,6 +1305,8 @@ class Setup:
                 if portuguese:
                     try:
                         preserved = portuguese.preserve(user_data, stage, self.check_cancel, self.copy_file)
+                        if preserved:
+                            self.remember_language(stage, portuguese)
                         if not preserved and user_data and safe_path(user_data, portuguese.directory).exists():
                             self.notify("progress", "Previous Portuguese files were kept in the old installation. Install Portuguese again or choose English.", percent=97)
                     except Cancelled:
@@ -1180,6 +1333,7 @@ class Setup:
                            package_sha256=self.package_sha256, artwork_sha256=self.artwork_sha256,
                            character_preview=preview,
                            hd_ui=dict(size=hd.stat().st_size, sha256=self.digest(hd))))
+                self.save_verification(stage)
                 self.check_cancel()
                 require_closed()
                 write_json(self.root / "active.json", dict(version=version))
@@ -1199,17 +1353,18 @@ class Setup:
         current = self.active()
         if current and self.needs_update(current):
             self.update()
-        current = self.verify(optional=False)
+        current = self.verify(optional=False, cached=True)
         language = language_pack.selected(current)
         if language in language_pack.DISC_LANGUAGES:
-            if not self.disc_language_valid(current, language):
+            if not self.disc_language_valid(current, language, cached=True):
                 label = language_pack.DISC_LANGUAGES[language]
                 raise SetupError(f"{label} needs a supported PS2 ISO import. Import {label} again or choose English; previous files are kept.")
         elif language == "pt-BR":
-            if not self.portuguese_valid(current):
+            if not self.portuguese_valid(current, cached=True):
                 raise SetupError("The Portuguese translation needs repair. Install Portuguese again or choose English; previous files are kept.")
-            if safe_path(current, "language/es/assets").exists() and not self.spanish_valid(current):
+            if safe_path(current, "language/es/assets").exists() and not self.spanish_valid(current, cached=True):
                 raise SetupError("The optional Spanish voices need repair. Import Spanish again or choose English; previous files are kept.")
+        self.save_verification(current)
         self.prepare_shaders(current)
         self.check_cancel()
         require_closed()

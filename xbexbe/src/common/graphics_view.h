@@ -21,6 +21,7 @@ struct Settings {
     uint32_t reticle_friendly_color = kOriginalReticleColor;
     CameraMode camera_mode = CameraMode::FirstPerson;
     bool original_ui_aspect = false;
+    bool vertical_split = false;
 };
 // Players are zero-based; out-of-range indices use Player One.
 Settings Snapshot(uint32_t player = 0);

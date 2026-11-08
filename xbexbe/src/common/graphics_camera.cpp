@@ -6,6 +6,7 @@
 #include <cstring>
 #include <mutex>
 #include "graphics_view.h"
+#include "graphics_viewport.h"
 #include "third_person_visibility.h"
 #include "third_person_body.h"
 #include "app/app.h"
@@ -55,6 +56,7 @@ struct ThirdPersonView {
     PlayerCamera player{};
     uint32_t personal = 0, frame = 0, invocation = 0;
     Matrix matrix{};
+    float native_fov = 0;
 };
 thread_local ThirdPersonView g_third_person_view;
 struct ReticleProjection {
@@ -160,6 +162,17 @@ template<size_t Size> struct CameraCall {
         const uint32_t args[]{0x1E89D2, address};
         std::memcpy(base + call.esp, args, sizeof(args));
         x86_icall(call, base, 0x216D9A);
+    }
+    void FieldOfView(uint32_t camera, float fov) {
+        static_assert(Size >= 1024);
+        X86Context call = original;
+        call.ecx = camera;
+        call.esp -= 64;
+        uint32_t bits = 0;
+        std::memcpy(&bits, &fov, sizeof(bits));
+        const uint32_t args[]{0x1E89D2, bits, 1};
+        std::memcpy(base + call.esp, args, sizeof(args));
+        sub_00216B7C(call, base);
     }
 };
 
@@ -364,22 +377,45 @@ struct ThirdPersonPose {
     uint32_t personal = 0, actor = 0, follow = 0, frame = 0;
     Vector position{}, right{}, up{}, forward{}, desired{};
 };
-bool ReadThirdPersonPose(const X86Context& ctx, uint8_t* base, uint32_t personal, ThirdPersonPose& pose) {
-    if (!Span(base, personal, 0x1A0) || Read(base, personal) != 0x423990 || base[personal + 0x188]) return false;
+struct DeathView {
+    ThirdPersonPose pose{};
+    float fov = 0;
+    uint32_t rig = 0, root_motion = 0;
+    Vector root_origin{};
+};
+std::array<DeathView, 2> g_death_views;
+enum class PoseUse { Living, DeathEntry, CoopBody };
+bool ReadThirdPersonPose(const X86Context& ctx, uint8_t* base, uint32_t personal, ThirdPersonPose& pose,
+                         PoseUse use = PoseUse::Living) {
+    const bool death_entry = use == PoseUse::DeathEntry;
+    if (!Span(base, personal, 0x1A0) || Read(base, personal) != 0x423990 ||
+        (!death_entry && base[personal + 0x188])) return false;
     const uint32_t actor = Read(base, personal + 0x18C);
     const uint32_t component = OwnedComponent(base, actor, 0x416444);
     uint32_t owner = 0, linked_personal = 0, follow = 0, type = 0, linked_actor = 0, flags = 0;
     if (!OwnedComponent(base, actor, 0x4227A4) ||
-        !Field(base, actor, 0x90, flags) || (flags & 2) ||
+        !Field(base, actor, 0x90, flags) || (!death_entry && (flags & 2)) ||
         !Field(base, component, 0x70, linked_personal) || linked_personal != personal ||
         !Field(base, component, 0x80, owner)) return false;
     const PlayerCamera player = FindPlayer(owner, true);
     if (!ActivePersonal(base, player, personal)) return false;
+    if (!death_entry) {
+        std::lock_guard lock(g_camera_lock);
+        const auto& dying = g_death_views[player.player].pose;
+        if (dying.actor == actor && dying.personal == personal && dying.player.base == base &&
+            dying.player.epoch == player.epoch) return false;
+    }
     const auto mode = darkwatch::view::Snapshot(player.player).camera_mode;
-    if (mode != darkwatch::view::CameraMode::Centered && mode != darkwatch::view::CameraMode::Shoulder) return false;
-    // Native horse, turret, death and authored cinematic cameras replace the top
-    // entry. Blood Vision retains this personal camera and its native zoom.
-    if (!ThirdPersonZoom(base, player, personal, actor) ||
+    const auto& viewport = player.viewport;
+    const bool first_person_body = use == PoseUse::CoopBody &&
+        mode == darkwatch::view::CameraMode::FirstPerson &&
+        darkwatch::viewport::Identify(viewport[0], viewport[1], viewport[2], viewport[3]).Split();
+    if (!first_person_body && mode != darkwatch::view::CameraMode::Centered &&
+        mode != darkwatch::view::CameraMode::Shoulder) return false;
+    // Horse, turret and authored cameras replace the top. Native player death
+    // instead freezes this personal camera at +188 (A8E2C -> BCC0C). Death entry
+    // and a co-op body seen by its partner do not require an external zoom view.
+    if ((!death_entry && !first_person_body && !ThirdPersonZoom(base, player, personal, actor)) ||
         !Field(base, component, 0x4C, follow) || !Span(base, follow, 0xE0) ||
         !Field(base, follow, 0, type) || type != 0x423D64 ||
         !Field(base, follow, 0xDC, linked_actor) || linked_actor != actor) return false;
@@ -441,12 +477,124 @@ bool SweepThirdPersonPose(const X86Context& ctx, uint8_t* base, const ThirdPerso
     return true;
 }
 
+bool DeathRoot(const uint8_t* base, uint32_t actor, uint32_t& rig, uint32_t& motion, Vector& position) {
+    const uint32_t animation = OwnedComponent(base, actor, 0x41D258);
+    uint32_t wrapper = 0, type = 0, linked_actor = 0, collection = 0, bodies = 0, count = 0, maps = 0, root = 0, body = 0;
+    uint8_t flags = 0, active = 0;
+    if (!Field(base, animation, 0x84, flags) || !(flags & 8) ||
+        !Field(base, animation, 0x90, wrapper) || !Field(base, wrapper, 0, type) || type != 0x41D4AC ||
+        !Field(base, wrapper, 4, rig) || !Field(base, rig, 0x12C, linked_actor) || linked_actor != actor ||
+        !Field(base, rig, 0xC1, active)) return false;
+    // Inactive rig transforms are still local bind poses. Latch only after the
+    // original death activation has transferred this actor's animated pose.
+    motion = 0;
+    if (!active) return true;
+    // Native 6F23A selects the shallowest physical root at +30; 6D29E reads the
+    // body's world translation through motion+B0. Do not assume body/bone zero.
+    return Field(base, rig, 4, collection) && Field(base, collection, 8, bodies) &&
+        Field(base, collection, 0xC, count) && count && count <= 64 && Span(base, bodies, count * 4) &&
+        Field(base, rig, 0x10, maps) && maps == count && Field(base, rig, 0x30, root) && root < count &&
+        Field(base, bodies, root * 4, body) && Field(base, body, 0x3C, motion) &&
+        Field(base, motion, 0xB0, position) && Finite(position);
+}
+
+bool ReadDeathView(const uint8_t* base, uint32_t personal, ThirdPersonPose& pose, float& fov) {
+    std::lock_guard lock(g_camera_lock);
+    for (auto& death : g_death_views) {
+        const auto& saved = death.pose;
+        if (saved.personal != personal || saved.player.base != base) continue;
+        const auto& current = g_player_cameras[saved.player.player];
+        uint32_t actor = 0, frame = 0, linked_personal = 0, owner = 0, follow = 0, follow_type = 0, follow_actor = 0;
+        const uint32_t component = OwnedComponent(base, saved.actor, 0x416444);
+        if (current.epoch != saved.player.epoch || current.owner != saved.player.owner ||
+            !ActivePersonal(base, saved.player, personal) || !Span(base, personal, 0x1A0) ||
+            Read(base, personal) != 0x423990 || !Field(base, personal, 0x18C, actor) || actor != saved.actor ||
+            !Field(base, component, 0x70, linked_personal) || linked_personal != personal ||
+            !Field(base, component, 0x80, owner) || owner != saved.player.owner ||
+            !Field(base, component, 0x4C, follow) || follow != saved.follow || !Span(base, follow, 0xE0) ||
+            !Field(base, follow, 0, follow_type) || follow_type != 0x423D64 ||
+            !Field(base, follow, 0xDC, follow_actor) || follow_actor != saved.actor ||
+            !Field(base, saved.player.raster, 4, frame) || frame != saved.frame || !Span(base, frame, 0x70) ||
+            darkwatch::view::Snapshot(saved.player.player).camera_mode == darkwatch::view::CameraMode::FirstPerson) {
+            death = {};
+            return false;
+        }
+        uint32_t rig = 0, motion = 0;
+        Vector position{};
+        if (!DeathRoot(base, saved.actor, rig, motion, position) ||
+            (death.root_motion && (death.rig != rig || death.root_motion != motion))) {
+            death = {};
+            return false;
+        }
+        pose = saved;
+        if (motion) {
+            if (!death.root_motion) {
+                death.rig = rig;
+                death.root_motion = motion;
+                death.root_origin = position;
+            }
+            // Follow physical translation directly, independently of render FPS;
+            // retain the captured aim basis and eye/boom offset while it falls.
+            for (unsigned i = 0; i < 3; ++i) {
+                const float delta = position[i] - death.root_origin[i];
+                pose.position[i] += delta;
+                pose.desired[i] += delta;
+            }
+            if (!Finite(pose.position) || !Finite(pose.desired)) return false;
+        }
+        fov = death.fov;
+        return true;
+    }
+    return false;
+}
+
 }  // namespace
+
+bool DarkwatchBeginThirdPersonDeath(const X86Context& ctx, uint8_t* base, uint32_t actor) {
+    DarkwatchEndThirdPersonDeath(base, actor);
+    uint32_t personal = 0;
+    const uint32_t component = OwnedComponent(base, actor, 0x416444);
+    ThirdPersonPose pose;
+    Vector clipped{};
+    float fov = 0;
+    if (!Field(base, component, 0x70, personal) ||
+        !ReadThirdPersonPose(ctx, base, personal, pose, PoseUse::DeathEntry) || pose.actor != actor ||
+        !Field(base, personal, 0x16C, fov) || !std::isfinite(fov) || fov <= 0 || fov >= 180 ||
+        !SweepThirdPersonPose(ctx, base, pose, clipped)) return false;
+    std::lock_guard lock(g_camera_lock);
+    if (g_player_cameras[pose.player.player].epoch != pose.player.epoch) return false;
+    g_death_views[pose.player.player] = {pose, fov};
+    g_third_person_reticles[pose.player.player] = {};
+    return true;
+}
+
+void DarkwatchEndThirdPersonDeath(uint8_t* base, uint32_t actor) {
+    std::lock_guard lock(g_camera_lock);
+    for (auto& death : g_death_views)
+        if (death.pose.player.base == base && death.pose.actor == actor) death = {};
+}
 
 void DarkwatchConfigureCinematicCamera(X86Context& ctx, uint8_t* base) {
     ConfigureCinematic(ctx, base, ctx.eax, 0x21AF54);
 }
 
+
+void DarkwatchPreparePlayerViewport(X86Context& ctx, uint8_t* base) {
+    // F9B52 passes the authored rectangle into the native camera constructor.
+    // Change it before native color/depth subrasters and the HUD camera are made.
+    if (!darkwatch::view::Snapshot().vertical_split) return;
+    for (const auto& config : kConfigurations) {
+        if (ctx.esi != config.address || config.address == 0x491668) continue;
+        if (!Span(base, ctx.esi, sizeof(config.words)) ||
+            std::memcmp(base + ctx.esi, config.words.data(), sizeof(config.words)) ||
+            !Span(base, ctx.esp, 20) ||
+            std::memcmp(base + ctx.esp, config.words.data() + 2, 20) ||
+            !Span(base, ctx.ecx, 0x14)) return;
+        const auto rectangle = darkwatch::viewport::Split(true, config.words[6]);
+        std::memcpy(base + ctx.esp, rectangle.data(), sizeof(rectangle));
+        return;
+    }
+}
 
 void DarkwatchConfigurePlayerCamera(X86Context& ctx, uint8_t* base) {
     // F9B1D owns this component; F9B78 passes aspect then scale to the original setter.
@@ -458,13 +606,22 @@ void DarkwatchConfigurePlayerCamera(X86Context& ctx, uint8_t* base) {
         !Span(base, ctx.esp, 8) || Read(base, ctx.esp) != configuration->words[1] ||
         Read(base, ctx.esp + 4) != configuration->words[0] || !Span(base, ctx.edi, 0x14) ||
         Read(base, ctx.edi + 0xC) != ctx.ecx || !Span(base, ctx.ecx, 0x68) ||
-        Read(base, ctx.ecx) != 0x0043F97C ||
-        std::memcmp(base + ctx.ecx + 0x58, configuration->words.data() + 2, 16)) return;
+        Read(base, ctx.ecx) != 0x0043F97C) return;
 
     const bool full = ctx.esi == 0x491668;
+    const auto viewport = darkwatch::viewport::Identify(Read(base, ctx.ecx + 0x58),
+        Read(base, ctx.ecx + 0x5C), Read(base, ctx.ecx + 0x60), Read(base, ctx.ecx + 0x64));
+    if (viewport.player != configuration->words[6] ||
+        (full ? viewport.kind != darkwatch::viewport::Kind::Full : !viewport.Split())) return;
     float aspect, aspect_scale;
     std::memcpy(&aspect, base + ctx.esi + 4, 4);
     std::memcpy(&aspect_scale, base + ctx.esi, 4);
+    // Side-by-side has one half-width full-height view. Keep the same authored
+    // vertical field of view while matching its actual pixel aspect.
+    if (viewport.kind == darkwatch::viewport::Kind::Vertical) {
+        aspect *= .4975f / 2.f;
+        aspect_scale *= .4975f / 2.f;
+    }
     const float authored_aspect = aspect, authored_scale = aspect_scale;
     const float output_aspect = app::RenderAspect();
     const float ratio = output_aspect / (4.0f / 3.0f);
@@ -472,7 +629,7 @@ void DarkwatchConfigurePlayerCamera(X86Context& ctx, uint8_t* base) {
     aspect_scale *= ratio;
     const uint32_t index = configuration->words[6];
     const float scale = aspect_scale * (float(darkwatch::view::Snapshot(index).fov_percent) / 100.0f);
-    if (ratio != 1 || scale != aspect_scale) {
+    if (ratio != 1 || viewport.kind == darkwatch::viewport::Kind::Vertical || scale != aspect_scale) {
         // Original FOV updates use tan(FOV/2)*scale, then divide by aspect for Y.
         // Widescreen adjusts both; the preference changes scale only and retains zoom.
         std::memcpy(base + ctx.esp, &aspect, sizeof(aspect));
@@ -487,7 +644,7 @@ void DarkwatchConfigurePlayerCamera(X86Context& ctx, uint8_t* base) {
         auto& player = g_player_cameras[index];
         player = {base, ctx.edi, ctx.ecx, Read(base, ctx.ecx + 0x34), index,
                   aspect_scale, authored_scale, authored_aspect, {}, ++g_camera_epoch};
-        std::memcpy(player.viewport.data(), configuration->words.data() + 2, 16);
+        std::memcpy(player.viewport.data(), base + ctx.ecx + 0x58, 16);
     }
     LOG_FIRST(4, "Player %u camera %08X: aspect %.4f (authored zoom retained)", index + 1, ctx.ecx, aspect);
 }
@@ -502,7 +659,9 @@ void DarkwatchUpdateCameraView(X86Context& ctx, uint8_t* base) {
     UpdateShoulderBlend(ctx, base, player);
     uint16_t count = 0;
     uint32_t list = 0, personal = 0, actor = 0;
-    if (darkwatch::view::Snapshot(player.player).camera_mode != darkwatch::view::CameraMode::FirstPerson &&
+    const auto& viewport = player.viewport;
+    if ((darkwatch::view::Snapshot(player.player).camera_mode != darkwatch::view::CameraMode::FirstPerson ||
+         darkwatch::viewport::Identify(viewport[0], viewport[1], viewport[2], viewport[3]).Split()) &&
         Field(base, player.owner, 4, count) && count && count <= 64 &&
         Field(base, player.owner, 8, list) && Span(base, list, count * 4))
         personal = Read(base, list + (count - 1) * 4);
@@ -538,12 +697,23 @@ bool DarkwatchBeginThirdPersonRender(X86Context& ctx, uint8_t* base, uint32_t pe
     if (g_third_person_view.personal || !Span(base, ctx.esp, 4) || Read(base, ctx.esp) != 0x1E89D2 ||
         !Span(base, ctx.ebp, 4)) return false;
     ThirdPersonPose pose;
-    if (!ReadThirdPersonPose(ctx, base, personal, pose)) return false;
-    g_third_person_reticles[pose.player.player] = {};
-    DarkwatchPrepareThirdPersonHands(ctx, base, personal);
-    if (!ReadThirdPersonPose(ctx, base, personal, pose)) return false;
     Vector clipped{};
-    if (!SweepThirdPersonPose(ctx, base, pose, clipped)) return false;
+    float death_fov = 0, native_fov = 0;
+    const bool death = ReadDeathView(base, personal, pose, death_fov);
+    if (!death && !ReadThirdPersonPose(ctx, base, personal, pose)) return false;
+    g_third_person_reticles[pose.player.player] = {};
+    if (!death) {
+        DarkwatchPrepareThirdPersonHands(ctx, base, personal);
+        if (!ReadThirdPersonPose(ctx, base, personal, pose) ||
+            !SweepThirdPersonPose(ctx, base, pose, clipped)) return false;
+    } else if (ctx.esp < 8192 || !Span(base, uint64_t(ctx.esp) - 8192, 8192) ||
+               !SweepThirdPersonPose(ctx, base, pose, clipped)) return false;
+    if (death) {
+        float scale = 0, aspect = 0;
+        if (!ScaleValid(base, pose.player.camera, scale) ||
+            !Field(base, pose.player.camera, 0x40, aspect) || !std::isfinite(aspect) || aspect <= 0 ||
+            !Field(base, pose.player.camera, 0x44, native_fov)) return false;
+    }
     Matrix saved{}, matrix{};
     std::memcpy(saved.data(), base + pose.frame + 0x10, saved.size());
     matrix = saved;
@@ -557,11 +727,35 @@ bool DarkwatchBeginThirdPersonRender(X86Context& ctx, uint8_t* base, uint32_t pe
     std::memcpy(matrix.data() + 12, &flags, sizeof(flags));
     CameraCall<1024> call(ctx, base);
     call.Transform(pose.player.camera, matrix);
-    g_third_person_view = {pose.player, personal, pose.frame, ctx.ebp, saved};
+    if (death) call.FieldOfView(pose.player.camera, death_fov);
+    g_third_person_view = {pose.player, personal, pose.frame, ctx.ebp, saved, native_fov};
     // The shot reply converges on the center-camera target. Depth changes must
     // not slide the reticle across the screen when crossing foreground edges.
-    g_third_person_reticles[pose.player.player] = {pose.player, 0.f, 0.f, true};
+    if (!death) g_third_person_reticles[pose.player.player] = {pose.player, 0.f, 0.f, true};
     return true;
+}
+
+bool DarkwatchThirdPersonPlayer(const X86Context& ctx, uint8_t* base, uint32_t actor, uint32_t control) {
+    const uint32_t component = OwnedComponent(base, actor, 0x416444);
+    uint32_t personal = 0;
+    ThirdPersonPose pose;
+    return OwnedComponent(base, actor, 0x41F878) == control &&
+        Field(base, component, 0x70, personal) &&
+        ReadThirdPersonPose(ctx, base, personal, pose, PoseUse::CoopBody) && pose.actor == actor;
+}
+
+bool DarkwatchThirdPersonBodyAimTarget(const X86Context& ctx, uint8_t* base, uint32_t actor,
+                                      std::array<float, 3>& target) {
+    const uint32_t component = OwnedComponent(base, actor, 0x416444);
+    uint32_t personal = 0;
+    ThirdPersonPose pose;
+    if (!Field(base, component, 0x70, personal) ||
+        !ReadThirdPersonPose(ctx, base, personal, pose, PoseUse::CoopBody) || pose.actor != actor) return false;
+    if (darkwatch::view::Snapshot(pose.player.player).camera_mode != darkwatch::view::CameraMode::FirstPerson)
+        return DarkwatchThirdPersonAimTarget(ctx, base, actor, 0, target);
+    // A teammate sees the body, but its first-person owner's native shot ray stays unchanged.
+    for (unsigned i = 0; i < 3; ++i) target[i] = pose.position[i] + pose.forward[i] * 100.f;
+    return Finite(target);
 }
 
 bool DarkwatchThirdPersonAimTarget(const X86Context& ctx, uint8_t* base, uint32_t actor,
@@ -599,6 +793,7 @@ void DarkwatchEndThirdPersonRender(X86Context& ctx, uint8_t* base, uint32_t pers
         ctx.esp < 1024 || !Span(base, uint64_t(ctx.esp) - 1024, 1024)) return;
     CameraCall<1024> call(ctx, base);
     call.Transform(saved.player.camera, saved.matrix);
+    if (saved.native_fov > 0) call.FieldOfView(saved.player.camera, saved.native_fov);
 }
 
 bool DarkwatchThirdPersonRenderActive(const uint8_t* base, uint32_t camera) {

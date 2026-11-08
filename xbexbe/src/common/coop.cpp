@@ -28,7 +28,10 @@ void DarkwatchCoopCallback(X86Context& ctx, uint8_t*) {
     if(ctx.esi==0xEA88F) ctx.esi=0xEA939;
 }
 void DarkwatchCoopEnter(X86Context& ctx, uint8_t* base) {
-    if (HasLiteral(ctx,base,0x4298B8)) input::SetCoopKeyboard(!input::GetLastDevice().controller);
+    if (HasLiteral(ctx,base,0x4298B8)) {
+        input::SetSinglePlayerController(false);
+        input::SetCoopKeyboard(!input::GetLastDevice().controller);
+    }
 }
 void DarkwatchCoopTextureQuality(X86Context& ctx, uint8_t* base) {
     // Keep the full single-player dictionary; the optional HD pack still overrides it.
@@ -50,5 +53,8 @@ void DarkwatchCoopParticipants(X86Context& ctx, uint8_t* base) {
     std::memcpy(base+ctx.ebp-8,&count,4);
 }
 namespace darkwatch {
-void ResetCoopInput() { input::SetCoopKeyboard(false); }
+void ResetCoopInput() {
+    input::SetCoopKeyboard(false);
+    input::SetSinglePlayerController(true);
+}
 }

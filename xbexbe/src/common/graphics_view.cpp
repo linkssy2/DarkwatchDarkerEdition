@@ -7,7 +7,7 @@
 namespace darkwatch::view {
 namespace {
 constexpr uint64_t kViewMask = 0xFFFFFFu;
-constexpr uint64_t kFlagsMask = uint64_t(0x7F) << 57;
+constexpr uint64_t kFlagsMask = uint64_t(0xFF) << 56;
 constexpr uint64_t kDefaultView = (uint64_t(100) << 16) | (uint64_t(100) << 8) | 100;
 // One atomic value keeps each view and the shared display flags coherent.
 std::atomic<uint64_t> g_settings{(uint64_t(7) << 60) | (uint64_t(1) << 58) | (uint64_t(3) << 48) | (kDefaultView << 24) | kDefaultView};
@@ -27,7 +27,7 @@ uint64_t PackFlags(const Settings& settings) {
     return (uint64_t(settings.show_fps) << 63) | (uint64_t(settings.hd_ui) << 62) |
            (uint64_t(settings.cutscene_borders) << 61) | (uint64_t(settings.hd_textures) << 60) |
            (uint64_t(settings.forever_ragdolls) << 59) | (uint64_t(settings.movie_aspect_fit) << 58) |
-           (uint64_t(settings.original_ui_aspect) << 57);
+           (uint64_t(settings.original_ui_aspect) << 57) | (uint64_t(settings.vertical_split) << 56);
 }
 Settings Unpack(uint64_t value, uint32_t player) {
     player = player == 1 ? 1 : 0;
@@ -38,7 +38,8 @@ Settings Unpack(uint64_t value, uint32_t player) {
             ((value >> 59) & 1) != 0, ((value >> 58) & 1) != 0,
             ((value >> (48 + player)) & 1) != 0,
             g_colors[player][0].load(), g_colors[player][1].load(), g_colors[player][2].load(),
-            CameraMode((value >> CameraShift(player)) & 3), ((value >> 57) & 1) != 0};
+            CameraMode((value >> CameraShift(player)) & 3), ((value >> 57) & 1) != 0,
+            ((value >> 56) & 1) != 0};
 }
 void StoreColors(const Settings& settings, uint32_t player) {
     auto& colors = g_colors[player == 1 ? 1 : 0];
@@ -111,6 +112,7 @@ void Load(const void* table) {
     settings.forever_ragdolls = t["forever_ragdolls"].is_boolean() && t["forever_ragdolls"].value_or(false);
     settings.movie_aspect_fit = t["movie_aspect_fit"].is_boolean() ? t["movie_aspect_fit"].value_or(true) : true;
     settings.original_ui_aspect = t["original_ui_aspect"].is_boolean() && t["original_ui_aspect"].value_or(false);
+    settings.vertical_split = t["vertical_split"].is_boolean() && t["vertical_split"].value_or(false);
     // Existing installations keep their previous view for both players until edited.
     Settings player2 = settings;
     if (const auto* view = t["player2_view"].as_table()) LoadView(*view, player2);
@@ -132,6 +134,7 @@ void Save(void* table) {
     t.insert_or_assign("forever_ragdolls", settings.forever_ragdolls);
     t.insert_or_assign("movie_aspect_fit", settings.movie_aspect_fit);
     t.insert_or_assign("original_ui_aspect", settings.original_ui_aspect);
+    t.insert_or_assign("vertical_split", settings.vertical_split);
     toml::table player2;
     SaveView(player2, Unpack(value, 1));
     t.insert_or_assign("player2_view", std::move(player2));

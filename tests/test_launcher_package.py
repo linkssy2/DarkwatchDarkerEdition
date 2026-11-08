@@ -387,10 +387,11 @@ class LauncherPackageTests(unittest.TestCase):
 
     def test_character_archive_pins_and_authored_art_match_runtime(self):
         import character_content
+        import character_update
         plan = package.sources()
-        for name in ('revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'character_cinematic.py',
-                     'third_person_animation.py', 'character_reload.py', 'character_weapon_pose.py', 'character_weapon_hold.py', 'character_starter_reload.py',
-                     'body_weapon_grips.inc'):
+        for name in ('revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'enemy_blood.py', 'character_cinematic.py',
+                     'third_person_animation.py', 'character_reload.py', 'character_weapon_pose.py', 'character_weapon_hold.py', 'character_weapon_shoulder.py', 'character_starter_reload.py',
+                     'body_weapon_grips.inc', 'body_reload_parts.inc'):
             self.assertEqual(plan['payload/' + name], ROOT / 'launcher' / name)
         with tempfile.TemporaryDirectory() as folder, patch.object(package,'REPO',Path(folder)):
             root = Path(folder)
@@ -401,12 +402,51 @@ class LauncherPackageTests(unittest.TestCase):
             build = {'host_sources': {'files': [{'path':source_name,'sha256':package.sha(source)}]}}
             shutil.copyfile(ROOT/'launcher/character-catalog.json',root/'character-catalog.json')
             plan = {'payload/character-catalog.json':root/'character-catalog.json'}
+            recipe = root/character_update.RECIPE_NAME
+            shutil.copyfile(ROOT/'launcher'/recipe.name, recipe)
+            plan['payload/'+recipe.name] = recipe
+            for name in ('body_weapon_grips.inc', 'body_reload_parts.inc'):
+                shutil.copyfile(ROOT/'launcher'/name, root/name)
+                plan['payload/'+name] = root/name
+                build['host_sources']['files'].append({'path':'launcher/'+name, 'sha256':package.sha(root/name)})
             for character in ('cassidy', 'tala'):
                 for size in (1024,256):
                     name = f'{character}-hands-{size}.dds'
                     shutil.copyfile(ROOT/'launcher/assets'/name,root/name)
                     plan['payload/character-art/'+name] = root/name
             package.check_character_catalog(plan,build)
+            with self.assertRaisesRegex(ValueError, 'recipe is missing'):
+                package.check_character_catalog({name:path for name,path in plan.items()
+                                                 if name != 'payload/'+recipe.name}, build)
+            raw_recipe = recipe.read_bytes()
+            recipe.write_bytes(raw_recipe+b'changed')
+            with self.assertRaisesRegex(ValueError, 'recipe changed'):
+                package.check_character_catalog(plan,build)
+            recipe.write_bytes(raw_recipe)
+            catalog_path = root/'character-catalog.json'
+            raw_catalog = catalog_path.read_bytes()
+            for revision, changed_pin, message in (
+                    ('character-future-v28', False, 'Unsupported character update recipe'),
+                    (character_content.CONTENT_REVISION, True, 'Character update target differs')):
+                with self.subTest(revision=revision, changed_pin=changed_pin):
+                    catalog = json.loads(raw_catalog)
+                    catalog['content_revision'] = revision
+                    if changed_pin:
+                        catalog['installed']['packfile.pck']['sha256'] = '0'*64
+                    catalog_path.write_text(json.dumps(catalog), encoding='utf-8')
+                    pins = {name:(pin['size'],pin['sha256']) for name,pin in catalog['installed'].items()}
+                    with patch.multiple(character_content, CONTENT_REVISION=revision,
+                                        CATALOG_SHA256=package.sha(catalog_path), INSTALLED=pins):
+                        with self.assertRaisesRegex(ValueError, message):
+                            package.check_character_catalog(plan,build)
+            catalog_path.write_bytes(raw_catalog)
+            for name in ('body_weapon_grips.inc', 'body_reload_parts.inc'):
+                shared = root/name
+                original = shared.read_bytes()
+                shared.write_bytes(original+b'changed')
+                with self.assertRaisesRegex(ValueError, 'pose constants differ'):
+                    package.check_character_catalog(plan,build)
+                shared.write_bytes(original)
             old = source.read_bytes()
             source.write_bytes(old+b'changed')
             with self.assertRaisesRegex(ValueError,'differs from the runtime'):

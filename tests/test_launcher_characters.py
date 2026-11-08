@@ -1,5 +1,6 @@
 """Own-disc conversion contracts using synthetic resources, never a game launch."""
 from contextlib import ExitStack
+import copy
 import hashlib
 import io
 import json
@@ -97,6 +98,25 @@ class CharacterConversionTests(unittest.TestCase):
         with self.assertRaises(InterruptedError):
             source.read('fixture/a')
 
+    def test_discard_only_superseded_chapter_resources(self):
+        first = {'LvlSingl.pck': {'replaced': b'old', 'kept': b'untouched'},
+                 'packfile.pck': {'replaced': b'old model'}, 'audio.pck': {'replaced': b'old audio'}}
+        second = {'LvlSingl.pck': {'replaced': b'intermediate', 'other': b'second'}}
+        latest = {'LvlSingl.pck': {'replaced': b'new', 'added': b'new path'}}
+        expected = copy.deepcopy((first, second, latest))
+        def merged(stages):
+            result = {}
+            for stage in stages:
+                result.update(stage['LvlSingl.pck'])
+            return result
+        content._discard_replaced_chapters(latest, first, second)
+        self.assertEqual(merged((first, second, latest)), merged(expected))
+        self.assertEqual(first['LvlSingl.pck'], {'kept': b'untouched'})
+        self.assertEqual(second['LvlSingl.pck'], {'other': b'second'})
+        self.assertEqual(first['packfile.pck'], expected[0]['packfile.pck'])
+        self.assertEqual(first['audio.pck'], expected[0]['audio.pck'])
+        self.assertEqual(latest, expected[2])
+
     def test_install_all_verified_copies_or_leave_originals(self):
         originals = {name: tiny_archive() for name in ('packfile.pck', 'LvlSingl.pck', 'audio.pck')}
         groups = {name: {'fixture/replaced.bin': b'first conversion'} for name in originals}
@@ -120,6 +140,8 @@ class CharacterConversionTests(unittest.TestCase):
                      'LvlSingl.pck': {'fixture/replaced.bin': b'final cinematic chapter table'}}
         third_person = {'packfile.pck': {'fixture/onfoot.bin': b'full body animation'},
                         'LvlSingl.pck': {'fixture/replaced.bin': b'full body preload'}}
+        third_person['packfile.pck'][content.CHARACTERS] = art.encode(
+            dict(name='root', attributes={}, children=[], value=None))
         presentation = b'final presentation model'
         final['packfile.pck'] = archive.compose(fourth['packfile.pck'],
             {**revolver['packfile.pck'], **corpses['packfile.pck'], **fanning, **cinematic['packfile.pck'], **third_person['packfile.pck'], tala_model: presentation})
@@ -153,17 +175,30 @@ class CharacterConversionTests(unittest.TestCase):
                 (payload/'character-catalog.json').write_bytes(raw)
                 return pin(raw)['sha256']
             installed = {name:(len(data),pin(data)['sha256']) for name,data in final.items()}
-            with patch.object(content, 'INSTALLED', installed), patch.object(content, 'build_resources', return_value=(groups,extension,spectral)), \
-                    patch.object(content.character_roster, 'prepare', return_value=(roster, {})), \
-                    patch.object(content.revolver_content, 'prepare', return_value=revolver), \
+            with patch.object(content, 'INSTALLED', installed), patch.object(content, 'build_resources', side_effect=lambda *args: copy.deepcopy((groups,extension,spectral))), \
+                    patch.object(content.character_roster, 'prepare', side_effect=lambda *args, **kwargs: (copy.deepcopy(roster), {})), \
+                    patch.object(content.revolver_content, 'prepare', side_effect=lambda *args: copy.deepcopy(revolver)), \
                     patch.object(content.revolver_content, 'prepare_fanning', return_value=fanning), \
-                    patch.object(content.player_corpses, 'prepare', return_value=corpses), \
-                    patch.object(content.character_cinematic, 'prepare', return_value=cinematic), \
-                    patch.object(content.third_person_animation, 'prepare', return_value=third_person), \
+                    patch.object(content.player_corpses, 'prepare', side_effect=lambda *args: copy.deepcopy(corpses)), \
+                    patch.object(content.character_cinematic, 'prepare', side_effect=lambda *args: copy.deepcopy(cinematic)), \
+                    patch.object(content.third_person_animation, 'prepare', side_effect=lambda *args: copy.deepcopy(third_person)), \
+                    patch.object(content.enemy_blood, 'append', side_effect=lambda data: data), \
                     patch.object(content.character_tala, 'presentation', return_value=presentation) as finish, \
                     patch.object(content.bonus_content, 'patch_pack', side_effect=lambda data:data):
-                with patch.object(content, 'CATALOG_SHA256', reset()):
-                    content.prepare(assets,payload)
+                with patch.object(content, 'CATALOG_SHA256', reset()), \
+                        patch.object(archive, 'compose_file', wraps=archive.compose_file) as compose_file:
+                    messages = []
+                    content.prepare(assets,payload,progress=messages.append)
+                chapter_writes = [call for call in compose_file.call_args_list
+                                  if call.args[2].name.startswith('LvlSingl.pck')]
+                self.assertEqual(len(chapter_writes), 1)
+                self.assertEqual(chapter_writes[0].args[0], assets/'LvlSingl.pck')
+                self.assertEqual(chapter_writes[0].args[1], combined)
+                for index, name in enumerate(installed, 1):
+                    self.assertIn(f'Preparing character archive {index}/{len(installed)}: {name}', messages)
+                    self.assertIn(f'Verifying completed character archive {index}/{len(installed)}: {name}', messages)
+                    self.assertTrue(any(message.startswith('Writing updated animations: ') and
+                                        message.endswith(' in ' + name) for message in messages))
                 self.assertEqual({name:(assets/name).read_bytes() for name in final},final)
                 finish.assert_called_once_with(b'native model for derivation', b'third conversion')
                 self.assertEqual(set(p.name for p in assets.iterdir()),set(final))
@@ -204,7 +239,7 @@ class CharacterConversionTests(unittest.TestCase):
                 def cancel():
                     if cancel_now[0]: raise InterruptedError('cancelled')
                 def progress(message):
-                    if message == 'Preparing character resources...': cancel_now[0] = True
+                    if message.startswith('Preparing character archive '): cancel_now[0] = True
                 with patch.object(content,'CATALOG_SHA256',reset()), self.assertRaises(InterruptedError):
                     content.prepare(assets,payload,cancel,progress)
                 self.assertEqual({name:(assets/name).read_bytes() for name in originals},originals)

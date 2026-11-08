@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "release": "0.7.7",
+  "release": "0.7.8",
   "scope": "Native source revisions retained from 0.1. SDK FetchContent uses these tags; compare resolved commits after first configuration.",
   "native": [
     {
@@ -43,7 +43,7 @@
   "experimental_linux": {
     "launcher_python": "3.9 or newer; standard library only",
     "compatibility_runtime": "Player-supplied Proton Experimental and its declared Steam Linux Runtime, installed through native Linux Steam",
-    "provisioning": "External dependencies are not bundled. No specific Proton revision or actual Linux gameplay compatibility has been verified. See launcher/linux/README-LINUX.md"
+    "provisioning": "External dependencies are not bundled. Community Steam Deck testing is credited in CREDITS.md; the current source audit does not establish Linux gameplay or performance. See launcher/linux/README-LINUX.md."
   },
   "packaging": {
     "python": "3.12.10 embedded x64",

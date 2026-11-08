@@ -76,7 +76,17 @@ Vec RestVector(const float* matrix, Vec center) {
 // Pinned source and changes: docs/KAWAII_PROTOTYPE.md; license: licenses/KawaiiPhysics.txt.
 Vec KawaiiOffset(Vec offset, Vec rest) {
     const float radius=Length(rest),length=Length(rest+offset);
-    return radius>1e-6f && length>1e-6f ? (rest+offset)*(radius/length)-rest : Vec{};
+    if (radius<=1e-6f || length<=1e-6f) return {};
+    const Vec projected=(rest+offset)*(radius/length);
+    // Length alone lets a particle orbit through its anchored skin. Retain the
+    // accepted small-motion response, but stop excess inward compression at 30
+    // degrees; the surface replay keeps normal bounce and bounds sharp turns.
+    constexpr float axialLimit=.8660254038f, lateralLimit=.5f;
+    const float axial=Dot(projected,rest)/radius;
+    if (axial>=radius*axialLimit) return projected-rest;
+    const Vec tangent=projected-rest*(axial/radius);
+    const float side=Length(tangent);
+    return side>1e-6f ? rest*(axialLimit-1.f)+tangent*(radius*lateralLimit/side) : Vec{};
 }
 void KawaiiStep(Spring& spring, Vec anchor, float h, Vec rest,
                 float stiffness, float damping, float inertia) {

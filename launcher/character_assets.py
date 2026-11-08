@@ -4,6 +4,7 @@ Only presentation fields change. Original actors, scripts, inventory and events
 are retained; generated game assets are written only into the local installation.
 """
 import copy
+from functools import lru_cache
 import struct
 
 PLAYER = 'CassidyPlayerTwo'
@@ -245,6 +246,56 @@ def append_resources(original, dependencies):
     return result,added
 
 
+@lru_cache(maxsize=1)
+def _resource_layout(raw):
+    # Roster variants reuse one area; cache its byte-validated layout only.
+    if raw[:4] != b'\x01\0\0\0' or len(raw) < 6:
+        return None
+    count = struct.unpack_from('<H', raw, 4)[0]
+    if count >= 20000:
+        return None
+    pos, strings = 6, []
+    for _ in range(count):
+        if pos + 2 > len(raw):
+            return None
+        length = struct.unpack_from('<H', raw, pos)[0]
+        pos += 2
+        if length >= 4096 or pos + length > len(raw):
+            return None
+        strings.append(raw[pos:pos + length].decode('ascii'))
+        pos += length
+    if len(set(strings)) != count or strings[:2] != ['ResourceSetCInfo', 'data']:
+        return None
+    body = raw[pos:]
+    if len(body) < 16:
+        return None
+    root, attrs, children, data, data_attrs, rows = struct.unpack_from('<6H', body)
+    if ((root, attrs, children, data, data_attrs) != (0, 0, 1, 1, 0)
+            or rows >= 20000 or len(body) != 16 + rows * 24 or body[-4:] != b'\xff' * 4):
+        return None
+    indexes = {value: index for index, value in enumerate(strings)}
+    tags = tuple(indexes.get(value) for value in ('element', 'name', 'type'))
+    seen, next_index = set(), 2
+    for row in struct.iter_unpack('<12H', body[12:-4]):
+        if ((row[0], row[3], row[7]) != tags
+                or (row[1], row[2], row[4], row[5], row[8], row[9], row[11]) != (0, 2, 0, 0, 0, 0, 65535)
+                or row[6] >= count or row[10] >= count):
+            return None
+        for index in (row[0], row[3], row[6], row[7], row[10]):
+            if index >= next_index:
+                if index != next_index:
+                    return None
+                next_index += 1
+        key = norm(strings[row[6]]), strings[row[10]]
+        if key in seen:
+            raise ValueError('Resource-list duplicates or unexpected schema')
+        seen.add(key)
+    if next_index != count:
+        return None
+
+    return pos, body, rows, indexes, seen
+
+
 def append_resource_bytes(raw, dependencies=(), *, select=None):
     """Append canonical resource rows without rebuilding their existing tree.
 
@@ -263,49 +314,12 @@ def append_resource_bytes(raw, dependencies=(), *, select=None):
         tree, added = append_resources(original, chosen)
         return encode(tree), added
 
-    if raw[:4] != b'\x01\0\0\0' or len(raw) < 6:
+    raw = bytes(raw)
+    layout = _resource_layout(raw)
+    if layout is None:
         return fallback()
-    count = struct.unpack_from('<H', raw, 4)[0]
-    if count >= 20000:
-        return fallback()
-    pos, strings = 6, []
-    for _ in range(count):
-        if pos + 2 > len(raw):
-            return fallback()
-        length = struct.unpack_from('<H', raw, pos)[0]
-        pos += 2
-        if length >= 4096 or pos + length > len(raw):
-            return fallback()
-        strings.append(raw[pos:pos + length].decode('ascii'))
-        pos += length
-    if len(set(strings)) != count or strings[:2] != ['ResourceSetCInfo', 'data']:
-        return fallback()
-    body = raw[pos:]
-    if len(body) < 16:
-        return fallback()
-    root, attrs, children, data, data_attrs, rows = struct.unpack_from('<6H', body)
-    if ((root, attrs, children, data, data_attrs) != (0, 0, 1, 1, 0)
-            or rows >= 20000 or len(body) != 16 + rows * 24 or body[-4:] != b'\xff' * 4):
-        return fallback()
-    indexes = {value: index for index, value in enumerate(strings)}
-    tags = tuple(indexes.get(value) for value in ('element', 'name', 'type'))
-    seen, next_index = set(), 2
-    for row in struct.iter_unpack('<12H', body[12:-4]):
-        if ((row[0], row[3], row[7]) != tags
-                or (row[1], row[2], row[4], row[5], row[8], row[9], row[11]) != (0, 2, 0, 0, 0, 0, 65535)
-                or row[6] >= count or row[10] >= count):
-            return fallback()
-        for index in (row[0], row[3], row[6], row[7], row[10]):
-            if index >= next_index:
-                if index != next_index:
-                    return fallback()
-                next_index += 1
-        key = norm(strings[row[6]]), strings[row[10]]
-        if key in seen:
-            raise ValueError('Resource-list duplicates or unexpected schema')
-        seen.add(key)
-    if next_index != count:
-        return fallback()
+    pos, body, rows, original_indexes, original_seen = layout
+    indexes, seen = original_indexes.copy(), original_seen.copy()
 
     added, extra_strings, extra_rows = [], bytearray(), bytearray()
     def text(value):

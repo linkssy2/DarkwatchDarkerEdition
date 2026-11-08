@@ -1,6 +1,7 @@
 #include "graphics_hud.h"
 #include "graphics_reticle.h"
 #include "graphics_view.h"
+#include "graphics_viewport.h"
 #include <array>
 #include <atomic>
 #include <cmath>
@@ -33,19 +34,20 @@ float Float(const uint8_t* base, uint32_t address) {
 void Store(uint8_t* base, uint32_t address, float value) {
     std::memcpy(base + address, &value, 4);
 }
+darkwatch::viewport::View View(const uint8_t* base, uint32_t camera) {
+    return darkwatch::viewport::Identify(Read(base, camera + 0x58), Read(base, camera + 0x5C),
+        Read(base, camera + 0x60), Read(base, camera + 0x64));
+}
 bool Camera(const HudScope& scope) {
     // D835C copies the player's viewport into the HUD's own camera.
     if (!Span(scope.base, scope.root, 0x1E0) || Read(scope.base, scope.root) != 0x427740 ||
         Read(scope.base, scope.root + 0x1DC) != scope.camera ||
         !Span(scope.base, scope.camera, 0x68) || Read(scope.base, scope.camera) != 0x43F97C)
         return false;
-    const uint32_t x = Read(scope.base, scope.camera + 0x58), y = Read(scope.base, scope.camera + 0x5C);
-    const uint32_t width = Read(scope.base, scope.camera + 0x60), height = Read(scope.base, scope.camera + 0x64);
-    return !x && width == 0x3F800000 &&
-        ((!y && height == 0x3F800000) || (height == 0x3EFEB852 && (!y || y == 0x3F00A3D7)));
+    return View(scope.base, scope.camera).kind != darkwatch::viewport::Kind::Invalid;
 }
 HudScope Scope(X86Context& ctx, uint8_t* base) {
-    if (!app::Widescreen() || !Span(base, ctx.esp, 8)) return {};
+    if (!Span(base, ctx.esp, 8)) return {};
     uint32_t child = ctx.ecx;
     for (unsigned depth = 0; depth < 24; ++depth) {
         if (!Span(base, child, 8)) return {};
@@ -54,8 +56,10 @@ HudScope Scope(X86Context& ctx, uint8_t* base) {
         if (Read(base, parent) == 0x427740) {
             HudScope result{base, parent, Read(base, ctx.esp + 4), 0};
             if (!Camera(result)) return {};
-            // Keep the split HUD's existing 2% edge inset while correcting its width.
-            if (Read(base, result.camera + 0x64) == 0x3EFEB852) result.anchor = 0.02f;
+            const auto view = View(base, result.camera);
+            if (!app::Widescreen() && view.kind != darkwatch::viewport::Kind::Vertical) return {};
+            // Both layouts use the same display-space edge inset as the native clamp.
+            if (view.Split()) result.anchor = 0.02f / Float(base, result.camera + 0x60);
             // Constructor DBB4C and layout D9FEC bind these complete groups.
             // Their descendants inherit one anchor, including numbers and art.
             for (uint32_t field : {0x64u, 0x6Cu, 0x78u, 0x68u})
@@ -88,6 +92,7 @@ bool DarkwatchHudSplitView() {return g_split_view.load(std::memory_order_relaxed
 
 float DarkwatchHudHorizontalScale(uint8_t* base, uint32_t camera) {
     if (!Active(base) || g_hud.camera != camera) return 1;
+    // Native HUD layout already accounts for the player's viewport width.
     const float scale = (4.f / 3.f) / app::RenderAspect();
     return std::isfinite(scale) && scale > 0 ? scale : 1;
 }
@@ -98,7 +103,7 @@ bool DarkwatchHideGameplayHud(X86Context& ctx, uint8_t* base) {
     // bypassing the whole pass leaves the resumed HUD unable to open Pause.
     const HudScope scope{base, ctx.esi, ctx.ebx, 0};
     if (!Camera(scope)) return false;
-    const uint32_t player = Read(base, scope.camera + 0x5C) ? 1u : 0u;
+    const uint32_t player = View(base, scope.camera).player;
     return !darkwatch::view::Snapshot(player).show_hud;
 }
 
@@ -126,19 +131,17 @@ void DarkwatchCoopHudMargins(X86Context& ctx, uint8_t* base) {
         !Span(base, Read(base, ctx.esp), 16)) {g_split_view = false; return;}
     const uint32_t camera = Read(base, ctx.esi + 0x1DC);
     if (!Span(base, camera, 0x68) || Read(base, camera) != 0x43F97C ||
-        Float(base, camera + 0x58) != 0 || Float(base, camera + 0x60) != 1 ||
-        Float(base, camera + 0x64) != 0.4975f) {g_split_view = false; return;}
-    const float top = Float(base, camera + 0x5C);
-    if (top != 0 && top != 0.5025f) {g_split_view = false; return;}
+        !View(base, camera).Split()) {g_split_view = false; return;}
     // The host counter reads this value without following guest pointers on
     // the drawing thread. A later full-screen/invalid viewport resets it.
     g_split_view.store(true, std::memory_order_relaxed);
     // D777B passes outer/inner TV-safe margins to the native whole-group clamp.
     // Native two-player views leave a 0.005 divider; inset each by 2% of the display.
+    const float horizontal = 0.04f / Float(base, camera + 0x60);
     const float vertical = 0.04f / Float(base, camera + 0x64);
-    Store(base, ctx.esp + 4, 0.04f);
+    Store(base, ctx.esp + 4, horizontal);
     Store(base, ctx.esp + 8, vertical);
-    Store(base, ctx.esp + 12, 0.04f);
+    Store(base, ctx.esp + 12, horizontal);
     Store(base, ctx.esp + 16, vertical);
 }
 
@@ -157,7 +160,7 @@ void DarkwatchHudQuad(X86Context& ctx, uint8_t* base) {
     if (!Span(base, raster, 0x14)) return;
     const uint32_t width = Read(base, raster + 0xC), height = Read(base, raster + 0x10);
     if (!width || !height || width > 16384 || height > 16384) return;
-    const float scale = (4.f / 3.f) / app::RenderAspect();
+    const float scale = DarkwatchHudHorizontalScale(base, g_hud.camera);
     std::array<float, 4> x;
     for (unsigned i = 0; i < x.size(); ++i) {
         x[i] = Float(base, vertices + 28 * i);
@@ -178,7 +181,7 @@ void DarkwatchHudFont(X86Context&, uint8_t* base) {
     if (!index || index >= 32 || !Span(base, 0x4E3730 + index * 4, 4)) return;
     const uint32_t matrix = Read(base, 0x4E3730 + index * 4);
     if (!Span(base, matrix, 0x40)) return;
-    const float scale = (4.f / 3.f) / app::RenderAspect();
+    const float scale = DarkwatchHudHorizontalScale(base, g_hud.camera);
     std::array<float, 4> x;
     for (unsigned i = 0; i < x.size(); ++i) {
         x[i] = Float(base, matrix + 0x10 * i);

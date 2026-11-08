@@ -357,14 +357,15 @@ void DarkwatchMenuInput(X86Context& ctx, uint8_t* base) {
         auto click = now;
         click.x = now.left_x; click.y = now.left_y; click.width = now.left_width; click.height = now.left_height;
         float x, y;
-        if (now.left_presses != previous.left_presses && click.width == now.width && click.height == now.height &&
+        if (now.enabled && now.left_presses != previous.left_presses && click.width == now.width && click.height == now.height &&
             Point(click, x, y, state.original_aspect))
             ctx.eax |= 0x200;
         return;
     }
-    if (now.right_presses != previous.right_presses || now.back_presses != previous.back_presses) {
+    if ((now.enabled && now.right_presses != previous.right_presses) || now.back_presses != previous.back_presses) {
         ctx.eax |= 0x20; pointer.wheel = 0; return; // Original semantic Back, independent of PC B binding.
     }
+    if (!now.enabled) { pointer.wheel = 0; return; }
     const bool click = now.left_presses != previous.left_presses;
     auto location = now;
     if (click) {
@@ -447,5 +448,5 @@ void DarkwatchMenuUi(double) {
     }
     if (!menu || host) input::SetTitleScreen(false);
     app::SetMenuPointer(host || menu);
-    if ((host || menu) && !ImGui::GetIO().AppFocusLost) darkwatch::DrawMenuCursor();
+    if ((host || menu) && input::GetPointerSnapshot().enabled && !ImGui::GetIO().AppFocusLost) darkwatch::DrawMenuCursor();
 }

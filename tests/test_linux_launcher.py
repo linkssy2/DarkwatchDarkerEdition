@@ -778,6 +778,18 @@ def check(version, platform):
                                  0 if complete else 1)
                 self.assertEqual(messages[:2], ["50%  Preparing shaders", "Shaders are ready"])
 
+    def test_animation_counts_remain_visible_when_overall_progress_percent_is_unchanged(self):
+        updates = ["Preparing animations: character 1/20, 0 files processed - aiming",
+                   "Preparing animations: character 1/20, 37 files processed - jump animations",
+                   "Preparing animations: character 20/20, 1,234 files processed - character complete",
+                   "Linking animations to levels: 0/510 files",
+                   "Linking animations to levels: 510/510 files"]
+        events = [dict(event="progress", message=message, percent=40) for message in updates]
+        self.action_patches(Process(events + [dict(event="result", message="Installed")]))
+        messages = []
+        self.assertEqual(linux.run_action(self.root, self.tools, "--update", output=messages.append), 0)
+        self.assertEqual(messages, ["40%  " + message for message in updates] + ["Installed"])
+
     def test_cancel_is_cooperative_unique_and_cleaned_after_process_finishes(self):
         process = Process()
         popen, signals = self.action_patches(process)

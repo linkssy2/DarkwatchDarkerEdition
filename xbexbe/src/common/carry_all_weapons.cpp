@@ -42,7 +42,7 @@ bool Name(const uint8_t* base, uint64_t at, const char* name) {
 }
 unsigned Identity(const uint8_t* base, uint64_t at) {
     constexpr const char* names[]{"BasicPistol", "Revolver", "DoublePistol", "Crossbow",
-        "RocketLauncher", "Rifle", "Shotgun", "SniperRifle"};
+        "RocketLauncher", "Rifle", "Shotgun", "SniperRifle", "Scepter"};
     for (unsigned i = 0; i < std::size(names); ++i) if (Name(base, at, names[i])) return i + 1;
     return 0;
 }

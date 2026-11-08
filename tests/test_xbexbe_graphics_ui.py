@@ -107,6 +107,7 @@ bool ObservedCombo(const char* label,int* current,const char* items,int maximum=
  observe|=record_combo_text&&std::string(label)=="##aspect";
  observe|=record_combo_text&&std::string(label)=="##camera_mode";
  observe|=record_combo_text&&std::string(label)=="##ui_aspect";
+ observe|=record_combo_text&&std::string(label)=="##split_layout";
  // A combo popup ends ImGui logging when it closes its window. Use the real
  // rendered-text file sink so that EndCombo cannot clear the observed options.
  if(observe){std::ofstream("fps-widget.log",std::ios::trunc).close();LogToFile(-1,"fps-widget.log");}
@@ -128,7 +129,8 @@ bool ObservedSliderInt(const char* label,int* value,int minimum,int maximum,cons
 }
 bool ObservedSliderFloat(const char* label,float* value,float minimum,float maximum,const char* format="%.3f",ImGuiSliderFlags flags=0){
  field_ids[label]=GetCurrentWindow()->GetID(label);
- WidgetHighlightProbe highlight(label);return SliderFloat(label,value,minimum,maximum,format,flags);
+ WidgetHighlightProbe highlight(label);bool changed=SliderFloat(label,value,minimum,maximum,format,flags);
+ auto a=GetItemRectMin(),b=GetItemRectMax();field_bounds[label]={a.x,a.y,b.x,b.y};return changed;
 }
 bool ObservedCheckbox(const char* label,bool* value){
  bool changed=Checkbox(label,value);auto a=GetItemRectMin(),b=GetItemRectMax();
@@ -1020,10 +1022,11 @@ int main(){
  CHECK(GImGui->NavId==field_ids["##display"]);
  PadTap(0,16);CHECK(ImGui::IsPopupOpen(nullptr,ImGuiPopupFlags_AnyPopupId|ImGuiPopupFlags_AnyPopupLevel));
  PadTap(0,32);CHECK(g_open&&!g_leave&&!ImGui::IsPopupOpen(nullptr,ImGuiPopupFlags_AnyPopupId|ImGuiPopupFlags_AnyPopupLevel));
+ Navigate(0,2,field_ids["##brightness"]);
  Navigate(0,2,field_ids["##internal"]);const auto internal=g_draft.render_percent;
  PadTap(0,16);PadTap(0,8);CHECK(g_draft.render_percent>internal);
  PadTap(0,32);CHECK(g_open&&!g_leave); // B finishes slider editing before leaving its page.
- for(const char* field:{"##camera_mode","##fov","##weapon_fov","##reticle","##cutscene_borders","##fps","##vsync","##cap","##msaa","##aniso","##hd_ui","##subtitles","##brightness","##hd_textures","##forever_ragdolls"})
+ for(const char* field:{"##vsync","##cap","##fps","##msaa","##aniso","##hd_ui","##hd_textures","##ui_aspect","##camera_mode","##fov","##weapon_fov","##show_hud","##reticle","##subtitles","##movie_scaling","##cutscene_borders","##forever_ragdolls"})
   Navigate(0,2,field_ids[field]);
  CHECK(ImGui::FindWindowByName("Graphics")->DC.ChildWindows[0]->Scroll.y>0);
  CHECK(!g_view_draft.forever_ragdolls);
@@ -1534,7 +1537,7 @@ int main(){
  // Controller-only navigation reaches Walk with Carry All off and cancels a capture without leaving.
  darkwatch::controls=darkwatch::ControlsDefaults();record_combo_text=false;OpenControls(1);io.AddMousePosEvent(-100,-100);PadFrames(1);
  Navigate(1,2,field_ids["##walk mode"]);PadTap(1,16);PadTap(1,2);PadTap(1,16);CHECK(g_controls_draft.walk_toggle[1]);
- Navigate(1,1,button_ids["CONTROLLER LAYOUT..."]);PadTap(1,16);PadFrames(1);
+ Navigate(1,2,button_ids["CONTROLLER LAYOUT..."]);PadTap(1,16);PadFrames(1);
  Navigate(1,2,layout_rows[20].first);PadTap(1,16);CHECK(g_pad_capture_action==22&&input::pad_capture&&!g_controls_draft.carry_all_weapons);
  input::pad_capture_result=input::kPadCaptureCancelled;PadFrames(1);CHECK(g_controller_layout&&g_pad_capture_action<0&&g_controls_draft.walk_buttons[1]==-1);
  std::puts("PASS Walk UI: hold/toggle, Carry-All-independent keyboard/controller capture, reserved buttons, override conflicts, unbind/reset/cancel, both-player Apply isolation and actual gamepad navigation");
@@ -1779,6 +1782,47 @@ int main(){
 '''
         ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + driver)
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+
+    def test_split_layout_draft_apply_cancel_and_controller(self):
+        helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")] + PLAYER_VIEW_UI[:PLAYER_VIEW_UI.index("int main(){")]
+        driver = r'''
+int main(){
+ ImGui::CreateContext();auto& io=ImGui::GetIO();io.IniFilename=nullptr;
+ io.ConfigFlags|=ImGuiConfigFlags_NavEnableKeyboard|ImGuiConfigFlags_NavEnableGamepad;
+ ImFontConfig font;font.SizePixels=22;g_body=io.Fonts->AddFontDefault(&font);g_title=g_body;
+ unsigned char* pixels;int w,h;io.Fonts->GetTexDataAsRGBA32(&pixels,&w,&h);
+ for(bool controller:{false,true})for(unsigned entry:{0u,1u,2u}){
+  HiddenViewPage();SeedPlayerViews();const unsigned player=entry==2?1:0;
+  const auto p0=view::Snapshot(),p1=view::Snapshot(1);const auto aspect=actual.aspect_ratio;
+  const auto old_saves=saves,old_displays=displays;
+  OpenViewPage(player,entry!=0);CHECK(!g_view_draft.vertical_split);
+  record_combo_text=!controller;
+  if(controller){io.AddMousePosEvent(-100,-100);PadFrames(player);Navigate(player,2,field_ids["##split_layout"]);
+   PadTap(player,16);PadTap(player,2);PadTap(player,16);
+  }else SelectQuality("##split_layout",1,"Side by Side");
+  CHECK(g_view_draft.vertical_split&&!view::Snapshot().vertical_split);
+  CHECK(SameView(view::Snapshot(),p0)&&SameView(view::Snapshot(1),p1));
+  if(controller){Navigate(player,2,button_ids["APPLY"]);PadTap(player,16);}else ClickNamed("APPLY");
+  CHECK(saves==old_saves+1&&displays==old_displays&&!g_confirm);
+  CHECK(view::Snapshot().vertical_split&&view::Snapshot(1).vertical_split&&actual.aspect_ratio==aspect);
+  CHECK(SameView(view::Snapshot(),p0)&&SameView(view::Snapshot(1),p1));
+  if(controller){Navigate(player,1,field_ids["##split_layout"]);PadTap(player,16);PadTap(player,1);PadTap(player,16);PadTap(player,32);}
+  else {SelectQuality("##split_layout",0,"Top and Bottom");ClickNamed("BACK");}
+  CHECK(!g_open&&view::Snapshot().vertical_split&&saves==old_saves+1);
+  OpenViewPage(player,entry!=0);CHECK(g_view_draft.vertical_split);
+  if(controller){io.AddMousePosEvent(-100,-100);PadFrames(player);Navigate(player,2,field_ids["##split_layout"]);
+   PadTap(player,16);PadTap(player,1);PadTap(player,16);Navigate(player,2,button_ids["APPLY"]);PadTap(player,16);
+  }else {SelectQuality("##split_layout",0,"Top and Bottom");ClickNamed("APPLY");}
+  CHECK(!view::Snapshot().vertical_split&&!view::Snapshot(1).vertical_split&&saves==old_saves+2);
+  CHECK(SameView(view::Snapshot(),p0)&&SameView(view::Snapshot(1),p1));HiddenViewPage();
+ }
+ std::puts("PASS split layout: main and both pause owners, mouse/controller, Apply, Back discard, reopen, shared layout and independent player views");
+ ImGui::DestroyContext();
+}
+'''
+        ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + driver)
+        self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+
 
 
     def test_camera_modes_using_each_players_controller(self):

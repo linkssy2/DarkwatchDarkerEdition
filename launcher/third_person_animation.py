@@ -62,7 +62,7 @@ def clips(raw):
 
 
 def gate_redeemer_aim(raw):
-    """Keep normal Redeemer aim and its native fanning overlays exclusive."""
+    """Give both pistols exclusive normal/fanning aim overlays."""
     tree = art.decode(raw)
     aim = groups(tree).get('Pistol Aim')
     if aim is None:
@@ -71,7 +71,7 @@ def gate_redeemer_aim(raw):
     actions = {'AIM_POSE_UP', 'AIM_POSE_DOWN', 'AIM_POSE_LEFT', 'AIM_POSE_RIGHT'}
     stances = ({'STAND'}, {'CROUCH', 'STOPPED'}, {'CROUCH', 'MOVING'})
     expected = {(action, frozenset(stance)) for action in actions for stance in stances}
-    found = {'pistol': set(), 'normal': set(), 'fan': set()}
+    found = {'pistol': set(), 'normal': set(), 'fan': set(), 'pistol_fan': set()}
     result, changed = [], False
     for node in aim['children']:
         if node['name'] != 'KeyframeAnimation':
@@ -81,8 +81,9 @@ def gate_redeemer_aim(raw):
         action = node['attributes'].get('AnimationID')
         if action not in actions:
             raise ValueError('Unexpected Redeemer aim action')
-        if flags in (base, base | {'ALT_WEAPON_OPERATE'}):
-            kind, key = 'fan', action
+        if flags in (base, base | {'ALT_WEAPON_OPERATE'},
+                     (base - {'REVOLVER'}) | {'PISTOL', 'ALT_WEAPON_OPERATE'}):
+            kind, key = ('pistol_fan' if 'PISTOL' in flags else 'fan'), action
             if 'ALT_WEAPON_OPERATE' not in flags:
                 node['children'].append(dict(name='Modifier', attributes={'Flag': 'ALT_WEAPON_OPERATE'},
                                              children=[], value=None))
@@ -97,6 +98,8 @@ def gate_redeemer_aim(raw):
             if flags == shared:
                 pistol, normal = copy.deepcopy(node), copy.deepcopy(node)
                 pistol['children'] = [c for c in pistol['children'] if c.get('attributes', {}).get('Flag') != 'REVOLVER']
+                pistol['children'].append(dict(name='Modifier', attributes={'Flag': 'NORMAL_WEAPON_OPERATE'},
+                                               children=[], value=None))
                 normal['children'] = [c for c in normal['children'] if c.get('attributes', {}).get('Flag') != 'PISTOL']
                 normal['children'].append(dict(name='Modifier', attributes={'Flag': 'NORMAL_WEAPON_OPERATE'},
                                                children=[], value=None))
@@ -105,8 +108,12 @@ def gate_redeemer_aim(raw):
                 found['pistol'].add(key)
                 result.extend((pistol, normal))
                 kind, changed = 'normal', True
-            elif flags == shared - {'REVOLVER'}:
+            elif flags in (shared - {'REVOLVER'}, (shared - {'REVOLVER'}) | {'NORMAL_WEAPON_OPERATE'}):
                 kind = 'pistol'
+                if 'NORMAL_WEAPON_OPERATE' not in flags:
+                    node['children'].append(dict(name='Modifier', attributes={'Flag': 'NORMAL_WEAPON_OPERATE'},
+                                                 children=[], value=None))
+                    changed = True
                 result.append(node)
             elif flags == (shared - {'PISTOL'}) | {'NORMAL_WEAPON_OPERATE'}:
                 kind = 'normal'
@@ -116,7 +123,17 @@ def gate_redeemer_aim(raw):
         if key in found[kind]:
             raise ValueError('Unexpected duplicate Redeemer aim selector')
         found[kind].add(key)
-    if found != {'pistol': expected, 'normal': expected, 'fan': actions}:
+    if not found['pistol_fan']:
+        for node in result[:]:
+            flags = {c['attributes']['Flag'] for c in node['children'] if c['name'] == 'Modifier'}
+            if flags != base | {'ALT_WEAPON_OPERATE'}:
+                continue
+            clone = copy.deepcopy(node)
+            next(c for c in clone['children'] if c.get('attributes', {}).get('Flag') == 'REVOLVER')['attributes']['Flag'] = 'PISTOL'
+            result.append(clone)
+            found['pistol_fan'].add(node['attributes']['AnimationID'])
+            changed = True
+    if found != {'pistol': expected, 'normal': expected, 'fan': actions, 'pistol_fan': actions}:
         raise ValueError('Incomplete Redeemer aim coverage')
     # Native operation changes retire ineligible held poses; gating both families
     # prevents the previous one remaining layered over the newly selected aim.
@@ -154,8 +171,14 @@ def prepare(source, *stages):
     dependencies = {}
     grip_offsets = character_weapon_pose.read_grip_offsets()
     originals = {mapping['Multi']: read(mapping['Multi']) for mapping in aliases.values()}
-    for name, mapping in aliases.items():
+    processed = set()
+    for character_index, (name, mapping) in enumerate(aliases.items(), 1):
         source.cancel()
+        def report_clips(label, prepared):
+            processed.update(prepared)
+            source.report(f'Preparing animations: character {character_index}/{len(aliases)}, '
+                          f'{len(processed):,} files processed - {label}')
+        report_clips('aiming', ())
         actor = art.child(actors, name)
         model = art.norm(art.child(art.child(actor, 'AlternativeModelsRenderComponent'),
                                    'm_modelResourcePath')['attributes']['value']) + '.rx1'
@@ -167,25 +190,42 @@ def prepare(source, *stages):
         table, pose_clips = character_weapon_pose.prepare_table(
             gate_redeemer_aim(originals[path]), read, source.read, read(model), read(locator), basis)
         output['packfile.pck'].update(pose_clips)
+        report_clips('weapon holds', pose_clips)
         table, hold_clips = character_weapon_hold.prepare_table(
             table, read, source.read, read(model), read(locator), basis, name, grip_offsets)
         output['packfile.pck'].update(hold_clips)
+        report_clips('revolver reloads', hold_clips)
         starter_offset = grip_offsets.get((name, 'BasicPistol'), (0., 0.))[0]
         table, starter_clips = character_starter_reload.prepare_table(
-            table, read, source.read, read(model), read(locator), basis, starter_offset)
+            table, read, source.read, read(model), read(locator), basis, starter_offset, actor=name)
         output['packfile.pck'].update(starter_clips)
+        report_clips('weapon grips', starter_clips)
         table, grip_clips = character_weapon_pose.prepare_grip_table(
             table, read, source.read, read(model), read(locator), basis, name, grip_offsets)
         output['packfile.pck'].update(grip_clips)
+        report_clips('reload timing', grip_clips)
+        # Retiming expects the original unsplit selectors; completed updates
+        # already contain these durations before the shared fitting stage.
         table, added_clips = character_reload.prepare_table(table, read)
         output['packfile.pck'].update(added_clips)
+        report_clips('movement and jump animations', added_clips)
+        table, motion_clips = character_weapon_hold.prepare_aimed_motion_table(
+            table, read, source.read, read(model), read(locator), basis, name, grip_offsets)
+        output['packfile.pck'].update(motion_clips)
+        report_clips('Redeemer reloads', motion_clips)
         table, redeemer_clips = character_reload.prepare_redeemer_table(
             table, read, source.read, read(model), read(locator), basis, name,
             grip_offsets.get((name, 'Revolver'), (0., 0.))[0])
+        report_clips('magazine reloads', redeemer_clips)
+        table, mechanical_clips = character_reload.prepare_mechanical_table(
+            table, read, source.read, read(model), read(locator), basis, name, grip_offsets)
+        report_clips('character complete', mechanical_clips)
         added_clips.update(redeemer_clips)
+        added_clips.update(mechanical_clips)
         added_clips.update(pose_clips)
         added_clips.update(hold_clips)
         added_clips.update(grip_clips)
+        added_clips.update(motion_clips)
         added_clips.update(starter_clips)
         referenced = {clip + '.sanm' for clip in clips(table)}
         added_clips = {clip: data for clip, data in added_clips.items() if clip in referenced}
@@ -241,7 +281,8 @@ def prepare(source, *stages):
     paths = {path for path in (*source.metadata['sources'], *composed)
              if path.startswith('levels/singleplayer/') and '/streaming/' in path
              and '_resources' in path and path.endswith('.bxml')}
-    for path in sorted(paths):
+    source.report(f'Linking animations to levels: 0/{len(paths):,} files')
+    for completed, path in enumerate(sorted(paths), 1):
         source.cancel()
         def selected(present):
             requested = list(deps) if path in native_solo else []
@@ -253,4 +294,6 @@ def prepare(source, *stages):
         if added:
             archive = archives.get(path) or source.metadata['sources'][path]['archive']
             output.setdefault(archive, {})[path] = raw
+        if completed % 25 == 0 or completed == len(paths):
+            source.report(f'Linking animations to levels: {completed:,}/{len(paths):,} files')
     return output

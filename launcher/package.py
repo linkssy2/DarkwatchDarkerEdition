@@ -16,7 +16,7 @@ REFERENCE = REPO.parent / 'Urban Chaos Riot Response Recompiled'
 PYTHON = REFERENCE / '.tools/python'
 VS = Path('C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools')
 CRT = VS / 'VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT'
-VERSION = '0.7.7'
+VERSION = '0.7.8'
 RELEASE_PROFILE = {'name': 'release-candidate', 'diagnostics': False, 'strict_assets': True}
 LAUNCHER = 'Darkwatch Darker Edition.exe'
 DIRECT_PLAY = 'Play Darkwatch.exe'
@@ -36,7 +36,7 @@ Setup prepares local resources and shaders, without extracting the whole disc.
 Existing installations are reused. Updates preserve your ISO, saves and add-ons.
 Prefer to remove the ISO after setup? Use Select Game > Import once instead.
 ''',
-    'README.txt': '''Darkwatch: Darker Edition - 0.7.7
+    'README.txt': '''Darkwatch: Darker Edition - 0.7.8
 
 Matching Windows and experimental Linux/Proton packages. Co-op remains BETA.
 Keep using the existing separate 0.7 HD texture pack; no new pack or
@@ -136,7 +136,10 @@ Select Game remains available to reselect the ISO or import missing/damaged file
 retains the previous installation and preserves saves; normal updates do not
 create another full installed copy. Temporary update files need free disk space
 and are removed on completion or cancellation. Keep a backup of your saves.
-Verify Files checks without running the game. The launcher never deletes your ISO.
+Normal launches reuse verified files that have not changed. Play Darkwatch.exe
+starts a prepared game without opening the launcher; a preparation window appears
+only when an installed update or missing shader cache needs work. Verify Files
+runs a full check without starting the game. The launcher never deletes your ISO.
 
 Graphics and Controls are available from the main menu and Pause. Esc pauses;
 right-click goes back in menus. Configure bindings in Controls. Choose Quit to
@@ -180,28 +183,15 @@ PS4/Switch hardware. If a wrapper exposes an Xbox controller, Xbox prompts apply
 This build disables routine logging, capture hotkeys and development probes.
 Fatal errors may still report a short local error to help identify a failure.
 
-This release has not been verified through the full campaign. On release 0.1,
-fresh ISO import and shader preparation passed on the test PC, and the player
-reported no noticeable stutters on the opening route and boss fight. Preparation
-covers the known shader catalogue, not every possible campaign shader. Unseen
-shaders, driver work and ordinary loading can still cause pauses. Testing on a
-fresh Windows installation remains outstanding.
-Cassidy loading, melee audio, co-op HUD placement, Player 2 settings ownership,
-character selection and subtitle appearance were accepted in tested scenes.
-Controller menu opening/editing and co-op navigation received user acceptance;
-the latest transition and profile-startup fixes also passed an agent menu test.
-The reported controller-menu crash was traced and its original failure reproduced
-in a regression test. This does not establish every controller or machine.
-Cassidy hurt audio remains unresolved. Full campaign/co-op progression, story
-transitions, every character/weapon combination, surround speaker balance and
-Spanish presentation need broader live testing. The mounted-boss fix was accepted
-at 240 FPS, and directional audio was accepted with Windows Sonic. These checks
-do not establish every encounter or audio device. Linux gameplay, audio and
-controllers remain unverified.
-The existing 0.6 HD pack remains compatible. Vampire Tala's body and hands use
-its matching HD artwork; her head and Boss Tala's body/head retain original
-textures where no matching HD artwork exists. Earlier packs have less coverage.
-No physical PS4/Switch retest was performed.
+Windows tests cover the reported fixes in selected gameplay scenes. Full
+campaign progression and every character/weapon/device combination have not
+been exhaustively verified. Shader preparation covers the known catalogue;
+unseen shaders, driver work and ordinary loading can still cause pauses.
+Community Steam Deck and Linux testing informed this update; current Windows
+checks do not establish fresh live Linux verification. The Linux/Proton package
+remains experimental. No physical PS4/Switch retest was performed.
+Thanks to @brandonsoto (https://github.com/brandonsoto) for Steam Deck and live
+Linux testing and feedback.
 Original game content and branding belong to their owners.
 Spanish, French, German and Italian text and audio are prepared from the user's supported PS2 disc.
 PC menu translations and compatibility corrections are by Darkwatch: Darker Edition.
@@ -307,13 +297,13 @@ def sources():
         'licenses/Microsoft-Visual-Studio-Redist.txt': VS / 'Licenses/1033/Redist.txt',
         'licenses/ARTWORK-SOURCES.md': HERE / 'assets/SOURCES.md',
     }
-    for name in ('character_content.py', 'character_animation.py', 'character_assets.py',
+    for name in ('character_content.py', 'character_update.py', 'character-update.json.gz', 'character_animation.py', 'character_assets.py',
                  'character_archive.py', 'character_repaint.py', 'character_boss.py',
                  'character_boss_effects.py', 'character_spectral_hands.py', 'character_hand_seams.py',
                  'character_secondary.py', 'character_preview.py', 'character_roster.py', 'character_tala.py', 'character_tala_shape.py',
-                 'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'character_cinematic.py',
-                 'third_person_animation.py', 'character_reload.py', 'character_weapon_pose.py', 'character_weapon_hold.py', 'character_starter_reload.py',
-                 'body_weapon_grips.inc',
+                 'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'enemy_blood.py', 'character_cinematic.py',
+                 'third_person_animation.py', 'character_reload.py', 'character_weapon_pose.py', 'character_weapon_hold.py', 'character_weapon_shoulder.py', 'character_starter_reload.py',
+                 'body_weapon_grips.inc', 'body_reload_parts.inc',
                  'character-catalog.json'):
         plan['payload/' + name] = HERE / name
     for language in ('french', 'german', 'italian'):
@@ -445,11 +435,20 @@ def check_portuguese_text(plan, build):
 def check_character_catalog(plan, build):
     """The importer must produce the exact archives accepted by this runtime."""
     import character_content
+    import character_update
     catalog = character_content.catalog(plan['payload/character-catalog.json'].parent)
+    recipe = plan.get('payload/' + character_update.RECIPE_NAME)
+    if recipe is None or not recipe.is_file():
+        raise ValueError('Character update recipe is missing from the package.')
+    character_update.recipe(recipe.parent, catalog)
     source_name = 'xbexbe/src/common/character_content.cpp'
     recorded = {row['path']: row['sha256'] for row in build.get('host_sources', {}).get('files', [])}
     if recorded.get(source_name) != sha(REPO / source_name):
         raise ValueError('Character content admission differs from the runtime build; rebuild it first.')
+    for name in ('body_weapon_grips.inc', 'body_reload_parts.inc'):
+        shared = plan.get('payload/' + name)
+        if shared is None or not shared.is_file() or recorded.get('launcher/' + name) != sha(shared):
+            raise ValueError('Character pose constants differ from the runtime build; rebuild it first.')
     source = (REPO / source_name).read_text(encoding='utf-8')
     for name, pin in catalog['installed'].items():
         if name not in source or pin['sha256'] not in source or str(pin['size']) not in source:

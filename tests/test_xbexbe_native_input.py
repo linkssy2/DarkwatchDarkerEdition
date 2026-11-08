@@ -198,7 +198,7 @@ class NativeInputTests(unittest.TestCase):
             window = (SDK / "app/main.cpp").read_text()
             clause = re.search(r"    if \(msg == WM_KEYDOWN[^\n]*\)\n        input::Key\([^;]+;", window)
             self.assertIsNotNone(clause)
-            bridge = ("enum { WM_KEYDOWN=0x100, WM_KEYUP=0x101, WM_SYSKEYDOWN=0x104, WM_SYSKEYUP=0x105, VK_SHIFT=0x10, VK_CONTROL=0x11, VK_MENU=0x12, VK_LWIN=0x5B, VK_RWIN=0x5C };\n"
+            bridge = ("enum { WM_KEYDOWN=0x100,WM_KEYUP=0x101,WM_SYSKEYDOWN=0x104,WM_SYSKEYUP=0x105,VK_CONTROL=0x11,VK_MENU=0x12,VK_SHIFT=0x10,VK_LWIN=0x5B,VK_RWIN=0x5C };\n"
                       "static bool native_modifiers=false;static short GetKeyState(int){return native_modifiers?short(-32768):0;}\n"
                       "static void NativeKey(uint32_t msg,uintptr_t wp,intptr_t lp=0) {\n" + clause.group() + "\n}")
             path.write_text(FIXTURE.replace("NATIVE_KEY_BRIDGE", bridge))

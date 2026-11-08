@@ -72,6 +72,7 @@ void InitDirectMouse() {
     kernel::SetGameFileOverlay(darkwatch::language::MediaDirectory(app::ExeDir()).string());
     DarkwatchGraphicsInit();
     input::SetMouseToStick(false);
+    input::SetSinglePlayerController(true);
 }
 
 // Every derived address is checked before accessing guest memory.
@@ -747,6 +748,30 @@ void DarkwatchObserveYaw(X86Context& ctx, uint8_t* base) { ObserveAim(ctx, base,
 void DarkwatchObservePitch(X86Context& ctx, uint8_t* base) { ObserveAim(ctx, base, 1); ApplyMouseAim(ctx, base, 1); }
 void DarkwatchHorseMouseYaw(X86Context& ctx, uint8_t* base) { ApplyHorseMouse(ctx, base, 0); }
 void DarkwatchHorseMousePitch(X86Context& ctx, uint8_t* base) { ApplyHorseMouse(ctx, base, 1); }
+void DarkwatchHorseLean(X86Context& ctx, uint8_t* base) {
+    uint32_t type = 0, event = 0, id = 0, horse = 0, rider = 0, camera = 0, component = 0, vehicle = 0;
+    std::array<uint8_t, 2> lean{}, requested{};
+    if (base != kernel::g_base || !AimField(base, ctx.ebx, 0, type) || type != 0x41DA58 ||
+        !AimField(base, ctx.ebx, 0xE0, lean) || lean[0] > 1 || lean[1] > 1 || lean[0] == lean[1] ||
+        !AimField(base, ctx.ebp, 8, event) || event != ctx.eax ||
+        !AimField(base, event, 0, type) || type != 0x41E948 ||
+        !AimField(base, event, 4, id) || id != 0x1D4 ||
+        !AimField(base, event, 0x10, requested) || requested != lean ||
+        !AimField(base, ctx.ebx, 0xC, horse) ||
+        !AimComponent(base, horse, 0x41DA58, component) || component != ctx.ebx ||
+        !AimField(base, ctx.ebx, 0x3C, rider) || !ActiveVehicleCamera(base, rider, camera) ||
+        !AimField(base, camera, 0x64, vehicle) || vehicle != horse) return;
+    std::array<float, 3> forward{}, reference{};
+    if (!AimField(base, horse, 0x30, forward) || !AimField(base, ctx.ebx, 0x140, reference)) return;
+    for (unsigned axis : {0u, 2u})
+        if (!std::isfinite(forward[axis]) || !std::isfinite(reference[axis])) return;
+    const double facing = double(forward[0]) * reference[0] + double(forward[2]) * reference[2];
+    // Use the same published camera basis as native steering, before native lean/cover selection.
+    if (facing < 0) {
+        std::swap(lean[0], lean[1]);
+        std::memcpy(base + ctx.ebx + 0xE0, lean.data(), lean.size());
+    }
+}
 void DarkwatchTurretMouse(X86Context& ctx, uint8_t* base) { ApplyTurretMouse(ctx, base); }
 bool DarkwatchMousePitchActive(X86Context& ctx, uint8_t* base) {
     // Pending mouse Y must still mark its pair before the original manual branch.

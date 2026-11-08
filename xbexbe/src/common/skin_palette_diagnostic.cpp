@@ -1,5 +1,6 @@
 // Read-only, opt-in witnesses for the original repeated skin-palette producer.
-// The release translation retains its original weak entry points unchanged.
+// Optional observations surround the normal draw-local weapon adjustment.
+#include "third_person_weapon.h"
 #ifndef XBE_RELEASE
 #include <array>
 #include <atomic>
@@ -218,7 +219,7 @@ extern "C" void sub_00260510(X86Context& ctx, uint8_t* base) {
     g_setup = setup;
 }
 extern "C" void sub_00260D40(X86Context& ctx, uint8_t* base) {
-    if (!Enabled()) { __imp__sub_00260D40(ctx, base); return; }
+    if (!Enabled()) { DarkwatchWeaponSkinPalette(ctx, base); return; }
     Record record;
     record.sequence = ++g_sequence;
     record.milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -231,9 +232,13 @@ extern "C" void sub_00260D40(X86Context& ctx, uint8_t* base) {
     if (g_setup.atomic == record.atomic && g_setup.sequence + 1 == record.sequence) record.setup = g_setup;
     record.before = Capture(base, record.atomic, record.skin);
     record.projection_readable = Copy(base, 0x4BA870, record.projection.data(), sizeof(record.projection));
-    __imp__sub_00260D40(ctx, base);
+    DarkwatchWeaponSkinPalette(ctx, base);
     record.after = Capture(base, record.atomic, record.skin);
     if (record.before.valid) record.output_readable = Copy(base, record.output, record.palette.data(), record.before.count * 48);
     Observe(std::move(record));
+}
+#else
+extern "C" void sub_00260D40(X86Context& ctx, uint8_t* base) {
+    DarkwatchWeaponSkinPalette(ctx, base);
 }
 #endif

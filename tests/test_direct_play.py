@@ -63,8 +63,13 @@ class DirectPlayFixture {
         Console.WriteLine("not JSON"); Console.WriteLine("null");
         if(mode=="cold-es"||mode=="update-es"||mode=="error-es") Console.WriteLine("{\"event\":\"status\",\"language\":\"es\"}");
         Console.WriteLine("{\"event\":\"progress\",\"percent\":100}");
+        if(mode=="warm") {
+            Console.WriteLine("{\"event\":\"progress\",\"message\":\"Verifying assets/packfile.pck\",\"percent\":40}");
+            Console.WriteLine("{\"event\":\"progress\",\"message\":\"Installed files verified\",\"percent\":100}");
+            Console.WriteLine("{\"event\":\"shader_ready\",\"message\":\"Shaders are ready\",\"percent\":100}");
+        }
         if(mode=="update"||mode=="update-es") {
-            Console.WriteLine("{\"event\":\"progress\",\"message\":\"Preparing selectable characters...\",\"percent\":80}");
+            Console.WriteLine("{\"event\":\"progress\",\"message\":\"Preparing selectable characters...\",\"percent\":80,\"preparing\":true}");
             Console.WriteLine("{\"event\":\"progress\",\"message\":\"Preserving saves, controls, and shader cache\",\"percent\":95}");
         }
         if(mode=="cold"||mode=="cold-es"||mode=="cancel") {
@@ -131,7 +136,7 @@ class DirectPlayHarness {
                     stdout=info.RedirectStandardOutput,stderr=info.RedirectStandardError,
                     outcode=info.StandardOutputEncoding.CodePage,errcode=info.StandardErrorEncoding.CodePage,
                     encoding=info.EnvironmentVariables["PYTHONIOENCODING"]}));
-            } else if(args[0]=="prepare"||args[0]=="prepare-es"||args[0]=="update"||args[0]=="update-es"||args[0]=="cancel"||args[0]=="close") {
+            } else if(args[0]=="prepare"||args[0]=="prepare-es"||args[0]=="update"||args[0]=="update-es"||args[0]=="cancel"||args[0]=="close"||args[0]=="warm") {
                 int updates=0,cancels=0;Launcher view=null;
                 string token=Path.Combine(args[2],".cancel-fixture");Directory.CreateDirectory(args[2]);
                 try {
@@ -495,6 +500,12 @@ class DirectPlayTests(unittest.TestCase):
                 self.assertEqual(response["updates"], 2)
                 self.assertFalse(response["shown"])
 
+    def test_verified_warm_launch_never_creates_a_preparation_view(self):
+        response, _ = self.run_fixture("warm", operation="warm")
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["updates"], 0)
+        self.assertFalse(response["shown"])
+
     def test_cancel_from_preparation_view_reaches_backend_and_does_not_report_success(self):
         for operation in ("cancel", "close"):
             with self.subTest(operation=operation):
@@ -527,7 +538,7 @@ class DirectPlayTests(unittest.TestCase):
         self.assertEqual(data[pe:pe + 4], b"PE\0\0")
         self.assertEqual(struct.unpack_from("<H", data, pe + 24 + 68)[0], 2, "Direct start must use Windows GUI subsystem")
         record = self.evidence / "shipping-entry.json"
-        environment = dict(os.environ, DARKWATCH_DIRECT_FIXTURE_MODE="success",
+        environment = dict(os.environ, DARKWATCH_DIRECT_FIXTURE_MODE="warm",
                            DARKWATCH_DIRECT_FIXTURE_REPORT=str(record))
         result = subprocess.run([str(self.production)], capture_output=True, env=environment, timeout=15)
         self.assertEqual(result.returncode, 0)

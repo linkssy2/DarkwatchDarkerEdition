@@ -140,6 +140,40 @@ int main(){using namespace darkwatch::view;
 
 
 class GraphicsViewTests(unittest.TestCase):
+    def test_split_layout_is_shared_defaults_horizontal_and_preserves_player_views(self):
+        self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + r'''
+int main(){using namespace darkwatch::view;
+ CHECK(!Snapshot().vertical_split&&!Snapshot(1).vertical_split);
+ for(const char* invalid:{"", "vertical_split='true'\n", "vertical_split=1\n", "vertical_split=[]\n",
+                         "[player2_view]\nvertical_split=true\n"}){
+  auto s=Snapshot();s.vertical_split=true;Apply(s);Write(invalid);app::Load();
+  CHECK(!Snapshot().vertical_split&&!Snapshot(1).vertical_split);
+ }
+ Write("vertical_split=true\nfield_of_view_scale=80\nweapon_field_of_view_scale=70\nreticle_size=60\ncamera_mode=2\nshow_hud=false\n[player2_view]\nvertical_split=false\nfield_of_view_scale=130\nweapon_field_of_view_scale=140\nreticle_size=150\ncamera_mode=1\nshow_hud=true\n");
+ app::Load();CHECK(Snapshot().vertical_split&&Snapshot(1).vertical_split);CHECK(app::Save());
+ const auto saved=Read();auto table=toml::parse(saved);CHECK(table["vertical_split"].value_or(false)&&!table["player2_view"]["vertical_split"]);
+ Apply({});app::Load();CHECK(Snapshot().vertical_split&&Snapshot(1).vertical_split);
+ for(unsigned player:{0u,1u})for(bool vertical:{false,true}){
+  auto s=Snapshot(player);s.vertical_split=vertical;Apply(s,player);
+  const auto a=Snapshot(),b=Snapshot(1);CHECK(a.vertical_split==vertical&&b.vertical_split==vertical);
+  CHECK(a.fov_percent==80&&a.viewmodel_fov_percent==70&&a.reticle_percent==60&&!a.show_hud&&a.camera_mode==CameraMode::Shoulder);
+  CHECK(b.fov_percent==130&&b.viewmodel_fov_percent==140&&b.reticle_percent==150&&b.show_hud&&b.camera_mode==CameraMode::Centered);
+ }
+ HANDLE held=CreateFileW(L"view.toml",GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);CHECK(held!=INVALID_HANDLE_VALUE);
+ auto s=Snapshot();s.vertical_split=false;Apply(s);CHECK(!app::Save()&&Read()==saved);CloseHandle(held);
+ CHECK(app::Save());Apply({});app::Load();CHECK(!Snapshot().vertical_split&&!Snapshot(1).vertical_split);
+ for(unsigned flags=0;flags<256;++flags){
+  auto s=Snapshot(1);s.vertical_split=flags&1;s.original_ui_aspect=flags&2;s.movie_aspect_fit=flags&4;s.forever_ragdolls=flags&8;
+  s.hd_textures=flags&16;s.cutscene_borders=flags&32;s.hd_ui=flags&64;s.show_fps=flags&128;Apply(s,1);
+  for(unsigned p:{0u,1u}){const auto a=Snapshot(p);CHECK(a.vertical_split==s.vertical_split&&a.original_ui_aspect==s.original_ui_aspect);
+   CHECK(a.movie_aspect_fit==s.movie_aspect_fit&&a.forever_ragdolls==s.forever_ragdolls&&a.hd_textures==s.hd_textures);
+   CHECK(a.cutscene_borders==s.cutscene_borders&&a.hd_ui==s.hd_ui&&a.show_fps==s.show_fps);
+   CHECK(a.fov_percent==(p?130u:80u)&&a.show_hud==bool(p)&&a.camera_mode==(p?CameraMode::Centered:CameraMode::Shoulder));}
+ }
+ std::puts("split layout: horizontal default, shared strict bool, atomic save/failure, independent views and 256 flag combinations passed");
+}
+''')
+
     def test_camera_modes_persist_per_player_with_coherent_snapshots(self):
         self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + r'''
 int main(){using namespace darkwatch::view;

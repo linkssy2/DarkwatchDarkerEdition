@@ -31,7 +31,7 @@ def unit(x):
     if size<1e-10:raise ValueError('Degenerate arm direction')
     return scale(x,1/size)
 def cross(x,y):return (x[1]*y[2]-x[2]*y[1],x[2]*y[0]-x[0]*y[2],x[0]*y[1]-x[1]*y[0])
-def rotate(v,m):return tuple(sum(v[j]*m[j][i]for j in range(3))for i in range(3))
+def rotate(v,m):return tuple(sum((v[0]*m[0][i],v[1]*m[1][i],v[2]*m[2][i]))for i in range(3))
 def mul(x,y):return a._multiply(x[0],y[0]),add(rotate(x[1],y[0]),y[1])
 def inverse(x):
     rotation=a._inverse(x[0]);return rotation,scale(rotate(x[1],rotation),-1)
@@ -334,12 +334,12 @@ def _original(path):
 
 
 def prepare_grip_table(raw,read,read_original,target_model,target_locator,basis,actor,offsets=None):
-    """Fit support grips and the Redeemer's separate two-handed fan pose."""
+    """Fit support grips and both pistols' separate hammer-fan poses."""
     if actor not in GRIP_ACTORS:raise ValueError('Unknown body grip actor')
     offsets=read_grip_offsets()if offsets is None else offsets
     selected={weapon:value[0]for (name,weapon),value in offsets.items()
-              if name==actor and weapon not in('BasicPistol','DoublePistol','Shotgun')and value[0]}
-    if not selected.keys()<={'Revolver','Rifle','SniperRifle'}:
+              if name==actor and weapon not in('DoublePistol','Shotgun')and value[0]}
+    if not selected.keys()<={'BasicPistol','Revolver','Rifle','SniperRifle'}:
         raise ValueError('Unverified supporting-weapon grip family')
     if basis not in(a.CHAZ,a.STORM):raise ValueError('Unknown body animation source basis')
     frames=next((start,end)for tag,start,end,_ in b._records(target_model)if tag==14)
@@ -351,7 +351,9 @@ def prepare_grip_table(raw,read,read_original,target_model,target_locator,basis,
                        a._multiply(solver.source_grip[0],solver.source[16][0]))
     fan_basis=not all(abs(matrix[i][j]-a.IDENTITY[i][j])<1e-10
         for matrix in(*solver.maps.values(),wrist)for i in range(3)for j in range(3))
-    if fan_basis:selected.setdefault('Revolver',0.)
+    if fan_basis:
+        selected.setdefault('BasicPistol',0.)
+        selected.setdefault('Revolver',0.)
     if not selected:return raw,{}
     tree=art.decode(raw)
     if tree['name']!='AnimationSystem':raise ValueError('Expected body animation system')
@@ -364,14 +366,15 @@ def prepare_grip_table(raw,read,read_original,target_model,target_locator,basis,
             flags={child['attributes']['Flag']for child in node['children']if child['name']=='Modifier'}
             path=art.norm(node['attributes']['Name'])+'.sanm'
             for weapon in selected:
-                flag=weapon.upper()
+                flag='PISTOL'if weapon=='BasicPistol'else weapon.upper()
                 if flag not in flags:continue
                 stance='CROUCH'if'CROUCH'in flags else'STAND'
                 if name in('Alert Poses UB','Crouch Alert Poses'):references[weapon,stance]=path
-                if weapon=='Revolver':
+                if weapon in('BasicPistol','Revolver'):
                     fan=name=='Weapon Shoot'and node['attributes'].get('AnimationID')=='ALT_SHOOT'
                     if fan:references[weapon,'FAN']=path
-                    if not(fan or name=='Reload Pistol'and selected[weapon]or name=='Pistol Aim'and'hammerfan'in path):continue
+                    if not(fan or weapon=='Revolver'and name=='Reload Pistol'and selected[weapon]or
+                           name=='Pistol Aim'and('ALT_WEAPON_OPERATE'in flags or'hammerfan'in path)):continue
                     if name=='Pistol Aim':stance='FAN'
                 elif not(name in('Alert Poses UB','Crouch Alert Poses','Weapon Shoot')or
                          name.startswith(('Movement UB ','Crouch Movement ','Reload '))or name.endswith(' Aim')):
@@ -387,7 +390,7 @@ def prepare_grip_table(raw,read,read_original,target_model,target_locator,basis,
             data=(solver.bake_grip_delta(read(reference),data,offset)if additive else solver.bake_grip(data,offset))
             # Fan clips bypass the ordinary one-handed arm retarget. Preserve
             # their measured support contact while correcting that missing basis.
-            if fan_basis and weapon=='Revolver'and group['attributes']['ToolName']!='Reload Pistol':
+            if fan_basis and weapon in('BasicPistol','Revolver')and group['attributes']['ToolName']!='Reload Pistol':
                 source=read_original(_original(path))
                 if additive:
                     gripped_base=solver.bake_grip(read(reference),offset)
@@ -396,9 +399,10 @@ def prepare_grip_table(raw,read,read_original,target_model,target_locator,basis,
             name=GRIP_PREFIX+hashlib.sha256(data).hexdigest()[:24]
             replacements[key]=name;additions[name+'.sanm']=data
         replacement=copy.deepcopy(node);replacement['attributes']['Name']=replacements[key]
+        flag='PISTOL'if weapon=='BasicPistol'else weapon.upper()
         replacement['children']=[child for child in replacement['children']if not(child['name']=='Modifier'and
-            child['attributes']['Flag']in WEAPONS-{weapon.upper()})]
-        by_node.setdefault(id(node),(group,node,flags,[]))[3].append((weapon.upper(),replacement))
+            child['attributes']['Flag']in WEAPONS-{flag})]
+        by_node.setdefault(id(node),(group,node,flags,[]))[3].append((flag,replacement))
     for group,node,flags,replaced in by_node.values():
         replaced_flags={flag for flag,_ in replaced};index=next(i for i,item in enumerate(group['children'])if item is node)
         replacements=[item for _,item in replaced]

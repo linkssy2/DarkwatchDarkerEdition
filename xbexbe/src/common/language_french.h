@@ -3,6 +3,20 @@
 namespace darkwatch::language {
 struct FrenchCopy { const char* english; const char* french; };
 inline constexpr FrenchCopy copy_french[]{
+    {"DISPLAY", "AFFICHAGE"},
+    {"PERFORMANCE", "PERFORMANCES"},
+    {"ARTWORK", "HABILLAGE"},
+    {"CAMERA", "CAMÉRA"},
+    {"HUD AND RETICLE", "ATH ET RÉTICULE"},
+    {"CINEMATICS", "CINÉMATIQUES"},
+    {"WORLD AND CO-OP", "MONDE ET COOP"},
+    {"MOUSE", "SOURIS"},
+    {"AIMING AND MOVEMENT", "VISÉE ET DÉPLACEMENT"},
+    {"CONTROLLER", "MANETTE"},
+    {"CO-OP SPLIT SCREEN", "ÉCRAN PARTAGÉ COOP"},
+    {"Top and Bottom", "Haut et bas"},
+    {"Side by Side", "Côte à côte"},
+    {"Both players. Applies when the next co-op mission loads.", "Pour les deux joueurs. Appliqué au chargement de la prochaine mission coopérative."},
     {"SWAP SHOULDER", "CHANGER D'ÉPAULE"},
     {"Switch camera shoulder.", "Change l'épaule de la caméra."},
     {"WALK", "MARCHER"},

@@ -171,7 +171,7 @@ class LanguageTests(unittest.TestCase):
             return [tuple(json.loads('"' + cell + '"') for cell in row)
                     for row in re.findall(r'\{"((?:[^"\\]|\\.)*)", "((?:[^"\\]|\\.)*)"\}', text)]
         keys = [key for key, _ in rows('portuguese')]
-        self.assertEqual(len(keys), 314)
+        self.assertEqual(len(keys), 328)
         for locale, expected in {
             'portuguese': ('Ultrapanorâmico 21:9', 'Superultrapanorâmico 32:9', 'Tela ampla 16:10'),
             'french': ('Ultra-large 21:9', 'Super ultra-large 32:9', 'Écran large 16:10'),

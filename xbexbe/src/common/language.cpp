@@ -28,6 +28,20 @@ uint64_t ContextId(uint32_t key, std::string_view original) {
 }
 struct Copy {const char* english; const char* spanish;};
 constexpr Copy copy[]{
+    {"DISPLAY", "PANTALLA"},
+    {"PERFORMANCE", "RENDIMIENTO"},
+    {"ARTWORK", "ARTE"},
+    {"CAMERA", "CÁMARA"},
+    {"HUD AND RETICLE", "HUD Y RETÍCULA"},
+    {"CINEMATICS", "CINEMÁTICAS"},
+    {"WORLD AND CO-OP", "MUNDO Y COOPERATIVO"},
+    {"MOUSE", "RATÓN"},
+    {"AIMING AND MOVEMENT", "APUNTADO Y MOVIMIENTO"},
+    {"CONTROLLER", "MANDO"},
+    {"CO-OP SPLIT SCREEN", "PANTALLA DIVIDIDA COOP"},
+    {"Top and Bottom", "Arriba y abajo"},
+    {"Side by Side", "Lado a lado"},
+    {"Both players. Applies when the next co-op mission loads.", "Para ambos jugadores. Se aplica al cargar la próxima misión cooperativa."},
     {"SWAP SHOULDER", "CAMBIAR HOMBRO"},
     {"Switch camera shoulder.", "Cambia el hombro de la cámara."},
     {"WALK", "CAMINAR"},

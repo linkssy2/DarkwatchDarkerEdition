@@ -176,7 +176,7 @@ def _transpose(m):
 
 
 def _multiply(a, b):
-    return tuple(tuple(sum(a[i][k] * b[k][j] for k in range(3)) for j in range(3)) for i in range(3))
+    return tuple(tuple(sum((a[i][0] * b[0][j], a[i][1] * b[1][j], a[i][2] * b[2][j])) for j in range(3)) for i in range(3))
 
 
 def _determinant(m):

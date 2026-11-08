@@ -16,6 +16,7 @@ import character_animation as animation
 import character_boss as boss
 import character_reload as reloads
 import character_weapon_pose as poses
+import third_person_animation as body
 
 
 

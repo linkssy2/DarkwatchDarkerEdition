@@ -1,5 +1,13 @@
 # Credits
 
+- **[@brandonsoto](https://github.com/brandonsoto):** Steam Deck and live Linux
+  testing, with feedback helping improve the Linux/Proton experience.
+
+- **[Kawaii Physics — pafuhana1213](https://github.com/pafuhana1213/KawaiiPhysics):**
+  the optional private secondary-motion prototype adapts the MIT-licensed solver
+  from [KawaiiPhysics-SB](https://github.com/VelouriasMoon/KawaiiPhysics-SB).
+  The MIT license and attribution are retained in `licenses/KawaiiPhysics.txt`.
+
 - **[BitJager-dev](https://github.com/BitJager-dev/DarkwatchDarkerEdition/tree/linux-umu-no-steam/launcher/linux/umu):** Linux gameplay testing and umu-launcher setup notes that informed the optional no-Steam launcher integration. See [issue #53](https://github.com/linkssy2/DarkwatchDarkerEdition/issues/53).
 
 - **[XboxXBERecomp — TGP482](https://github.com/TGP482/Xbox-XBERecomp):** the
