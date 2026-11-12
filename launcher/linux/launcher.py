@@ -442,10 +442,10 @@ def run_action(root, tools, action, input_path=None, output=print, status=None):
     for path in (python, backend, package / "package-manifest.json", adapter):
         if not path.is_file():
             raise LauncherError("The Windows payload is incomplete. Extract the entire Linux package again: " + str(path))
-    language = input_path if action in ("--set-language", "--set-diagnostics") else None
+    language = input_path if action in ("--set-language", "--set-diagnostics", "--set-skip-intro") else None
     if language is not None:
-        if language not in (("on", "off") if action == "--set-diagnostics" else ("en", "es", "fr", "de", "it", "pt-BR")):
-            raise LauncherError("Choose on or off." if action == "--set-diagnostics" else "Choose en, es, fr, de, it or pt-BR.")
+        if language not in (("on", "off") if action in ("--set-diagnostics", "--set-skip-intro") else ("en", "es", "fr", "de", "it", "pt-BR")):
+            raise LauncherError("Choose on or off." if action in ("--set-diagnostics", "--set-skip-intro") else "Choose en, es, fr, de, it or pt-BR.")
         input_path = None
     if input_path:
         if action == "--use-installation":
@@ -531,6 +531,8 @@ def run_action(root, tools, action, input_path=None, output=print, status=None):
                            ". German: " + ("available" if event.get("german_installed") else "unavailable") +
                            ". Italian: " + ("available" if event.get("italian_installed") else "unavailable") +
                            ". Spanish voices: " + ("installed" if event.get("spanish_audio_installed") else "not installed") + ".")
+                    if "skip_intro" in event:
+                        output("Skip intro: " + ("on" if event["skip_intro"] else "off"))
                     if "diagnostic_logging" in event:
                         output("Diagnostic logging: " + ("on" if event["diagnostic_logging"] else "off") +
                                ". Logs: " + str(root / "GameData/logs"))
@@ -593,6 +595,7 @@ def main(argv=None):
     actions.add_argument("--install-portuguese", action="store_true")
     actions.add_argument("--set-language", choices=("en", "es", "fr", "de", "it", "pt-BR"))
     actions.add_argument("--set-diagnostics", choices=("on", "off"))
+    actions.add_argument("--set-skip-intro", choices=("on", "off"))
     actions.add_argument("--use-installation", type=Path, metavar="FOLDER", help="reuse existing game data in place")
     actions.add_argument("--update", action="store_true", help="update installed game data without importing the ISO again")
     actions.add_argument("--check-updates", action="store_true", help="check GitHub for a newer Linux release without installing it")
@@ -623,7 +626,7 @@ def main(argv=None):
             print(release_text(check_releases(root)))
             return 0
         tools = umu_tools(args.proton) if args.umu else steam_tools(args.steam_root, args.proton)
-        for name in ("import_iso", "use_iso", "install_hd_textures", "install_spanish", "install_french", "install_german", "install_italian", "install_portuguese", "set_language", "set_diagnostics", "use_installation", "update", "verify", "play", "status"):
+        for name in ("import_iso", "use_iso", "install_hd_textures", "install_spanish", "install_french", "install_german", "install_italian", "install_portuguese", "set_language", "set_diagnostics", "set_skip_intro", "use_installation", "update", "verify", "play", "status"):
             value = getattr(args, name)
             if value:
                 return run_action(root, tools, "--" + name.replace("_", "-"), value if isinstance(value, (Path, str)) else None)
@@ -648,7 +651,7 @@ def main(argv=None):
                 print("\nDarkwatch: Darker Edition\n"
                       "First time? Put your Xbox ISO in assets and restart, or use Manage installation → Select Game.\n"
                       "Already installed elsewhere? Manage installation → Use Existing Install.\n\n"
-                      "1 Play\n2 Manage installation\n3 Check / Install Updates\n0 Exit")
+                      "1 Play\n2 Manage installation\n3 Check / Install Updates\n4 Skip intro\n0 Exit")
             elif menu == "manage":
                 print("\nManage installation\nChoose an action below. Updates reuse your installed setup.\n\n"
                       "GAME FILES\n"
@@ -676,7 +679,7 @@ def main(argv=None):
                 if choice in ("2", "3"):
                     menu = "manage" if choice == "2" else "updates"
                     continue
-                action = "--play" if choice == "1" else None
+                action = {"1": "--play", "4": "--set-skip-intro"}.get(choice)
             elif menu == "updates":
                 if choice == "1":
                     print(release_text(check_releases(root)))
@@ -704,6 +707,10 @@ def main(argv=None):
                 choice = input("PS2 language: Español es / Français fr / Deutsch de / Italiano it (blank to cancel): ").strip().lower()
                 action = {"es": "--install-spanish", "fr": "--install-french", "de": "--install-german", "it": "--install-italian"}.get(choice)
                 if action is None:
+                    continue
+            if action == "--set-skip-intro":
+                path = input("Skip intro on / off (blank to cancel): ").strip().lower()
+                if path not in ("on", "off"):
                     continue
             if action == "--set-diagnostics":
                 path = input("Diagnostic logging on / off (next session; local logs only; blank to cancel): ").strip().lower()

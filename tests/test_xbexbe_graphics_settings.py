@@ -148,7 +148,7 @@ static std::string Read(){std::ifstream f(File());return {std::istreambuf_iterat
 static void Size(app::Settings s,unsigned w,unsigned h){auto size=app::RenderSize(s);CHECK(size.width==w&&size.height==h);}
 int main(){
     using namespace app;
-    CHECK(Settings{}.msaa_samples==1&&Settings{}.aniso==0&&Settings{}.vsync&&Settings{}.fps_cap==60);
+    CHECK(Settings{}.msaa_samples==1&&Settings{}.aniso==0&&Settings{}.vsync&&Settings{}.fps_cap==60&&!Settings{}.ambient_occlusion);
     // Missing file keeps title-provided defaults rather than replacing them with library defaults.
     Get().display_mode=DisplayMode::Windowed;Get().width=1600;Get().height=900;Get().fps_cap=72;Get().render_percent=125;
     Load();auto s=Snapshot();CHECK(s.width==1600&&s.height==900&&s.fps_cap==72&&s.render_percent==125&&load_calls==1&&custom_loaded==0);
@@ -171,6 +171,15 @@ int main(){
         auto saved=toml::parse_file(File().string());CHECK(saved["msaa_samples"].value_or(0u)==samples&&saved["anisotropic_filtering"].value_or(99u)==aniso);
     }
     for(unsigned invalid:{0u,3u,8u,16u,~0u}){s.msaa_samples=invalid;CHECK(Normalize(s).msaa_samples==1);}
+    for(bool enabled:{false,true}){
+        s.ambient_occlusion=enabled;Apply(s);CHECK(Save());Apply(Settings{});Load();
+        CHECK(Snapshot().ambient_occlusion==enabled);
+        auto saved=toml::parse_file(File().string());CHECK(saved["ambient_occlusion"].is_boolean());
+        CHECK(saved["ambient_occlusion"].value<bool>()==enabled);
+    }
+    for(const char* text:{"", "ambient_occlusion='true'\n", "ambient_occlusion=1\n", "ambient_occlusion=[]\n"}){
+        s.ambient_occlusion=true;Apply(s);Write(text);Load();CHECK(!Snapshot().ambient_occlusion);
+    }
     Write("msaa_samples=3\nanisotropic_filtering=7\n");Load();CHECK(Snapshot().msaa_samples==1&&Snapshot().aniso==0);
     Write("msaa_samples=-1\n");Load();CHECK(Snapshot().msaa_samples==1);
     Write("msaa_samples='4'\n");Load();CHECK(Snapshot().msaa_samples==1);
@@ -222,7 +231,7 @@ int main(){
     // A failed replacement cannot truncate the existing settings; failed temp creation is also reported.
     s=Settings{};s.display_mode=DisplayMode::Windowed;s.width=1920;s.height=1080;Apply(s);CHECK(Save());first=Read();
     HANDLE held=CreateFileW(File().c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);CHECK(held!=INVALID_HANDLE_VALUE);
-    s.width=2560;s.height=1440;s.msaa_samples=4;s.aniso=16;s.vsync=false;s.fps_cap=144;Apply(s);CHECK(!Save());CHECK(Read()==first);CloseHandle(held);
+    s.width=2560;s.height=1440;s.msaa_samples=4;s.aniso=16;s.vsync=false;s.fps_cap=144;s.ambient_occlusion=true;Apply(s);CHECK(!Save());CHECK(Read()==first);CloseHandle(held);
     CHECK(Save());CHECK(Read()!=first);auto original_dir=dir;dir/="missing-parent";CHECK(!Save());dir=original_dir;
     for(auto& entry:std::filesystem::directory_iterator(dir))CHECK(entry.path().filename().string().find(".tmp.")==std::string::npos);
     CHECK(warnings>=2);

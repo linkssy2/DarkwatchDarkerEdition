@@ -19,7 +19,7 @@ uint32_t g_captured = 0;
 constexpr const char* kBindingKeys[] = {
     "dpad_up", "dpad_down", "dpad_left", "dpad_right", "start", "back", "left_thumb", "right_thumb",
     "a", "b", "x", "y", "black", "white", "left_trigger", "right_trigger",
-    "move_forward", "move_backward", "move_left", "move_right", "next_weapon", "previous_weapon", "walk", "swap_shoulder"
+    "move_forward", "move_backward", "move_left", "move_right", "next_weapon", "previous_weapon", "walk", "swap_shoulder", "cycle_camera"
 };
 static_assert(std::size(kBindingKeys) == size_t(input::PcAction::Count));
 
@@ -41,6 +41,7 @@ ControlsSettings ControlsSnapshot() {
     return Settings();
 }
 
+bool GetGroundPoundAnytime() { return ControlsSnapshot().ground_pound_anytime; }
 bool GetCarryAllWeapons() { return ControlsSnapshot().carry_all_weapons; }
 bool GetKeepStartingRevolver() { return ControlsSnapshot().keep_starting_revolver; }
 
@@ -58,6 +59,12 @@ bool ControlsApply(const ControlsSettings& settings) {
         if (button < -1 || button >= 16 || button == 4 || button == 5) return false;
         if (button >= 0 && (button == next.walk_buttons[port] || button == next.weapon_buttons[port][0] ||
                            button == next.weapon_buttons[port][1])) return false;
+    }
+    for (unsigned port = 0; port < 2; ++port) {
+        const int button = next.camera_buttons[port];
+        if (button < -1 || button >= 16 || button == 4 || button == 5) return false;
+        if (button >= 0 && (button == next.walk_buttons[port] || button == next.shoulder_buttons[port] ||
+            button == next.weapon_buttons[port][0] || button == next.weapon_buttons[port][1])) return false;
     }
     next.mouse_millidegrees = std::clamp(next.mouse_millidegrees, 1u, 1000u);
     next.zoom_sensitivity_percent = std::clamp(next.zoom_sensitivity_percent, 10u, 200u);
@@ -82,6 +89,7 @@ void ControlsLoad(const void* table) {
     next.aim_centering = t["aim_centering"].value_or(next.aim_centering);
     next.carry_all_weapons = t["carry_all_weapons"].value_or(false);
     next.keep_starting_revolver = t["keep_starting_revolver"].value_or(false);
+    next.ground_pound_anytime = t["ground_pound_anytime"].value_or(false);
     if (const auto* buttons = t["weapon_cycle_buttons"].as_table()) {
         for (unsigned port = 0; port < 2; ++port) {
             const auto* row = (*buttons)[port ? "player_2" : "player_1"].as_array();
@@ -115,6 +123,14 @@ void ControlsLoad(const void* table) {
                 *value != next.weapon_buttons[port][1]) next.shoulder_buttons[port] = int(*value);
         }
     }
+    if (const auto* buttons = t["camera_buttons"].as_array(); buttons && buttons->size() == 2)
+        for (unsigned port = 0; port < 2; ++port) {
+            const auto value = (*buttons)[port].is_integer() ? (*buttons)[port].value<int64_t>() : std::nullopt;
+            if (value && *value >= 0 && *value < 16 && *value != 4 && *value != 5 &&
+                *value != next.walk_buttons[port] && *value != next.shoulder_buttons[port] &&
+                *value != next.weapon_buttons[port][0] && *value != next.weapon_buttons[port][1])
+                next.camera_buttons[port] = int(*value);
+        }
     bool malformed = false;
     if (auto* bindings = t["key_bindings"].as_table()) {
         for (size_t i = 0; i < next.bindings.size(); ++i) {
@@ -168,9 +184,11 @@ void ControlsSave(void* table) {
     t.insert_or_assign("aim_centering", settings.aim_centering);
     t.insert_or_assign("carry_all_weapons", settings.carry_all_weapons);
     t.insert_or_assign("keep_starting_revolver", settings.keep_starting_revolver);
+    t.insert_or_assign("ground_pound_anytime", settings.ground_pound_anytime);
     t.insert_or_assign("walk_toggle", toml::array{settings.walk_toggle[0], settings.walk_toggle[1]});
     t.insert_or_assign("walk_buttons", toml::array{settings.walk_buttons[0], settings.walk_buttons[1]});
     t.insert_or_assign("shoulder_buttons", toml::array{settings.shoulder_buttons[0], settings.shoulder_buttons[1]});
+    t.insert_or_assign("camera_buttons", toml::array{settings.camera_buttons[0], settings.camera_buttons[1]});
     toml::table weapon_buttons;
     for (unsigned port = 0; port < 2; ++port)
         weapon_buttons.insert(port ? "player_2" : "player_1", toml::array{settings.weapon_buttons[port][0], settings.weapon_buttons[port][1]});

@@ -15,6 +15,10 @@ X86_EXTERN_FUNC(__imp__sub_0021F57F);
 X86_EXTERN_FUNC(__imp__sub_001430F0);
 X86_EXTERN_FUNC(__imp__sub_00151040);
 X86_EXTERN_FUNC(__imp__sub_000AB2C0);
+#ifdef DARKWATCH_PRIVATE_CLIPS
+bool DarkwatchPrivateClipBody(const uint8_t* base, uint32_t body);
+bool DarkwatchClipFootPlayer(const uint8_t* base,uint32_t actor);
+#endif
 
 namespace {
 bool Span(const uint8_t* base, uint64_t at, uint64_t size) {
@@ -240,30 +244,43 @@ X86_FUNC(sub_000AB2C0) {
 // every other native veto and the normal contact impulse/wake solver still run.
 X86_FUNC(sub_001E4083) {
     uint32_t caller = 0, shape = 0, other = 0, expected = 0, output = 0;
-    bool admit = false;
+    bool admit = false, foot_pair = false;
     if (Read(base, ctx.esp, caller) && (caller == 0x1E3EFD || caller == 0x1E3F1B) &&
-        darkwatch::view::Snapshot().forever_ragdolls &&
         Read(base, uint64_t(ctx.esp) + 4, shape) && Read(base, uint64_t(ctx.esp) + 0xC, output) &&
         ctx.ebp >= 0x1C && output == ctx.ebp - (caller == 0x1E3EFD ? 0x1C : 0x18) &&
         Read(base, uint64_t(ctx.ebp) + (caller == 0x1E3EFD ? 0xC : 0x10), expected) && shape == expected &&
-        Read(base, uint64_t(ctx.ebp) + (caller == 0x1E3EFD ? 0x10 : 0xC), other))
-        admit = PlayerCorpseContact(base, shape, other);
+        Read(base, uint64_t(ctx.ebp) + (caller == 0x1E3EFD ? 0x10 : 0xC), other)) {
+        admit = darkwatch::view::Snapshot().forever_ragdolls && PlayerCorpseContact(base, shape, other);
+#ifdef DARKWATCH_PRIVATE_CLIPS
+        CollisionOwner a,b;
+        if(CollisionProperties(base,shape,a) && CollisionProperties(base,other,b))
+            foot_pair=(DarkwatchPrivateClipBody(base,a.body)&&DarkwatchClipFootPlayer(base,b.actor)) ||
+                      (DarkwatchPrivateClipBody(base,b.body)&&DarkwatchClipFootPlayer(base,a.actor));
+#endif
+    }
     __imp__sub_001E4083(ctx, base);
     uint32_t mask = 0;
     if (admit && Read(base, output, mask)) {
         mask |= 0x200;
         std::memcpy(base + output, &mask, sizeof(mask));
     }
+    // Animated feet supply one-way impulses; tiny clips must never support or
+    // deflect this player's central controller. All other pairs stay native.
+    if (foot_pair && Read(base,output,mask)) {
+        mask=0;std::memcpy(base+output,&mask,sizeof(mask));
+    }
 }
 
 namespace {
 void MatchCorpseContactDistance(const X86Context& ctx, uint8_t* base) {
+#ifndef DARKWATCH_PRIVATE_CLIPS
+    if (!darkwatch::view::Snapshot().forever_ragdolls) return;
+#endif
     uint32_t caller = 0, point = 0, output = 0, type = 0, phantom = 0,
         manifold = 0, count = 0, shape = 0, body = 0, motion = 0;
     // 151040 has returned to 156591, with the producer's aligned frame restored.
     if (ctx.esp < 12 || ctx.ebp < 0x100 ||
         !Read(base, uint64_t(ctx.esp) - 12, caller) || caller != 0x156591 ||
-        !darkwatch::view::Snapshot().forever_ragdolls ||
         uint64_t(ctx.esp) + 0x100 != (ctx.ebp & ~15u) ||
         !Read(base, uint64_t(ctx.esp) - 8, point) || point != uint64_t(ctx.esp) + 0x30 ||
         !Read(base, uint64_t(ctx.esp) - 4, output) || output != uint64_t(ctx.esp) + 0x70 ||
@@ -275,7 +292,13 @@ void MatchCorpseContactDistance(const X86Context& ctx, uint8_t* base) {
         !Read(base, uint64_t(manifold) + ctx.ebx + 0x28, shape) ||
         !Read(base, uint64_t(shape) + 0x20, body) || body != ctx.edi ||
         !Read(base, uint64_t(body) + 0x3C, motion) || motion != ctx.ecx ||
-        uint64_t(phantom) + 0xC > UINT32_MAX || !PlayerCorpseContact(base, phantom + 0xC, shape)) return;
+        uint64_t(phantom) + 0xC > UINT32_MAX) return;
+    bool admitted = darkwatch::view::Snapshot().forever_ragdolls && PlayerCorpseContact(base, phantom + 0xC, shape);
+#ifdef DARKWATCH_PRIVATE_CLIPS
+    const bool private_clip = DarkwatchPrivateClipBody(base, body);
+    admitted = admitted || private_clip;
+#endif
+    if (!admitted) return;
     float copied[4]{}, original[4]{}, margin = 0;
     if (!Read(base, point, copied) || !Read(base, uint64_t(manifold) + ctx.ebx, original) ||
         std::memcmp(copied, original, sizeof(copied)) ||
@@ -286,6 +309,32 @@ void MatchCorpseContactDistance(const X86Context& ctx, uint8_t* base) {
     // negative penetration while standing inside the skin. Shared contacts stay native.
     const float gap = std::max(copied[3] - margin, 0.0f);
     std::memcpy(base + uint64_t(point) + 12, &gap, sizeof(gap));
+#ifdef DARKWATCH_PRIVATE_CLIPS
+    // The controller's rounded bottom otherwise presses tiny clips into the
+    // floor. Resolve its existing foot contact laterally in the impulse copy;
+    // the shared manifold, player support, wake and contact listeners stay native.
+    CollisionOwner player;
+    uint32_t flags = 0;
+    float normal[4]{}, source_normal[4]{};
+    if (private_clip && copied[3] <= margin &&
+        CollisionProperties(base, phantom + 0xC, player) &&
+        ((player.category & ~0x02500000u) == 2 || (player.category & ~0x02500000u) == 3) &&
+        Read(base, uint64_t(player.actor) + 0x90, flags) && !(flags & 2) &&
+        OwnedComponent(base, player.actor, 0x4227A4) &&
+        Read(base, uint64_t(point) + 16, normal) &&
+        Read(base, uint64_t(manifold) + ctx.ebx + 16, source_normal) &&
+        !std::memcmp(normal, source_normal, sizeof(normal)) &&
+        std::isfinite(normal[0]) && std::isfinite(normal[1]) && std::isfinite(normal[2]) &&
+        normal[1] > 0.70710678f && normal[1] <= 1.0f) {
+        const float horizontal = std::hypot(normal[0], normal[2]);
+        if (horizontal > 0.01f && horizontal <= 1.0f) {
+            normal[0] /= horizontal;
+            normal[1] = 0;
+            normal[2] /= horizontal;
+            std::memcpy(base + uint64_t(point) + 16, normal, sizeof(normal));
+        }
+    }
+#endif
 }
 
 void BoostCorpsePush(const X86Context& ctx, uint8_t* base) {

@@ -50,24 +50,6 @@ def _rotation_mix(first, last, amount):
     return pose.a._quaternion_matrix(pose.unit(pose.add(pose.scale(q, 1-amount), pose.scale(p, amount))))
 
 
-def _outside_elbow(local, parents, first):
-    """Keep the wrist fixed while bending the elbow below/outside the chest."""
-    before = pose.world(local, parents)
-    shoulder, elbow, wrist = (before[b][1] for b in (first, first+1, first+2))
-    axis = pose.unit(pose.sub(wrist, shoulder))
-    up = (0., 1., 0.)
-    side = pose.unit(pose.sub(before[18][1], before[13][1]))
-    forward = pose.unit(pose.cross(side, up))
-    pole = pose.add(pose.sub(pose.scale(side, 2.0 if first == 18 else -2.0), up), pose.scale(forward, .3))
-    pole = pose.unit(pose.sub(pole, pose.scale(axis, pose.dot(pole, axis))))
-    upper = pose.sub(elbow, shoulder)
-    along = pose.dot(upper, axis)
-    radius = pose.length(pose.sub(upper, pose.scale(axis, along)))
-    middle = pose.add(shoulder, pose.add(pose.scale(axis, along), pose.scale(pole, radius)))
-    after = dict(before)
-    after[first] = pose.a._multiply(before[first][0], pose.align(upper, pose.sub(middle, shoulder))), shoulder
-    after[first+1] = pose.a._multiply(before[first+1][0], pose.align(pose.sub(wrist, elbow), pose.sub(wrist, middle))), middle
-    return pose.localize(after, parents)
 
 class Motion:
     def __init__(self, source, adapted, read_original, target_model, target_locator, basis, offset, ready, *, actor):
@@ -142,7 +124,7 @@ class Motion:
         before[14] = pose.a._multiply(before[14][0], pose.align(pose.sub(rw, re), pose.sub(wrist, elbow))), elbow
         before[15] = wrist_rotation, wrist
         before[16] = pose.mul(weapon, before[15])
-        before = pose.world(_outside_elbow(pose.localize(before, self.solver.parents), self.solver.parents, 13), self.solver.parents)
+        before = pose.world(pose.outside_elbow(pose.localize(before, self.solver.parents), self.solver.parents, 13), self.solver.parents)
         return before, pose.mul(grip, before[16])
 
     def _insertion(self, phase):
@@ -158,7 +140,7 @@ class Motion:
             desired = desired[0], pose.add(desired[1], (0., 0., outward))
         fitted = reloads.fit_loading_hand(self.holding, self.solver.parents,
                                           pose.mul(desired, self.gun))
-        return _outside_elbow(fitted, self.solver.parents, 18)
+        return pose.outside_elbow(fitted, self.solver.parents, 18)
 
     def sample(self, action, phase, stance='STAND'):
         if action == 'RELOAD': return self._insertion(phase)

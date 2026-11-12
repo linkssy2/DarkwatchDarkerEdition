@@ -8,6 +8,9 @@
 #include <cstring>
 
 X86_EXTERN_FUNC(__imp__sub_002312F1);
+X86_EXTERN_FUNC(sub_00231B30);
+X86_EXTERN_FUNC(sub_002311AA);
+X86_EXTERN_FUNC(sub_00231514);
 
 namespace {
 bool Span(const uint8_t* base, uint64_t address, uint32_t size) {
@@ -106,6 +109,191 @@ bool AimedMotionAction(const uint8_t* base, uint32_t row) {
 }
 bool ReloadAction(const uint8_t* base, uint32_t row) {
     return Action(base, row, "PRERELOAD") || Action(base, row, "RELOAD") || Action(base, row, "POSTRELOAD");
+}
+
+struct RifleFingerPose {
+    uint32_t controller{}, source{}, output{}, local{}, absolute{}, additive{}, secondary{};
+    unsigned capacity{}, additive_capacity{};
+    bool coop{};
+    std::array<bool,6> replace{};
+};
+bool RifleFingerLayers(const uint8_t* base, RifleFingerPose& pose) {
+    constexpr unsigned absolute_capacity[]{1,4,6}, additive_capacity[]{1,3,6};
+    const auto mode=Read(base,pose.controller+0x104);
+    if (mode>2) return false;
+    pose.capacity=absolute_capacity[mode]; pose.additive_capacity=additive_capacity[mode];
+    const auto absolute=Read(base,pose.controller+0xF4), additive=Read(base,pose.controller+0xF8);
+    const uint64_t abs=uint64_t(absolute)+16*pose.capacity*0x40,
+                   add=uint64_t(additive)+16*pose.additive_capacity*0x40;
+    if (!absolute || !additive || !Span(base,abs,pose.capacity*0x40) ||
+        !Span(base,add,pose.additive_capacity*0x40)) return false;
+    pose.absolute=uint32_t(abs); pose.additive=uint32_t(add);
+    std::array<uint32_t,6> keys{};
+    bool additive_active=false;
+    for (unsigned table=0; table<2; ++table) {
+        const auto entries=table ? pose.additive : pose.absolute;
+        const auto capacity=table ? pose.additive_capacity : pose.capacity;
+        for (unsigned i=0; i<capacity; ++i) {
+            const auto entry=entries+i*0x40, node=Read(base,entry+0x3C);
+            if (!node) break;
+            if (!Span(base,node,0x20)) return false;
+            float weight; std::memcpy(&weight,base+node,4);
+            if (!std::isfinite(weight) || weight<0 || weight>1.001f) return false;
+            for (unsigned offset : {0u,0x10u}) {
+                Quaternion q; std::memcpy(q.data(),base+entry+offset,sizeof(q));
+                if (!Normalize(q)) return false;
+            }
+            for (unsigned offset : {0x20u,0x30u}) for (unsigned axis=0; axis<3; ++axis) {
+                float value; std::memcpy(&value,base+entry+offset+axis*4,4);
+                if (!std::isfinite(value) || std::abs(value)>4) return false;
+            }
+            uint16_t fractions[2]; std::memcpy(fractions,base+entry+0x2C,sizeof(fractions));
+            if (fractions[0]>32768 || fractions[1]>32768) return false;
+            if (!table) keys[i]=Read(base,node+0x10);
+            else additive_active=true;
+        }
+    }
+    // Native 65F85 initializes this identity before the original additive mix.
+    if (additive_active && (!Span(base,0x4ACE40,0x14) || !(Read(base,0x4ACE50)&1))) return false;
+    uint16_t groups_count; std::memcpy(&groups_count,base+pose.controller+0x28,2);
+    const auto groups=Read(base,pose.controller+0x2C);
+    if (!groups_count || groups_count>64 || !Span(base,groups,groups_count*0x3C)) return false;
+    for (unsigned i=0; i<groups_count; ++i) {
+        const auto resource=Read(base,groups+i*0x3C+0x14);
+        if (!Span(base,resource,8)) return false;
+        uint16_t count; std::memcpy(&count,base+resource,2);
+        const auto rows=Read(base,resource+4);
+        if (count>256 || (count && !Span(base,rows,count*0x8C))) return false;
+        for (unsigned j=0; j<count; ++j) {
+            const auto row=rows+j*0x8C, key=Read(base,row+0x6C);
+            if (!key || std::find(keys.begin(),keys.end(),key)==keys.end() || !ReloadAction(base,row)) continue;
+            uint16_t predicates; std::memcpy(&predicates,base+row+0x80,2);
+            const auto flags=Read(base,row+0x84);
+            if (predicates<2 || predicates>3 || !Span(base,flags,predicates*8)) continue;
+            unsigned signature=0;
+            for (unsigned n=0; n<predicates; ++n) {
+                const auto category=Read(base,flags+n*8), value=Read(base,flags+n*8+4);
+                const unsigned bit=category==0 && value==1 ? 1 :
+                    category==8 && value==0 ? 2 : category==2 && value<=1 ? 4 : 0;
+                if (!bit || (signature&bit)) { signature=0; break; }
+                signature|=bit;
+            }
+            if (signature!=3 && signature!=7) continue;
+            for (unsigned k=0; k<pose.capacity; ++k) if (keys[k]==key) pose.replace[k]=true;
+        }
+    }
+    return std::any_of(pose.replace.begin(),pose.replace.end(),[](bool replace){return replace;});
+}
+bool RifleFingerSource(const X86Context& ctx, uint8_t* base, uint32_t actor, RifleFingerPose& pose) {
+    if (!Span(base,actor,0x68)) return false;
+    pose.coop=Name(base,actor+0x50,"CassidySpectralPlayerTwo");
+    if (!pose.coop && !Name(base,actor+0x50,"CassidySpectralSolo")) return false;
+    const auto animation=Component(base,actor,0x41D258), control=Component(base,actor,0x41F878);
+    if (!animation || !control || !Span(base,animation,0xA0) || !Span(base,control,0x2C4) ||
+        !(Read(base,animation+0x84)&8) || Read(base,control+0x2C0)!=animation ||
+        (Read(base,control+0x254)!=1 && Read(base,control+0x254)!=2) ||
+        !DarkwatchThirdPersonPlayer(ctx,base,actor,control)) return false;
+    pose.controller=Read(base,animation+0x60);
+    if (!Span(base,pose.controller,0x128) || Read(base,pose.controller+0x88)!=actor) return false;
+    const auto bones=Read(base,pose.controller+0xFC);
+    pose.source=Read(base,pose.controller+0x54); pose.output=Read(base,pose.controller+0x58);
+    if (bones!=22 || pose.source!=Read(base,pose.controller+0xF0) ||
+        Read(base,animation+0x34)!=pose.output || !Span(base,pose.source,0x18) ||
+        !Span(base,pose.output,0x18) || Read(base,pose.source)!=pose.output || Read(base,pose.output)) return false;
+    const auto parents=Read(base,pose.output+8), hierarchy=Read(base,pose.output+0x10), masks=Read(base,pose.source+0xC);
+    const auto transforms=Read(base,pose.source+0x14);
+    if (!Span(base,parents,bones*4) || Read(base,parents+16*4)!=15 ||
+        !Span(base,hierarchy,0xC) || Read(base,hierarchy+4)!=bones ||
+        !Span(base,masks,bones*4) || (Read(base,masks+16*4)&1) ||
+        !Span(base,transforms,bones*0x1C)) return false;
+    for (unsigned i=0; i<bones; ++i) if (Read(base,parents+i*4)==16) return false;
+    pose.secondary=Read(base,pose.controller+0x5C);
+    if (!Span(base,pose.secondary,0x20) || Read(base,pose.secondary)!=pose.output) return false;
+    const auto secondary_masks=Read(base,pose.secondary+0xC), secondary_local=Read(base,pose.secondary+0x14);
+    if (!Span(base,secondary_masks,bones*4) || !Span(base,secondary_local,bones*0x1C)) return false;
+    float time, duration;
+    std::memcpy(&time,base+pose.secondary+0x18,4); std::memcpy(&duration,base+pose.secondary+0x1C,4);
+    if (!std::isfinite(time) || (time>0 && (!std::isfinite(duration) || duration==0 ||
+        !std::isfinite(time/duration)))) return false;
+    if (!(Read(base,secondary_masks+16*4)&1)) {
+        Quaternion q; std::memcpy(q.data(),base+secondary_local+16*0x1C,sizeof(q));
+        if (!Normalize(q)) return false;
+        for (unsigned i=4; i<7; ++i) {
+            float value; std::memcpy(&value,base+secondary_local+16*0x1C+i*4,4);
+            if (!std::isfinite(value) || std::abs(value)>4) return false;
+        }
+    }
+    pose.local=transforms+16*0x1C;
+    return RifleFingerLayers(base,pose);
+}
+bool PublicationFinger(const X86Context& ctx, uint8_t* base, uint32_t& address,
+                       std::array<float,7>& saved, std::array<float,7>& corrected) {
+    if (!Span(base,ctx.esp,8) || (Read(base,ctx.esp)!=0x21CE42 && Read(base,ctx.esp)!=0x21CEC1) ||
+        !Span(base,ctx.edi,0x128) || ctx.esp<2048 || !Span(base,ctx.esp-2048,2048)) return false;
+    RifleFingerPose pose;
+    if (!RifleFingerSource(ctx,base,Read(base,ctx.edi+0x88),pose) || pose.controller!=ctx.edi ||
+        Read(base,ctx.esp+4)!=pose.source || ctx.ecx!=pose.output) return false;
+    // Reuse the native one-bone mix, preserving fades, other weapons and all
+    // additive layers. Only the rifle reload's finger samples become neutral.
+    std::array<uint8_t,2048> scratch_before;
+    const auto scratch=ctx.esp-2048, packet=scratch+1280, source=scratch+1312,
+               result=scratch+1344, entries=scratch+1408;
+    std::memcpy(scratch_before.data(),base+scratch,scratch_before.size());
+    struct Restore {
+        uint8_t* where; const std::array<uint8_t,2048>& bytes;
+        ~Restore(){std::memcpy(where,bytes.data(),bytes.size());}
+    } restore{base+scratch,scratch_before};
+    const uint32_t header[]{source,entries,pose.additive,1,Read(base,pose.controller+0x100),Read(base,pose.controller+0x104)};
+    std::memcpy(base+packet,header,sizeof(header));
+    std::memcpy(base+source,base+pose.source,0x18); std::memcpy(base+source+0x14,&result,4);
+    std::memcpy(saved.data(),base+pose.local,sizeof(saved));
+    std::memcpy(base+result,saved.data(),sizeof(saved));
+    std::memcpy(base+entries,base+pose.absolute,pose.capacity*0x40);
+    constexpr Quaternion neutral{.6987348698f,.0068054628f,-.0191346420f,.7150923947f};
+    const std::array<float,3> position=pose.coop ? std::array<float,3>{.1248203889f,.0051895115f,-.0234911013f} :
+        std::array<float,3>{.1248202920f,.0051895152f,-.0234910399f};
+    for (unsigned i=0; i<pose.capacity; ++i) if (pose.replace[i]) {
+        for (unsigned offset : {0u,0x10u}) std::memcpy(base+entries+i*0x40+offset,neutral.data(),sizeof(neutral));
+        for (unsigned offset : {0x20u,0x30u}) std::memcpy(base+entries+i*0x40+offset,position.data(),sizeof(position));
+    }
+    X86Context call=ctx; call.esp=scratch+1024; call.ecx=packet;
+    const uint32_t caller=0x21CDF7; std::memcpy(base+call.esp,&caller,4);
+    sub_00231B30(call,base);
+    // 21CDC3 applies this secondary pose after the layer mix. Replay its native
+    // masks and interpolation too, so crouch/action fades remain authoritative.
+    const auto secondary=scratch+1792, secondary_local=scratch+1824,
+               parent=scratch+1856, hierarchy=scratch+1880, masks=scratch+1892;
+    std::memset(base+parent,0,40);
+    std::memcpy(base+parent+0x10,&hierarchy,4);
+    const uint32_t one=1;
+    std::memcpy(base+hierarchy+4,&one,4);
+    std::memcpy(base+source,&parent,4); std::memcpy(base+source+0xC,&masks,4);
+    const uint32_t primary_mask=Read(base,Read(base,pose.source+0xC)+16*4), secondary_mask=masks+4;
+    std::memcpy(base+masks,&primary_mask,4);
+    std::memcpy(base+secondary,base+pose.secondary,0x20);
+    std::memcpy(base+secondary,&parent,4); std::memcpy(base+secondary+0xC,&secondary_mask,4);
+    std::memcpy(base+secondary+0x14,&secondary_local,4);
+    std::memcpy(base+secondary_mask,base+Read(base,pose.secondary+0xC)+16*4,4);
+    std::memcpy(base+secondary_local,base+Read(base,pose.secondary+0x14)+16*0x1C,0x1C);
+    call=ctx; call.esp=scratch+1024; call.ecx=secondary;
+    std::memcpy(base+call.esp,&caller,4); sub_002311AA(call,base);
+    const double ratio=call.st[call.top];
+    const float fraction=float(ratio);
+    call=ctx; call.esp=scratch+1024;
+    if (ratio>0) {
+        const uint32_t args[]{caller,source,secondary,source};
+        std::memcpy(base+call.esp,args,sizeof(args)); std::memcpy(base+call.esp+16,&fraction,4);
+        sub_00231514(call,base);
+    } else {
+        const uint32_t args[]{caller,secondary}; std::memcpy(base+call.esp,args,sizeof(args));
+        call.ecx=source; __imp__sub_002312F1(call,base);
+    }
+    std::memcpy(corrected.data(),base+result,sizeof(corrected));
+    Quaternion q{corrected[0],corrected[1],corrected[2],corrected[3]};
+    if (!Normalize(q)) return false;
+    for (unsigned i=4; i<7; ++i) if (!std::isfinite(corrected[i]) || std::abs(corrected[i])>4) return false;
+    address=pose.local;
+    return true;
 }
 
 unsigned HitAction(const uint8_t* base, uint32_t row) {
@@ -530,10 +718,23 @@ void RefreshHeldAttachments(const X86Context& ctx, uint8_t* base, uint32_t contr
 }
 
 X86_FUNC(sub_002312F1) {
+    uint32_t finger_address=0;
+    std::array<float,7> finger_saved{}, finger_corrected{};
+    const bool finger=PublicationFinger(ctx,base,finger_address,finger_saved,finger_corrected);
+    auto publish = [&] {
+        struct Restore {
+            uint8_t* where; const std::array<float,7>& pose; bool changed;
+            ~Restore(){if(changed)std::memcpy(where,pose.data(),sizeof(pose));}
+        } restore{base+finger_address,finger_saved,finger};
+        if(finger)std::memcpy(base+finger_address,finger_corrected.data(),sizeof(finger_corrected));
+        __imp__sub_002312F1(ctx,base);
+    };
     uint32_t address = 0;
     Quaternion saved{}, corrected{};
     if (!PublicationSpine(ctx, base, address, saved, corrected)) {
-        __imp__sub_002312F1(ctx, base);
+        const uint32_t controller=ctx.edi;
+        publish();
+        if(finger)RefreshHeldAttachments(ctx,base,controller);
         return;
     }
     const uint32_t controller = ctx.edi;
@@ -549,9 +750,40 @@ X86_FUNC(sub_002312F1) {
         } restore{base + address, saved, saved_chest, spread};
         std::memcpy(base + address, corrected.data(), sizeof(corrected));
         if (spread) std::memcpy(base+address+0x1C,corrected_chest.data(),sizeof(corrected_chest));
-        __imp__sub_002312F1(ctx, base);
+        publish();
     }
     RefreshHeldAttachments(ctx, base, controller);
+}
+
+bool DarkwatchRifleReloadSocket(const X86Context& ctx, uint8_t* base, uint32_t actor,
+                               std::array<float,16>& world) {
+    RifleFingerPose pose;
+    if(!RifleFingerSource(ctx,base,actor,pose))return false;
+    const auto hierarchy=Read(base,pose.output+0x10), matrices=Read(base,hierarchy+8);
+    const uint64_t wrist=uint64_t(matrices)+15*64;
+    if(!matrices || !Span(base,wrist,64))return false;
+    Quaternion q;
+    std::array<float,3> position;
+    std::array<float,16> hand;
+    std::memcpy(q.data(),base+pose.local,sizeof(q));
+    std::memcpy(position.data(),base+pose.local+16,sizeof(position));
+    std::memcpy(hand.data(),base+wrist,sizeof(hand));
+    if(!Normalize(q))return false;
+    for(float value:position)if(!std::isfinite(value)||std::abs(value)>4)return false;
+    for(unsigned r=0;r<4;++r)for(unsigned a=0;a<3;++a)if(!std::isfinite(hand[r*4+a]))return false;
+    const auto [x,y,z,w]=q;
+    const float local[3][3]{{1-2*(y*y+z*z),2*(x*y+z*w),2*(x*z-y*w)},
+        {2*(x*y-z*w),1-2*(x*x+z*z),2*(y*z+x*w)},
+        {2*(x*z+y*w),2*(y*z-x*w),1-2*(x*x+y*y)}};
+    std::array<float,16> result{};
+    for(unsigned r=0;r<3;++r)for(unsigned a=0;a<3;++a)
+        for(unsigned k=0;k<3;++k)result[r*4+a]+=local[r][k]*hand[k*4+a];
+    for(unsigned a=0;a<3;++a){
+        result[12+a]=hand[12+a];
+        for(unsigned k=0;k<3;++k)result[12+a]+=position[k]*hand[k*4+a];
+    }
+    world=result;
+    return true;
 }
 
 void DarkwatchThirdPersonBodyAim(const X86Context& ctx, uint8_t* base, uint32_t actor) {

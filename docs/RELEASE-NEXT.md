@@ -1,4 +1,5 @@
-# Next release — 0.7.8 candidate
+# Next release — 0.7.9 candidate
 
-The complete player-facing overview is in [RELEASE-0.7.8.md](RELEASE-0.7.8.md).
-This candidate is prepared locally; publication requires the maintainer's approval.
+Player-facing notes are in [RELEASE-0.7.9.md](RELEASE-0.7.9.md).
+Release candidates and verification receipts are prepared locally. Publication
+requires maintainer authorization and the matching audited public source commit.

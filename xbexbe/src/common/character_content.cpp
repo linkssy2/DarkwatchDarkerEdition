@@ -9,9 +9,53 @@
 
 namespace {
 struct ArchivePin { const char* guest_path; uint64_t size; std::string_view sha256; };
+#ifndef XBE_RELEASE
+constexpr std::array<ArchivePin, 3> kDevTestRoomArchives{{
+    {"D:\\packfile.pck", 210056365, "c817f7419d0ef62d5c977277d507cc3562ec4c42f999c8eb386ad55d249b31cd"},
+    {"D:\\LvlSingl.pck", 2487593903, "a0fdace2361471ef436813011beea610dc97b0861d50bbb9bbc2f1959adcafc9"},
+    {"D:\\audio.pck", 152632677, "4c16eb53a53b7b502ec77db68d68b940f1d75be46842d8761e80cccb79fa6540"},
+}};
+constexpr std::string_view kDevTestRoomFixture = "5561188cd6f3f6ca1af3d01b900f1d99e8f381ecd9ff229462a3ff1063018dde";
+#endif
 constexpr std::array<ArchivePin, 3> kCharacterArchives{{
-    {"D:\\packfile.pck", 176743625, "fd642c3700c3f33537deba8d19ee1d731ca599bfcf27e4a88c6c8ea685941ae7"},
-    {"D:\\LvlSingl.pck", 2378623555, "d458ea662037bfaf28ecc11a68dae330a63c79b5a072e934e0c08e9b414ef140"},
+    {"D:\\packfile.pck", 199441106, "e19c6eeb1494bb7ede1f9976f0d402c970be44ae7da1a2754fd063a2b2e48257"},
+    {"D:\\LvlSingl.pck", 3018752579, "55e931aa28853a38ad8c8072140b4cfcb4c30e6c9e4c27eb851d4d142b727180"},
+    {"D:\\audio.pck", 152395109, "33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285"},
+}};
+
+constexpr std::array<ArchivePin, 3> kCampaignFeedbackArchives{{
+    {"D:\\packfile.pck", 199254290, "7f520632e0f2ceac93b3d0cccdf91af8011907d399ae85dec01e2c3c6fe68a83"},
+    {"D:\\LvlSingl.pck", 3012989507, "0afa41525e9983e6df7580b27caba1824f4a0c8a23a5030abc0422fa14e58f94"},
+    {"D:\\audio.pck", 152395109, "33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285"},
+}};
+constexpr std::array<ArchivePin, 3> kCampaignCameraGaitArchives{{
+    {"D:\\packfile.pck", 200704954, "656c752a29c0dfa52bfb557f911a40233ef53c13bdaa67b56c6b38ffbf3b38df"},
+    {"D:\\LvlSingl.pck", 3045288515, "6553332771df115b726b9e2b7d3dba2f7a24ae59134f3cfdb41ca0f886eb1692"},
+    {"D:\\audio.pck", 152395109, "33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285"},
+}};
+constexpr std::array<ArchivePin, 3> kCampaignMaleStrideArchives{{
+    {"D:\\packfile.pck", 200704954, "a414e23dae485790f1aba7e36e63746c0f7cb6eb66a69ca0861db705d8146719"},
+    {"D:\\LvlSingl.pck", 3045288515, "a2724db84e595461b5ed4c2e35613fb925f2cdf6233692c9e1859e6f96cf6f9f"},
+    {"D:\\audio.pck", 152395109, "33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285"},
+}};
+constexpr std::array<ArchivePin, 3> kCampaignOutwardStrideArchives{{
+    {"D:\\packfile.pck", 200704954, "5204b0dce560336ba80cb65d6dfc4e73a0504f73d5742dc2c6e837c03f215fac"},
+    {"D:\\LvlSingl.pck", 3045288515, "797f73cab89874e431ea94996b158b19afa77eb940e03c3266ab9079e2b07bfb"},
+    {"D:\\audio.pck", 152395109, "33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285"},
+}};
+constexpr std::array<ArchivePin, 3> kCampaignReferenceStrideArchives{{
+    {"D:\\packfile.pck", 200704954, "02774c265a1f838adf99db7ee946b59695ac6d6638e86c4b3b6db3179e848907"},
+    {"D:\\LvlSingl.pck", 3045288515, "7d81366ee928f4db9e328a47ce42b9057378656a71059f586e15d85591ea7631"},
+    {"D:\\audio.pck", 152395109, "33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285"},
+}};
+constexpr std::array<ArchivePin, 3> kCampaignCrouchStrideArchives{{
+    {"D:\\packfile.pck", 200442226, "3736a8837f9d36e83216aae940118a7944d19e81b9a30794f7799779fe6b9206"},
+    {"D:\\LvlSingl.pck", 3031343683, "19bf1ec7de1dd65eaee13c98fef01aebb6c48fe496c7ec1214309fa3c6514ed6"},
+    {"D:\\audio.pck", 152395109, "33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285"},
+}};
+constexpr std::array<ArchivePin, 3> kCampaignWideStrideArchives{{
+    {"D:\\packfile.pck", 200442226, "02bef06ae69fb66e6358d16fef1eeb494060ad1da7f23b2e951c8c2392092067"},
+    {"D:\\LvlSingl.pck", 3031343683, "6d93ed66a681d77987736a69cc53ac2df2dc9372104022243a492eb57a04d0e4"},
     {"D:\\audio.pck", 152395109, "33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285"},
 }};
 
@@ -102,6 +146,10 @@ constexpr auto kOnlineBattleArchives = [] {
 #endif
 const std::array<ArchivePin, 3>& AdmittedArchives() {
 #ifndef XBE_RELEASE
+    const char* room = std::getenv("DARKWATCH_DEV_TEST_ROOM_FIXTURE");
+    if (room && std::string_view(room) == kDevTestRoomFixture) return kDevTestRoomArchives;
+#endif
+#ifndef XBE_RELEASE
     // The bounded runner admits this exact private fixture; normal builds never accept it.
     const char* fixture = std::getenv("DARKWATCH_ONLINE_NPC_FIXTURE");
     if (fixture && std::string_view(fixture) == "7a0e09bbecf60bf4b0a15160fe955792e2b328a766d5496633304d17e1f50c9c")
@@ -187,12 +235,44 @@ struct CharacterArchiveSet {
     }
     ~CharacterArchiveSet() { Close(); }
 };
+bool CampaignFeedbackReady() {
+    if (&AdmittedArchives() == &kCharacterArchives) {
+        static const CharacterArchiveSet release(kCharacterArchives);
+        if (release.ready) return true;
+    }
+    // Validate the current build once before trying retained comparison archives.
+    static const CharacterArchiveSet wide_stride(kCampaignWideStrideArchives);
+    if (wide_stride.ready) return true;
+    static const CharacterArchiveSet crouch_stride(kCampaignCrouchStrideArchives);
+    if (crouch_stride.ready) return true;
+    static const CharacterArchiveSet reference_stride(kCampaignReferenceStrideArchives);
+    if (reference_stride.ready) return true;
+    static const CharacterArchiveSet outward_stride(kCampaignOutwardStrideArchives);
+    if (outward_stride.ready) return true;
+    static const CharacterArchiveSet male_stride(kCampaignMaleStrideArchives);
+    if (male_stride.ready) return true;
+    static const CharacterArchiveSet camera_gait(kCampaignCameraGaitArchives);
+    if (camera_gait.ready) return true;
+    static const CharacterArchiveSet content(kCampaignFeedbackArchives);
+    return content.ready;
+}
 }
 
 bool DarkwatchCharacterContentReady() {
+    if (CampaignFeedbackReady()) return true;
     // Call after mounting D: and before guest archive opens; retained locks force their read-only fallback.
     static const CharacterArchiveSet content(AdmittedArchives());
     return content.ready;
+}
+
+bool DarkwatchPrivateClipFixtureReady() {
+    if (CampaignFeedbackReady()) return true;
+#ifndef XBE_RELEASE
+    const char* room = std::getenv("DARKWATCH_DEV_TEST_ROOM_FIXTURE");
+    return room && std::string_view(room) == kDevTestRoomFixture && DarkwatchCharacterContentReady();
+#else
+    return false;
+#endif
 }
 
 void DarkwatchCharacterInitialize(X86Context&, uint8_t*) {

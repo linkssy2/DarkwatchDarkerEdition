@@ -35,7 +35,7 @@ struct Layout { uint16_t regs; uint64_t decode; };
 constexpr Layout kLayouts[] = {{0x002F, 0}, {0x003F, 0}, {0x003F, 0x4200}, {0x007F, 0}};
 constexpr size_t kTotal = std::size(kShaderRecipes) * std::size(kLayouts) +
     std::size(kObservedBuilderLayouts) + std::size(kObservedBuilderPrograms) + std::size(kStaticShaderRecipes) + std::size(kFixedShaderRecipes) + std::size(kPixelShaderRecipes) + gpu::kBackendShaderCount;
-static_assert(std::size(kShaderRecipes) == 1110 && kTotal == 4507);
+static_assert(std::size(kShaderRecipes) == 1110 && kTotal == 4514);
 std::atomic<bool> g_attempted{false};
 std::string g_compiler;
 

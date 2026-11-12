@@ -62,7 +62,9 @@ class BonusImportTests(unittest.TestCase):
         (payload / "runtime").mkdir(parents=True)
         (payload / "hd_ui").mkdir()
         (payload / "character-art").mkdir()
-        for name in ('character_content.py', 'character_update.py', 'character-update.json.gz', 'character_animation.py', 'character_assets.py',
+        for name in ('character_content.py', 'character_update.py', 'character-update.json.gz',
+                     'character_campaign.py', 'character_campaign_pose.py', 'character_dropped_clips.py',
+                     'character-campaign-angles.json', 'character_animation.py', 'character_assets.py',
                      'character_archive.py', 'character_repaint.py', 'character-catalog.json',
                      'character_boss.py', 'character_boss_effects.py', 'character_spectral_hands.py',
                      'character_hand_seams.py', 'character_secondary.py', 'character_preview.py', 'character_roster.py', 'character_tala.py',

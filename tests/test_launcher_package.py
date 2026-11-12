@@ -427,7 +427,7 @@ class LauncherPackageTests(unittest.TestCase):
             raw_catalog = catalog_path.read_bytes()
             for revision, changed_pin, message in (
                     ('character-future-v28', False, 'Unsupported character update recipe'),
-                    (character_content.CONTENT_REVISION, True, 'Character update target differs')):
+                    (character_content.BASE_REVISION, True, 'Character update target differs')):
                 with self.subTest(revision=revision, changed_pin=changed_pin):
                     catalog = json.loads(raw_catalog)
                     catalog['content_revision'] = revision
@@ -435,8 +435,8 @@ class LauncherPackageTests(unittest.TestCase):
                         catalog['installed']['packfile.pck']['sha256'] = '0'*64
                     catalog_path.write_text(json.dumps(catalog), encoding='utf-8')
                     pins = {name:(pin['size'],pin['sha256']) for name,pin in catalog['installed'].items()}
-                    with patch.multiple(character_content, CONTENT_REVISION=revision,
-                                        CATALOG_SHA256=package.sha(catalog_path), INSTALLED=pins):
+                    with patch.multiple(character_content, BASE_REVISION=revision,
+                                        CATALOG_SHA256=package.sha(catalog_path), BASE_INSTALLED=pins):
                         with self.assertRaisesRegex(ValueError, message):
                             package.check_character_catalog(plan,build)
             catalog_path.write_bytes(raw_catalog)

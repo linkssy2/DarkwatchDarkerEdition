@@ -60,6 +60,7 @@ void DarkwatchGraphicsPad(int, input::Pad&) {}
 void DarkwatchWeaponInput(int, input::Pad&) {}
 // Shoulder switching has a separate production-input fixture.
 void DarkwatchShoulderInput(int, input::Pad&, bool, uint32_t) {}
+void DarkwatchCycleCameraInput(int, input::Pad&, bool, uint32_t) {}
 // Native sight-event dispatch is exercised by the dedicated sight fixture.
 extern "C" void sub_00216560(X86Context&,uint8_t*){}
 #define CHECK(x) do {if(!(x)){std::fprintf(stderr,"line %d: %s\n",__LINE__,#x);std::exit(90);}} while(0)

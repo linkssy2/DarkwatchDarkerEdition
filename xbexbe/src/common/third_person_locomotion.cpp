@@ -6,6 +6,9 @@
 #include <cstring>
 
 X86_EXTERN_FUNC(__imp__sub_0006BE61);
+#ifdef DARKWATCH_PRIVATE_CLIPS
+void DarkwatchClipFootClock(const X86Context&,uint8_t*);
+#endif
 
 namespace {
 bool Span(const uint8_t* base, uint64_t address, uint32_t size) {
@@ -57,6 +60,9 @@ bool Facing(const X86Context& ctx, uint8_t* base, std::array<float, 3>& facing) 
 }
 
 X86_FUNC(sub_0006BE61) {
+#ifdef DARKWATCH_PRIVATE_CLIPS
+    DarkwatchClipFootClock(ctx,base);
+#endif
     std::array<float, 3> facing;
     if (!Facing(ctx, base, facing)) { __imp__sub_0006BE61(ctx, base); return; }
     const uint32_t driver = ctx.ecx;

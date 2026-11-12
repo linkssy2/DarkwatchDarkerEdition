@@ -3,6 +3,8 @@
 namespace darkwatch::language {
 struct FrenchCopy { const char* english; const char* french; };
 inline constexpr FrenchCopy copy_french[]{
+    {"AMBIENT OCCLUSION", "OCCLUSION AMBIANTE"},
+    {"Contact shadows for both players. May reduce performance.", "Ombres de contact pour les deux joueurs. Peut réduire les performances."},
     {"DISPLAY", "AFFICHAGE"},
     {"PERFORMANCE", "PERFORMANCES"},
     {"ARTWORK", "HABILLAGE"},

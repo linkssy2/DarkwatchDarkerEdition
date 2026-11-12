@@ -892,6 +892,28 @@ void DarkwatchEndPowerView(X86Context& ctx, uint8_t*) {
     if (g_power_view.frame == ctx.ebp && g_power_view.node == ctx.esi) g_power_view = {};
 }
 
+bool DarkwatchWorldProjectionMatches(const uint8_t* base, uint32_t camera,
+                                    const std::array<float, 16>& projection) {
+    const PlayerCamera player = FindPlayer(camera, false);
+    if (!PlayerValid(base, player) || !Span(base, player.raster, 0x88) ||
+        Read(base, player.raster + 0x14) != 1) return false;
+    std::array<float, 6> fields;
+    std::memcpy(fields.data(), base + player.raster + 0x70, sizeof(fields));
+    for (float value : fields) if (!std::isfinite(value)) return false;
+    const auto [x, y, ox, oy, near_z, far_z] = fields;
+    if (x <= 0 || y <= 0 || near_z <= 0 || far_z <= near_z) return false;
+    // Original RW BeginUpdate (128AB0) sends this matrix through SetTransform(1).
+    // Compare against that camera, but submit the untouched SDK matrix itself.
+    const float z = far_z / (far_z - near_z);
+    const std::array<float, 16> expected{x, 0, 0, 0, 0, y, 0, 0,
+        ox*x, oy*y, z, 1, -ox*x, -oy*y, -near_z*z, 0};
+    for (size_t i = 0; i < projection.size(); ++i)
+        if (!std::isfinite(projection[i]) ||
+            std::abs(projection[i] - expected[i]) > 0.00001f * std::max(1.f, std::abs(expected[i])))
+            return false;
+    return true;
+}
+
 void DarkwatchPowerViewProjection(X86Context& ctx, uint8_t* base) {
     // 1CD874 has copied the active RW camera's reciprocal view windows into its
     // local particle projection. Change only this draw, leaving zoom, the world,

@@ -313,6 +313,12 @@ call = "DarkwatchBossIntroStart"
 at = 0x0009D154
 call = "DarkwatchSightRelease"
 
+# Contextual Crouch at the native jump/drop decision; original duration gate retained.
+# Original behavior verified in private regression evidence.
+[[hook]]
+at = 0x0021210E
+call = "DarkwatchGroundPound"
+
 [[hook]]
 at = 0x000A286C
 call = "DarkwatchObserveYaw"
@@ -394,6 +400,12 @@ call = "DarkwatchConfigureCinematicCamera"
 
 # The first-person actor pass borrows the player camera; restore it before returning.
 # Original owner/event/projection evidence: viewmodel-cinematics-20261018/weapon/.
+# The original world renderer has completed its opaque per-object callbacks;
+# apply optional AO before its late blended batches and the later weapon clear.
+[[hook]]
+at = 0x001DC69F
+call = "DarkwatchAmbientOcclusionWorldPass"
+
 [[hook]]
 at = 0x000DEDE6
 call = "DarkwatchBeginWeaponView"
@@ -941,3 +953,8 @@ call = "DarkwatchCharacterVoiceCreated"
 at = 0x000E9ECF
 call = "DarkwatchGunslingerSelect"
 on_true = 0x000E9F02
+
+# Latch fresh crouch after the native mapping pass, before repeated refreshes.
+[[hook]]
+at = 0x001DDF29
+call = "DarkwatchGroundPoundInput"

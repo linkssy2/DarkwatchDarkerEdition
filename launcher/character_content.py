@@ -27,12 +27,18 @@ import player_corpses
 import third_person_animation
 import enemy_blood
 
-CONTENT_REVISION = 'character-reload-path-v34'
-CATALOG_SHA256 = '54abf31136b339780f0864b2fc4e65828d7f482df08c807e8baeb307416eeb12'
+BASE_REVISION = 'character-reload-right-wrist-v36'
+CONTENT_REVISION = 'character-campaign-feedback-v37'
+CATALOG_SHA256 = 'dbb39545b03e60c701f8f9464764e2f216572f7f7b2800c7b76ab0646c321c87'
 CHARACTERS = 'xml/actortemplates_characters.bxml'
+BASE_INSTALLED = {
+    'packfile.pck': (180615493, 'b65720e8b43c3d938d296f0a2a617c747e233b9670096d65a0b88ef5b84dc50a'),
+    'LvlSingl.pck': (2399384131, '097bade9fad236a7e5e7f5cab83985368df3aba1246e1dd1ca0592bcfcc9d860'),
+    'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285'),
+}
 INSTALLED = {
-    'packfile.pck': (176743625, 'fd642c3700c3f33537deba8d19ee1d731ca599bfcf27e4a88c6c8ea685941ae7'),
-    'LvlSingl.pck': (2378623555, 'd458ea662037bfaf28ecc11a68dae330a63c79b5a072e934e0c08e9b414ef140'),
+    'packfile.pck': (199441106, 'e19c6eeb1494bb7ede1f9976f0d402c970be44ae7da1a2754fd063a2b2e48257'),
+    'LvlSingl.pck': (3018752579, '55e931aa28853a38ad8c8072140b4cfcb4c30e6c9e4c27eb851d4d142b727180'),
     'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285'),
 }
 REPAINT = {
@@ -71,10 +77,20 @@ def catalog(payload):
     if pck.sha(raw) != CATALOG_SHA256:
         raise ValueError('Unsupported character conversion catalog')
     result = json.loads(raw)
-    if result['content_revision'] != CONTENT_REVISION or result['schema_version'] != 1:
+    if result['content_revision'] != BASE_REVISION or result['schema_version'] != 1:
         raise ValueError('Unsupported character conversion revision')
-    if {name: (pin['size'], pin['sha256']) for name, pin in result['installed'].items()} != INSTALLED:
+    if {name: (pin['size'], pin['sha256']) for name, pin in result['installed'].items()} != BASE_INSTALLED:
         raise ValueError('Character conversion output pins differ')
+    result['campaign_base'] = dict(content_revision=result['content_revision'], installed=result['installed'])
+    result['content_revision'] = CONTENT_REVISION
+    result['installed'] = {name: dict(size=size, sha256=digest) for name, (size, digest) in INSTALLED.items()}
+    return result
+
+
+def base_catalog(metadata):
+    result = dict(metadata)
+    result['content_revision'] = metadata['campaign_base']['content_revision']
+    result['installed'] = metadata['campaign_base']['installed']
     return result
 
 
@@ -278,10 +294,20 @@ def _discard_replaced_chapters(latest, *previous):
 def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None, *, previous_assets=None):
     """Create verified copies inside a caller-owned, uncommitted install stage."""
     assets, payload = Path(assets), Path(payload)
-    metadata = catalog(payload)
+    final_metadata = catalog(payload)
+    metadata = base_catalog(final_metadata)
+    def finalize(staged):
+        import character_campaign
+        outputs = character_campaign.build(staged, assets, payload, cancel, progress)
+        for name, path in outputs.items():
+            checked_file(path, final_metadata['installed'][name], cancel)
+        for name, path in outputs.items():
+            os.replace(path, staged / name)
     if previous_assets is not None:
         import character_update
-        if character_update.try_prepare(assets, payload, previous_assets, metadata, cancel, progress):
+        if character_update.try_reuse_base(assets, previous_assets, metadata, cancel, progress, finalize):
+            return
+        if character_update.try_prepare(assets, payload, previous_assets, metadata, cancel, progress, finalize=finalize):
             return
     with ExitStack() as stack:
         streams = {}
@@ -375,6 +401,7 @@ def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None,
             checked_file(current, metadata['installed'][name], cancel)
             os.replace(current, staged / name)
         # No original in this stage is replaced until all copies pass their pins.
+        finalize(staged)
         cancel()
         for name in INSTALLED:
             os.replace(staged / name, assets / name)

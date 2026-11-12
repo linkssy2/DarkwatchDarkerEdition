@@ -52,3 +52,6 @@ records, saves, language content and compatible HD resources.
 Use the Release profile for player builds. Optional diagnostic support and required
 fatal-error handling remain available. A successful source test or compilation is
 not proof of complete campaign, visual, audio or Linux gameplay acceptance.
+
+| `launcher/character_campaign.py`, `character_campaign_pose.py`, `character_dropped_clips.py` | Reproduce reviewed weapon poses, male movement and physical clip assets from the user's disc; exact final archive checks precede installation. |
+| `skip_intro.*`, `ground_pound.*`, `ejected_clips*`, `clip_feet*` | Profile-selection startup, story-gated ground pound and foot-driven dropped-clip contacts. |

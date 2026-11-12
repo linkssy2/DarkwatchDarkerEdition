@@ -14,10 +14,10 @@ index a237161..07f2e51 100644
      add_dependencies(${target} recompile_${target})
      target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${XBE_SDK_DIR}/runtime ${GEN})
 diff --git a/runtime/app/app.h b/runtime/app/app.h
-index d3519d5..14dea93 100644
+index d3519d5..228d906 100644
 --- a/runtime/app/app.h
 +++ b/runtime/app/app.h
-@@ -14,20 +14,27 @@ struct Pad;
+@@ -14,20 +14,28 @@ struct Pad;
  namespace app {
  
  enum class DisplayMode : uint32_t { Fullscreen, Borderless, Windowed };
@@ -33,6 +33,7 @@ index d3519d5..14dea93 100644
      bool vsync = true;
 +    uint32_t msaa_samples = 1;      // 1 off, 2 or 4 samples; backend checks hardware support
      uint32_t aniso = 0;              // 0 as the game asks
++    bool ambient_occlusion = false;
 +    uint32_t brightness_percent = 100;
      std::string join_ip;                   // co-op: a host past the LAN the system link search also asks
  };
@@ -48,7 +49,7 @@ index d3519d5..14dea93 100644
  void LogSettings();  // every setting, as the settings file has them
  void LogSystem();    // the machine and the settings, at a run's start
  void ApplyDisplay();  // any thread
-@@ -36,8 +43,13 @@ struct Mode {
+@@ -36,8 +44,13 @@ struct Mode {
  };
  Mode Desktop();
  Mode Output();
@@ -63,7 +64,7 @@ index d3519d5..14dea93 100644
  bool Widescreen();
  
  std::filesystem::path ExeDir();
-@@ -50,6 +62,9 @@ struct GameFiles {
+@@ -50,6 +63,9 @@ struct GameFiles {
  bool FindGame(GameFiles& game);
  int Instance();  // --instance N on the command line, 0 without: a second copy on this PC for system link tests
  void* Window();  // HWND
@@ -73,7 +74,7 @@ index d3519d5..14dea93 100644
  // boot splash: GameInfo::splash .bmp or .png beside the exe, up before the game window
  bool OpenSplash();        // window thread, at launch; false without one, and the game window opens at once
  void SplashFirstFrame();  // the game's first Swap: waits out the splash's minimum, then opens the game window
-@@ -90,6 +105,8 @@ struct GameInfo {
+@@ -90,6 +106,8 @@ struct GameInfo {
      void (*ui)(double fps);        // each frame inside the ImGui frame, UiLock held
      void (*pad)(int port, input::Pad& pad);  // a polled pad before the game gets it
      void (*rumble)(int port, uint16_t& left, uint16_t& right);
@@ -625,7 +626,7 @@ index 201bcaa..01febd5 100644
      logx::Flush();
      kernel::Shutdown(0);
 diff --git a/runtime/app/settings.cpp b/runtime/app/settings.cpp
-index 4b494d0..0c3841c 100644
+index 4b494d0..c896b08 100644
 --- a/runtime/app/settings.cpp
 +++ b/runtime/app/settings.cpp
 @@ -8,7 +8,6 @@
@@ -647,7 +648,7 @@ index 4b494d0..0c3841c 100644
  
  std::filesystem::path File() { return ExeDir() / kGame.settings; }
  
-@@ -32,42 +35,77 @@ Settings& Get() {
+@@ -32,42 +35,79 @@ Settings& Get() {
      return s;
  }
  
@@ -698,6 +699,7 @@ index 4b494d0..0c3841c 100644
      s.vsync = t["vsync"].value_or(s.vsync);
 +    s.msaa_samples = t["msaa_samples"].value_or(s.msaa_samples);
      s.aniso = t["anisotropic_filtering"].value_or(s.aniso);
++    s.ambient_occlusion = t["ambient_occlusion"].is_boolean() && t["ambient_occlusion"].value_or(false);
 +    if (auto value = t["brightness"].is_integer() ? t["brightness"].value<int64_t>() : std::nullopt)
 +        s.brightness_percent = uint32_t(std::clamp(*value, int64_t(50), int64_t(150)));
      s.join_ip = t["join_ip"].value_or(s.join_ip);
@@ -724,11 +726,12 @@ index 4b494d0..0c3841c 100644
                    {"vsync", s.vsync},
 +                  {"msaa_samples", int64_t(s.msaa_samples)},
                    {"anisotropic_filtering", int64_t(s.aniso)},
++                  {"ambient_occlusion", s.ambient_occlusion},
 +                  {"brightness", int64_t(s.brightness_percent)},
                    {"join_ip", s.join_ip}};
      for (const Option& o : kGame.options) {
          if (o.flag) t.insert(o.key, *o.flag);
-@@ -79,12 +117,29 @@ toml::table Table() {
+@@ -79,12 +119,29 @@ toml::table Table() {
  
  }  // namespace
  
@@ -761,7 +764,7 @@ index 4b494d0..0c3841c 100644
      std::ostringstream text;
      text << Table();
      std::istringstream lines(text.str());
-@@ -94,38 +149,85 @@ void LogSettings() {
+@@ -94,38 +151,85 @@ void LogSettings() {
  }
  
  Mode Desktop() {
@@ -1130,7 +1133,7 @@ index 200d6b4..99143e0 100644
  
  }  // namespace diag
 diff --git a/runtime/core/input.cpp b/runtime/core/input.cpp
-index 8a0f1d0..dde0a27 100644
+index 8a0f1d0..14f955e 100644
 --- a/runtime/core/input.cpp
 +++ b/runtime/core/input.cpp
 @@ -2,6 +2,8 @@
@@ -1188,7 +1191,7 @@ index 8a0f1d0..dde0a27 100644
 +    {{0x26, 0}}, {{0x28, 0}}, {{0x25, 0}}, {{0x27, 0}}, {{0x0D, 0}}, {{0x09, 0}}, {{'C', 0}}, {{'F', 0}},
 +    {{0x20, 'E'}}, {{0x1B, 0}}, {{'R', 0}}, {{'Q', 0}}, {{'G', 0}}, {{0x10, 0}}, {{0x02, 0}}, {{0x01, 0}},
 +    {{'W', 0}}, {{'S', 0}}, {{'A', 0}}, {{'D', 0}},
-+    {{0xDD, 0}}, {{0xDB, 0}}, {{0x14, 0}}, {{'V', 0}},
++    {{0xDD, 0}}, {{0xDB, 0}}, {{0x14, 0}}, {{'V', 0}}, {{'T', 0}},
 +}};
 +PcBindings g_pc_bindings = kDefaultBindings;
 +constexpr PadBindings kDefaultPadBindings{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
@@ -1852,7 +1855,7 @@ index 8a0f1d0..dde0a27 100644
  
  }  // namespace input
 diff --git a/runtime/core/input.h b/runtime/core/input.h
-index 21f9051..ce50539 100644
+index 21f9051..60ca124 100644
 --- a/runtime/core/input.h
 +++ b/runtime/core/input.h
 @@ -1,4 +1,5 @@
@@ -1872,7 +1875,7 @@ index 21f9051..ce50539 100644
 +enum class PcAction : uint8_t {
 +    DpadUp, DpadDown, DpadLeft, DpadRight, Start, Back, LeftThumb, RightThumb,
 +    A, B, X, Y, Black, White, LeftTrigger, RightTrigger,
-+    MoveForward, MoveBackward, MoveLeft, MoveRight, NextWeapon, PreviousWeapon, Walk, SwapShoulder, Count
++    MoveForward, MoveBackward, MoveLeft, MoveRight, NextWeapon, PreviousWeapon, Walk, SwapShoulder, CycleCamera, Count
 +};
 +constexpr uint32_t kMouseWheel = 0x100;  // Legacy binding: either vertical wheel direction.
 +constexpr uint32_t kMouseWheelUp = 0x101, kMouseWheelDown = 0x102;
@@ -2274,7 +2277,7 @@ index 8ff1924..8c6f9d6 100644
  inline void x87_push(X86Context& ctx, double v) {
      ctx.top = (ctx.top - 1) & 7;
 diff --git a/runtime/gpu/backend.h b/runtime/gpu/backend.h
-index 14a066a..c0913a9 100644
+index 14a066a..557e735 100644
 --- a/runtime/gpu/backend.h
 +++ b/runtime/gpu/backend.h
 @@ -1,12 +1,24 @@
@@ -2295,14 +2298,22 @@ index 14a066a..c0913a9 100644
 +bool ShaderCacheContains(const std::string& key);
 +bool PrepareShaderCache(const std::string& source, const char* profile, std::string& key, const char* entry = "main");
 +struct BackendShaderSource { std::string source; const char* entry; const char* profile; };
-+inline constexpr size_t kBackendShaderCount = 8;
++inline constexpr size_t kBackendShaderCount = 15;
 +std::array<BackendShaderSource, kBackendShaderCount> BackendShaderSources();
 +bool PrepareVertexShaderCache(const std::vector<uint32_t>& program, uint16_t regs, uint64_t decode, std::string& key);
 +
  // D3DCLEAR flags as the XDK defines them
  enum : uint32_t {
      kClearTarget = 0xF0,  // ARGB channels
-@@ -54,6 +66,8 @@ private:
+@@ -24,6 +36,7 @@ public:
+                        uint32_t stencil) = 0;
+     // indices: the title's 16 bit indices, null for non indexed draws, then start is the first vertex
+     virtual void Draw(const State& s, uint32_t prim, uint32_t start, uint32_t count, const uint8_t* indices) = 0;
++    virtual void AmbientOcclusion(const State&, const std::array<float, 16>&) {}
+     virtual void Copy(const Surface& src, const Surface& dst, uint32_t count, uint32_t src_rects_va,
+                       uint32_t dst_points_va) = 0;
+     virtual void Present(const Surface& front) = 0;
+@@ -54,6 +67,8 @@ private:
  };
  
  std::unique_ptr<Backend> CreateBackend();
@@ -2311,7 +2322,7 @@ index 14a066a..c0913a9 100644
  // the same backend driven from a thread of its own: calls return once recorded
  std::unique_ptr<Backend> CreateThreadedBackend(std::unique_ptr<Backend> inner);
  
-@@ -65,4 +79,12 @@ inline std::atomic<uint64_t> g_perf_sync_late{0}, g_perf_sync_block{0};  // read
+@@ -65,4 +80,12 @@ inline std::atomic<uint64_t> g_perf_sync_late{0}, g_perf_sync_block{0};  // read
  // F3: save the next frame, every draw and target, under diag::CaptureDir
  inline std::atomic<bool> g_capture{false};
  
@@ -2325,10 +2336,10 @@ index 14a066a..c0913a9 100644
 +
  }  // namespace gpu
 diff --git a/runtime/gpu/d3d12.cpp b/runtime/gpu/d3d12.cpp
-index 16395fa..94d1515 100644
+index 16395fa..8f8f4f1 100644
 --- a/runtime/gpu/d3d12.cpp
 +++ b/runtime/gpu/d3d12.cpp
-@@ -9,31 +9,39 @@
+@@ -9,31 +9,40 @@
  #include <d3d12.h>
  #include <d3d12sdklayers.h>
  #include <d3dcompiler.h>
@@ -2363,12 +2374,13 @@ index 16395fa..94d1515 100644
  #include "core/log.h"
  #include "gpu/backend.h"
  #include "gpu/ext.h"
++#include "gpu/gtao.h"
  #include "gpu/shaders.h"
 +#include "gpu/sampler_policy.h"
  #include "gpu/texture.h"
  #include "gpu/vertex.h"
  #include "kernel/kernel.h"
-@@ -44,6 +52,8 @@ namespace gpu {
+@@ -44,6 +53,8 @@ namespace gpu {
  
  namespace {
  
@@ -2377,7 +2389,7 @@ index 16395fa..94d1515 100644
  constexpr int kFrames = 3;
  constexpr uint64_t kStaleFrames = 8;  // frames a target may go unused and still be read back
  constexpr uint64_t kUploadSize = 64ull << 20;
-@@ -59,7 +69,11 @@ constexpr uint32_t kNoQuery = ~0u;
+@@ -59,7 +70,11 @@ constexpr uint32_t kNoQuery = ~0u;
  
  // perf diagnostic: where a frame's time goes, logged once a second with diag::Perf
  using PerfClock = std::chrono::steady_clock;
@@ -2389,7 +2401,7 @@ index 16395fa..94d1515 100644
      return std::chrono::duration<double, std::milli>(PerfClock::now() - t).count();
  }
  struct Perf {
-@@ -70,6 +84,10 @@ struct Perf {
+@@ -70,6 +85,10 @@ struct Perf {
      double sig = 0;
      double texup = 0;
      double compile = 0;
@@ -2400,7 +2412,7 @@ index 16395fa..94d1515 100644
      double clear = 0;
      double copy = 0;
      double present = 0;
-@@ -92,20 +110,29 @@ struct Perf {
+@@ -92,20 +111,29 @@ struct Perf {
      uint64_t syncs = 0;
      uint64_t psos = 0;
      uint64_t shaders = 0;
@@ -2432,7 +2444,7 @@ index 16395fa..94d1515 100644
  }
  
  const char* kBlitHlsl = R"(
-@@ -148,6 +175,29 @@ O vs(uint id : SV_VertexID) {
+@@ -148,6 +176,29 @@ O vs(uint id : SV_VertexID) {
  float psmain(O i) : SV_Depth { return img.SampleLevel(ps, i.uv, 0); }
  )";
  
@@ -2462,7 +2474,7 @@ index 16395fa..94d1515 100644
  float Bits(uint32_t v) {
      float f;
      std::memcpy(&f, &v, 4);
-@@ -279,8 +329,8 @@ constexpr uint32_t kSigSampleBytes = 64;
+@@ -279,8 +330,8 @@ constexpr uint32_t kSigSampleBytes = 64;
  uint64_t MemSig(uint32_t data, uint32_t total) {
      const uint8_t* p = static_cast<const uint8_t*>(kernel::HostPtr(data));
      uint64_t sig = Hash(&total, sizeof(total));
@@ -2473,7 +2485,7 @@ index 16395fa..94d1515 100644
      if (total <= kSigWholeMax) return Hash(p, total, sig);
      for (uint32_t i = 0; i < kSigSamples; i++) {
          const uint8_t* sample = p + uint64_t(total - kSigSampleBytes) * i / (kSigSamples - 1);
-@@ -320,6 +370,7 @@ struct Tex {
+@@ -320,6 +371,7 @@ struct Tex {
      uint64_t sig = 0;
      uint64_t frame = 0;
      uint64_t palette = 0;  // hash of the colours a P8 texture was decoded with
@@ -2481,7 +2493,7 @@ index 16395fa..94d1515 100644
      uint8_t flags = 0;  // Extension::Decoded's
  };
  
-@@ -352,6 +403,8 @@ struct PsoKey {
+@@ -352,6 +404,8 @@ struct PsoKey {
      int32_t zbias;
      float zslope;
      uint32_t rtfmt;
@@ -2490,7 +2502,7 @@ index 16395fa..94d1515 100644
  };
  
  // Blit's settings past the source and its rectangle
-@@ -362,6 +415,7 @@ struct BlitOptions {
+@@ -362,6 +416,7 @@ struct BlitOptions {
      float mul = 1;            // colour scale
      DXGI_FORMAT rtv = kBgra;  // the target's format
      bool over = false;        // premultiplied over the target, which keeps its alpha
@@ -2498,7 +2510,7 @@ index 16395fa..94d1515 100644
  };
  
  // Shrink's settings past the source and the size
-@@ -381,6 +435,7 @@ struct DrawTextures {
+@@ -381,6 +436,7 @@ struct DrawTextures {
      bool rt[4] = {};            // stage samples a render target
      float k[4] = {1, 1, 1, 1};  // Extension::Sample's k
      float wide[4] = {};         // host texels per console texel of a target read into a smaller one, 0 otherwise
@@ -2506,7 +2518,7 @@ index 16395fa..94d1515 100644
  };
  
  // a draw's shaders: what they are made from, their cache keys, the hashes Compile returned and the compiled blobs
-@@ -404,6 +459,7 @@ struct GuestExtent {
+@@ -404,11 +460,13 @@ struct GuestExtent {
  };
  
  class D3D12Backend final : public Backend, public Context {
@@ -2514,7 +2526,13 @@ index 16395fa..94d1515 100644
  public:
      bool Init(uint32_t width, uint32_t height) override;
      void Clear(const State& s, uint32_t count, const uint8_t* rects, uint32_t flags, uint32_t color, float z,
-@@ -424,7 +480,10 @@ public:
+                uint32_t stencil) override;
+     void Draw(const State& s, uint32_t prim, uint32_t start, uint32_t count, const uint8_t* indices) override;
++    void AmbientOcclusion(const State& s, const std::array<float, 16>& projection) override;
+     void Copy(const Surface& src, const Surface& dst, uint32_t count, uint32_t src_rects, uint32_t dst_points) override;
+     void Present(const Surface& front) override;
+     void Sync(uint32_t data, uint32_t size) override;
+@@ -424,7 +482,10 @@ public:
      ID3D12Device* Device() override { return dev_.Get(); }
      ID3D12GraphicsCommandList* List() override { return cl_.Get(); }
      void Release(ComPtr<ID3D12Resource> r) override { CurrentFrame().garbage.push_back(std::move(r)); }
@@ -2526,7 +2544,15 @@ index 16395fa..94d1515 100644
      void Unbind() override { bound_rt_ = bound_ds_ = nullptr; }
      void Capture(Target& t, const char* tag, float mul) override;
      float Scale() const override { return scale_; }
-@@ -472,7 +531,8 @@ private:
+@@ -442,6 +503,7 @@ private:
+         uint64_t used = 0;
+         uint64_t fence = 0;
+         std::vector<ComPtr<ID3D12Resource>> garbage;
++        std::vector<std::shared_ptr<void>> effects;
+         uint32_t srv = 0;
+     };
+     struct Alloc {
+@@ -472,7 +534,8 @@ private:
      void SetBlitTarget(D3D12_CPU_DESCRIPTOR_HANDLE rtv, uint32_t w, uint32_t h);
      void Blit(ID3D12Resource* src, DXGI_FORMAT fmt, const float uvrect[4], bool gamma, bool alpha, uint32_t taps = 1,
                float mul = 1, DXGI_FORMAT rtv = kBgra) override {
@@ -2536,7 +2562,7 @@ index 16395fa..94d1515 100644
      }
      void Blit(ID3D12Resource* src, DXGI_FORMAT fmt, const float uvrect[4], const BlitOptions& o);
      uint32_t EnsureBlitSamplers();
-@@ -482,18 +542,24 @@ private:
+@@ -482,18 +545,24 @@ private:
      void Resolve(Target& t) {
          if (t.range != 1 && ext_) ext_->Resolve(*this, t);
      }
@@ -2563,7 +2589,7 @@ index 16395fa..94d1515 100644
      void EnsureVertexShader(const State& s, const Assembled& a, DrawShaders& sh);
      bool BindStageTexturesAndTargets(const State& s, DrawTextures& stages);
      ID3D12Resource* BindTexture(const State& s, int stage, DrawTextures& stages);
-@@ -501,9 +567,9 @@ private:
+@@ -501,9 +570,9 @@ private:
                                        DrawTextures& stages);
      ID3D12Resource* BindGuestTexture(const State& s, int stage, const TextureDesc& d, const FormatInfo& fi,
                                       DrawTextures& stages);
@@ -2575,7 +2601,7 @@ index 16395fa..94d1515 100644
      void UploadTextureLevel(Tex& tx, uint32_t f, uint32_t l, const std::vector<uint8_t>& px, uint32_t pitch);
      void EnsurePixelShader(const PixelKey& pk, DrawShaders& sh);
      void BuildPipelineKey(const State& s, const Assembled& a, uint64_t vh, uint64_t ph, PsoKey& k);
-@@ -511,7 +577,7 @@ private:
+@@ -511,7 +580,7 @@ private:
      ID3D12PipelineState* EnsurePipeline(const PsoKey& k, ID3DBlob* vs, ID3DBlob* ps);
      void FillPipelineDesc(const PsoKey& k, ID3DBlob* vs, ID3DBlob* ps, D3D12_GRAPHICS_PIPELINE_STATE_DESC& d) const;
      void ExpandPoints(D3D12_GRAPHICS_PIPELINE_STATE_DESC& d);
@@ -2584,7 +2610,7 @@ index 16395fa..94d1515 100644
      void UploadConstants(const State& s, const DrawShaders& sh, const PsoKey& k, const DrawTextures& stages,
                           GuestExtent size, DrawConstants& c);
      void FillTextureConstants(const State& s, const DrawTextures& stages, DrawConstants& c);
-@@ -519,16 +585,21 @@ private:
+@@ -519,16 +588,21 @@ private:
      void CaptureDraw(const State& s, uint32_t prim, uint32_t count, const PsoKey& k, const DrawConstants& c,
                       const DrawTextures& stages);
      void CaptureTextures(const State& s, const DrawTextures& stages);
@@ -2610,7 +2636,7 @@ index 16395fa..94d1515 100644
      // visibility tests
      bool EnsureQueries();
      uint32_t BeginCountedDraw(const State& s);
-@@ -538,8 +609,9 @@ private:
+@@ -538,8 +612,9 @@ private:
      // shaders by source hash: Compile returns the bytecode and sets hash
      ID3DBlob* Compile(const std::string& src, const char* entry, const char* profile, uint64_t& hash);
      // Blit's pipeline
@@ -2622,7 +2648,7 @@ index 16395fa..94d1515 100644
      // Init, in order, each callee right after its caller
      bool CreateDevice();
      bool CreateSwapChain(HWND hwnd);
-@@ -556,7 +628,9 @@ private:
+@@ -556,7 +631,9 @@ private:
      void ResizeSwap();
      void UploadGammaRamp();
      void DrawFrame(Target* t, uint32_t bi);
@@ -2633,7 +2659,37 @@ index 16395fa..94d1515 100644
      void RenderUi();
      void ReleaseOldTextures();
      void ResetFrame();
-@@ -687,11 +761,17 @@ private:
+@@ -564,7 +641,7 @@ private:
+     void ApplySettings();
+     ComPtr<ID3D12Resource> Shrink(ID3D12Resource* src, D3D12_RESOURCE_STATES& st, DXGI_FORMAT fmt, uint32_t w,
+                                   uint32_t h, const ShrinkOptions& o = {});
+-    bool ReadBack(ID3D12Resource* res, uint32_t w, uint32_t h, std::vector<uint8_t>& out);
++    bool ReadBack(ID3D12Resource* res, uint32_t w, uint32_t h, std::vector<uint8_t>& out, uint32_t texel_bytes = 4);
+     void CapStep(const Surface& rt);
+     // a resource CapSave shrinks to w x h and writes, in state *state, colour times mul
+     struct CapImage {
+@@ -577,6 +654,11 @@ private:
+     };
+     void CapSave(const CapImage& img, const char* name);
+     void CapSave(Target& t, const char* name);
++#ifndef XBE_RELEASE
++    bool CapSaveRaw(ID3D12Resource* resource, D3D12_RESOURCE_STATES state, uint32_t texel_bytes, const char* name);
++    void CapAoColor(Target& color, const char* name);
++    void CapAoResult(const Gtao::Input&, const Gtao::Result&, Target&, Target&, const char* name);
++#endif
+     // a surface's place in targets_: its key, console size and entry, end when it has none
+     struct TargetSlot {
+         uint32_t data;
+@@ -663,6 +745,8 @@ private:
+     std::unordered_map<uint64_t, Tex> textures_;  // by data address, a P8 texture's with its palette's above
+     std::unordered_map<uint64_t, ComPtr<ID3D12PipelineState>> blit_psos_;
+     Extension* ext_ = nullptr;
++    Gtao gtao_;
++    bool gtao_active_ = false;
+     // one frame capture: every draw in a text file, each target as the frame leaves it, the textures it read
+     FILE* cap_ = nullptr;
+     std::filesystem::path cap_dir_;
+@@ -687,11 +771,17 @@ private:
      Target* bound_ds_ = nullptr;
      Target* draw_rt_ = nullptr;  // the draw's targets, the bound ones go when a texture's copy is drawn
      Target* draw_ds_ = nullptr;
@@ -2651,7 +2707,7 @@ index 16395fa..94d1515 100644
      // surfaces locked without a wait: copies in flight, the newest finished one goes to guest memory
      struct Late {
          ComPtr<ID3D12Resource> rb[kFrames];
-@@ -747,15 +827,17 @@ bool D3D12Backend::Init(uint32_t width, uint32_t height) {
+@@ -747,15 +837,17 @@ bool D3D12Backend::Init(uint32_t width, uint32_t height) {
                          ui_heap_->GetCPUDescriptorHandleForHeapStart(), ui_heap_->GetGPUDescriptorHandleForHeapStart());
      LoadSettings();
      Begin();
@@ -2670,7 +2726,7 @@ index 16395fa..94d1515 100644
      if (FAILED(CreateDXGIFactory2(0, IID_PPV_ARGS(&factory_)))) return false;
      // dedicated GPU first on hybrid laptops
      ComPtr<IDXGIFactory6> f6;
-@@ -882,8 +964,38 @@ void D3D12Backend::CreateGammaLut() {
+@@ -882,8 +974,38 @@ void D3D12Backend::CreateGammaLut() {
                                    IID_PPV_ARGS(&lut_));
  }
  
@@ -2710,7 +2766,15 @@ index 16395fa..94d1515 100644
      ext_ = g_extension.get();
      if (ext_) {
          ext_->Settings();
-@@ -919,6 +1031,7 @@ void D3D12Backend::Submit(bool wait) {
+@@ -909,6 +1031,7 @@ void D3D12Backend::Submit(bool wait) {
+         WaitFence(fence_value_);
+         f.alloc->Reset();
+         f.garbage.clear();
++        f.effects.clear();
+         f.used = 0;
+         f.srv = 0;
+         cl_->Reset(f.alloc.Get(), nullptr);
+@@ -919,6 +1042,7 @@ void D3D12Backend::Submit(bool wait) {
  void D3D12Backend::Flush() { Submit(true); }
  
  void D3D12Backend::WaitFence(uint64_t value) {
@@ -2718,7 +2782,7 @@ index 16395fa..94d1515 100644
      fence_->SetEventOnCompletion(value, event_);
      WaitForSingleObject(event_, INFINITE);
  }
-@@ -932,6 +1045,7 @@ void D3D12Backend::SetFullViewport(uint32_t w, uint32_t h) {
+@@ -932,6 +1056,7 @@ void D3D12Backend::SetFullViewport(uint32_t w, uint32_t h) {
  
  // one w x h colour target for a Blit, the draw's bound targets forgotten
  void D3D12Backend::SetBlitTarget(D3D12_CPU_DESCRIPTOR_HANDLE rtv, uint32_t w, uint32_t h) {
@@ -2726,7 +2790,7 @@ index 16395fa..94d1515 100644
      cl_->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
      bound_rt_ = bound_ds_ = nullptr;
      SetFullViewport(w, h);
-@@ -939,14 +1053,14 @@ void D3D12Backend::SetBlitTarget(D3D12_CPU_DESCRIPTOR_HANDLE rtv, uint32_t w, ui
+@@ -939,14 +1064,14 @@ void D3D12Backend::SetBlitTarget(D3D12_CPU_DESCRIPTOR_HANDLE rtv, uint32_t w, ui
  
  D3D12Backend::Alloc D3D12Backend::Upload(uint64_t size, uint64_t align) {
      Frame& f = CurrentFrame();
@@ -2743,7 +2807,7 @@ index 16395fa..94d1515 100644
      ComPtr<ID3D12Resource> r;
      D3D12_HEAP_PROPERTIES hp{D3D12_HEAP_TYPE_UPLOAD};
      constexpr uint64_t kOwnAlign = 0x10000;  // a committed buffer's size granularity
-@@ -989,6 +1103,8 @@ void D3D12Backend::ReleaseTarget(std::unordered_map<uint64_t, Target>::iterator
+@@ -989,6 +1114,8 @@ void D3D12Backend::ReleaseTarget(std::unordered_map<uint64_t, Target>::iterator
      (it->second.depth ? free_dsv_ : free_rtv_).push_back(it->second.view);
      CurrentFrame().garbage.push_back(it->second.res);
      if (it->second.fb) CurrentFrame().garbage.push_back(it->second.fb);
@@ -2752,7 +2816,7 @@ index 16395fa..94d1515 100644
      targets_.erase(it);
  }
  
-@@ -996,10 +1112,22 @@ void D3D12Backend::ReleaseTarget(std::unordered_map<uint64_t, Target>::iterator
+@@ -996,10 +1123,22 @@ void D3D12Backend::ReleaseTarget(std::unordered_map<uint64_t, Target>::iterator
  bool D3D12Backend::CreateTargetResource(Target& t, const Surface& s) {
      float sc = scale_;
      if (ext_) ext_->MakeTarget(s, t.depth, t.gw, t.gh, sc, t.fmt);
@@ -2777,7 +2841,7 @@ index 16395fa..94d1515 100644
      D3D12_CLEAR_VALUE cv{};
      if (t.depth) {
          td.Format = DXGI_FORMAT_R24G8_TYPELESS;
-@@ -1026,7 +1154,8 @@ bool D3D12Backend::CreateTargetView(Target& t) {
+@@ -1026,7 +1165,8 @@ bool D3D12Backend::CreateTargetView(Target& t) {
      if (t.depth) {
          D3D12_DEPTH_STENCIL_VIEW_DESC dv{};
          dv.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -2787,7 +2851,7 @@ index 16395fa..94d1515 100644
          dev_->CreateDepthStencilView(t.res.Get(), &dv, Cpu(dsv_heap_.Get(), t.view, dsv_inc_));
          float one = 1;
          cl_->ClearDepthStencilView(Cpu(dsv_heap_.Get(), t.view, dsv_inc_),
-@@ -1090,7 +1219,7 @@ Target* D3D12Backend::EnsureTarget(const Surface& s, bool depth) {
+@@ -1090,7 +1230,7 @@ Target* D3D12Backend::EnsureTarget(const Surface& s, bool depth) {
      t.gw = slot.gw;
      t.gh = slot.gh;
      if (!CreateTargetResource(t, s)) return nullptr;
@@ -2796,7 +2860,7 @@ index 16395fa..94d1515 100644
      // an empty pool drops the new resource with t
      if (!CreateTargetView(t)) return nullptr;
      t.data = slot.data;
-@@ -1102,13 +1231,50 @@ Target* D3D12Backend::EnsureTarget(const Surface& s, bool depth) {
+@@ -1102,13 +1242,50 @@ Target* D3D12Backend::EnsureTarget(const Surface& s, bool depth) {
      return &ref;
  }
  
@@ -2849,7 +2913,7 @@ index 16395fa..94d1515 100644
          Transition(rt->res.Get(), rt->state, D3D12_RESOURCE_STATE_RENDER_TARGET);
          rt->drawn = true;
      }
-@@ -1128,13 +1294,23 @@ bool D3D12Backend::BindTargets(const State& s) {
+@@ -1128,13 +1305,23 @@ bool D3D12Backend::BindTargets(const State& s) {
  
  constexpr uint64_t kDepthCopyKey = ~0ull;  // DepthCopy's pipeline in blit_psos_
  
@@ -2877,7 +2941,7 @@ index 16395fa..94d1515 100644
      if (!vs || !ps) return nullptr;
      D3D12_GRAPHICS_PIPELINE_STATE_DESC p{};
      p.pRootSignature = root_.Get();
-@@ -1149,14 +1325,17 @@ ID3D12PipelineState* D3D12Backend::EnsureDepthCopyPipeline() {
+@@ -1149,14 +1336,17 @@ ID3D12PipelineState* D3D12Backend::EnsureDepthCopyPipeline() {
      p.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_ALWAYS;
      p.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
      p.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -2897,7 +2961,7 @@ index 16395fa..94d1515 100644
      Transition(src.res.Get(), src.state, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
      Transition(dst.res.Get(), dst.state, D3D12_RESOURCE_STATE_DEPTH_WRITE);
      D3D12_CPU_DESCRIPTOR_HANDLE dh = Cpu(dsv_heap_.Get(), dst.view, dsv_inc_);
-@@ -1165,7 +1344,8 @@ void D3D12Backend::DrawDepthCopy(Target& src, Target& dst, ID3D12PipelineState*
+@@ -1165,7 +1355,8 @@ void D3D12Backend::DrawDepthCopy(Target& src, Target& dst, ID3D12PipelineState*
      uint32_t slot = AllocSrvSlots(1);
      D3D12_SHADER_RESOURCE_VIEW_DESC sv{};
      sv.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
@@ -2907,7 +2971,7 @@ index 16395fa..94d1515 100644
      sv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
      sv.Texture2D.MipLevels = 1;
      dev_->CreateShaderResourceView(src.res.Get(), &sv, Cpu(srv_heap_.Get(), slot, srv_inc_));
-@@ -1190,7 +1370,7 @@ bool D3D12Backend::DepthCopy(const State& s) {
+@@ -1190,7 +1381,7 @@ bool D3D12Backend::DepthCopy(const State& s) {
      if (di == targets_.end() || si == targets_.end() || di == si) return false;
      Target& dst = di->second;
      Target& src = si->second;
@@ -2916,7 +2980,7 @@ index 16395fa..94d1515 100644
      if (!pso) return false;
      DrawDepthCopy(src, dst, pso);
      return true;
-@@ -1237,7 +1417,8 @@ ComPtr<ID3D12Resource> D3D12Backend::CreatePixelTexture(const std::vector<uint8_
+@@ -1237,7 +1428,8 @@ ComPtr<ID3D12Resource> D3D12Backend::CreatePixelTexture(const std::vector<uint8_
  
  // CPU pixels of a color surface into its host target, scaled
  void D3D12Backend::UploadTarget(Target& t, const Surface& s) {
@@ -2926,7 +2990,7 @@ index 16395fa..94d1515 100644
      TextureDesc d;
      if (!Describe(s.header, d) || Format(d.format).depth) return;
      std::vector<uint8_t> px;
-@@ -1256,7 +1437,8 @@ void D3D12Backend::UploadTarget(Target& t, const Surface& s) {
+@@ -1256,7 +1448,8 @@ void D3D12Backend::UploadTarget(Target& t, const Surface& s) {
      SetBlitTarget(Cpu(rtv_heap_.Get(), t.view, rtv_inc_), t.w, t.h);
      float uv[4] = {0, 0, 1, 1};
      float mul = 1 / t.range;
@@ -2936,7 +3000,7 @@ index 16395fa..94d1515 100644
      CurrentFrame().garbage.push_back(tex);
      t.epoch = DirtyEpoch(t.data);
      t.sig = MemSig(t.data, t.bytes);
-@@ -1320,7 +1502,148 @@ void D3D12Backend::Blit(ID3D12Resource* src, DXGI_FORMAT fmt, const float uvrect
+@@ -1320,7 +1513,148 @@ void D3D12Backend::Blit(ID3D12Resource* src, DXGI_FORMAT fmt, const float uvrect
      float c[8] = {uvrect[0], uvrect[1], uvrect[2], uvrect[3],
                    o.gamma ? 1.0f : 0.0f, o.alpha ? 1.0f : 0.0f, float(o.taps), o.mul};
      std::memcpy(cb.cpu, c, sizeof(c));
@@ -3086,7 +3150,7 @@ index 16395fa..94d1515 100644
  }
  
  ID3DBlob* D3D12Backend::Compile(const std::string& src, const char* entry, const char* profile, uint64_t& hash) {
-@@ -1332,23 +1655,42 @@ ID3DBlob* D3D12Backend::Compile(const std::string& src, const char* entry, const
+@@ -1332,23 +1666,42 @@ ID3DBlob* D3D12Backend::Compile(const std::string& src, const char* entry, const
      if (it != blobs_.end()) return it->second.Get();
      ComPtr<ID3DBlob> code;
      ComPtr<ID3DBlob> err;
@@ -3134,7 +3198,7 @@ index 16395fa..94d1515 100644
      D3D12_GRAPHICS_PIPELINE_STATE_DESC d{};
      d.pRootSignature = root_.Get();
      d.VS = {vs->GetBufferPointer(), vs->GetBufferSize()};
-@@ -1361,17 +1703,18 @@ D3D12_GRAPHICS_PIPELINE_STATE_DESC D3D12Backend::FullScreenPipelineDesc(ID3DBlob
+@@ -1361,17 +1714,18 @@ D3D12_GRAPHICS_PIPELINE_STATE_DESC D3D12Backend::FullScreenPipelineDesc(ID3DBlob
      d.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
      d.NumRenderTargets = 1;
      d.RTVFormats[0] = rtv;
@@ -3157,7 +3221,7 @@ index 16395fa..94d1515 100644
      if (over) {
          auto& blend = d.BlendState.RenderTarget[0];
          // premultiplied colour, the target keeps its alpha
-@@ -1382,14 +1725,14 @@ ID3D12PipelineState* D3D12Backend::EnsureBlitPipeline(DXGI_FORMAT rtv, bool over
+@@ -1382,14 +1736,14 @@ ID3D12PipelineState* D3D12Backend::EnsureBlitPipeline(DXGI_FORMAT rtv, bool over
          blend.DestBlendAlpha = D3D12_BLEND_ONE;
          blend.BlendOp = blend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
      }
@@ -3175,7 +3239,7 @@ index 16395fa..94d1515 100644
      uint64_t source_seed = Hash(hlsl, std::strlen(hlsl), seed);
      auto& pso = blit_psos_[Hash(entry, std::strlen(entry), source_seed)];
      if (pso) return pso.Get();
-@@ -1397,7 +1740,7 @@ ID3D12PipelineState* D3D12Backend::EnsurePassPipeline(const char* hlsl, const ch
+@@ -1397,7 +1751,7 @@ ID3D12PipelineState* D3D12Backend::EnsurePassPipeline(const char* hlsl, const ch
      ID3DBlob* vs = Compile(hlsl, "vs", "vs_5_0", h);
      ID3DBlob* ps = Compile(hlsl, entry, "ps_5_0", h);
      if (!vs || !ps) return nullptr;
@@ -3184,7 +3248,7 @@ index 16395fa..94d1515 100644
      if (blend >= 0) {
          auto& b = d.BlendState.RenderTarget[0];
          b.BlendEnable = TRUE;
-@@ -1405,26 +1748,48 @@ ID3D12PipelineState* D3D12Backend::EnsurePassPipeline(const char* hlsl, const ch
+@@ -1405,26 +1759,48 @@ ID3D12PipelineState* D3D12Backend::EnsurePassPipeline(const char* hlsl, const ch
          b.DestBlend = b.DestBlendAlpha = D3D12_BLEND_INV_BLEND_FACTOR;
          b.BlendOp = b.BlendOpAlpha = D3D12_BLEND_OP_ADD;
      }
@@ -3237,7 +3301,7 @@ index 16395fa..94d1515 100644
      cl_->OMSetRenderTargets(1, &rh, FALSE, nullptr);
      SetFullViewport(w, h);
      if (blend >= 0) {
-@@ -1435,11 +1800,60 @@ void D3D12Backend::Pass(const char* hlsl, const char* entry, DXGI_FORMAT rtv, D3
+@@ -1435,11 +1811,60 @@ void D3D12Backend::Pass(const char* hlsl, const char* entry, DXGI_FORMAT rtv, D3
      bound_rt_ = bound_ds_ = nullptr;
  }
  
@@ -3299,7 +3363,7 @@ index 16395fa..94d1515 100644
          td.Flags = D3D12_RESOURCE_FLAG_NONE;
          t.fb_state = D3D12_RESOURCE_STATE_COPY_DEST;
          if (FAILED(dev_->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &td, t.fb_state, nullptr,
-@@ -1447,9 +1861,9 @@ ID3D12Resource* D3D12Backend::Feedback(Target& t) {
+@@ -1447,9 +1872,9 @@ ID3D12Resource* D3D12Backend::Feedback(Target& t) {
              return nullptr;
          }
      }
@@ -3311,7 +3375,7 @@ index 16395fa..94d1515 100644
      Transition(t.fb.Get(), t.fb_state, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
      return t.fb.Get();
  }
-@@ -1503,6 +1917,14 @@ void D3D12Backend::FillPipelineDesc(const PsoKey& k, ID3DBlob* vs, ID3DBlob* ps,
+@@ -1503,6 +1928,14 @@ void D3D12Backend::FillPipelineDesc(const PsoKey& k, ID3DBlob* vs, ID3DBlob* ps,
      b.DestBlendAlpha = Blend(k.dst, true);
      b.BlendOpAlpha = BlendOp(k.op);
      b.RenderTargetWriteMask = UINT8(k.wmask);
@@ -3326,7 +3390,7 @@ index 16395fa..94d1515 100644
      d.SampleMask = UINT_MAX;
      d.RasterizerState.FillMode = k.fill == kFillWireframe ? D3D12_FILL_MODE_WIREFRAME : D3D12_FILL_MODE_SOLID;
      d.RasterizerState.CullMode = k.cull ? D3D12_CULL_MODE_BACK : D3D12_CULL_MODE_NONE;
-@@ -1515,7 +1937,8 @@ void D3D12Backend::FillPipelineDesc(const PsoKey& k, ID3DBlob* vs, ID3DBlob* ps,
+@@ -1515,7 +1948,8 @@ void D3D12Backend::FillPipelineDesc(const PsoKey& k, ID3DBlob* vs, ID3DBlob* ps,
      d.NumRenderTargets = k.has_rt ? 1 : 0;
      d.RTVFormats[0] = k.has_rt ? DXGI_FORMAT(k.rtfmt) : DXGI_FORMAT_UNKNOWN;
      d.DSVFormat = k.has_ds ? DXGI_FORMAT_D24_UNORM_S8_UINT : DXGI_FORMAT_UNKNOWN;
@@ -3336,7 +3400,7 @@ index 16395fa..94d1515 100644
  }
  
  // a point is drawn as its whole console pixel by a geometry shader, solid, front facing and never culled
-@@ -1529,10 +1952,11 @@ void D3D12Backend::ExpandPoints(D3D12_GRAPHICS_PIPELINE_STATE_DESC& d) {
+@@ -1529,10 +1963,11 @@ void D3D12Backend::ExpandPoints(D3D12_GRAPHICS_PIPELINE_STATE_DESC& d) {
      d.RasterizerState.FrontCounterClockwise = FALSE;
  }
  
@@ -3351,7 +3415,7 @@ index 16395fa..94d1515 100644
  }
  
  ID3D12PipelineState* D3D12Backend::EnsurePipeline(const PsoKey& k, ID3DBlob* vs, ID3DBlob* ps) {
-@@ -1546,8 +1970,8 @@ ID3D12PipelineState* D3D12Backend::EnsurePipeline(const PsoKey& k, ID3DBlob* vs,
+@@ -1546,8 +1981,8 @@ ID3D12PipelineState* D3D12Backend::EnsurePipeline(const PsoKey& k, ID3DBlob* vs,
      FillPipelineDesc(k, vs, ps, d);
      if (k.topo == uint32_t(Topology::Points)) ExpandPoints(d);
      ComPtr<ID3D12PipelineState> pso;
@@ -3362,7 +3426,7 @@ index 16395fa..94d1515 100644
      psos_[h] = pso;
      return pso.Get();
  }
-@@ -1575,19 +1999,26 @@ ID3D12Resource* D3D12Backend::BindTargetTexture(const State& s, int stage, const
+@@ -1575,19 +2010,26 @@ ID3D12Resource* D3D12Backend::BindTargetTexture(const State& s, int stage, const
      info.kind = kTex2D;
      // a pass shrinking it averages each tap over a console texel, else upscaled taps skip texels and ghost
      Target* rt = FindTarget(s.rt, false);
@@ -3397,7 +3461,7 @@ index 16395fa..94d1515 100644
  }
  
  bool SameTexture(const Tex& tx, const TextureDesc& d) {
-@@ -1595,17 +2026,34 @@ bool SameTexture(const Tex& tx, const TextureDesc& d) {
+@@ -1595,17 +2037,34 @@ bool SameTexture(const Tex& tx, const TextureDesc& d) {
             tx.d.depth == d.depth && tx.d.levels == d.levels && tx.d.cube == d.cube && tx.d.pitch == d.pitch;
  }
  
@@ -3440,7 +3504,7 @@ index 16395fa..94d1515 100644
      if (bc && ((w & 3) || (h & 3))) {
          w = (w + 3) & ~3u;
          h = (h + 3) & ~3u;
-@@ -1622,7 +2070,6 @@ bool D3D12Backend::CreateTexture(Tex& tx, const TextureDesc& d, const FormatInfo
+@@ -1622,7 +2081,6 @@ bool D3D12Backend::CreateTexture(Tex& tx, const TextureDesc& d, const FormatInfo
      td.SampleDesc.Count = 1;
      if (FAILED(dev_->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &td, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
                                               IID_PPV_ARGS(&tx.res)))) {
@@ -3448,7 +3512,7 @@ index 16395fa..94d1515 100644
          return false;
      }
      return true;
-@@ -1664,19 +2111,26 @@ void D3D12Backend::UploadTextureLevel(Tex& tx, uint32_t f, uint32_t l, const std
+@@ -1664,19 +2122,26 @@ void D3D12Backend::UploadTextureLevel(Tex& tx, uint32_t f, uint32_t l, const std
  }
  
  void D3D12Backend::UploadTexture(Tex& tx, const TextureDesc& d, const FormatInfo& fi, const uint8_t* p,
@@ -3478,7 +3542,7 @@ index 16395fa..94d1515 100644
      Transition(tx.res.Get(), st, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
  }
  
-@@ -1725,22 +2179,49 @@ ID3D12Resource* D3D12Backend::BindGuestTexture(const State& s, int stage, const
+@@ -1725,22 +2190,49 @@ ID3D12Resource* D3D12Backend::BindGuestTexture(const State& s, int stage, const
      Tex& tx = textures_[key];
      uint32_t total = TotalSize(d);
      bool same = SameTexture(tx, d);
@@ -3540,7 +3604,7 @@ index 16395fa..94d1515 100644
      }
      FillTextureView(tx, d, stages.sv[stage]);
      if (fi.depth) info.shadow = ShadowDepthKind(d.format);
-@@ -1756,6 +2237,7 @@ ID3D12Resource* D3D12Backend::BindTexture(const State& s, int stage, DrawTexture
+@@ -1756,6 +2248,7 @@ ID3D12Resource* D3D12Backend::BindTexture(const State& s, int stage, DrawTexture
      stages.rt[stage] = false;
      stages.k[stage] = 1;
      stages.wide[stage] = 0;
@@ -3548,7 +3612,7 @@ index 16395fa..94d1515 100644
      sv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
      sv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
      sv.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-@@ -1798,7 +2280,10 @@ D3D12_SAMPLER_DESC StageSampler(const State& s, int i, const DrawTextures& stage
+@@ -1798,7 +2291,10 @@ D3D12_SAMPLER_DESC StageSampler(const State& s, int i, const DrawTextures& stage
      bool anisotropic = min == kTexfAnisotropic || mag == kTexfAnisotropic;
      uint32_t an = anisotropic ? std::max<uint32_t>(t[kTssMaxAnisotropy], 1) : 1;
      // forced only where the title filters across mip levels and the texture has them
@@ -3560,7 +3624,7 @@ index 16395fa..94d1515 100644
      if (an > 1) {
          sd.Filter = D3D12_FILTER_ANISOTROPIC;
          sd.MaxAnisotropy = std::min<uint32_t>(an, 16);
-@@ -1824,8 +2309,26 @@ D3D12_SAMPLER_DESC StageSampler(const State& s, int i, const DrawTextures& stage
+@@ -1824,8 +2320,26 @@ D3D12_SAMPLER_DESC StageSampler(const State& s, int i, const DrawTextures& stage
  
  uint32_t D3D12Backend::EnsureStageSamplers(const State& s, const DrawTextures& stages, bool clamp) {
      D3D12_SAMPLER_DESC sd[4];
@@ -3589,7 +3653,7 @@ index 16395fa..94d1515 100644
      uint64_t key = Hash(sd, sizeof(sd));
      auto it = samplers_.find(key);
      if (it != samplers_.end()) return it->second;
-@@ -1896,11 +2399,11 @@ void D3D12Backend::EnsureVertexShader(const State& s, const Assembled& a, DrawSh
+@@ -1896,11 +2410,11 @@ void D3D12Backend::EnsureVertexShader(const State& s, const Assembled& a, DrawSh
  }
  
  bool D3D12Backend::BindStageTexturesAndTargets(const State& s, DrawTextures& stages) {
@@ -3603,7 +3667,7 @@ index 16395fa..94d1515 100644
      // textures may have recorded copies that unbound the targets
      return BindTargets(s);
  }
-@@ -1953,7 +2456,10 @@ void D3D12Backend::KeyDepthStencil(const State& s, const Assembled& a, PsoKey& k
+@@ -1953,7 +2467,10 @@ void D3D12Backend::KeyDepthStencil(const State& s, const Assembled& a, PsoKey& k
      // and an upscaled target's pixels are smaller
      if (a.topology == Topology::Triangles && SimpleState(s, kMSolidOffsetEnable)) {
          k.zbias = int32_t(std::lround(Bits(SimpleState(s, kMDepthOffset)) * kDepth24Max / s.zscale));
@@ -3615,7 +3679,7 @@ index 16395fa..94d1515 100644
      }
  }
  
-@@ -1979,6 +2485,9 @@ void D3D12Backend::BuildPipelineKey(const State& s, const Assembled& a, uint64_t
+@@ -1979,6 +2496,9 @@ void D3D12Backend::BuildPipelineKey(const State& s, const Assembled& a, uint64_t
      k.has_rt = bound_rt_ != nullptr;
      k.has_ds = bound_ds_ != nullptr;
      k.rtfmt = bound_rt_ ? bound_rt_->fmt : 0;
@@ -3625,7 +3689,7 @@ index 16395fa..94d1515 100644
      KeyBlend(s, k);
      if (k.has_ds) KeyDepthStencil(s, a, k);
      KeyRasterizer(s, a, k);
-@@ -2007,10 +2516,29 @@ void FillFogConstants(const State& s, bool vertex_program, DrawConstants& c) {
+@@ -2007,10 +2527,29 @@ void FillFogConstants(const State& s, bool vertex_program, DrawConstants& c) {
      c.fog[3] = float(s.rs[kRsFogTableMode]);
  }
  
@@ -3658,7 +3722,7 @@ index 16395fa..94d1515 100644
      Color(s.rs[kRsFogColor], c.fog_color);
      c.misc[0] = float(SimpleState(s, kMAlphaRef) & 0xFF);
      c.misc[1] = SimpleState(s, kMAlphaTestEnable) ? float(Cmp(SimpleState(s, kMAlphaFunc)) - 1) : kAlphaTestAlways;
-@@ -2040,10 +2568,12 @@ void D3D12Backend::FillTexelConstants(int i, const TextureDesc& d, const DrawTex
+@@ -2040,10 +2579,12 @@ void D3D12Backend::FillTexelConstants(int i, const TextureDesc& d, const DrawTex
      c.texsize[i][3] = -0.5f / (float(d.height) * k);
      // a 3 console texel box per tap keeps the console chain's glow width and brightness
      if (stages.wide[i] > 0) {
@@ -3675,7 +3739,7 @@ index 16395fa..94d1515 100644
      }
  }
  
-@@ -2179,9 +2709,9 @@ void D3D12Backend::UploadConstants(const State& s, const DrawShaders& sh, const
+@@ -2179,9 +2720,9 @@ void D3D12Backend::UploadConstants(const State& s, const DrawShaders& sh, const
      Alloc vc = Upload(sizeof(s.vsc), 256);
      std::memcpy(vc.cpu, s.vsc.data(), sizeof(s.vsc));
      Alloc dc = Upload(sizeof(DrawConstants), 256);
@@ -3688,7 +3752,7 @@ index 16395fa..94d1515 100644
      FillFogConstants(s, sh.prog, c);
      FillCombinerConstants(s, c);
      if (ext_) ext_->Constants(reinterpret_cast<float(*)[4]>(vc.cpu), c.ext, bound_rt_, k.blend ? k.src : 1);
-@@ -2195,6 +2725,7 @@ void D3D12Backend::UploadConstants(const State& s, const DrawShaders& sh, const
+@@ -2195,6 +2736,7 @@ void D3D12Backend::UploadConstants(const State& s, const DrawShaders& sh, const
      cl_->SetGraphicsRootConstantBufferView(1, dc.gpu);
  }
  
@@ -3696,7 +3760,7 @@ index 16395fa..94d1515 100644
  void D3D12Backend::CaptureTextures(const State& s, const DrawTextures& stages) {
      for (int i = 0; i < 4; i++) {
          ID3D12Resource* res = stages.res[i];
-@@ -2213,19 +2744,63 @@ void D3D12Backend::CaptureTextures(const State& s, const DrawTextures& stages) {
+@@ -2213,19 +2755,63 @@ void D3D12Backend::CaptureTextures(const State& s, const DrawTextures& stages) {
  constexpr int kVsConstants = 192;
  constexpr int kVsConstantBias = 96;
  
@@ -3764,7 +3828,7 @@ index 16395fa..94d1515 100644
          }
      }
      fprintf(cap_, "\n     pc");
-@@ -2246,10 +2821,86 @@ void D3D12Backend::CaptureDraw(const State& s, uint32_t prim, uint32_t count, co
+@@ -2246,10 +2832,86 @@ void D3D12Backend::CaptureDraw(const State& s, uint32_t prim, uint32_t count, co
      CaptureTextures(s, stages);
  }
  
@@ -3854,7 +3918,7 @@ index 16395fa..94d1515 100644
  }
  
  // each shader once, as translated
-@@ -2270,6 +2921,8 @@ void D3D12Backend::CaptureShaders(const State& s, const Assembled& a, const Draw
+@@ -2270,6 +2932,8 @@ void D3D12Backend::CaptureShaders(const State& s, const Assembled& a, const Draw
      CaptureShader("ps", sh.pkey, PixelHlsl(pk));
  }
  
@@ -3863,7 +3927,7 @@ index 16395fa..94d1515 100644
  D3D12_SRV_DIMENSION NullViewDimension(uint8_t kind) {
      if (kind == kTexCube) return D3D12_SRV_DIMENSION_TEXTURECUBE;
      if (kind == kTex3D) return D3D12_SRV_DIMENSION_TEXTURE3D;
-@@ -2321,24 +2974,41 @@ void D3D12Backend::SetTextureViewsAndSamplers(const State& s, const Assembled& a
+@@ -2321,24 +2985,41 @@ void D3D12Backend::SetTextureViewsAndSamplers(const State& s, const Assembled& a
  void D3D12Backend::SetViewportScissor(const State& s, uint32_t gw) {
      float W = float(bound_rt_ ? bound_rt_->w : bound_ds_->w);
      float H = float(bound_rt_ ? bound_rt_->h : bound_ds_->h);
@@ -3915,7 +3979,7 @@ index 16395fa..94d1515 100644
  void D3D12Backend::SetBlendFactorStencilRef(const State& s) {
      float bf[4];
      Color(SimpleState(s, kMBlendColor), bf);
-@@ -2354,19 +3024,39 @@ D3D_PRIMITIVE_TOPOLOGY PrimitiveTopology(const Assembled& a) {
+@@ -2354,19 +3035,39 @@ D3D_PRIMITIVE_TOPOLOGY PrimitiveTopology(const Assembled& a) {
      return a.strip ? D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
  }
  
@@ -3958,7 +4022,7 @@ index 16395fa..94d1515 100644
      cl_->IASetPrimitiveTopology(PrimitiveTopology(a));
      if (a.index_count) {
          uint32_t ibytes = a.index_count * (a.index16 ? 2 : 4);
-@@ -2391,11 +3081,11 @@ struct DrawEnd {
+@@ -2391,11 +3092,11 @@ struct DrawEnd {
  // Assemble, timed and counted
  bool D3D12Backend::AssembleDraw(const State& s, uint32_t prim, uint32_t start, uint32_t count,
                                  const uint8_t* indices, Assembled& a) {
@@ -3974,8 +4038,55 @@ index 16395fa..94d1515 100644
      return assembled;
  }
  
-@@ -2463,9 +3153,11 @@ void D3D12Backend::DeliverReports() {
+@@ -2461,11 +3162,58 @@ void D3D12Backend::DeliverReports() {
+     }
+ }
  
++void D3D12Backend::AmbientOcclusion(const State& s, const std::array<float, 16>& projection) {
++    if (s.presentation_overlay || !s.viewport.w || !s.viewport.h ||
++        s.viewport.min_z != 0.0f || s.viewport.max_z != 1.0f) return;
++    Target* color = FindTarget(s.rt, false);
++    Target* depth = FindTarget(s.zs, true);
++    if (!color || !depth || !color->drawn || color->w != depth->w || color->h != depth->h ||
++        color->gw != depth->gw || color->gh != depth->gh || !color->gw || !color->gh ||
++        uint64_t(s.viewport.x) + s.viewport.w > color->gw ||
++        uint64_t(s.viewport.y) + s.viewport.h > color->gh) return;
++    const auto px = [&](uint64_t x) { return LONG(x * color->w / color->gw); };
++    const auto py = [&](uint64_t y) { return LONG(y * color->h / color->gh); };
++    const D3D12_RECT region{px(s.viewport.x), py(s.viewport.y),
++        px(uint64_t(s.viewport.x) + s.viewport.w), py(uint64_t(s.viewport.y) + s.viewport.h)};
++#ifndef XBE_RELEASE
++    char capture_name[48]{};
++    if (cap_) {
++        snprintf(capture_name, sizeof(capture_name), "%04u_ao", cap_i_++);
++        CapAoColor(*color, (std::string(capture_name) + "_before").c_str());
++    }
++#endif
++    cl_->OMSetRenderTargets(0, nullptr, FALSE, nullptr);
++    TargetRead read = ReadTarget(*depth);
++    if (!read.res) { Begin(); return; }
++    Transition(read.res, *read.state, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
++    Transition(color->res.Get(), color->state, D3D12_RESOURCE_STATE_RENDER_TARGET);
++    const Gtao::Input input{read.res, read.fmt, color->res.Get(), View(*color), color->fmt, region, projection};
++    auto result = gtao_.Execute(dev_.Get(), cl_.Get(), input,
++        [&](const std::string& source, const char* entry, const char* profile) {
++            uint64_t hash;
++            return Compile(source, entry, profile, hash);
++        });
++#ifndef XBE_RELEASE
++    if (cap_ && result.applied) CapAoResult(input, result, *color, *depth, capture_name);
++#endif
++    if (result.lifetime) {
++        CurrentFrame().effects.push_back(std::move(result.lifetime));
++        gtao_active_ = true;
++    }
++    if (result.applied && logx::SessionEnabled())
++        LOG_FIRST(4, "ambient occlusion: world=%08X depth=%08X viewport=%ld,%ld-%ld,%ld samples=%u",
++            color->data, depth->data, region.left, region.top, region.right, region.bottom,
++            color->res->GetDesc().SampleDesc.Count);
++    Begin();
++}
++
  void D3D12Backend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t count, const uint8_t* indices) {
      PerfScope perf_draw{g_perf.draw};
 -    g_perf.draws++;
@@ -3988,7 +4099,7 @@ index 16395fa..94d1515 100644
      DrawEnd draw_end{ext_};
      if (ext_) ext_->BeginDraw(s);
      Assembled& a = asm_;
-@@ -2503,11 +3195,13 @@ void D3D12Backend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
+@@ -2503,11 +3251,13 @@ void D3D12Backend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
      DrawConstants c{};
      UploadConstants(s, sh, k, stages, size, c);
  
@@ -4003,7 +4114,7 @@ index 16395fa..94d1515 100644
  
      // texture views and samplers, viewport and scissor, blend factor and stencil reference
      SetTextureViewsAndSamplers(s, a, stages);
-@@ -2516,15 +3210,17 @@ void D3D12Backend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
+@@ -2516,15 +3266,17 @@ void D3D12Backend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
  
      // geometry, counted while the title runs a visibility test
      uint32_t query = BeginCountedDraw(s);
@@ -4025,7 +4136,7 @@ index 16395fa..94d1515 100644
  }
  
  // rs: the rects buffer, reused across targets
-@@ -2561,11 +3257,13 @@ void D3D12Backend::ClearTarget(Target& t, const State& s, const ClearArgs& c, st
+@@ -2561,11 +3313,13 @@ void D3D12Backend::ClearTarget(Target& t, const State& s, const ClearArgs& c, st
  void D3D12Backend::Clear(const State& s, uint32_t count, const uint8_t* rects, uint32_t flags, uint32_t color, float z,
                           uint32_t stencil) {
      PerfScope perf_clear{g_perf.clear};
@@ -4039,7 +4150,7 @@ index 16395fa..94d1515 100644
      Target* rt = (flags & kClearTarget) ? EnsureTarget(s.rt, false) : nullptr;
      Target* ds = (flags & (kClearZ | kClearStencil)) ? EnsureTarget(s.zs, true) : nullptr;
      uint32_t gw;
-@@ -2659,8 +3357,8 @@ void D3D12Backend::CopyByDraw(const Target& src_t, ID3D12Resource* src_res, D3D1
+@@ -2659,8 +3413,8 @@ void D3D12Backend::CopyByDraw(const Target& src_t, ID3D12Resource* src_res, D3D1
      Transition(dst_t.res.Get(), dst_t.state, D3D12_RESOURCE_STATE_RENDER_TARGET);
      D3D12_CPU_DESCRIPTOR_HANDLE rh = Cpu(rtv_heap_.Get(), dst_t.view, rtv_inc_);
      cl_->OMSetRenderTargets(1, &rh, FALSE, nullptr);
@@ -4050,7 +4161,7 @@ index 16395fa..94d1515 100644
      bool listed = l.count && l.src_rects;
      uint32_t n = listed ? l.count : 1;
      for (uint32_t i = 0; i < n; i++) {
-@@ -2669,7 +3367,7 @@ void D3D12Backend::CopyByDraw(const Target& src_t, ID3D12Resource* src_res, D3D1
+@@ -2669,7 +3423,7 @@ void D3D12Backend::CopyByDraw(const Target& src_t, ID3D12Resource* src_res, D3D1
          DrawnRect r{.x0 = 0, .y0 = 0, .x1 = whole_w, .y1 = whole_h};
          if (listed) r = ReadDrawnRect(l.src_rects, l.dst_points, i);
          if (r.x1 <= r.x0 || r.y1 <= r.y0) continue;
@@ -4059,7 +4170,7 @@ index 16395fa..94d1515 100644
                            0, 1};
          LONG right = std::min(LONG(vp.TopLeftX + vp.Width), LONG(dst_t.w));
          LONG bottom = std::min(LONG(vp.TopLeftY + vp.Height), LONG(dst_t.h));
-@@ -2678,9 +3376,11 @@ void D3D12Backend::CopyByDraw(const Target& src_t, ID3D12Resource* src_res, D3D1
+@@ -2678,9 +3432,11 @@ void D3D12Backend::CopyByDraw(const Target& src_t, ID3D12Resource* src_res, D3D1
          cl_->RSSetViewports(1, &vp);
          cl_->RSSetScissorRects(1, &scissor);
          float uv[4] = {r.x0 / src_t.gw, r.y0 / src_t.gh, (r.x1 - r.x0) / src_t.gw, (r.y1 - r.y0) / src_t.gh};
@@ -4073,7 +4184,7 @@ index 16395fa..94d1515 100644
          Blit(src_res, src_t.fmt, uv, o);
      }
      dst_t.drawn = true;
-@@ -2694,7 +3394,8 @@ void D3D12Backend::CopyByRegion(const Target& src_t, ID3D12Resource* src_res, D3
+@@ -2694,7 +3450,8 @@ void D3D12Backend::CopyByRegion(const Target& src_t, ID3D12Resource* src_res, D3
      Transition(dst_t.res.Get(), dst_t.state, D3D12_RESOURCE_STATE_COPY_DEST);
      D3D12_TEXTURE_COPY_LOCATION dl{dst_t.res.Get(), D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
      D3D12_TEXTURE_COPY_LOCATION sl{src_res, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
@@ -4083,7 +4194,7 @@ index 16395fa..94d1515 100644
      bool listed = l.count && l.src_rects;
      uint32_t n = listed ? l.count : 1;
      for (uint32_t i = 0; i < n; i++) {
-@@ -2703,16 +3404,16 @@ void D3D12Backend::CopyByRegion(const Target& src_t, ID3D12Resource* src_res, D3
+@@ -2703,16 +3460,16 @@ void D3D12Backend::CopyByRegion(const Target& src_t, ID3D12Resource* src_res, D3
          uint32_t dy = 0;
          if (listed) {
              GuestRect r = ReadGuestRect(l.src_rects, i);
@@ -4106,7 +4217,7 @@ index 16395fa..94d1515 100644
              }
          }
          if (b.right <= b.left || b.bottom <= b.top || dx >= dst_t.w || dy >= dst_t.h) continue;
-@@ -2728,11 +3429,13 @@ void D3D12Backend::Copy(const Surface& src, const Surface& dst, uint32_t count,
+@@ -2728,11 +3485,13 @@ void D3D12Backend::Copy(const Surface& src, const Surface& dst, uint32_t count,
                          uint32_t dst_points) {
      PerfScope perf_copy{g_perf.copy};
      Target* src_t = FindTarget(src, false);
@@ -4120,7 +4231,7 @@ index 16395fa..94d1515 100644
      // pixels the CPU made: the copy happens in memory, textures and targets pick it up from there
      if (!src_t || !src_t->drawn) {
          if (!CopySurfaceMemory(src, dst, count, src_rects, dst_points)) {
-@@ -2746,17 +3449,23 @@ void D3D12Backend::Copy(const Surface& src, const Surface& dst, uint32_t count,
+@@ -2746,17 +3505,23 @@ void D3D12Backend::Copy(const Surface& src, const Surface& dst, uint32_t count,
      Target* dst_t = EnsureTarget(dst, false);
      if (!dst_t || src_t == dst_t) return;
      CopyList l{.count = count, .src_rects = src_rects, .dst_points = dst_points};
@@ -4148,7 +4259,7 @@ index 16395fa..94d1515 100644
  }
  
  void D3D12Backend::ResizeSwap() {
-@@ -2777,9 +3486,18 @@ void D3D12Backend::ResizeSwap() {
+@@ -2777,9 +3542,18 @@ void D3D12Backend::ResizeSwap() {
      bb_h_ = h;
  }
  
@@ -4168,7 +4279,7 @@ index 16395fa..94d1515 100644
      for (auto& t : cap_tex_) {
          char name[32];
          snprintf(name, sizeof(name), "tex_%08X", t.data);
-@@ -2806,6 +3524,8 @@ void D3D12Backend::StartCapture() {
+@@ -2806,6 +3580,8 @@ void D3D12Backend::StartCapture() {
      cap_sh_.clear();
  }
  
@@ -4177,7 +4288,7 @@ index 16395fa..94d1515 100644
  // ramp_ holds the red, green and blue ramps, 256 entries each
  constexpr int kRampRed = 0;
  constexpr int kRampGreen = 256;
-@@ -2833,10 +3553,10 @@ void D3D12Backend::UploadGammaRamp() {
+@@ -2833,10 +3609,10 @@ void D3D12Backend::UploadGammaRamp() {
      cl_->CopyTextureRegion(&dl, 0, 0, 0, &sl, nullptr);
  }
  
@@ -4192,7 +4303,7 @@ index 16395fa..94d1515 100644
      float w = float(bb_w_);
      float h = float(bb_h_);
      float vw = std::min(w, h * aspect);
-@@ -2846,14 +3566,73 @@ void D3D12Backend::BlitFrame(Target& t) {
+@@ -2846,14 +3622,73 @@ void D3D12Backend::BlitFrame(Target& t) {
      D3D12_RECT scissor{0, 0, LONG(bb_w_), LONG(bb_h_)};
      cl_->RSSetViewports(1, &vp);
      cl_->RSSetScissorRects(1, &scissor);
@@ -4268,7 +4379,7 @@ index 16395fa..94d1515 100644
      ImGui::NewFrame();
      if (app::kGame.ui) app::kGame.ui(fps_);
      ImGui::Render();
-@@ -2870,7 +3649,9 @@ void D3D12Backend::DrawFrame(Target* t, uint32_t bi) {
+@@ -2870,7 +3705,9 @@ void D3D12Backend::DrawFrame(Target* t, uint32_t bi) {
      cl_->ClearRenderTargetView(rh, black, 0, nullptr);
      cl_->OMSetRenderTargets(1, &rh, FALSE, nullptr);
      bound_rt_ = bound_ds_ = nullptr;
@@ -4279,7 +4390,7 @@ index 16395fa..94d1515 100644
      RenderUi();
      Transition(bb_[bi].Get(), bs, D3D12_RESOURCE_STATE_PRESENT);
  }
-@@ -2894,9 +3675,9 @@ void D3D12Backend::ReleaseOldTextures() {
+@@ -2894,12 +3731,13 @@ void D3D12Backend::ReleaseOldTextures() {
  void D3D12Backend::ResetFrame() {
      Frame& f = CurrentFrame();
      if (f.fence && fence_->GetCompletedValue() < f.fence) {
@@ -4291,7 +4402,11 @@ index 16395fa..94d1515 100644
      }
      f.alloc->Reset();
      f.garbage.clear();
-@@ -2912,11 +3693,77 @@ void D3D12Backend::CountFps() {
++    f.effects.clear();
+     f.used = 0;
+     f.srv = 0;
+     cl_->Reset(f.alloc.Get(), nullptr);
+@@ -2912,11 +3750,77 @@ void D3D12Backend::CountFps() {
      double el = std::chrono::duration<double>(now - fps_t_).count();
      if (el >= 0.5) {
          fps_ = fps_n_ / el;
@@ -4369,7 +4484,7 @@ index 16395fa..94d1515 100644
  void LogPerf() {
      static PerfClock::time_point perf_start = PerfClock::now();
      static uint64_t perf_frames = 0;
-@@ -2942,11 +3789,14 @@ void LogPerf() {
+@@ -2942,11 +3846,14 @@ void LogPerf() {
               g_perf_sync_late.exchange(0) / n);
          LOGI("perf: per frame %.0f draws (%.0f raw) %.0fk verts %.1f MB upload %.1f overflow | %.0f checks %.2f MB "
               "hashed | %.1f tex uploads %.2f MB, %.1f new tex, %.1f new targets, %.1f target uploads, %.1f shrinks, "
@@ -4386,7 +4501,7 @@ index 16395fa..94d1515 100644
          g_perf = Perf{};
          perf_start = PerfClock::now();
          perf_frames = 0;
-@@ -2954,12 +3804,19 @@ void LogPerf() {
+@@ -2954,12 +3861,19 @@ void LogPerf() {
  }
  
  void D3D12Backend::Present(const Surface& front) {
@@ -4406,7 +4521,7 @@ index 16395fa..94d1515 100644
      ResizeSwap();
      Target* t = EnsureTarget(front, false);
      if (t && LatchCpuWrite(*t)) UploadTarget(*t, front);
-@@ -2971,10 +3828,10 @@ void D3D12Backend::Present(const Surface& front) {
+@@ -2971,10 +3885,10 @@ void D3D12Backend::Present(const Surface& front) {
      DrawFrame(t, bi);
      Submit(false);
      DeliverReports();
@@ -4420,7 +4535,7 @@ index 16395fa..94d1515 100644
  
      presents_++;
      presents_seen_.store(presents_);
-@@ -2982,18 +3839,37 @@ void D3D12Backend::Present(const Surface& front) {
+@@ -2982,18 +3896,46 @@ void D3D12Backend::Present(const Surface& front) {
      ReleaseOldTextures();
      ResetFrame();
      CountFps();
@@ -4438,10 +4553,15 @@ index 16395fa..94d1515 100644
  void D3D12Backend::ApplySettings() {
 -    float want = app::RenderScale(guest_h_);
 +    const auto size = app::RenderSize();
++    const auto settings = app::Snapshot();
++    if (gtao_active_ && !settings.ambient_occlusion) {
++        gtao_.Reset();
++        gtao_active_ = false;
++    }
 +    float want_x = float(size.width) / guest_w_, want_y = float(size.height) / guest_h_;
      bool remake = ext_ && ext_->Settings();
 -    if (std::fabs(want - scale_) > 1e-4f || remake) {
-+    const uint32_t requested = app::Snapshot().msaa_samples;
++    const uint32_t requested = settings.msaa_samples;
 +    const bool msaa_changed = requested != msaa_requested_;
 +    if (std::fabs(want_x - scale_x_) > 1e-4f || std::fabs(want_y - scale_) > 1e-4f || remake || msaa_changed) {
 +        if (diag::Perf()) ++g_perf.settings_changes;
@@ -4458,12 +4578,16 @@ index 16395fa..94d1515 100644
 +        }
          targets_.clear();
 -        scale_ = want;
++        if (gtao_active_) {
++            gtao_.Reset();
++            gtao_active_ = false;
++        }
 +        scale_x_ = want_x;
 +        scale_ = want_y;
          if (ext_) ext_->Reset(*this);
          bound_rt_ = bound_ds_ = nullptr;
      }
-@@ -3002,12 +3878,14 @@ void D3D12Backend::ApplySettings() {
+@@ -3002,12 +3944,14 @@ void D3D12Backend::ApplySettings() {
  // the target resolved, then shrunk with o when it is not guest sized BGRA; res null on failure
  D3D12Backend::CopySource D3D12Backend::PrepareCopySource(Target& t, const ShrinkOptions& o) {
      Resolve(t);
@@ -4481,7 +4605,7 @@ index 16395fa..94d1515 100644
      }
      return out;
  }
-@@ -3024,7 +3902,7 @@ void D3D12Backend::Sync(uint32_t data, uint32_t) {
+@@ -3024,7 +3968,7 @@ void D3D12Backend::Sync(uint32_t data, uint32_t) {
      auto it = targets_.find(TargetMapKey(data, false));
      if (it == targets_.end() || !it->second.drawn || TargetStale(data)) return;
      PerfScope perf_sync{g_perf.sync};
@@ -4490,7 +4614,7 @@ index 16395fa..94d1515 100644
      if (diag::Perf()) {
          LOG_FIRST(16, "perf: read-back of %08X (%ux%u guest, %ux%u host)", data, it->second.gw, it->second.gh,
                    it->second.w, it->second.h);
-@@ -3143,7 +4021,7 @@ void D3D12Backend::RecordLate(uint32_t data) {
+@@ -3143,7 +4087,7 @@ void D3D12Backend::RecordLate(uint32_t data) {
      if (it == targets_.end() || TargetStale(data)) return;
      Target& t = it->second;
      PerfScope perf_sync{g_perf.sync};
@@ -4499,7 +4623,7 @@ index 16395fa..94d1515 100644
      // what DeliverLate or Sync left in guest memory is no CPU write to upload back
      t.sig = MemSig(t.data, t.bytes);
      t.read.clear();
-@@ -3171,7 +4049,7 @@ ComPtr<ID3D12Resource> D3D12Backend::Shrink(ID3D12Resource* src, D3D12_RESOURCE_
+@@ -3171,7 +4115,7 @@ ComPtr<ID3D12Resource> D3D12Backend::Shrink(ID3D12Resource* src, D3D12_RESOURCE_
      cv.Format = td.Format;
      ComPtr<ID3D12Resource> down = o.into;
      D3D12_RESOURCE_STATES down_state = o.into ? o.into_state : D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -4508,15 +4632,98 @@ index 16395fa..94d1515 100644
      if (free_rtv_.empty()) return nullptr;
      if (down) {
          Transition(down.Get(), down_state, D3D12_RESOURCE_STATE_RENDER_TARGET);
-@@ -3218,6 +4096,7 @@ bool D3D12Backend::ReadBack(ID3D12Resource* res, uint32_t w, uint32_t h, std::ve
+@@ -3190,14 +4134,16 @@ ComPtr<ID3D12Resource> D3D12Backend::Shrink(ID3D12Resource* src, D3D12_RESOURCE_
+     return down;
+ }
+ 
+-// a BGRA copy source to the CPU, rows packed; waits for the GPU
+-bool D3D12Backend::ReadBack(ID3D12Resource* res, uint32_t w, uint32_t h, std::vector<uint8_t>& out) {
++// A copy source to the CPU, rows packed; waits for the GPU. Normal captures use
++// four-byte BGRA; diagnostic AO textures also use one-byte integer visibility.
++bool D3D12Backend::ReadBack(ID3D12Resource* res, uint32_t w, uint32_t h, std::vector<uint8_t>& out, uint32_t texel_bytes) {
+     D3D12_RESOURCE_DESC rd = res->GetDesc();
+     D3D12_PLACED_SUBRESOURCE_FOOTPRINT fp;
+     UINT rows;
+     UINT64 row_size;
+     UINT64 bytes;
+     dev_->GetCopyableFootprints(&rd, 0, 1, 0, &fp, &rows, &row_size, &bytes);
++    if (rd.Width != w || rd.Height != h || rows != h || row_size != uint64_t(w) * texel_bytes) return false;
+     ComPtr<ID3D12Resource> rb;
+     D3D12_HEAP_PROPERTIES hp{D3D12_HEAP_TYPE_READBACK};
+     D3D12_RESOURCE_DESC bd = BufferDesc(bytes);
+@@ -3211,13 +4157,68 @@ bool D3D12Backend::ReadBack(ID3D12Resource* res, uint32_t w, uint32_t h, std::ve
+     cl_->CopyTextureRegion(&dl, 0, 0, 0, &sl, nullptr);
+     Flush();
+     uint8_t* p = nullptr;
+-    rb->Map(0, nullptr, reinterpret_cast<void**>(&p));
+-    out.resize(size_t(w) * h * 4);
+-    for (uint32_t y = 0; y < h; y++) std::memcpy(&out[size_t(y) * w * 4], p + size_t(y) * fp.Footprint.RowPitch, w * 4);
++    if (FAILED(rb->Map(0, nullptr, reinterpret_cast<void**>(&p)))) return false;
++    out.resize(size_t(row_size) * h);
++    for (uint32_t y = 0; y < h; y++) std::memcpy(&out[size_t(y) * row_size], p + size_t(y) * fp.Footprint.RowPitch, size_t(row_size));
+     rb->Unmap(0, nullptr);
      return true;
  }
  
 +#ifndef XBE_RELEASE
++bool D3D12Backend::CapSaveRaw(ID3D12Resource* resource, D3D12_RESOURCE_STATES state,
++                             uint32_t texel_bytes, const char* name) {
++    if (!resource) return false;
++    const auto desc = resource->GetDesc();
++    const auto original = state;
++    Transition(resource, state, D3D12_RESOURCE_STATE_COPY_SOURCE);
++    std::vector<uint8_t> bytes;
++    const bool read = ReadBack(resource, uint32_t(desc.Width), desc.Height, bytes, texel_bytes);
++    Transition(resource, state, original);
++    if (!read) return false;
++    FILE* file = _wfopen((cap_dir_ / name).c_str(), L"wb");
++    if (!file) return false;
++    const bool written = fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
++    return fclose(file) == 0 && written;
++}
++
++void D3D12Backend::CapAoColor(Target& color, const char* name) {
++    TargetRead read = ReadTarget(color);
++    if (read.res) CapSave({.res = read.res, .state = read.state, .fmt = read.fmt,
++        .w = color.w, .h = color.h, .mul = color.range}, name);
++}
++
++void D3D12Backend::CapAoResult(const Gtao::Input& input, const Gtao::Result& result,
++                              Target& color, Target& depth, const char* name) {
++    // The result retains its fence-protected resources through every readback.
++    // Raw files are tightly packed, top-down, little-endian, with no conversion.
++    const std::string prefix(name);
++    const bool raw = CapSaveRaw(result.capture.depth, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
++        4, (prefix + ".depth.f32").c_str());
++    const bool linear = CapSaveRaw(result.capture.linear_depth, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
++        4, (prefix + ".view-depth.f32").c_str());
++    const bool ao = CapSaveRaw(result.capture.visibility, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
++        1, (prefix + ".visibility.u8").c_str());
++    CapAoColor(color, (prefix + "_after").c_str());
++    if (FILE* file = _wfopen((cap_dir_ / (prefix + ".constants.bin")).c_str(), L"wb")) {
++        fwrite(result.capture.constants.data(), 1, sizeof(result.capture.constants), file);
++        fclose(file);
++    }
++    if (FILE* file = _wfopen((cap_dir_ / (prefix + ".json")).c_str(), L"w")) {
++        const auto& r = input.viewport;
++        fprintf(file, "{\n  \"world\": \"%08X\", \"depth\": \"%08X\",\n"
++            "  \"viewport\": [%ld, %ld, %ld, %ld], \"size\": [%ld, %ld],\n"
++            "  \"color_size\": [%u, %u], \"depth_format\": %u, \"color_format\": %u,\n"
++            "  \"raw_depth_saved\": %s, \"linear_depth_saved\": %s, \"visibility_saved\": %s,\n"
++            "  \"projection\": [", color.data, depth.data, r.left, r.top, r.right, r.bottom,
++            r.right-r.left, r.bottom-r.top, color.w, color.h, unsigned(input.depth_format),
++            unsigned(input.color_format), raw ? "true" : "false", linear ? "true" : "false", ao ? "true" : "false");
++        for (size_t i = 0; i < input.projection.size(); ++i)
++            fprintf(file, "%s%.9g", i ? ", " : "", input.projection[i]);
++        fprintf(file, "]\n}\n");
++        fclose(file);
++    }
++}
++
  // BMP file and info header: byte offsets of the fields CapSave writes
  constexpr int kBmpHeaderBytes = 54;
  constexpr int kBmpFileSize = 2;
-@@ -3252,9 +4131,10 @@ void D3D12Backend::CapSave(const CapImage& img, const char* name) {
+@@ -3252,9 +4253,10 @@ void D3D12Backend::CapSave(const CapImage& img, const char* name) {
  }
  
  void D3D12Backend::CapSave(Target& t, const char* name) {
@@ -4529,7 +4736,7 @@ index 16395fa..94d1515 100644
  }
  
  // the frame moves to another target: save the one it leaves
-@@ -3276,11 +4156,16 @@ void D3D12Backend::CapStep(const Surface& rt) {
+@@ -3276,11 +4278,16 @@ void D3D12Backend::CapStep(const Surface& rt) {
      cap_rt_ = d;
  }
  
@@ -4547,7 +4754,7 @@ index 16395fa..94d1515 100644
  }
  
  void D3D12Backend::SetGamma(const uint8_t* ramp) {
-@@ -3290,6 +4175,68 @@ void D3D12Backend::SetGamma(const uint8_t* ramp) {
+@@ -3290,6 +4297,71 @@ void D3D12Backend::SetGamma(const uint8_t* ramp) {
  
  }  // namespace
  
@@ -4574,16 +4781,19 @@ index 16395fa..94d1515 100644
 +
 +std::array<BackendShaderSource, kBackendShaderCount> BackendShaderSources() {
 +    // Reuse the renderer's exact source and entry names; both participate in cache identity.
-+    return {{{kBlitHlsl, "vs", "vs_5_0"}, {kBlitHlsl, "psmain", "ps_5_0"},
++    std::array<BackendShaderSource, kBackendShaderCount> result{{{kBlitHlsl, "vs", "vs_5_0"}, {kBlitHlsl, "psmain", "ps_5_0"},
 +             {kDepthHlsl, "vs", "vs_5_0"}, {kDepthHlsl, "psmain", "ps_5_0"},
 +             {kDepthMsHlsl, "vs", "vs_5_0"}, {kDepthMsHlsl, "psmain", "ps_5_0"},
 +             {kDepthMsHlsl, "resolve", "ps_5_0"}, {PointHlsl(), "main", "gs_5_0"}}};
++    size_t index = 8;
++    for (const auto& shader : Gtao::ShaderSources()) result[index++] = {shader.source, shader.entry, shader.profile};
++    return result;
 +}
 +
 +bool PrepareShaderCache(const std::string& source, const char* profile, std::string& key, const char* entry) {
 +    key.clear();
 +    if (source.empty() || !entry || !*entry || !profile || (std::strcmp(profile, "vs_5_0") && std::strcmp(profile, "ps_5_0") &&
-+        std::strcmp(profile, "gs_5_0"))) return false;
++        std::strcmp(profile, "gs_5_0") && std::strcmp(profile, "cs_5_0"))) return false;
 +    static const auto compiler = ShaderCompilerIdentity(false);
 +    if (!compiler) return false;
 +    const auto digest = ShaderCacheKey(source, entry, profile, D3DCOMPILE_OPTIMIZATION_LEVEL1, 0, *compiler, false);
@@ -4675,10 +4885,513 @@ index ce6acda..24c5acc 100644
      // a draw's constants: the vertex registers as uploaded, DrawConstants::ext; src_blend 1 without blending
      virtual void Constants(float (*/*vsc*/)[4], float* /*ext*/, const Target* /*rt*/, uint32_t /*src_blend*/) {}
      // a target with range other than 1 is read, copied or presented
+diff --git a/runtime/gpu/gtao.cpp b/runtime/gpu/gtao.cpp
+new file mode 100644
+index 0000000..d2081bc
+--- /dev/null
++++ b/runtime/gpu/gtao.cpp
+@@ -0,0 +1,410 @@
++#include "gpu/gtao.h"
++
++#include <wrl/client.h>
++#include <algorithm>
++#include <cassert>
++#include <cmath>
++#include <cstring>
++#include <limits>
++#include <vector>
++
++#include "gpu/xegtao/XeGTAO.h"
++
++namespace gpu {
++namespace {
++using Microsoft::WRL::ComPtr;
++
++const char* kTypes =
++#include "gpu/xegtao/types.inl"
++;
++const char* kCore =
++#include "gpu/xegtao/core.inl"
++;
++constexpr char kDeclarations[] = R"(
++#define VA_SATURATE saturate
++#define XE_GTAO_USE_HALF_FLOAT_PRECISION 0
++#define XE_GTAO_FP32_DEPTHS
++#define XE_GTAO_GENERATE_NORMALS_INPLACE
++)";
++constexpr char kConstants[] = R"(
++cbuffer Constants : register(b0) { GTAOConstants gtao; }
++cbuffer Region : register(b1) { uint2 origin; uint2 extent; float strength; float3 padding; }
++SamplerState pointClamp : register(s0);
++)";
++constexpr char kCrop[] = R"(
++Texture2D<float> source : register(t0);
++RWTexture2D<float> cropped : register(u0);
++[numthreads(8,8,1)] void crop(uint2 p : SV_DispatchThreadID) {
++    if (all(p < extent)) cropped[p] = source.Load(int3(origin + p, 0));
++}
++)";
++constexpr char kPrefilter[] = R"(
++Texture2D<float> source : register(t0);
++RWTexture2D<lpfloat> mip0 : register(u0);
++RWTexture2D<lpfloat> mip1 : register(u1);
++RWTexture2D<lpfloat> mip2 : register(u2);
++RWTexture2D<lpfloat> mip3 : register(u3);
++RWTexture2D<lpfloat> mip4 : register(u4);
++[numthreads(8,8,1)] void prefilter(uint2 p : SV_DispatchThreadID, uint2 g : SV_GroupThreadID) {
++    XeGTAO_PrefilterDepths16x16(p, g, gtao, source, pointClamp, mip0, mip1, mip2, mip3, mip4);
++}
++)";
++constexpr char kMain[] = R"(
++Texture2D<lpfloat> source : register(t0);
++RWTexture2D<uint> ao : register(u0);
++RWTexture2D<unorm float> edges : register(u1);
++[numthreads(8,8,1)] void mainAO(uint2 p : SV_DispatchThreadID) {
++    if (any(p >= extent)) return;
++    uint index = HilbertIndex(p.x, p.y);
++    float2 noise = frac(0.5 + index * float2(0.75487766624669276005, 0.5698402909980532659114));
++    XeGTAO_MainPass(p, 4, 4, noise, float3(0,0,0), gtao, source, pointClamp, ao, edges);
++}
++)";
++constexpr char kDenoise[] = R"(
++Texture2D<uint> ao : register(t0);
++Texture2D<lpfloat> edges : register(t1);
++RWTexture2D<uint> outputAO : register(u0);
++[numthreads(8,8,1)] void denoise(uint2 p : SV_DispatchThreadID) {
++    if (any(p * uint2(2,1) >= extent)) return;
++    XeGTAO_Denoise(p * uint2(2,1), gtao, ao, edges, pointClamp, outputAO, false);
++}
++[numthreads(8,8,1)] void denoiseLast(uint2 p : SV_DispatchThreadID) {
++    if (any(p * uint2(2,1) >= extent)) return;
++    XeGTAO_Denoise(p * uint2(2,1), gtao, ao, edges, pointClamp, outputAO, true);
++}
++)";
++constexpr char kComposite[] = R"(
++cbuffer Region : register(b1) { uint2 origin; uint2 extent; float strength; float3 padding; }
++Texture2D<uint> ao : register(t0);
++Texture2D<float> rawDepth : register(t1);
++float4 vs(uint id : SV_VertexID) : SV_Position {
++    float2 p = float2((id << 1) & 2, id & 2);
++    return float4(p * float2(2,-2) + float2(-1,1), 0, 1);
++}
++float4 composite(float4 position : SV_Position) : SV_Target {
++    int2 p = int2(position.xy) - int2(origin);
++    float visibility = ao.Load(int3(p, 0)) / 255.0;
++    // Clear sky must remain unchanged even at silhouette edges.
++    float factor = rawDepth.Load(int3(p, 0)) >= 0.999999 ? 1.0 : lerp(1.0, saturate(visibility), strength);
++    return float4(factor.xxx, 1);
++}
++)";
++
++constexpr uint32_t kPasses = 6, kDescriptorsPerPass = 7;
++constexpr auto kShaderRead = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
++constexpr auto kPixelRead = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
++struct Region { uint32_t x, y, width, height; float strength = 1.0f; float pad[3]{}; };
++static_assert(sizeof(XeGTAO::GTAOConstants) == 96);
++static_assert(sizeof(Region) == 32);
++
++struct Texture {
++    ComPtr<ID3D12Resource> resource;
++    D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
++    DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
++};
++void Transition(ID3D12GraphicsCommandList* list, Texture& texture, D3D12_RESOURCE_STATES wanted) {
++    if (texture.state == wanted) return;
++    D3D12_RESOURCE_BARRIER barrier{};
++    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
++    barrier.Transition = {texture.resource.Get(), D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, texture.state, wanted};
++    list->ResourceBarrier(1, &barrier);
++    texture.state = wanted;
++}
++bool MakeTexture(ID3D12Device* device, Texture& texture, uint32_t width, uint32_t height,
++                 DXGI_FORMAT format, uint16_t levels = 1) {
++    D3D12_HEAP_PROPERTIES heap{};
++    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
++    D3D12_RESOURCE_DESC desc{};
++    desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
++    desc.Width = width;
++    desc.Height = height;
++    desc.DepthOrArraySize = 1;
++    desc.MipLevels = levels;
++    desc.Format = format;
++    desc.SampleDesc.Count = 1;
++    desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
++    texture.format = format;
++    return SUCCEEDED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
++        D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&texture.resource)));
++}
++void Srv(ID3D12Device* device, ID3D12Resource* resource, DXGI_FORMAT format,
++         D3D12_CPU_DESCRIPTOR_HANDLE view, uint32_t mips = 1) {
++    D3D12_SHADER_RESOURCE_VIEW_DESC desc{};
++    desc.Format = format;
++    desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
++    desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
++    desc.Texture2D.MipLevels = mips;
++    device->CreateShaderResourceView(resource, &desc, view);
++}
++void Uav(ID3D12Device* device, ID3D12Resource* resource, DXGI_FORMAT format,
++         D3D12_CPU_DESCRIPTOR_HANDLE view, uint32_t mip = 0) {
++    D3D12_UNORDERED_ACCESS_VIEW_DESC desc{};
++    desc.Format = format;
++    desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
++    desc.Texture2D.MipSlice = mip;
++    device->CreateUnorderedAccessView(resource, nullptr, &desc, view);
++}
++
++struct Pipelines {
++    ComPtr<ID3D12RootSignature> root;
++    std::array<ComPtr<ID3D12PipelineState>, 5> compute;
++    ComPtr<ID3DBlob> vertex, pixel;
++    struct Composite {
++        DXGI_FORMAT format;
++        DXGI_SAMPLE_DESC samples;
++        ComPtr<ID3D12PipelineState> state;
++    };
++    std::vector<Composite> composite;
++
++    bool Initialize(ID3D12Device* device, const Gtao::Compile& compile) {
++        D3D12_DESCRIPTOR_RANGE ranges[2]{};
++        ranges[0] = {D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0, 0};
++        ranges[1] = {D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 5, 0, 0, 0};
++        D3D12_ROOT_PARAMETER params[4]{};
++        for (uint32_t i = 0; i < 2; ++i) {
++            params[i].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
++            params[i].DescriptorTable = {1, &ranges[i]};
++        }
++        params[2].ParameterType = params[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
++        params[2].Constants = {0, 0, sizeof(XeGTAO::GTAOConstants) / 4};
++        params[3].Constants = {1, 0, sizeof(Region) / 4};
++        D3D12_STATIC_SAMPLER_DESC sampler{};
++        sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
++        sampler.AddressU = sampler.AddressV = sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
++        sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
++        sampler.MaxLOD = std::numeric_limits<float>::max();
++        sampler.MaxAnisotropy = 1;
++        D3D12_ROOT_SIGNATURE_DESC desc{4, params, 1, &sampler, D3D12_ROOT_SIGNATURE_FLAG_NONE};
++        ComPtr<ID3DBlob> blob, errors;
++        if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &errors)) ||
++            FAILED(device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&root)))) return false;
++        const auto& shaders = Gtao::ShaderSources();
++        for (uint32_t i = 0; i < compute.size(); ++i) {
++            const auto& shader = shaders[i];
++            ID3DBlob* code = compile(shader.source, shader.entry, shader.profile);
++            if (!code) return false;
++            D3D12_COMPUTE_PIPELINE_STATE_DESC pso{};
++            pso.pRootSignature = root.Get();
++            pso.CS = {code->GetBufferPointer(), code->GetBufferSize()};
++            if (FAILED(device->CreateComputePipelineState(&pso, IID_PPV_ARGS(&compute[i])))) return false;
++        }
++        vertex = compile(shaders[5].source, shaders[5].entry, shaders[5].profile);
++        pixel = compile(shaders[6].source, shaders[6].entry, shaders[6].profile);
++        return vertex && pixel;
++    }
++    ID3D12PipelineState* CompositeState(ID3D12Device* device, DXGI_FORMAT format, DXGI_SAMPLE_DESC samples) {
++        for (const auto& p : composite)
++            if (p.format == format && p.samples.Count == samples.Count && p.samples.Quality == samples.Quality) return p.state.Get();
++        D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
++        desc.pRootSignature = root.Get();
++        desc.VS = {vertex->GetBufferPointer(), vertex->GetBufferSize()};
++        desc.PS = {pixel->GetBufferPointer(), pixel->GetBufferSize()};
++        auto& blend = desc.BlendState.RenderTarget[0];
++        blend.BlendEnable = TRUE;
++        blend.SrcBlend = D3D12_BLEND_ZERO;
++        blend.DestBlend = D3D12_BLEND_SRC_COLOR;
++        blend.BlendOp = D3D12_BLEND_OP_ADD;
++        blend.SrcBlendAlpha = D3D12_BLEND_ZERO;
++        blend.DestBlendAlpha = D3D12_BLEND_ONE;
++        blend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
++        blend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_RED | D3D12_COLOR_WRITE_ENABLE_GREEN | D3D12_COLOR_WRITE_ENABLE_BLUE;
++        desc.SampleMask = UINT_MAX;
++        desc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
++        desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
++        desc.RasterizerState.DepthClipEnable = TRUE;
++        desc.RasterizerState.MultisampleEnable = samples.Count > 1;
++        desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
++        desc.NumRenderTargets = 1;
++        desc.RTVFormats[0] = format;
++        desc.SampleDesc = samples;
++        Composite p{format, samples, {}};
++        if (FAILED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&p.state)))) return nullptr;
++        composite.push_back(std::move(p));
++        return composite.back().state.Get();
++    }
++};
++
++struct Frame {
++    uint32_t width = 0, height = 0, stride = 0;
++    ComPtr<ID3D12DescriptorHeap> views;
++    Texture crop, depth, edges;
++    std::array<Texture, 3> ao;
++    // Retain inputs and every pipeline object even if Reset destroys the pool.
++    ComPtr<ID3D12Resource> input_depth, input_color;
++    std::shared_ptr<Pipelines> pipelines;
++    D3D12_CPU_DESCRIPTOR_HANDLE Cpu(uint32_t pass, uint32_t index) const {
++        auto handle = views->GetCPUDescriptorHandleForHeapStart();
++        handle.ptr += SIZE_T(pass * kDescriptorsPerPass + index) * stride;
++        return handle;
++    }
++    D3D12_GPU_DESCRIPTOR_HANDLE Gpu(uint32_t pass, uint32_t index) const {
++        auto handle = views->GetGPUDescriptorHandleForHeapStart();
++        handle.ptr += UINT64(pass * kDescriptorsPerPass + index) * stride;
++        return handle;
++    }
++    bool Initialize(ID3D12Device* device, uint32_t w, uint32_t h) {
++        width = w; height = h;
++        stride = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
++        D3D12_DESCRIPTOR_HEAP_DESC heap{};
++        heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
++        heap.NumDescriptors = kPasses * kDescriptorsPerPass;
++        heap.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
++        if (FAILED(device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&views))) ||
++            !MakeTexture(device, crop, w, h, DXGI_FORMAT_R32_FLOAT) ||
++            !MakeTexture(device, depth, w, h, DXGI_FORMAT_R32_FLOAT, 5) ||
++            !MakeTexture(device, edges, w, h, DXGI_FORMAT_R8_UNORM)) return false;
++        for (auto& image : ao) if (!MakeTexture(device, image, w, h, DXGI_FORMAT_R8_UINT)) return false;
++        // Fully initialize unused table entries too; no descriptor inherits a
++        // previous player's inputs or references an unbound resource.
++        for (uint32_t p = 0; p < kPasses; ++p) {
++            for (uint32_t i = 0; i < 2; ++i) Srv(device, nullptr, DXGI_FORMAT_R32_FLOAT, Cpu(p, i));
++            for (uint32_t i = 0; i < 5; ++i) Uav(device, nullptr, DXGI_FORMAT_R32_FLOAT, Cpu(p, i + 2));
++        }
++        Uav(device, crop.resource.Get(), crop.format, Cpu(0, 2));
++        Srv(device, crop.resource.Get(), crop.format, Cpu(1, 0));
++        for (uint32_t m = 0; m < 5; ++m) Uav(device, depth.resource.Get(), depth.format, Cpu(1, m + 2), m);
++        Srv(device, depth.resource.Get(), depth.format, Cpu(2, 0), 5);
++        Uav(device, ao[0].resource.Get(), ao[0].format, Cpu(2, 2));
++        Uav(device, edges.resource.Get(), edges.format, Cpu(2, 3));
++        for (uint32_t p = 3; p <= 4; ++p) {
++            Srv(device, ao[p - 3].resource.Get(), ao[p - 3].format, Cpu(p, 0));
++            Srv(device, edges.resource.Get(), edges.format, Cpu(p, 1));
++            Uav(device, ao[p - 2].resource.Get(), ao[p - 2].format, Cpu(p, 2));
++        }
++        Srv(device, ao[2].resource.Get(), ao[2].format, Cpu(5, 0));
++        Srv(device, crop.resource.Get(), crop.format, Cpu(5, 1));
++        return true;
++    }
++};
++} // namespace
++
++struct Gtao::Impl {
++    ComPtr<ID3D12Device> device;
++    std::shared_ptr<Pipelines> pipelines;
++    std::vector<std::shared_ptr<Frame>> frames;
++};
++Gtao::Gtao() : impl_(std::make_unique<Impl>()) {}
++Gtao::~Gtao() = default;
++void Gtao::Reset() { impl_ = std::make_unique<Impl>(); }
++
++const std::array<Gtao::Shader, 7>& Gtao::ShaderSources() {
++    static const auto sources = [] {
++        const std::string base = std::string(kDeclarations) + kTypes + kConstants;
++        const std::string core = base + kCore;
++        return std::array<Shader, 7>{{
++            {base + kCrop, "crop", "cs_5_0"},
++            {core + kPrefilter, "prefilter", "cs_5_0"},
++            {core + kMain, "mainAO", "cs_5_0"},
++            {core + kDenoise, "denoise", "cs_5_0"},
++            {core + kDenoise, "denoiseLast", "cs_5_0"},
++            {kComposite, "vs", "vs_5_0"},
++            {kComposite, "composite", "ps_5_0"}
++        }};
++    }();
++    return sources;
++}
++
++Gtao::Result Gtao::Execute(ID3D12Device* device, ID3D12GraphicsCommandList* list,
++                          const Input& in, const Compile& compile) {
++    if (!device || !list || !in.depth || !in.color || !in.color_view.ptr || !compile ||
++        in.depth == in.color || in.viewport.left < 0 || in.viewport.top < 0 ||
++        in.viewport.right <= in.viewport.left || in.viewport.bottom <= in.viewport.top) return {};
++    const auto ds = in.depth->GetDesc(), rt = in.color->GetDesc();
++    const uint32_t w = uint32_t(in.viewport.right - in.viewport.left), h = uint32_t(in.viewport.bottom - in.viewport.top);
++    if (w < 16 || h < 16 || ds.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
++        rt.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || ds.SampleDesc.Count != 1 ||
++        ds.DepthOrArraySize != 1 || rt.DepthOrArraySize != 1 ||
++        uint64_t(in.viewport.right) > ds.Width || uint32_t(in.viewport.bottom) > ds.Height ||
++        uint64_t(in.viewport.right) > rt.Width || uint32_t(in.viewport.bottom) > rt.Height ||
++        (in.depth_format != DXGI_FORMAT_R24_UNORM_X8_TYPELESS && in.depth_format != DXGI_FORMAT_R32_FLOAT &&
++         in.depth_format != DXGI_FORMAT_R16_UNORM)) return {};
++    for (float v : in.projection) if (!std::isfinite(v)) return {};
++    // Intel's reconstruction helper uses the standard centered LH projection.
++    // Reject oblique/off-center cameras instead of silently shading wrong depth.
++    if (in.projection[0] <= 0.00001f || in.projection[5] <= 0.00001f ||
++        std::abs(in.projection[11] - 1.0f) > 0.00001f) return {};
++    for (uint32_t i : {1u, 2u, 3u, 4u, 6u, 7u, 8u, 9u, 12u, 13u, 15u})
++        if (std::abs(in.projection[i]) > 0.00001f) return {};
++    XeGTAO::GTAOConstants constants{};
++    XeGTAO::GTAOSettings settings;
++    settings.QualityLevel = 1;
++    settings.DenoisePasses = 2;
++    XeGTAO::GTAOUpdateConstants(constants, int(w), int(h), settings, in.projection.data(), true, 0);
++    if (!(constants.DepthUnpackConsts.x > 0 && constants.DepthUnpackConsts.y >= 1)) return {};
++
++    if (impl_->device.Get() != device) { Reset(); impl_->device = device; }
++    if (!impl_->pipelines) {
++        auto pipelines = std::make_shared<Pipelines>();
++        if (!pipelines->Initialize(device, compile)) return {};
++        impl_->pipelines = std::move(pipelines);
++    }
++    auto* composite = impl_->pipelines->CompositeState(device, in.color_format, rt.SampleDesc);
++    if (!composite) return {};
++    std::shared_ptr<Frame> frame;
++    for (auto& available : impl_->frames) {
++        if (available.use_count() == 1 && available->width == w && available->height == h) { frame = available; break; }
++    }
++    if (!frame) {
++        // Discard only fence-completed slots; caller tokens keep outstanding
++        // dimensions alive across settings changes and device resets.
++        std::erase_if(impl_->frames, [](const auto& p) { return p.use_count() == 1; });
++        frame = std::make_shared<Frame>();
++        if (!frame->Initialize(device, w, h)) return {};
++        impl_->frames.push_back(frame);
++    }
++    frame->input_depth = in.depth;
++    frame->input_color = in.color;
++    frame->pipelines = impl_->pipelines;
++    Srv(device, in.depth, in.depth_format, frame->Cpu(0, 0));
++    ID3D12DescriptorHeap* heaps[] = {frame->views.Get()};
++    list->SetDescriptorHeaps(1, heaps);
++    list->SetComputeRootSignature(impl_->pipelines->root.Get());
++    list->SetComputeRoot32BitConstants(2, sizeof(constants) / 4, &constants, 0);
++    const Region region{uint32_t(in.viewport.left), uint32_t(in.viewport.top), w, h};
++    list->SetComputeRoot32BitConstants(3, sizeof(region) / 4, &region, 0);
++    auto dispatch = [&](uint32_t pass, uint32_t x, uint32_t y) {
++        list->SetPipelineState(impl_->pipelines->compute[pass].Get());
++        list->SetComputeRootDescriptorTable(0, frame->Gpu(pass, 0));
++        list->SetComputeRootDescriptorTable(1, frame->Gpu(pass, 2));
++        list->Dispatch(x, y, 1);
++    };
++    Transition(list, frame->crop, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
++    dispatch(0, (w + 7) / 8, (h + 7) / 8);
++    Transition(list, frame->crop, kShaderRead);
++    Transition(list, frame->depth, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
++    dispatch(1, (w + 15) / 16, (h + 15) / 16);
++    Transition(list, frame->depth, kShaderRead);
++    Transition(list, frame->ao[0], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
++    Transition(list, frame->edges, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
++    dispatch(2, (w + 7) / 8, (h + 7) / 8);
++    Transition(list, frame->ao[0], kShaderRead);
++    Transition(list, frame->edges, kShaderRead);
++    Transition(list, frame->ao[1], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
++    dispatch(3, (w + 15) / 16, (h + 7) / 8);
++    Transition(list, frame->ao[1], kShaderRead);
++    Transition(list, frame->ao[2], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
++    dispatch(4, (w + 15) / 16, (h + 7) / 8);
++    Transition(list, frame->ao[2], kPixelRead);
++    Transition(list, frame->crop, kPixelRead);
++    list->SetGraphicsRootSignature(impl_->pipelines->root.Get());
++    list->SetGraphicsRootDescriptorTable(0, frame->Gpu(5, 0));
++    list->SetGraphicsRootDescriptorTable(1, frame->Gpu(5, 2));
++    list->SetGraphicsRoot32BitConstants(2, sizeof(constants) / 4, &constants, 0);
++    list->SetGraphicsRoot32BitConstants(3, sizeof(region) / 4, &region, 0);
++    list->SetPipelineState(composite);
++    list->OMSetRenderTargets(1, &in.color_view, FALSE, nullptr);
++    const D3D12_VIEWPORT viewport{float(in.viewport.left), float(in.viewport.top), float(w), float(h), 0, 1};
++    list->RSSetViewports(1, &viewport);
++    list->RSSetScissorRects(1, &in.viewport);
++    list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
++    list->DrawInstanced(3, 1, 0, 0);
++    Result result{true, frame};
++#ifndef XBE_RELEASE
++    result.capture.depth = frame->crop.resource.Get();
++    result.capture.linear_depth = frame->depth.resource.Get();
++    result.capture.visibility = frame->ao[2].resource.Get();
++    std::memcpy(result.capture.constants.data(), &constants, sizeof(constants));
++#endif
++    return result;
++}
++} // namespace gpu
+diff --git a/runtime/gpu/gtao.h b/runtime/gpu/gtao.h
+new file mode 100644
+index 0000000..134322d
+--- /dev/null
++++ b/runtime/gpu/gtao.h
+@@ -0,0 +1,72 @@
++#pragma once
++#ifndef WIN32_LEAN_AND_MEAN
++#define WIN32_LEAN_AND_MEAN
++#endif
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#include <windows.h>
++#include <d3d12.h>
++#include <d3dcompiler.h>
++
++#include <array>
++#include <functional>
++#include <memory>
++#include <string>
++
++namespace gpu {
++
++// Optional, spatial-only Intel XeGTAO. The caller chooses the native world
++// boundary; this class never inspects guest state or runs at presentation.
++class Gtao {
++public:
++    struct Shader {
++        std::string source;
++        const char* entry;
++        const char* profile;
++    };
++    using Compile = std::function<ID3DBlob*(const std::string&, const char*, const char*)>;
++    struct Input {
++        ID3D12Resource* depth = nullptr; // single sample, NON_PIXEL_SHADER_RESOURCE
++        DXGI_FORMAT depth_format = DXGI_FORMAT_UNKNOWN; // shader-readable format
++        ID3D12Resource* color = nullptr; // RENDER_TARGET, may be multisampled
++        D3D12_CPU_DESCRIPTOR_HANDLE color_view{};
++        DXGI_FORMAT color_format = DXGI_FORMAT_UNKNOWN;
++        D3D12_RECT viewport{}; // pixel bounds in both input resources
++        // Standard centered left-handed Direct3D perspective, row-major.
++        // Unsupported off-center/oblique projections safely skip the pass.
++        std::array<float, 16> projection{};
++    };
++    struct Result {
++        bool applied = false;
++        // Retain until this command list's GPU fence completes. All per-execute
++        // resources, descriptors and pipeline objects are protected by it.
++        std::shared_ptr<void> lifetime;
++#ifndef XBE_RELEASE
++        // Borrowed until lifetime expires; only the opt-in frame capture reads
++        // these. The raw crop and final visibility are in PIXEL_SHADER_RESOURCE,
++        // linear depth is in NON_PIXEL_SHADER_RESOURCE (mip zero is full size).
++        struct CaptureImages {
++            ID3D12Resource* depth = nullptr;
++            ID3D12Resource* linear_depth = nullptr;
++            ID3D12Resource* visibility = nullptr;
++            std::array<uint32_t, 24> constants{};
++        } capture;
++#endif
++    };
++
++    Gtao();
++    ~Gtao();
++    Gtao(const Gtao&) = delete;
++    Gtao& operator=(const Gtao&) = delete;
++    static const std::array<Shader, 7>& ShaderSources();
++    Result Execute(ID3D12Device*, ID3D12GraphicsCommandList*, const Input&, const Compile&);
++    // Releases idle pooled storage. Submitted work remains owned by its token.
++    void Reset();
++
++private:
++    struct Impl;
++    std::unique_ptr<Impl> impl_;
++};
++
++} // namespace gpu
 diff --git a/runtime/gpu/render_thread.cpp b/runtime/gpu/render_thread.cpp
-index def8fc5..84cba6e 100644
+index def8fc5..63f5763 100644
 --- a/runtime/gpu/render_thread.cpp
 +++ b/runtime/gpu/render_thread.cpp
+@@ -41,7 +41,7 @@ constexpr uint32_t kHeaderRing = 1u << 20;  // guest memory for header copies; a
+ 
+ enum class WaitFor : uint8_t { ReadBack, Resource, Fence, Flush, Copy, Frame, Count };
+ 
+-enum class Op : uint8_t { State, Draw, Clear, Copy, Present, Sync, RecordLate, Flush, Gamma, ClearReport, GetReport };
++enum class Op : uint8_t { State, Draw, Clear, AmbientOcclusion, Copy, Present, Sync, RecordLate, Flush, Gamma, ClearReport, GetReport };
+ 
+ struct Cmd {
+     Op op;
 @@ -76,7 +76,7 @@ std::vector<Range> StateRanges() {
          {At(s, &s.transforms[2]), 2 * sizeof(s.transforms[0])},
          {At(s, &s.transforms[16]), 4 * sizeof(s.transforms[0])},
@@ -4717,12 +5430,23 @@ index def8fc5..84cba6e 100644
          SendState(s);
          Cmd c{Op::Clear};
          c.a = count;
-@@ -153,12 +158,12 @@ public:
+@@ -153,12 +158,23 @@ public:
          Use(s.rt.header);
          Use(s.zs.header);
          if (flags & kClearTarget) Written(s.rt);
 -        g_perf_capture_ns += Ns(t);
 +        if (diag::Perf()) g_perf_capture_ns += Ns(t);
++    }
++
++    void AmbientOcclusion(const State& s, const std::array<float, 16>& projection) override {
++        SendState(s);
++        Cmd c{Op::AmbientOcclusion};
++        c.data = Put(projection.data(), sizeof(projection));
++        cur_->cmds.push_back(c);
++        Use(s.rt.header);
++        Use(s.zs.header);
++        Written(s.rt);
++        if (cur_->cmds.size() >= kBatchCommands) Submit();
      }
  
      // rects and points are taken now; the copy itself, CPU or GPU, runs in order like the console's
@@ -4732,7 +5456,7 @@ index def8fc5..84cba6e 100644
          Cmd c{Op::Copy};
          c.a = count;
          c.b = count && src_rects ? Scratch(kernel::HostPtr(src_rects), count * 16) : 0;
-@@ -171,21 +176,22 @@ public:
+@@ -171,21 +187,22 @@ public:
          Use(src.header);
          Use(dst.header);
          Written(dst);
@@ -4758,7 +5482,7 @@ index def8fc5..84cba6e 100644
      }
  
      void Sync(uint32_t data, uint32_t) override { ReadBack(data, false); }
-@@ -232,6 +238,58 @@ public:
+@@ -232,6 +249,58 @@ public:
      }
  
  private:
@@ -4817,7 +5541,7 @@ index def8fc5..84cba6e 100644
      Batch* NewBatch() {
          Batch* b;
          {
-@@ -257,7 +315,7 @@ private:
+@@ -257,7 +326,7 @@ private:
      void ReadBack(uint32_t data, bool late) {
          // only surfaces the GPU wrote since the last read-back hold anything newer than guest memory
          if (!written_.erase(data)) return;
@@ -4826,7 +5550,7 @@ index def8fc5..84cba6e 100644
          if (diag::Perf() && logged_.insert(uint64_t(data) << 1 | (late ? 1 : 0)).second)
              LOGI("render thread: read-back of %08X for %s", data, late ? "a NOOVERWRITE lock without a finished copy" : "a lock / BlockOnResource");
          Cmd c{Op::Sync};
-@@ -307,13 +365,17 @@ private:
+@@ -307,13 +376,17 @@ private:
      }
  
      // what changed since the last command, in 64 byte pieces
@@ -4845,7 +5569,7 @@ index def8fc5..84cba6e 100644
          std::array<uint32_t, 4> textures;
          for (size_t i = 0; i < 4; i++) textures[i] = Header(s.textures[i]);
          Delta(&sent_.textures, &textures, sizeof(textures));
-@@ -369,11 +431,12 @@ private:
+@@ -369,11 +442,12 @@ private:
      void Wait(uint64_t id, WaitFor kind, const char* why) {
          if (!id || done_.load() >= id) return;
          if (id >= cur_->id) id = Submit();
@@ -4859,7 +5583,20 @@ index def8fc5..84cba6e 100644
          uint64_t ns = Ns(t);
          g_perf_wait_ns += ns;
          g_perf_wait_kind_ns[size_t(kind)] += ns;
-@@ -469,6 +532,7 @@ private:
+@@ -432,6 +506,12 @@ private:
+             }
+             case Op::Draw: inner_->Draw(state_, c.a, c.b, c.c, c.d ? data : nullptr); break;
+             case Op::Clear: inner_->Clear(state_, c.a, c.size ? data : nullptr, c.b, c.c, c.f, c.d); break;
++            case Op::AmbientOcclusion: {
++                std::array<float, 16> projection;
++                std::memcpy(projection.data(), data, sizeof(projection));
++                inner_->AmbientOcclusion(state_, projection);
++                break;
++            }
+             case Op::Copy: inner_->Copy(c.s1, c.s2, c.a, c.b, c.c); break;
+             case Op::Present: inner_->Present(c.s1); break;
+             case Op::Sync: inner_->Sync(c.a, 0); break;
+@@ -469,6 +549,7 @@ private:
      std::unordered_set<uint32_t> written_;  // surfaces drawn since their last read-back, by data address
      std::unordered_set<uint64_t> logged_;   // perf diagnostic: read-backs named once, by address and kind
      uint64_t next_id_ = 0, last_present_ = 0;
@@ -5063,6 +5800,1455 @@ index d1814a3..95503c3 100644
  };
  
  }  // namespace gpu
+diff --git a/runtime/gpu/xegtao/LICENSE b/runtime/gpu/xegtao/LICENSE
+new file mode 100644
+index 0000000..2b1bd15
+--- /dev/null
++++ b/runtime/gpu/xegtao/LICENSE
+@@ -0,0 +1,21 @@
++MIT License
++
++Copyright (C) 2016-2021, Intel Corporation 
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
+diff --git a/runtime/gpu/xegtao/UPSTREAM.md b/runtime/gpu/xegtao/UPSTREAM.md
+new file mode 100644
+index 0000000..410b201
+--- /dev/null
++++ b/runtime/gpu/xegtao/UPSTREAM.md
+@@ -0,0 +1,13 @@
++Intel XeGTAO, pinned at a5b1686c7ea37788eeb3576b5be47f7c03db532c
++https://github.com/GameTechDev/XeGTAO
++Copyright (C) 2016-2021 Intel Corporation; MIT (LICENSE).
++
++XeGTAO.h is unchanged. types.inl embeds that same header for shader preparation.
++core.inl embeds Source/Rendering/Shaders/XeGTAO.hlsli, with four equivalent FXC
++syntax substitutions: integer swizzles 2.xx/4.xx/8.xx become uint2 constructors,
++and dot(..., 1.xxxx) uses float4(1,1,1,1). Its XeGTAO.h include is supplied by
++ShaderSources instead of a runtime filesystem dependency. Raw-string delimiters
++are the only other wrapping. The algorithm is Intel's medium-quality GTAO with
++built-in depth normals, FP32 math/depth and two spatial denoise passes. No temporal
++jitter/history is used. Game integration, viewport crop and color composite live
++in gpu/gtao.cpp; the latter preserves alpha and applies the full AO visibility.
+diff --git a/runtime/gpu/xegtao/XeGTAO.h b/runtime/gpu/xegtao/XeGTAO.h
+new file mode 100644
+index 0000000..a2b366c
+--- /dev/null
++++ b/runtime/gpu/xegtao/XeGTAO.h
+@@ -0,0 +1,263 @@
++///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++// Copyright (C) 2016-2021, Intel Corporation 
++// 
++// SPDX-License-Identifier: MIT
++///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++//
++// XeGTAO is based on GTAO/GTSO "Jimenez et al. / Practical Real-Time Strategies for Accurate Indirect Occlusion", 
++// https://www.activision.com/cdn/research/Practical_Real_Time_Strategies_for_Accurate_Indirect_Occlusion_NEW%20VERSION_COLOR.pdf
++// 
++// Implementation:  Filip Strugar (filip.strugar@intel.com), Steve Mccalla <stephen.mccalla@intel.com>         (\_/)
++// Version:         1.02                                                                                      (='.'=)
++// Details:         https://github.com/GameTechDev/XeGTAO                                                     (")_(")
++//
++// Version history:
++// 1.00 (2021-08-09): Initial release
++// 1.01 (2021-09-02): Fix for depth going to inf for 'far' depth buffer values that are out of fp16 range
++// 1.02 (2021-09-03): More fast_acos use and made final horizon cos clamping optional (off by default): 3-4% perf boost
++// 1.10 (2021-09-03): Added a couple of heuristics to combat over-darkening errors in certain scenarios
++// 1.20 (2021-09-06): Optional normal from depth generation is now a standalone pass: no longer integrated into 
++//                    main XeGTAO pass to reduce complexity and allow reuse; also quality of generated normals improved
++// 1.21 (2021-09-28): Replaced 'groupshared'-based denoiser with a slightly slower multi-pass one where a 2-pass new
++//                    equals 1-pass old. However, 1-pass new is faster than the 1-pass old and enough when TAA enabled.
++// 1.22 (2021-09-28): Added 'XeGTAO_' prefix to all local functions to avoid name clashes with various user codebases.
++// 1.30 (2021-10-10): Added support for directional component (bent normals).
++///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++
++#ifndef __XE_GTAO_TYPES_H__
++#define __XE_GTAO_TYPES_H__
++
++#ifdef __cplusplus
++
++#include <cmath>
++
++namespace XeGTAO
++{
++
++    // cpp<->hlsl mapping
++    struct Matrix4x4    { float           m[16];    };
++    struct Vector3      { float           x,y,z;    };
++    struct Vector2      { float           x,y;      };
++    struct Vector2i     { int             x,y;      };
++    typedef unsigned int uint;
++
++#else // #ifdef __cplusplus
++
++    // cpp<->hlsl mapping
++    #define Matrix4x4       float4x4
++    #define Vector3         float3
++    #define Vector2         float2
++    #define Vector2i        int2
++    
++#endif
++
++    // Global consts that need to be visible from both shader and cpp side
++    #define XE_GTAO_DEPTH_MIP_LEVELS                    5                   // this one is hard-coded to 5 for now
++    #define XE_GTAO_NUMTHREADS_X                        8                   // these can be changed
++    #define XE_GTAO_NUMTHREADS_Y                        8                   // these can be changed
++    
++    struct GTAOConstants
++    {
++        Vector2i                ViewportSize;
++        Vector2                 ViewportPixelSize;                  // .zw == 1.0 / ViewportSize.xy
++
++        Vector2                 DepthUnpackConsts;
++        Vector2                 CameraTanHalfFOV;
++
++        Vector2                 NDCToViewMul;
++        Vector2                 NDCToViewAdd;
++
++        Vector2                 NDCToViewMul_x_PixelSize;
++        float                   EffectRadius;                       // world (viewspace) maximum size of the shadow
++        float                   EffectFalloffRange;
++
++        float                   RadiusMultiplier;
++        float                   Padding0;
++        float                   FinalValuePower;
++        float                   DenoiseBlurBeta;
++
++        float                   SampleDistributionPower;
++        float                   ThinOccluderCompensation;
++        float                   DepthMIPSamplingOffset;
++        int                     NoiseIndex;                         // frameIndex % 64 if using TAA or 0 otherwise
++    };
++
++    // This is used only for the development (ray traced ground truth).
++    struct ReferenceRTAOConstants
++    {
++        float                   TotalRaysLength     ;       // similar to Radius from GTAO
++        float                   Albedo              ;       // the assumption on the average material albedo
++        int                     MaxBounces          ;       // how many rays to recurse before stopping
++        int                     AccumulatedFrames   ;       // how many frames have we accumulated so far (after resetting/clearing). If 0 - this is the first.
++        int                     AccumulateFrameMax  ;       // how many frames are we aiming to accumulate; stop when we hit!
++        int                     Padding0;
++        int                     Padding1;
++        int                     Padding2;
++#ifdef __cplusplus
++        ReferenceRTAOConstants( ) { TotalRaysLength = 1.0f; Albedo = 0.0f; MaxBounces = 1; AccumulatedFrames = 0; AccumulateFrameMax = 0; }
++#endif
++    };
++
++    #ifndef XE_GTAO_USE_DEFAULT_CONSTANTS
++    #define XE_GTAO_USE_DEFAULT_CONSTANTS 1
++    #endif
++
++    // some constants reduce performance if provided as dynamic values; if these constants are not required to be dynamic and they match default values, 
++    // set XE_GTAO_USE_DEFAULT_CONSTANTS and the code will compile into a more efficient shader
++    #define XE_GTAO_DEFAULT_RADIUS_MULTIPLIER               (1.457f  )  // allows us to use different value as compared to ground truth radius to counter inherent screen space biases
++    #define XE_GTAO_DEFAULT_FALLOFF_RANGE                   (0.615f  )  // distant samples contribute less
++    #define XE_GTAO_DEFAULT_SAMPLE_DISTRIBUTION_POWER       (2.0f    )  // small crevices more important than big surfaces
++    #define XE_GTAO_DEFAULT_THIN_OCCLUDER_COMPENSATION      (0.0f    )  // the new 'thickness heuristic' approach
++    #define XE_GTAO_DEFAULT_FINAL_VALUE_POWER               (2.2f    )  // modifies the final ambient occlusion value using power function - this allows some of the above heuristics to do different things
++    #define XE_GTAO_DEFAULT_DEPTH_MIP_SAMPLING_OFFSET       (3.30f   )  // main trade-off between performance (memory bandwidth) and quality (temporal stability is the first affected, thin objects next)
++
++    #define XE_GTAO_OCCLUSION_TERM_SCALE                    (1.5f)      // for packing in UNORM (because raw, pre-denoised occlusion term can overshoot 1 but will later average out to 1)
++
++    // From https://www.shadertoy.com/view/3tB3z3 - except we're using R2 here
++    #define XE_HILBERT_LEVEL    6U
++    #define XE_HILBERT_WIDTH    ( (1U << XE_HILBERT_LEVEL) )
++    #define XE_HILBERT_AREA     ( XE_HILBERT_WIDTH * XE_HILBERT_WIDTH )
++    inline uint HilbertIndex( uint posX, uint posY )
++    {   
++        uint index = 0U;
++        for( uint curLevel = XE_HILBERT_WIDTH/2U; curLevel > 0U; curLevel /= 2U )
++        {
++            uint regionX = ( posX & curLevel ) > 0U;
++            uint regionY = ( posY & curLevel ) > 0U;
++            index += curLevel * curLevel * ( (3U * regionX) ^ regionY);
++            if( regionY == 0U )
++            {
++                if( regionX == 1U )
++                {
++                    posX = uint( (XE_HILBERT_WIDTH - 1U) ) - posX;
++                    posY = uint( (XE_HILBERT_WIDTH - 1U) ) - posY;
++                }
++
++                uint temp = posX;
++                posX = posY;
++                posY = temp;
++            }
++        }
++        return index;
++    }
++
++#ifdef __cplusplus
++
++    struct GTAOSettings
++    {
++        int         QualityLevel                        = 2;        // 0: low; 1: medium; 2: high; 3: ultra
++        int         DenoisePasses                       = 1;        // 0: disabled; 1: sharp; 2: medium; 3: soft
++        float       Radius                              = 0.5f;     // [0.0,  ~ ]   World (view) space size of the occlusion sphere.
++
++        // auto-tune-d settings
++        float       RadiusMultiplier                    = XE_GTAO_DEFAULT_RADIUS_MULTIPLIER;
++        float       FalloffRange                        = XE_GTAO_DEFAULT_FALLOFF_RANGE;
++        float       SampleDistributionPower             = XE_GTAO_DEFAULT_SAMPLE_DISTRIBUTION_POWER;
++        float       ThinOccluderCompensation            = XE_GTAO_DEFAULT_THIN_OCCLUDER_COMPENSATION;    
++        float       FinalValuePower                     = XE_GTAO_DEFAULT_FINAL_VALUE_POWER;
++        float       DepthMIPSamplingOffset              = XE_GTAO_DEFAULT_DEPTH_MIP_SAMPLING_OFFSET;
++    };
++
++    template<class T> inline T clamp( T const & v, T const & min, T const & max ) { assert( max >= min ); if( v < min ) return min; if( v > max ) return max;  return v; }
++
++    // If using TAA then set noiseIndex to frameIndex % 64 - otherwise use 0
++    inline void GTAOUpdateConstants( XeGTAO::GTAOConstants& consts, int viewportWidth, int viewportHeight, const XeGTAO::GTAOSettings & settings, const float projMatrix[16], bool rowMajor, unsigned int frameCounter )
++    {
++        consts.ViewportSize                 = { viewportWidth, viewportHeight };
++        consts.ViewportPixelSize            = { 1.0f / (float)viewportWidth, 1.0f / (float)viewportHeight };
++
++        float depthLinearizeMul = (rowMajor)?(-projMatrix[3 * 4 + 2]):(-projMatrix[3 + 2 * 4]);     // float depthLinearizeMul = ( clipFar * clipNear ) / ( clipFar - clipNear );
++        float depthLinearizeAdd = (rowMajor)?( projMatrix[2 * 4 + 2]):( projMatrix[2 + 2 * 4]);     // float depthLinearizeAdd = clipFar / ( clipFar - clipNear );
++
++        // correct the handedness issue. need to make sure this below is correct, but I think it is.
++        if( depthLinearizeMul * depthLinearizeAdd < 0 )
++            depthLinearizeAdd = -depthLinearizeAdd;
++        consts.DepthUnpackConsts            = { depthLinearizeMul, depthLinearizeAdd };
++
++        float tanHalfFOVY = 1.0f / ((rowMajor)?(projMatrix[1 * 4 + 1]):(projMatrix[1 + 1 * 4]));    // = tanf( drawContext.Camera.GetYFOV( ) * 0.5f );
++        float tanHalfFOVX = 1.0F / ((rowMajor)?(projMatrix[0 * 4 + 0]):(projMatrix[0 + 0 * 4]));    // = tanHalfFOVY * drawContext.Camera.GetAspect( );
++        consts.CameraTanHalfFOV             = { tanHalfFOVX, tanHalfFOVY };
++
++        consts.NDCToViewMul                 = { consts.CameraTanHalfFOV.x * 2.0f, consts.CameraTanHalfFOV.y * -2.0f };
++        consts.NDCToViewAdd                 = { consts.CameraTanHalfFOV.x * -1.0f, consts.CameraTanHalfFOV.y * 1.0f };
++
++        consts.NDCToViewMul_x_PixelSize     = { consts.NDCToViewMul.x * consts.ViewportPixelSize.x, consts.NDCToViewMul.y * consts.ViewportPixelSize.y };
++
++        consts.EffectRadius                 = settings.Radius;
++
++        consts.EffectFalloffRange           = settings.FalloffRange;
++        consts.DenoiseBlurBeta              = (settings.DenoisePasses==0)?(1e4f):(1.2f);    // high value disables denoise - more elegant & correct way would be do set all edges to 0
++
++        consts.RadiusMultiplier             = settings.RadiusMultiplier;
++        consts.SampleDistributionPower      = settings.SampleDistributionPower;
++        consts.ThinOccluderCompensation     = settings.ThinOccluderCompensation;
++        consts.FinalValuePower              = settings.FinalValuePower;
++        consts.DepthMIPSamplingOffset       = settings.DepthMIPSamplingOffset;
++        consts.NoiseIndex                   = (settings.DenoisePasses>0)?(frameCounter % 64):(0);
++        consts.Padding0 = 0;
++    }
++
++#ifdef IMGUI_API
++    inline bool GTAOImGuiSettings( XeGTAO::GTAOSettings & settings )
++    {
++        bool hadChanges = false;
++    
++        ImGui::PushItemWidth( 120.0f );
++
++        ImGui::Text( "Performance/quality settings:" );
++
++        ImGui::Combo( "Quality Level", &settings.QualityLevel, "Low\0Medium\0High\0Ultra\00");
++        if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "Higher quality settings use more samples per pixel but are slower" );
++        settings.QualityLevel       = clamp( settings.QualityLevel , 0, 3 );
++
++        ImGui::Combo( "Denoising level", &settings.DenoisePasses, "Disabled\0Sharp\0Medium\0Soft\00");
++        if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "The amount of edge-aware spatial denoise applied" );
++        settings.DenoisePasses      = clamp( settings.DenoisePasses , 0, 3 );
++
++        ImGui::Text( "Visual settings:" );
++
++        settings.Radius             = clamp( settings.Radius, 0.0f, 100000.0f );
++
++        hadChanges |= ImGui::InputFloat( "Effect radius",               &settings.Radius              , 0.05f, 0.0f, "%.2f" );
++        if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "World (viewspace) effect radius\nExpected range: depends on the scene & requirements, anything from 0.01 to 1000+" );
++        settings.Radius                             = clamp( settings.Radius                          , 0.0f, 10000.0f      );
++
++        if( ImGui::CollapsingHeader( "Auto-tuned settings (heuristics)" ) )
++        {
++            hadChanges |= ImGui::InputFloat( "Radius multiplier",    &settings.RadiusMultiplier , 0.05f, 0.0f, "%.2f" );
++            if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "Multiplies the 'Effect Radius' - used by the auto-tune to best match raytraced ground truth\nExpected range: [0.3, 3.0], defaults to %.3f", XE_GTAO_DEFAULT_RADIUS_MULTIPLIER );
++            settings.RadiusMultiplier               = clamp( settings.RadiusMultiplier          , 0.3f, 3.0f          );
++
++            hadChanges |= ImGui::InputFloat( "Falloff range",        &settings.FalloffRange     , 0.05f, 0.0f, "%.2f" );
++            if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "Gently reduce sample impact as it gets out of 'Effect radius' bounds\nExpected range: [0.0, 1.0], defaults to %.3f", XE_GTAO_DEFAULT_FALLOFF_RANGE );
++            settings.FalloffRange                   = clamp( settings.FalloffRange              , 0.0f, 1.0f      );
++
++            hadChanges |= ImGui::InputFloat( "Sample distribution power",   &settings.SampleDistributionPower  , 0.05f, 0.0f, "%.2f" );
++            if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "Make samples on a slice equally distributed (1.0) or focus more towards the center (>1.0)\nExpected range: [1.0, 3.0], 2defaults to %.3f", XE_GTAO_DEFAULT_SAMPLE_DISTRIBUTION_POWER );
++            settings.SampleDistributionPower        = clamp( settings.SampleDistributionPower   , 1.0f, 3.0f      );
++
++            hadChanges |= ImGui::InputFloat( "Thin occluder compensation",   &settings.ThinOccluderCompensation, 0.05f, 0.0f, "%.2f" );
++            if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "Slightly reduce impact of samples further back to counter the bias from depth-based (incomplete) input scene geometry data\nExpected range: [0.0, 0.7], defaults to %.3f", XE_GTAO_DEFAULT_THIN_OCCLUDER_COMPENSATION );
++            settings.ThinOccluderCompensation       = clamp( settings.ThinOccluderCompensation      , 0.0f, 0.7f       );
++
++            hadChanges |= ImGui::InputFloat( "Final power",                 &settings.FinalValuePower, 0.05f, 0.0f, "%.2f" );
++            if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "Applies power function to the final value: occlusion = pow( occlusion, finalPower )\nExpected range: [0.5, 5.0], defaults to %.3f", XE_GTAO_DEFAULT_FINAL_VALUE_POWER );
++            settings.FinalValuePower                = clamp( settings.FinalValuePower           , 0.5f, 5.0f       );
++
++            hadChanges |= ImGui::InputFloat( "Depth MIP sampling offset",   &settings.DepthMIPSamplingOffset, 0.05f, 0.0f, "%.2f" );
++            if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "Mainly performance (texture memory bandwidth) setting but as a side-effect reduces overshadowing by thin objects and increases temporal instability\nExpected range: [2.0, 6.0], defaults to %.3f", XE_GTAO_DEFAULT_DEPTH_MIP_SAMPLING_OFFSET );
++            settings.DepthMIPSamplingOffset         = clamp( settings.DepthMIPSamplingOffset    , 0.0f, 30.0f      );
++        }
++
++        ImGui::PopItemWidth( );
++
++        return hadChanges;
++    }
++#endif // IMGUI_API
++
++}   // close the namespace
++
++#endif // #ifdef __cplusplus
++
++
++#endif // __XE_GTAO_TYPES_H__
+\ No newline at end of file
+diff --git a/runtime/gpu/xegtao/core.inl b/runtime/gpu/xegtao/core.inl
+new file mode 100644
+index 0000000..15e69bd
+--- /dev/null
++++ b/runtime/gpu/xegtao/core.inl
+@@ -0,0 +1,856 @@
++R"XEGTAO(
++///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++// Copyright (C) 2016-2021, Intel Corporation 
++// 
++// SPDX-License-Identifier: MIT
++///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++//
++// XeGTAO is based on GTAO/GTSO "Jimenez et al. / Practical Real-Time Strategies for Accurate Indirect Occlusion", 
++// https://www.activision.com/cdn/research/Practical_Real_Time_Strategies_for_Accurate_Indirect_Occlusion_NEW%20VERSION_COLOR.pdf
++// 
++// Implementation:  Filip Strugar (filip.strugar@intel.com), Steve Mccalla <stephen.mccalla@intel.com>         (\_/)
++// Version:         (see XeGTAO.h)                                                                            (='.'=)
++// Details:         https://github.com/GameTechDev/XeGTAO                                                     (")_(")
++//
++// Version history: see XeGTAO.h
++///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++
++#ifdef XE_GTAO_SHOW_DEBUG_VIZ
++#include "vaShared.hlsl"
++#endif
++
++#if defined( XE_GTAO_SHOW_NORMALS ) || defined( XE_GTAO_SHOW_EDGES ) || defined( XE_GTAO_SHOW_BENT_NORMALS )
++RWTexture2D<float4>         g_outputDbgImage    : register( u2 );
++#endif
++
++// XeGTAO.h is prepended by gpu::Gtao::ShaderSources.
++
++#define XE_GTAO_PI               	(3.1415926535897932384626433832795)
++#define XE_GTAO_PI_HALF             (1.5707963267948966192313216916398)
++
++#ifndef XE_GTAO_USE_HALF_FLOAT_PRECISION
++#define XE_GTAO_USE_HALF_FLOAT_PRECISION 1
++#endif
++
++#if defined(XE_GTAO_FP32_DEPTHS) && XE_GTAO_USE_HALF_FLOAT_PRECISION
++#error Using XE_GTAO_USE_HALF_FLOAT_PRECISION with 32bit depths is not supported yet unfortunately (it is possible to apply fp16 on parts not related to depth but this has not been done yet)
++#endif 
++
++
++#if (XE_GTAO_USE_HALF_FLOAT_PRECISION != 0)
++#if 1 // old fp16 approach (<SM6.2)
++    typedef min16float      lpfloat; 
++    typedef min16float2     lpfloat2;
++    typedef min16float3     lpfloat3;
++    typedef min16float4     lpfloat4;
++    typedef min16float3x3   lpfloat3x3;
++#else // new fp16 approach (requires SM6.2 and -enable-16bit-types) - WARNING: perf degradation noticed on some HW, while the old (min16float) path is mostly at least a minor perf gain so this is more useful for quality testing
++    typedef float16_t       lpfloat; 
++    typedef float16_t2      lpfloat2;
++    typedef float16_t3      lpfloat3;
++    typedef float16_t4      lpfloat4;
++    typedef float16_t3x3    lpfloat3x3;
++#endif
++#else
++    typedef float           lpfloat;
++    typedef float2          lpfloat2;
++    typedef float3          lpfloat3;
++    typedef float4          lpfloat4;
++    typedef float3x3        lpfloat3x3;
++#endif
++
++
++//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++
++// R11G11B10_UNORM <-> float3
++float3 XeGTAO_R11G11B10_UNORM_to_FLOAT3( uint packedInput )
++{
++    float3 unpackedOutput;
++    unpackedOutput.x = (float)( ( packedInput       ) & 0x000007ff ) / 2047.0f;
++    unpackedOutput.y = (float)( ( packedInput >> 11 ) & 0x000007ff ) / 2047.0f;
++    unpackedOutput.z = (float)( ( packedInput >> 22 ) & 0x000003ff ) / 1023.0f;
++    return unpackedOutput;
++}
++// 'unpackedInput' is float3 and not float3 on purpose as half float lacks precision for below!
++uint XeGTAO_FLOAT3_to_R11G11B10_UNORM( float3 unpackedInput )
++{
++    uint packedOutput;
++    packedOutput =( ( uint( VA_SATURATE( unpackedInput.x ) * 2047 + 0.5f ) ) |
++        ( uint( VA_SATURATE( unpackedInput.y ) * 2047 + 0.5f ) << 11 ) |
++        ( uint( VA_SATURATE( unpackedInput.z ) * 1023 + 0.5f ) << 22 ) );
++    return packedOutput;
++}
++//
++lpfloat4 XeGTAO_R8G8B8A8_UNORM_to_FLOAT4( uint packedInput )
++{
++    lpfloat4 unpackedOutput;
++    unpackedOutput.x = (lpfloat)( packedInput & 0x000000ff ) / (lpfloat)255;
++    unpackedOutput.y = (lpfloat)( ( ( packedInput >> 8 ) & 0x000000ff ) ) / (lpfloat)255;
++    unpackedOutput.z = (lpfloat)( ( ( packedInput >> 16 ) & 0x000000ff ) ) / (lpfloat)255;
++    unpackedOutput.w = (lpfloat)( packedInput >> 24 ) / (lpfloat)255;
++    return unpackedOutput;
++}
++//
++uint XeGTAO_FLOAT4_to_R8G8B8A8_UNORM( lpfloat4 unpackedInput )
++{
++    return (( uint( saturate( unpackedInput.x ) * (lpfloat)255 + (lpfloat)0.5 ) ) |
++            ( uint( saturate( unpackedInput.y ) * (lpfloat)255 + (lpfloat)0.5 ) << 8 ) |
++            ( uint( saturate( unpackedInput.z ) * (lpfloat)255 + (lpfloat)0.5 ) << 16 ) |
++            ( uint( saturate( unpackedInput.w ) * (lpfloat)255 + (lpfloat)0.5 ) << 24 ) );
++}
++
++///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++
++// Inputs are screen XY and viewspace depth, output is viewspace position
++float3 XeGTAO_ComputeViewspacePosition( const float2 screenPos, const float viewspaceDepth, const GTAOConstants consts )
++{
++    float3 ret;
++    ret.xy = (consts.NDCToViewMul * screenPos.xy + consts.NDCToViewAdd) * viewspaceDepth;
++    ret.z = viewspaceDepth;
++    return ret;
++}
++
++float XeGTAO_ScreenSpaceToViewSpaceDepth( const float screenDepth, const GTAOConstants consts )
++{
++    float depthLinearizeMul = consts.DepthUnpackConsts.x;
++    float depthLinearizeAdd = consts.DepthUnpackConsts.y;
++    // Optimised version of "-cameraClipNear / (cameraClipFar - projDepth * (cameraClipFar - cameraClipNear)) * cameraClipFar"
++    return depthLinearizeMul / (depthLinearizeAdd - screenDepth);
++}
++
++lpfloat4 XeGTAO_CalculateEdges( const lpfloat centerZ, const lpfloat leftZ, const lpfloat rightZ, const lpfloat topZ, const lpfloat bottomZ )
++{
++    lpfloat4 edgesLRTB = lpfloat4( leftZ, rightZ, topZ, bottomZ ) - (lpfloat)centerZ;
++
++    lpfloat slopeLR = (edgesLRTB.y - edgesLRTB.x) * 0.5;
++    lpfloat slopeTB = (edgesLRTB.w - edgesLRTB.z) * 0.5;
++    lpfloat4 edgesLRTBSlopeAdjusted = edgesLRTB + lpfloat4( slopeLR, -slopeLR, slopeTB, -slopeTB );
++    edgesLRTB = min( abs( edgesLRTB ), abs( edgesLRTBSlopeAdjusted ) );
++    return lpfloat4(saturate( ( 1.25 - edgesLRTB / (centerZ * 0.011) ) ));
++}
++
++// packing/unpacking for edges; 2 bits per edge mean 4 gradient values (0, 0.33, 0.66, 1) for smoother transitions!
++lpfloat XeGTAO_PackEdges( lpfloat4 edgesLRTB )
++{
++    // integer version:
++    // edgesLRTB = saturate(edgesLRTB) * 2.9.xxxx + 0.5.xxxx;
++    // return (((uint)edgesLRTB.x) << 6) + (((uint)edgesLRTB.y) << 4) + (((uint)edgesLRTB.z) << 2) + (((uint)edgesLRTB.w));
++    // 
++    // optimized, should be same as above
++    edgesLRTB = round( saturate( edgesLRTB ) * 2.9 );
++    return dot( edgesLRTB, lpfloat4( 64.0 / 255.0, 16.0 / 255.0, 4.0 / 255.0, 1.0 / 255.0 ) ) ;
++}
++
++float3 XeGTAO_CalculateNormal( const float4 edgesLRTB, float3 pixCenterPos, float3 pixLPos, float3 pixRPos, float3 pixTPos, float3 pixBPos )
++{
++    // Get this pixel's viewspace normal
++    float4 acceptedNormals  = saturate( float4( edgesLRTB.x*edgesLRTB.z, edgesLRTB.z*edgesLRTB.y, edgesLRTB.y*edgesLRTB.w, edgesLRTB.w*edgesLRTB.x ) + 0.01 );
++
++    pixLPos = normalize(pixLPos - pixCenterPos);
++    pixRPos = normalize(pixRPos - pixCenterPos);
++    pixTPos = normalize(pixTPos - pixCenterPos);
++    pixBPos = normalize(pixBPos - pixCenterPos);
++
++    float3 pixelNormal =  acceptedNormals.x * cross( pixLPos, pixTPos ) +
++                        + acceptedNormals.y * cross( pixTPos, pixRPos ) +
++                        + acceptedNormals.z * cross( pixRPos, pixBPos ) +
++                        + acceptedNormals.w * cross( pixBPos, pixLPos );
++    pixelNormal = normalize( pixelNormal );
++
++    return pixelNormal;
++}
++
++#ifdef XE_GTAO_SHOW_DEBUG_VIZ
++float4 DbgGetSliceColor(int slice, int sliceCount, bool mirror)
++{
++    float red = (float)slice / (float)sliceCount; float green = 0.01; float blue = 1.0 - (float)slice / (float)sliceCount;
++    return (mirror)?(float4(blue, green, red, 0.9)):(float4(red, green, blue, 0.9));
++}
++#endif
++
++// http://h14s.p5r.org/2012/09/0x5f3759df.html, [Drobot2014a] Low Level Optimizations for GCN, https://blog.selfshadow.com/publications/s2016-shading-course/activision/s2016_pbs_activision_occlusion.pdf slide 63
++lpfloat XeGTAO_FastSqrt( float x )
++{
++    return (lpfloat)(asfloat( 0x1fbd1df5 + ( asint( x ) >> 1 ) ));
++}
++// input [-1, 1] and output [0, PI], from https://seblagarde.wordpress.com/2014/12/01/inverse-trigonometric-functions-gpu-optimization-for-amd-gcn-architecture/
++lpfloat XeGTAO_FastACos( lpfloat inX )
++{ 
++    const lpfloat PI = 3.141593;
++    const lpfloat HALF_PI = 1.570796;
++    lpfloat x = abs(inX); 
++    lpfloat res = -0.156583 * x + HALF_PI; 
++    res *= XeGTAO_FastSqrt(1.0 - x); 
++    return (inX >= 0) ? res : PI - res; 
++}
++
++uint XeGTAO_EncodeVisibilityBentNormal( lpfloat visibility, lpfloat3 bentNormal )
++{
++    return XeGTAO_FLOAT4_to_R8G8B8A8_UNORM( lpfloat4( bentNormal * 0.5 + 0.5, visibility ) );
++}
++
++void XeGTAO_DecodeVisibilityBentNormal( const uint packedValue, out lpfloat visibility, out lpfloat3 bentNormal )
++{
++    lpfloat4 decoded = XeGTAO_R8G8B8A8_UNORM_to_FLOAT4( packedValue );
++    bentNormal = decoded.xyz * 2.0.xxx - 1.0.xxx;   // could normalize - don't want to since it's done so many times, better to do it at the final step only
++    visibility = decoded.w;
++}
++
++void XeGTAO_OutputWorkingTerm( const uint2 pixCoord, lpfloat visibility, lpfloat3 bentNormal, RWTexture2D<uint> outWorkingAOTerm )
++{
++    visibility = saturate( visibility / lpfloat(XE_GTAO_OCCLUSION_TERM_SCALE) );
++#ifdef XE_GTAO_COMPUTE_BENT_NORMALS
++    outWorkingAOTerm[pixCoord] = XeGTAO_EncodeVisibilityBentNormal( visibility, bentNormal );
++#else
++    outWorkingAOTerm[pixCoord] = uint(visibility * 255.0 + 0.5);
++#endif
++}
++
++// "Efficiently building a matrix to rotate one vector to another"
++// http://cs.brown.edu/research/pubs/pdfs/1999/Moller-1999-EBA.pdf / https://dl.acm.org/doi/10.1080/10867651.1999.10487509
++// (using https://github.com/assimp/assimp/blob/master/include/assimp/matrix3x3.inl#L275 as a code reference as it seems to be best)
++lpfloat3x3 XeGTAO_RotFromToMatrix( lpfloat3 from, lpfloat3 to )
++{
++    const lpfloat e       = dot(from, to);
++    const lpfloat f       = abs(e); //(e < 0)? -e:e;
++
++    // WARNING: This has not been tested/worked through, especially not for 16bit floats; seems to work in our special use case (from is always {0, 0, -1}) but wouldn't use it in general
++    if( f > lpfloat( 1.0 - 0.0003 ) )
++        return lpfloat3x3( 1, 0, 0, 0, 1, 0, 0, 0, 1 );
++
++    const lpfloat3 v      = cross( from, to );
++    /* ... use this hand optimized version (9 mults less) */
++    const lpfloat h       = (1.0)/(1.0 + e);      /* optimization by Gottfried Chen */
++    const lpfloat hvx     = h * v.x;
++    const lpfloat hvz     = h * v.z;
++    const lpfloat hvxy    = hvx * v.y;
++    const lpfloat hvxz    = hvx * v.z;
++    const lpfloat hvyz    = hvz * v.y;
++
++    lpfloat3x3 mtx;
++    mtx[0][0] = e + hvx * v.x;
++    mtx[0][1] = hvxy - v.z;
++    mtx[0][2] = hvxz + v.y;
++
++    mtx[1][0] = hvxy + v.z;
++    mtx[1][1] = e + h * v.y * v.y;
++    mtx[1][2] = hvyz - v.x;
++
++    mtx[2][0] = hvxz - v.y;
++    mtx[2][1] = hvyz + v.x;
++    mtx[2][2] = e + hvz * v.z;
++
++    return mtx;
++}
++
++void XeGTAO_MainPass( const uint2 pixCoord, lpfloat sliceCount, lpfloat stepsPerSlice, const lpfloat2 localNoise, lpfloat3 viewspaceNormal, const GTAOConstants consts, 
++    Texture2D<lpfloat> sourceViewspaceDepth, SamplerState depthSampler, RWTexture2D<uint> outWorkingAOTerm, RWTexture2D<unorm float> outWorkingEdges )
++{                                                                       
++    float2 normalizedScreenPos = (pixCoord + 0.5.xx) * consts.ViewportPixelSize;
++
++    lpfloat4 valuesUL   = sourceViewspaceDepth.GatherRed( depthSampler, float2( pixCoord * consts.ViewportPixelSize )               );
++    lpfloat4 valuesBR   = sourceViewspaceDepth.GatherRed( depthSampler, float2( pixCoord * consts.ViewportPixelSize ), int2( 1, 1 ) );
++
++    // viewspace Z at the center
++    lpfloat viewspaceZ  = valuesUL.y; //sourceViewspaceDepth.SampleLevel( depthSampler, normalizedScreenPos, 0 ).x; 
++
++    // viewspace Zs left top right bottom
++    const lpfloat pixLZ = valuesUL.x;
++    const lpfloat pixTZ = valuesUL.z;
++    const lpfloat pixRZ = valuesBR.z;
++    const lpfloat pixBZ = valuesBR.x;
++
++    lpfloat4 edgesLRTB  = XeGTAO_CalculateEdges( (lpfloat)viewspaceZ, (lpfloat)pixLZ, (lpfloat)pixRZ, (lpfloat)pixTZ, (lpfloat)pixBZ );
++    outWorkingEdges[pixCoord] = XeGTAO_PackEdges(edgesLRTB);
++
++	// Generating screen space normals in-place is faster than generating normals in a separate pass but requires
++	// use of 32bit depth buffer (16bit works but visibly degrades quality) which in turn slows everything down. So to
++	// reduce complexity and allow for screen space normal reuse by other effects, we've pulled it out into a separate
++	// pass.
++	// However, we leave this code in, in case anyone has a use-case where it fits better.
++#ifdef XE_GTAO_GENERATE_NORMALS_INPLACE
++    float3 CENTER   = XeGTAO_ComputeViewspacePosition( normalizedScreenPos, viewspaceZ, consts );
++    float3 LEFT     = XeGTAO_ComputeViewspacePosition( normalizedScreenPos + float2(-1,  0) * consts.ViewportPixelSize, pixLZ, consts );
++    float3 RIGHT    = XeGTAO_ComputeViewspacePosition( normalizedScreenPos + float2( 1,  0) * consts.ViewportPixelSize, pixRZ, consts );
++    float3 TOP      = XeGTAO_ComputeViewspacePosition( normalizedScreenPos + float2( 0, -1) * consts.ViewportPixelSize, pixTZ, consts );
++    float3 BOTTOM   = XeGTAO_ComputeViewspacePosition( normalizedScreenPos + float2( 0,  1) * consts.ViewportPixelSize, pixBZ, consts );
++    viewspaceNormal = (lpfloat3)XeGTAO_CalculateNormal( edgesLRTB, CENTER, LEFT, RIGHT, TOP, BOTTOM );
++#endif
++
++    // Move center pixel slightly towards camera to avoid imprecision artifacts due to depth buffer imprecision; offset depends on depth texture format used
++#ifdef XE_GTAO_FP32_DEPTHS
++    viewspaceZ *= 0.99999;     // this is good for FP32 depth buffer
++#else
++    viewspaceZ *= 0.99920;     // this is good for FP16 depth buffer
++#endif
++
++    const float3 pixCenterPos   = XeGTAO_ComputeViewspacePosition( normalizedScreenPos, viewspaceZ, consts );
++    const lpfloat3 viewVec      = (lpfloat3)normalize(-pixCenterPos);
++    
++    // prevents normals that are facing away from the view vector - xeGTAO struggles with extreme cases, but in Vanilla it seems rare so it's disabled by default
++    // viewspaceNormal = normalize( viewspaceNormal + max( 0, -dot( viewspaceNormal, viewVec ) ) * viewVec );
++
++#ifdef XE_GTAO_SHOW_NORMALS
++    g_outputDbgImage[pixCoord] = float4( DisplayNormalSRGB( viewspaceNormal.xyz ), 1 );
++#endif
++
++#ifdef XE_GTAO_SHOW_EDGES
++    g_outputDbgImage[pixCoord] = 1.0 - float4( edgesLRTB.x, edgesLRTB.y * 0.5 + edgesLRTB.w * 0.5, edgesLRTB.z, 1.0 );
++#endif
++
++#if XE_GTAO_USE_DEFAULT_CONSTANTS != 0
++    const lpfloat effectRadius              = (lpfloat)consts.EffectRadius * (lpfloat)XE_GTAO_DEFAULT_RADIUS_MULTIPLIER;
++    const lpfloat sampleDistributionPower   = (lpfloat)XE_GTAO_DEFAULT_SAMPLE_DISTRIBUTION_POWER;
++    const lpfloat thinOccluderCompensation  = (lpfloat)XE_GTAO_DEFAULT_THIN_OCCLUDER_COMPENSATION;
++    const lpfloat falloffRange              = (lpfloat)XE_GTAO_DEFAULT_FALLOFF_RANGE * effectRadius;
++#else
++    const lpfloat effectRadius              = (lpfloat)consts.EffectRadius * (lpfloat)consts.RadiusMultiplier;
++    const lpfloat sampleDistributionPower   = (lpfloat)consts.SampleDistributionPower;
++    const lpfloat thinOccluderCompensation  = (lpfloat)consts.ThinOccluderCompensation;
++    const lpfloat falloffRange              = (lpfloat)consts.EffectFalloffRange * effectRadius;
++#endif
++
++    const lpfloat falloffFrom       = effectRadius * ((lpfloat)1-(lpfloat)consts.EffectFalloffRange);
++
++    // fadeout precompute optimisation
++    const lpfloat falloffMul        = (lpfloat)-1.0 / ( falloffRange );
++    const lpfloat falloffAdd        = falloffFrom / ( falloffRange ) + (lpfloat)1.0;
++
++    lpfloat visibility = 0;
++#ifdef XE_GTAO_COMPUTE_BENT_NORMALS
++    lpfloat3 bentNormal = 0;
++#else
++    lpfloat3 bentNormal = viewspaceNormal;
++#endif
++
++#ifdef XE_GTAO_SHOW_DEBUG_VIZ
++    float3 dbgWorldPos          = mul(g_globals.ViewInv, float4(pixCenterPos, 1)).xyz;
++#endif
++
++    // see "Algorithm 1" in https://www.activision.com/cdn/research/Practical_Real_Time_Strategies_for_Accurate_Indirect_Occlusion_NEW%20VERSION_COLOR.pdf
++    {
++        const lpfloat noiseSlice  = (lpfloat)localNoise.x;
++        const lpfloat noiseSample = (lpfloat)localNoise.y;
++
++        // quality settings / tweaks / hacks
++        const lpfloat pixelTooCloseThreshold  = 1.3;      // if the offset is under approx pixel size (pixelTooCloseThreshold), push it out to the minimum distance
++
++        // approx viewspace pixel size at pixCoord; approximation of NDCToViewspace( normalizedScreenPos.xy + consts.ViewportPixelSize.xy, pixCenterPos.z ).xy - pixCenterPos.xy;
++        const float2 pixelDirRBViewspaceSizeAtCenterZ = viewspaceZ.xx * consts.NDCToViewMul_x_PixelSize;
++
++        lpfloat screenspaceRadius   = effectRadius / (lpfloat)pixelDirRBViewspaceSizeAtCenterZ.x;
++
++        // fade out for small screen radii 
++        visibility += saturate((10 - screenspaceRadius)/100)*0.5;
++
++#if 0   // sensible early-out for even more performance; disabled because not yet tested
++        [branch]
++        if( screenspaceRadius < pixelTooCloseThreshold )
++        {
++            XeGTAO_OutputWorkingTerm( pixCoord, 1, viewspaceNormal, outWorkingAOTerm );
++            return;
++        }
++#endif
++
++#ifdef XE_GTAO_SHOW_DEBUG_VIZ
++        [branch] if (IsUnderCursorRange(pixCoord, int2(1, 1)))
++        {
++            float3 dbgWorldNorm     = mul((float3x3)g_globals.ViewInv, viewspaceNormal).xyz;
++            float3 dbgWorldViewVec  = mul((float3x3)g_globals.ViewInv, viewVec).xyz;
++            //DebugDraw3DArrow(dbgWorldPos, dbgWorldPos + 0.5 * dbgWorldViewVec, 0.02, float4(0, 1, 0, 0.95));
++            //DebugDraw2DCircle(pixCoord, screenspaceRadius, float4(1, 0, 0.2, 1));
++            DebugDraw3DSphere(dbgWorldPos, effectRadius, float4(1, 0.2, 0, 0.1));
++            //DebugDraw3DText(dbgWorldPos, float2(0, 0), float4(0.6, 0.3, 0.3, 1), float4( pixelDirRBViewspaceSizeAtCenterZ.xy, 0, screenspaceRadius) );
++        }
++#endif
++
++        // this is the min distance to start sampling from to avoid sampling from the center pixel (no useful data obtained from sampling center pixel)
++        const lpfloat minS = (lpfloat)pixelTooCloseThreshold / screenspaceRadius;
++
++        //[unroll]
++        for( lpfloat slice = 0; slice < sliceCount; slice++ )
++        {
++            lpfloat sliceK = (slice+noiseSlice) / sliceCount;
++            // lines 5, 6 from the paper
++            lpfloat phi = sliceK * XE_GTAO_PI;
++            lpfloat cosPhi = cos(phi);
++            lpfloat sinPhi = sin(phi);
++            lpfloat2 omega = lpfloat2(cosPhi, -sinPhi);       //lpfloat2 on omega causes issues with big radii
++
++            // convert to screen units (pixels) for later use
++            omega *= screenspaceRadius;
++
++            // line 8 from the paper
++            const lpfloat3 directionVec = lpfloat3(cosPhi, sinPhi, 0);
++
++            // line 9 from the paper
++            const lpfloat3 orthoDirectionVec = directionVec - (dot(directionVec, viewVec) * viewVec);
++
++            // line 10 from the paper
++            //axisVec is orthogonal to directionVec and viewVec, used to define projectedNormal
++            const lpfloat3 axisVec = normalize( cross(orthoDirectionVec, viewVec) );
++
++            // alternative line 9 from the paper
++            // float3 orthoDirectionVec = cross( viewVec, axisVec );
++
++            // line 11 from the paper
++            lpfloat3 projectedNormalVec = viewspaceNormal - axisVec * dot(viewspaceNormal, axisVec);
++
++            // line 13 from the paper
++            lpfloat signNorm = (lpfloat)sign( dot( orthoDirectionVec, projectedNormalVec ) );
++
++            // line 14 from the paper
++            lpfloat projectedNormalVecLength = length(projectedNormalVec);
++            lpfloat cosNorm = (lpfloat)saturate(dot(projectedNormalVec, viewVec) / projectedNormalVecLength);
++
++            // line 15 from the paper
++            lpfloat n = signNorm * XeGTAO_FastACos(cosNorm);
++
++            // this is a lower weight target; not using -1 as in the original paper because it is under horizon, so a 'weight' has different meaning based on the normal
++            const lpfloat lowHorizonCos0  = cos(n+XE_GTAO_PI_HALF);
++            const lpfloat lowHorizonCos1  = cos(n-XE_GTAO_PI_HALF);
++
++            // lines 17, 18 from the paper, manually unrolled the 'side' loop
++            lpfloat horizonCos0           = lowHorizonCos0; //-1;
++            lpfloat horizonCos1           = lowHorizonCos1; //-1;
++
++            [unroll]
++            for( lpfloat step = 0; step < stepsPerSlice; step++ )
++            {
++                // R1 sequence (http://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/)
++                const lpfloat stepBaseNoise = lpfloat(slice + step * stepsPerSlice) * 0.6180339887498948482; // <- this should unroll
++                lpfloat stepNoise = frac(noiseSample + stepBaseNoise);
++
++                // approx line 20 from the paper, with added noise
++                lpfloat s = (step+stepNoise) / (stepsPerSlice); // + (lpfloat2)1e-6f);
++
++                // additional distribution modifier
++                s       = (lpfloat)pow( s, (lpfloat)sampleDistributionPower );
++
++                // avoid sampling center pixel
++                s       += minS;
++
++                // approx lines 21-22 from the paper, unrolled
++                lpfloat2 sampleOffset = s * omega;
++
++                lpfloat sampleOffsetLength = length( sampleOffset );
++
++                // note: when sampling, using point_point_point or point_point_linear sampler works, but linear_linear_linear will cause unwanted interpolation between neighbouring depth values on the same MIP level!
++                const lpfloat mipLevel    = (lpfloat)clamp( log2( sampleOffsetLength ) - consts.DepthMIPSamplingOffset, 0, XE_GTAO_DEPTH_MIP_LEVELS );
++
++                // Snap to pixel center (more correct direction math, avoids artifacts due to sampling pos not matching depth texel center - messes up slope - but adds other 
++                // artifacts due to them being pushed off the slice). Also use full precision for high res cases.
++                sampleOffset = round(sampleOffset) * (lpfloat2)consts.ViewportPixelSize;
++
++#ifdef XE_GTAO_SHOW_DEBUG_VIZ
++                int mipLevelU = (int)round(mipLevel);
++                float4 mipColor = saturate( float4( mipLevelU>=3, mipLevelU>=1 && mipLevelU<=3, mipLevelU<=1, 1.0 ) );
++                if( all( sampleOffset == 0 ) )
++                    DebugDraw2DText( pixCoord, float4( 1, 0, 0, 1), pixelTooCloseThreshold );
++                [branch] if (IsUnderCursorRange(pixCoord, int2(1, 1)))
++                {
++                    //DebugDraw2DText( (normalizedScreenPos + sampleOffset) * consts.ViewportSize, mipColor, mipLevelU );
++                    //DebugDraw2DText( (normalizedScreenPos + sampleOffset) * consts.ViewportSize, mipColor, (uint)slice );
++                    //DebugDraw2DText( (normalizedScreenPos - sampleOffset) * consts.ViewportSize, mipColor, (uint)slice );
++                    //DebugDraw2DText( (normalizedScreenPos - sampleOffset) * consts.ViewportSize, saturate( float4( mipLevelU>=3, mipLevelU>=1 && mipLevelU<=3, mipLevelU<=1, 1.0 ) ), mipLevelU );
++                }
++#endif
++
++                float2 sampleScreenPos0 = normalizedScreenPos + sampleOffset;
++                float  SZ0 = sourceViewspaceDepth.SampleLevel( depthSampler, sampleScreenPos0, mipLevel ).x;
++                float3 samplePos0 = XeGTAO_ComputeViewspacePosition( sampleScreenPos0, SZ0, consts );
++
++                float2 sampleScreenPos1 = normalizedScreenPos - sampleOffset;
++                float  SZ1 = sourceViewspaceDepth.SampleLevel( depthSampler, sampleScreenPos1, mipLevel ).x;
++                float3 samplePos1 = XeGTAO_ComputeViewspacePosition( sampleScreenPos1, SZ1, consts );
++
++                float3 sampleDelta0     = (samplePos0 - float3(pixCenterPos)); // using lpfloat for sampleDelta causes precision issues
++                float3 sampleDelta1     = (samplePos1 - float3(pixCenterPos)); // using lpfloat for sampleDelta causes precision issues
++                lpfloat sampleDist0     = (lpfloat)length( sampleDelta0 );
++                lpfloat sampleDist1     = (lpfloat)length( sampleDelta1 );
++
++                // approx lines 23, 24 from the paper, unrolled
++                lpfloat3 sampleHorizonVec0 = (lpfloat3)(sampleDelta0 / sampleDist0);
++                lpfloat3 sampleHorizonVec1 = (lpfloat3)(sampleDelta1 / sampleDist1);
++
++                // any sample out of radius should be discarded - also use fallof range for smooth transitions; this is a modified idea from "4.3 Implementation details, Bounding the sampling area"
++#if XE_GTAO_USE_DEFAULT_CONSTANTS != 0 && XE_GTAO_DEFAULT_THIN_OBJECT_HEURISTIC == 0
++                lpfloat weight0         = saturate( sampleDist0 * falloffMul + falloffAdd );
++                lpfloat weight1         = saturate( sampleDist1 * falloffMul + falloffAdd );
++#else
++                // this is our own thickness heuristic that relies on sooner discarding samples behind the center
++                lpfloat falloffBase0    = length( lpfloat3(sampleDelta0.x, sampleDelta0.y, sampleDelta0.z * (1+thinOccluderCompensation) ) );
++                lpfloat falloffBase1    = length( lpfloat3(sampleDelta1.x, sampleDelta1.y, sampleDelta1.z * (1+thinOccluderCompensation) ) );
++                lpfloat weight0         = saturate( falloffBase0 * falloffMul + falloffAdd );
++                lpfloat weight1         = saturate( falloffBase1 * falloffMul + falloffAdd );
++#endif
++
++                // sample horizon cos
++                lpfloat shc0 = (lpfloat)dot(sampleHorizonVec0, viewVec);
++                lpfloat shc1 = (lpfloat)dot(sampleHorizonVec1, viewVec);
++
++                // discard unwanted samples
++                shc0 = lerp( lowHorizonCos0, shc0, weight0 ); // this would be more correct but too expensive: cos(lerp( acos(lowHorizonCos0), acos(shc0), weight0 ));
++                shc1 = lerp( lowHorizonCos1, shc1, weight1 ); // this would be more correct but too expensive: cos(lerp( acos(lowHorizonCos1), acos(shc1), weight1 ));
++
++                // thickness heuristic - see "4.3 Implementation details, Height-field assumption considerations"
++#if 0   // (disabled, not used) this should match the paper
++                lpfloat newhorizonCos0 = max( horizonCos0, shc0 );
++                lpfloat newhorizonCos1 = max( horizonCos1, shc1 );
++                horizonCos0 = (horizonCos0 > shc0)?( lerp( newhorizonCos0, shc0, thinOccluderCompensation ) ):( newhorizonCos0 );
++                horizonCos1 = (horizonCos1 > shc1)?( lerp( newhorizonCos1, shc1, thinOccluderCompensation ) ):( newhorizonCos1 );
++#elif 0 // (disabled, not used) this is slightly different from the paper but cheaper and provides very similar results
++                horizonCos0 = lerp( max( horizonCos0, shc0 ), shc0, thinOccluderCompensation );
++                horizonCos1 = lerp( max( horizonCos1, shc1 ), shc1, thinOccluderCompensation );
++#else   // this is a version where thicknessHeuristic is completely disabled
++                horizonCos0 = max( horizonCos0, shc0 );
++                horizonCos1 = max( horizonCos1, shc1 );
++#endif
++
++
++#ifdef XE_GTAO_SHOW_DEBUG_VIZ
++                [branch] if (IsUnderCursorRange(pixCoord, int2(1, 1)))
++                {
++                    float3 WS_samplePos0 = mul(g_globals.ViewInv, float4(samplePos0, 1)).xyz;
++                    float3 WS_samplePos1 = mul(g_globals.ViewInv, float4(samplePos1, 1)).xyz;
++                    float3 WS_sampleHorizonVec0 = mul( (float3x3)g_globals.ViewInv, sampleHorizonVec0).xyz;
++                    float3 WS_sampleHorizonVec1 = mul( (float3x3)g_globals.ViewInv, sampleHorizonVec1).xyz;
++                    // DebugDraw3DSphere( WS_samplePos0, effectRadius * 0.02, DbgGetSliceColor(slice, sliceCount, false) );
++                    // DebugDraw3DSphere( WS_samplePos1, effectRadius * 0.02, DbgGetSliceColor(slice, sliceCount, true) );
++                    DebugDraw3DSphere( WS_samplePos0, effectRadius * 0.02, mipColor );
++                    DebugDraw3DSphere( WS_samplePos1, effectRadius * 0.02, mipColor );
++                    // DebugDraw3DArrow( WS_samplePos0, WS_samplePos0 - WS_sampleHorizonVec0, 0.002, float4(1, 0, 0, 1 ) );
++                    // DebugDraw3DArrow( WS_samplePos1, WS_samplePos1 - WS_sampleHorizonVec1, 0.002, float4(1, 0, 0, 1 ) );
++                    // DebugDraw3DText( WS_samplePos0, float2(0,  0), float4( 1, 0, 0, 1), weight0 );
++                    // DebugDraw3DText( WS_samplePos1, float2(0,  0), float4( 1, 0, 0, 1), weight1 );
++
++                    // DebugDraw2DText( float2( 500, 94+(step+slice*3)*12 ), float4( 0, 1, 0, 1 ), float4( projectedNormalVecLength, 0, horizonCos0, horizonCos1 ) );
++                }
++#endif
++            }
++
++#if 1       // I can't figure out the slight overdarkening on high slopes, so I'm adding this fudge - in the training set, 0.05 is close (PSNR 21.34) to disabled (PSNR 21.45)
++            projectedNormalVecLength = lerp( projectedNormalVecLength, 1, 0.05 );
++#endif
++
++            // line ~27, unrolled
++            lpfloat h0 = -XeGTAO_FastACos((lpfloat)horizonCos1);
++            lpfloat h1 = XeGTAO_FastACos((lpfloat)horizonCos0);
++#if 0       // we can skip clamping for a tiny little bit more performance
++            h0 = n + clamp( h0-n, (lpfloat)-XE_GTAO_PI_HALF, (lpfloat)XE_GTAO_PI_HALF );
++            h1 = n + clamp( h1-n, (lpfloat)-XE_GTAO_PI_HALF, (lpfloat)XE_GTAO_PI_HALF );
++#endif
++            lpfloat iarc0 = ((lpfloat)cosNorm + (lpfloat)2 * (lpfloat)h0 * (lpfloat)sin(n)-(lpfloat)cos((lpfloat)2 * (lpfloat)h0-n))/(lpfloat)4;
++            lpfloat iarc1 = ((lpfloat)cosNorm + (lpfloat)2 * (lpfloat)h1 * (lpfloat)sin(n)-(lpfloat)cos((lpfloat)2 * (lpfloat)h1-n))/(lpfloat)4;
++            lpfloat localVisibility = (lpfloat)projectedNormalVecLength * (lpfloat)(iarc0+iarc1);
++            visibility += localVisibility;
++
++#ifdef XE_GTAO_COMPUTE_BENT_NORMALS
++            // see "Algorithm 2 Extension that computes bent normals b."
++            lpfloat t0 = (6*sin(h0-n)-sin(3*h0-n)+6*sin(h1-n)-sin(3*h1-n)+16*sin(n)-3*(sin(h0+n)+sin(h1+n)))/12;
++            lpfloat t1 = (-cos(3 * h0-n)-cos(3 * h1-n) +8 * cos(n)-3 * (cos(h0+n) +cos(h1+n)))/12;
++            lpfloat3 localBentNormal = lpfloat3( directionVec.x * (lpfloat)t0, directionVec.y * (lpfloat)t0, -lpfloat(t1) );
++            localBentNormal = (lpfloat3)mul( XeGTAO_RotFromToMatrix( lpfloat3(0,0,-1), viewVec ), localBentNormal ) * projectedNormalVecLength;
++            bentNormal += localBentNormal;
++#endif
++        }
++        visibility /= (lpfloat)sliceCount;
++        visibility = pow( visibility, (lpfloat)consts.FinalValuePower );
++        visibility = max( (lpfloat)0.03, visibility ); // disallow total occlusion (which wouldn't make any sense anyhow since pixel is visible but also helps with packing bent normals)
++
++#ifdef XE_GTAO_COMPUTE_BENT_NORMALS
++        bentNormal = normalize(bentNormal) ;
++#endif
++    }
++
++#if defined(XE_GTAO_SHOW_DEBUG_VIZ) && defined(XE_GTAO_COMPUTE_BENT_NORMALS)
++    [branch] if (IsUnderCursorRange(pixCoord, int2(1, 1)))
++    {
++        float3 dbgWorldViewNorm = mul((float3x3)g_globals.ViewInv, viewspaceNormal).xyz;
++        float3 dbgWorldBentNorm = mul((float3x3)g_globals.ViewInv, bentNormal).xyz;
++        DebugDraw3DSphereCone( dbgWorldPos, dbgWorldViewNorm, 0.3, VA_PI*0.5 - acos(saturate(visibility)), float4( 0.2, 0.2, 0.2, 0.5 ) );
++        DebugDraw3DSphereCone( dbgWorldPos, dbgWorldBentNorm, 0.3, VA_PI*0.5 - acos(saturate(visibility)), float4( 0.0, 1.0, 0.0, 0.7 ) );
++    }
++#endif
++
++    XeGTAO_OutputWorkingTerm( pixCoord, visibility, bentNormal, outWorkingAOTerm );
++}
++
++// weighted average depth filter
++lpfloat XeGTAO_DepthMIPFilter( lpfloat depth0, lpfloat depth1, lpfloat depth2, lpfloat depth3, const GTAOConstants consts )
++{
++    lpfloat maxDepth = max( max( depth0, depth1 ), max( depth2, depth3 ) );
++
++    const lpfloat depthRangeScaleFactor = 0.75; // found empirically :)
++#if XE_GTAO_USE_DEFAULT_CONSTANTS != 0
++    const lpfloat effectRadius              = depthRangeScaleFactor * (lpfloat)consts.EffectRadius * (lpfloat)XE_GTAO_DEFAULT_RADIUS_MULTIPLIER;
++    const lpfloat falloffRange              = (lpfloat)XE_GTAO_DEFAULT_FALLOFF_RANGE * effectRadius;
++#else
++    const lpfloat effectRadius              = depthRangeScaleFactor * (lpfloat)consts.EffectRadius * (lpfloat)consts.RadiusMultiplier;
++    const lpfloat falloffRange              = (lpfloat)consts.EffectFalloffRange * effectRadius;
++#endif
++    const lpfloat falloffFrom       = effectRadius * ((lpfloat)1-(lpfloat)consts.EffectFalloffRange);
++    // fadeout precompute optimisation
++    const lpfloat falloffMul        = (lpfloat)-1.0 / ( falloffRange );
++    const lpfloat falloffAdd        = falloffFrom / ( falloffRange ) + (lpfloat)1.0;
++
++    lpfloat weight0 = saturate( (maxDepth-depth0) * falloffMul + falloffAdd );
++    lpfloat weight1 = saturate( (maxDepth-depth1) * falloffMul + falloffAdd );
++    lpfloat weight2 = saturate( (maxDepth-depth2) * falloffMul + falloffAdd );
++    lpfloat weight3 = saturate( (maxDepth-depth3) * falloffMul + falloffAdd );
++
++    lpfloat weightSum = weight0 + weight1 + weight2 + weight3;
++    return (weight0 * depth0 + weight1 * depth1 + weight2 * depth2 + weight3 * depth3) / weightSum;
++}
++
++// This is also a good place to do non-linear depth conversion for cases where one wants the 'radius' (effectively the threshold between near-field and far-field GI), 
++// is required to be non-linear (i.e. very large outdoors environments).
++lpfloat XeGTAO_ClampDepth( float depth )
++{
++#ifdef XE_GTAO_USE_HALF_FLOAT_PRECISION
++    return (lpfloat)clamp( depth, 0.0, 65504.0 );
++#else
++    return clamp( depth, 0.0, 3.402823466e+38 );
++#endif
++}
++
++groupshared lpfloat g_scratchDepths[8][8];
++void XeGTAO_PrefilterDepths16x16( uint2 dispatchThreadID /*: SV_DispatchThreadID*/, uint2 groupThreadID /*: SV_GroupThreadID*/, const GTAOConstants consts, Texture2D<float> sourceNDCDepth, SamplerState depthSampler, RWTexture2D<lpfloat> outDepth0, RWTexture2D<lpfloat> outDepth1, RWTexture2D<lpfloat> outDepth2, RWTexture2D<lpfloat> outDepth3, RWTexture2D<lpfloat> outDepth4 )
++{
++    // MIP 0
++    const uint2 baseCoord = dispatchThreadID;
++    const uint2 pixCoord = baseCoord * 2;
++    float4 depths4 = sourceNDCDepth.GatherRed( depthSampler, float2( pixCoord * consts.ViewportPixelSize ), int2(1,1) );
++    lpfloat depth0 = XeGTAO_ClampDepth( XeGTAO_ScreenSpaceToViewSpaceDepth( depths4.w, consts ) );
++    lpfloat depth1 = XeGTAO_ClampDepth( XeGTAO_ScreenSpaceToViewSpaceDepth( depths4.z, consts ) );
++    lpfloat depth2 = XeGTAO_ClampDepth( XeGTAO_ScreenSpaceToViewSpaceDepth( depths4.x, consts ) );
++    lpfloat depth3 = XeGTAO_ClampDepth( XeGTAO_ScreenSpaceToViewSpaceDepth( depths4.y, consts ) );
++    outDepth0[ pixCoord + uint2(0, 0) ] = (lpfloat)depth0;
++    outDepth0[ pixCoord + uint2(1, 0) ] = (lpfloat)depth1;
++    outDepth0[ pixCoord + uint2(0, 1) ] = (lpfloat)depth2;
++    outDepth0[ pixCoord + uint2(1, 1) ] = (lpfloat)depth3;
++
++    // MIP 1
++    lpfloat dm1 = XeGTAO_DepthMIPFilter( depth0, depth1, depth2, depth3, consts );
++    outDepth1[ baseCoord ] = (lpfloat)dm1;
++    g_scratchDepths[ groupThreadID.x ][ groupThreadID.y ] = dm1;
++
++    GroupMemoryBarrierWithGroupSync( );
++
++    // MIP 2
++    [branch]
++    if( all( ( groupThreadID.xy % uint2(2, 2) ) == 0 ) )
++    {
++        lpfloat inTL = g_scratchDepths[groupThreadID.x+0][groupThreadID.y+0];
++        lpfloat inTR = g_scratchDepths[groupThreadID.x+1][groupThreadID.y+0];
++        lpfloat inBL = g_scratchDepths[groupThreadID.x+0][groupThreadID.y+1];
++        lpfloat inBR = g_scratchDepths[groupThreadID.x+1][groupThreadID.y+1];
++
++        lpfloat dm2 = XeGTAO_DepthMIPFilter( inTL, inTR, inBL, inBR, consts );
++        outDepth2[ baseCoord / 2 ] = (lpfloat)dm2;
++        g_scratchDepths[ groupThreadID.x ][ groupThreadID.y ] = dm2;
++    }
++
++    GroupMemoryBarrierWithGroupSync( );
++
++    // MIP 3
++    [branch]
++    if( all( ( groupThreadID.xy % uint2(4, 4) ) == 0 ) )
++    {
++        lpfloat inTL = g_scratchDepths[groupThreadID.x+0][groupThreadID.y+0];
++        lpfloat inTR = g_scratchDepths[groupThreadID.x+2][groupThreadID.y+0];
++        lpfloat inBL = g_scratchDepths[groupThreadID.x+0][groupThreadID.y+2];
++        lpfloat inBR = g_scratchDepths[groupThreadID.x+2][groupThreadID.y+2];
++
++        lpfloat dm3 = XeGTAO_DepthMIPFilter( inTL, inTR, inBL, inBR, consts );
++        outDepth3[ baseCoord / 4 ] = (lpfloat)dm3;
++        g_scratchDepths[ groupThreadID.x ][ groupThreadID.y ] = dm3;
++    }
++
++    GroupMemoryBarrierWithGroupSync( );
++
++    // MIP 4
++    [branch]
++    if( all( ( groupThreadID.xy % uint2(8, 8) ) == 0 ) )
++    {
++        lpfloat inTL = g_scratchDepths[groupThreadID.x+0][groupThreadID.y+0];
++        lpfloat inTR = g_scratchDepths[groupThreadID.x+4][groupThreadID.y+0];
++        lpfloat inBL = g_scratchDepths[groupThreadID.x+0][groupThreadID.y+4];
++        lpfloat inBR = g_scratchDepths[groupThreadID.x+4][groupThreadID.y+4];
++
++        lpfloat dm4 = XeGTAO_DepthMIPFilter( inTL, inTR, inBL, inBR, consts );
++        outDepth4[ baseCoord / 8 ] = (lpfloat)dm4;
++        //g_scratchDepths[ groupThreadID.x ][ groupThreadID.y ] = dm4;
++    }
++}
++
++lpfloat4 XeGTAO_UnpackEdges( lpfloat _packedVal )
++{
++    uint packedVal = (uint)(_packedVal * 255.5);
++    lpfloat4 edgesLRTB;
++    edgesLRTB.x = lpfloat((packedVal >> 6) & 0x03) / 3.0;          // there's really no need for mask (as it's an 8 bit input) but I'll leave it in so it doesn't cause any trouble in the future
++    edgesLRTB.y = lpfloat((packedVal >> 4) & 0x03) / 3.0;
++    edgesLRTB.z = lpfloat((packedVal >> 2) & 0x03) / 3.0;
++    edgesLRTB.w = lpfloat((packedVal >> 0) & 0x03) / 3.0;
++
++    return saturate( edgesLRTB );
++}
++
++#ifdef XE_GTAO_COMPUTE_BENT_NORMALS
++typedef lpfloat4 AOTermType;            // .xyz is bent normal, .w is visibility term
++#else
++typedef lpfloat AOTermType;             // .x is visibility term
++#endif
++
++void XeGTAO_AddSample( AOTermType ssaoValue, lpfloat edgeValue, inout AOTermType sum, inout lpfloat sumWeight )
++{
++    lpfloat weight = edgeValue;    
++
++    sum += (weight * ssaoValue);
++    sumWeight += weight;
++}
++
++void XeGTAO_Output( uint2 pixCoord, RWTexture2D<uint> outputTexture, AOTermType outputValue, const uniform bool finalApply )
++{
++#ifdef XE_GTAO_COMPUTE_BENT_NORMALS
++    lpfloat     visibility = outputValue.w * ((finalApply)?((lpfloat)XE_GTAO_OCCLUSION_TERM_SCALE):(1));
++    lpfloat3    bentNormal = normalize(outputValue.xyz);
++    outputTexture[pixCoord.xy] = XeGTAO_EncodeVisibilityBentNormal( visibility, bentNormal );
++#else
++    outputValue *=  (finalApply)?((lpfloat)XE_GTAO_OCCLUSION_TERM_SCALE):(1);
++    outputTexture[pixCoord.xy] = uint(outputValue * 255.0 + 0.5);
++#endif
++}
++
++void XeGTAO_DecodeGatherPartial( const uint4 packedValue, out AOTermType outDecoded[4] )
++{
++    for( int i = 0; i < 4; i++ )
++#ifdef XE_GTAO_COMPUTE_BENT_NORMALS
++        XeGTAO_DecodeVisibilityBentNormal( packedValue[i], outDecoded[i].w, outDecoded[i].xyz );
++#else
++        outDecoded[i] = lpfloat(packedValue[i]) / lpfloat(255.0);
++#endif
++}
++
++void XeGTAO_Denoise( const uint2 pixCoordBase, const GTAOConstants consts, Texture2D<uint> sourceAOTerm, Texture2D<lpfloat> sourceEdges, SamplerState texSampler, RWTexture2D<uint> outputTexture, const uniform bool finalApply )
++{
++    const lpfloat blurAmount = (finalApply)?((lpfloat)consts.DenoiseBlurBeta):((lpfloat)consts.DenoiseBlurBeta/(lpfloat)5.0);
++    const lpfloat diagWeight = 0.85 * 0.5;
++
++    AOTermType aoTerm[2];   // pixel pixCoordBase and pixel pixCoordBase + int2( 1, 0 )
++    lpfloat4 edgesC_LRTB[2];
++    lpfloat weightTL[2];
++    lpfloat weightTR[2];
++    lpfloat weightBL[2];
++    lpfloat weightBR[2];
++
++    // gather edge and visibility quads, used later
++    const float2 gatherCenter = float2( pixCoordBase.x, pixCoordBase.y ) * consts.ViewportPixelSize;
++    lpfloat4 edgesQ0        = sourceEdges.GatherRed( texSampler, gatherCenter, int2( 0, 0 ) );
++    lpfloat4 edgesQ1        = sourceEdges.GatherRed( texSampler, gatherCenter, int2( 2, 0 ) );
++    lpfloat4 edgesQ2        = sourceEdges.GatherRed( texSampler, gatherCenter, int2( 1, 2 ) );
++
++    AOTermType visQ0[4];    XeGTAO_DecodeGatherPartial( sourceAOTerm.GatherRed( texSampler, gatherCenter, int2( 0, 0 ) ), visQ0 );
++    AOTermType visQ1[4];    XeGTAO_DecodeGatherPartial( sourceAOTerm.GatherRed( texSampler, gatherCenter, int2( 2, 0 ) ), visQ1 );
++    AOTermType visQ2[4];    XeGTAO_DecodeGatherPartial( sourceAOTerm.GatherRed( texSampler, gatherCenter, int2( 0, 2 ) ), visQ2 );
++    AOTermType visQ3[4];    XeGTAO_DecodeGatherPartial( sourceAOTerm.GatherRed( texSampler, gatherCenter, int2( 2, 2 ) ), visQ3 );
++
++    for( int side = 0; side < 2; side++ )
++    {
++        const int2 pixCoord = int2( pixCoordBase.x + side, pixCoordBase.y );
++
++        lpfloat4 edgesL_LRTB  = XeGTAO_UnpackEdges( (side==0)?(edgesQ0.x):(edgesQ0.y) );
++        lpfloat4 edgesT_LRTB  = XeGTAO_UnpackEdges( (side==0)?(edgesQ0.z):(edgesQ1.w) );
++        lpfloat4 edgesR_LRTB  = XeGTAO_UnpackEdges( (side==0)?(edgesQ1.x):(edgesQ1.y) );
++        lpfloat4 edgesB_LRTB  = XeGTAO_UnpackEdges( (side==0)?(edgesQ2.w):(edgesQ2.z) );
++
++        edgesC_LRTB[side]     = XeGTAO_UnpackEdges( (side==0)?(edgesQ0.y):(edgesQ1.x) );
++
++        // Edges aren't perfectly symmetrical: edge detection algorithm does not guarantee that a left edge on the right pixel will match the right edge on the left pixel (although
++        // they will match in majority of cases). This line further enforces the symmetricity, creating a slightly sharper blur. Works real nice with TAA.
++        edgesC_LRTB[side] *= lpfloat4( edgesL_LRTB.y, edgesR_LRTB.x, edgesT_LRTB.w, edgesB_LRTB.z );
++
++#if 1   // this allows some small amount of AO leaking from neighbours if there are 3 or 4 edges; this reduces both spatial and temporal aliasing
++        const lpfloat leak_threshold = 2.5; const lpfloat leak_strength = 0.5;
++        lpfloat edginess = (saturate(4.0 - leak_threshold - dot( edgesC_LRTB[side], float4(1, 1, 1, 1) )) / (4-leak_threshold)) * leak_strength;
++        edgesC_LRTB[side] = saturate( edgesC_LRTB[side] + edginess );
++#endif
++
++#ifdef XE_GTAO_SHOW_EDGES
++        g_outputDbgImage[pixCoord] = 1.0 - lpfloat4( edgesC_LRTB[side].x, edgesC_LRTB[side].y * 0.5 + edgesC_LRTB[side].w * 0.5, edgesC_LRTB[side].z, 1.0 );
++        //g_outputDbgImage[pixCoord] = 1 - float4( edgesC_LRTB[side].z, edgesC_LRTB[side].w , 1, 0 );
++        //g_outputDbgImage[pixCoord] = edginess.xxxx;
++#endif
++
++        // for diagonals; used by first and second pass
++        weightTL[side] = diagWeight * (edgesC_LRTB[side].x * edgesL_LRTB.z + edgesC_LRTB[side].z * edgesT_LRTB.x);
++        weightTR[side] = diagWeight * (edgesC_LRTB[side].z * edgesT_LRTB.y + edgesC_LRTB[side].y * edgesR_LRTB.z);
++        weightBL[side] = diagWeight * (edgesC_LRTB[side].w * edgesB_LRTB.x + edgesC_LRTB[side].x * edgesL_LRTB.w);
++        weightBR[side] = diagWeight * (edgesC_LRTB[side].y * edgesR_LRTB.w + edgesC_LRTB[side].w * edgesB_LRTB.y);
++
++        // first pass
++        AOTermType ssaoValue     = (side==0)?(visQ0[1]):(visQ1[0]);
++        AOTermType ssaoValueL    = (side==0)?(visQ0[0]):(visQ0[1]);
++        AOTermType ssaoValueT    = (side==0)?(visQ0[2]):(visQ1[3]);
++        AOTermType ssaoValueR    = (side==0)?(visQ1[0]):(visQ1[1]);
++        AOTermType ssaoValueB    = (side==0)?(visQ2[2]):(visQ3[3]);
++        AOTermType ssaoValueTL   = (side==0)?(visQ0[3]):(visQ0[2]);
++        AOTermType ssaoValueBR   = (side==0)?(visQ3[3]):(visQ3[2]);
++        AOTermType ssaoValueTR   = (side==0)?(visQ1[3]):(visQ1[2]);
++        AOTermType ssaoValueBL   = (side==0)?(visQ2[3]):(visQ2[2]);
++
++        lpfloat sumWeight = blurAmount;
++        AOTermType sum = ssaoValue * sumWeight;
++
++        XeGTAO_AddSample( ssaoValueL, edgesC_LRTB[side].x, sum, sumWeight );
++        XeGTAO_AddSample( ssaoValueR, edgesC_LRTB[side].y, sum, sumWeight );
++        XeGTAO_AddSample( ssaoValueT, edgesC_LRTB[side].z, sum, sumWeight );
++        XeGTAO_AddSample( ssaoValueB, edgesC_LRTB[side].w, sum, sumWeight );
++
++        XeGTAO_AddSample( ssaoValueTL, weightTL[side], sum, sumWeight );
++        XeGTAO_AddSample( ssaoValueTR, weightTR[side], sum, sumWeight );
++        XeGTAO_AddSample( ssaoValueBL, weightBL[side], sum, sumWeight );
++        XeGTAO_AddSample( ssaoValueBR, weightBR[side], sum, sumWeight );
++
++        aoTerm[side] = sum / sumWeight;
++
++        XeGTAO_Output( pixCoord, outputTexture, aoTerm[side], finalApply );
++
++#ifdef XE_GTAO_SHOW_BENT_NORMALS
++        if( finalApply )
++        {
++            g_outputDbgImage[pixCoord] = float4( DisplayNormalSRGB( aoTerm[side].xyz /** aoTerm[side].www*/ ), 1 );
++        }
++#endif
++
++    }
++}
++
++
++// Generic viewspace normal generate pass
++float3 XeGTAO_ComputeViewspaceNormal( const uint2 pixCoord, const GTAOConstants consts, Texture2D<float> sourceNDCDepth, SamplerState depthSampler )
++{
++    float2 normalizedScreenPos = (pixCoord + 0.5.xx) * consts.ViewportPixelSize;
++
++    float4 valuesUL   = sourceNDCDepth.GatherRed( depthSampler, float2( pixCoord * consts.ViewportPixelSize )               );
++    float4 valuesBR   = sourceNDCDepth.GatherRed( depthSampler, float2( pixCoord * consts.ViewportPixelSize ), int2( 1, 1 ) );
++
++    // viewspace Z at the center
++    float viewspaceZ  = XeGTAO_ScreenSpaceToViewSpaceDepth( valuesUL.y, consts ); //sourceViewspaceDepth.SampleLevel( depthSampler, normalizedScreenPos, 0 ).x; 
++
++    // viewspace Zs left top right bottom
++    const float pixLZ = XeGTAO_ScreenSpaceToViewSpaceDepth( valuesUL.x, consts );
++    const float pixTZ = XeGTAO_ScreenSpaceToViewSpaceDepth( valuesUL.z, consts );
++    const float pixRZ = XeGTAO_ScreenSpaceToViewSpaceDepth( valuesBR.z, consts );
++    const float pixBZ = XeGTAO_ScreenSpaceToViewSpaceDepth( valuesBR.x, consts );
++
++    lpfloat4 edgesLRTB  = XeGTAO_CalculateEdges( (lpfloat)viewspaceZ, (lpfloat)pixLZ, (lpfloat)pixRZ, (lpfloat)pixTZ, (lpfloat)pixBZ );
++
++    float3 CENTER   = XeGTAO_ComputeViewspacePosition( normalizedScreenPos, viewspaceZ, consts );
++    float3 LEFT     = XeGTAO_ComputeViewspacePosition( normalizedScreenPos + float2(-1,  0) * consts.ViewportPixelSize, pixLZ, consts );
++    float3 RIGHT    = XeGTAO_ComputeViewspacePosition( normalizedScreenPos + float2( 1,  0) * consts.ViewportPixelSize, pixRZ, consts );
++    float3 TOP      = XeGTAO_ComputeViewspacePosition( normalizedScreenPos + float2( 0, -1) * consts.ViewportPixelSize, pixTZ, consts );
++    float3 BOTTOM   = XeGTAO_ComputeViewspacePosition( normalizedScreenPos + float2( 0,  1) * consts.ViewportPixelSize, pixBZ, consts );
++    return XeGTAO_CalculateNormal( edgesLRTB, CENTER, LEFT, RIGHT, TOP, BOTTOM );
++}
++)XEGTAO"
+diff --git a/runtime/gpu/xegtao/types.inl b/runtime/gpu/xegtao/types.inl
+new file mode 100644
+index 0000000..d8cb4dc
+--- /dev/null
++++ b/runtime/gpu/xegtao/types.inl
+@@ -0,0 +1,265 @@
++R"XEGTAO(
++///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++// Copyright (C) 2016-2021, Intel Corporation 
++// 
++// SPDX-License-Identifier: MIT
++///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++//
++// XeGTAO is based on GTAO/GTSO "Jimenez et al. / Practical Real-Time Strategies for Accurate Indirect Occlusion", 
++// https://www.activision.com/cdn/research/Practical_Real_Time_Strategies_for_Accurate_Indirect_Occlusion_NEW%20VERSION_COLOR.pdf
++// 
++// Implementation:  Filip Strugar (filip.strugar@intel.com), Steve Mccalla <stephen.mccalla@intel.com>         (\_/)
++// Version:         1.02                                                                                      (='.'=)
++// Details:         https://github.com/GameTechDev/XeGTAO                                                     (")_(")
++//
++// Version history:
++// 1.00 (2021-08-09): Initial release
++// 1.01 (2021-09-02): Fix for depth going to inf for 'far' depth buffer values that are out of fp16 range
++// 1.02 (2021-09-03): More fast_acos use and made final horizon cos clamping optional (off by default): 3-4% perf boost
++// 1.10 (2021-09-03): Added a couple of heuristics to combat over-darkening errors in certain scenarios
++// 1.20 (2021-09-06): Optional normal from depth generation is now a standalone pass: no longer integrated into 
++//                    main XeGTAO pass to reduce complexity and allow reuse; also quality of generated normals improved
++// 1.21 (2021-09-28): Replaced 'groupshared'-based denoiser with a slightly slower multi-pass one where a 2-pass new
++//                    equals 1-pass old. However, 1-pass new is faster than the 1-pass old and enough when TAA enabled.
++// 1.22 (2021-09-28): Added 'XeGTAO_' prefix to all local functions to avoid name clashes with various user codebases.
++// 1.30 (2021-10-10): Added support for directional component (bent normals).
++///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
++
++#ifndef __XE_GTAO_TYPES_H__
++#define __XE_GTAO_TYPES_H__
++
++#ifdef __cplusplus
++
++#include <cmath>
++
++namespace XeGTAO
++{
++
++    // cpp<->hlsl mapping
++    struct Matrix4x4    { float           m[16];    };
++    struct Vector3      { float           x,y,z;    };
++    struct Vector2      { float           x,y;      };
++    struct Vector2i     { int             x,y;      };
++    typedef unsigned int uint;
++
++#else // #ifdef __cplusplus
++
++    // cpp<->hlsl mapping
++    #define Matrix4x4       float4x4
++    #define Vector3         float3
++    #define Vector2         float2
++    #define Vector2i        int2
++    
++#endif
++
++    // Global consts that need to be visible from both shader and cpp side
++    #define XE_GTAO_DEPTH_MIP_LEVELS                    5                   // this one is hard-coded to 5 for now
++    #define XE_GTAO_NUMTHREADS_X                        8                   // these can be changed
++    #define XE_GTAO_NUMTHREADS_Y                        8                   // these can be changed
++    
++    struct GTAOConstants
++    {
++        Vector2i                ViewportSize;
++        Vector2                 ViewportPixelSize;                  // .zw == 1.0 / ViewportSize.xy
++
++        Vector2                 DepthUnpackConsts;
++        Vector2                 CameraTanHalfFOV;
++
++        Vector2                 NDCToViewMul;
++        Vector2                 NDCToViewAdd;
++
++        Vector2                 NDCToViewMul_x_PixelSize;
++        float                   EffectRadius;                       // world (viewspace) maximum size of the shadow
++        float                   EffectFalloffRange;
++
++        float                   RadiusMultiplier;
++        float                   Padding0;
++        float                   FinalValuePower;
++        float                   DenoiseBlurBeta;
++
++        float                   SampleDistributionPower;
++        float                   ThinOccluderCompensation;
++        float                   DepthMIPSamplingOffset;
++        int                     NoiseIndex;                         // frameIndex % 64 if using TAA or 0 otherwise
++    };
++
++    // This is used only for the development (ray traced ground truth).
++    struct ReferenceRTAOConstants
++    {
++        float                   TotalRaysLength     ;       // similar to Radius from GTAO
++        float                   Albedo              ;       // the assumption on the average material albedo
++        int                     MaxBounces          ;       // how many rays to recurse before stopping
++        int                     AccumulatedFrames   ;       // how many frames have we accumulated so far (after resetting/clearing). If 0 - this is the first.
++        int                     AccumulateFrameMax  ;       // how many frames are we aiming to accumulate; stop when we hit!
++        int                     Padding0;
++        int                     Padding1;
++        int                     Padding2;
++#ifdef __cplusplus
++        ReferenceRTAOConstants( ) { TotalRaysLength = 1.0f; Albedo = 0.0f; MaxBounces = 1; AccumulatedFrames = 0; AccumulateFrameMax = 0; }
++#endif
++    };
++
++    #ifndef XE_GTAO_USE_DEFAULT_CONSTANTS
++    #define XE_GTAO_USE_DEFAULT_CONSTANTS 1
++    #endif
++
++    // some constants reduce performance if provided as dynamic values; if these constants are not required to be dynamic and they match default values, 
++    // set XE_GTAO_USE_DEFAULT_CONSTANTS and the code will compile into a more efficient shader
++    #define XE_GTAO_DEFAULT_RADIUS_MULTIPLIER               (1.457f  )  // allows us to use different value as compared to ground truth radius to counter inherent screen space biases
++    #define XE_GTAO_DEFAULT_FALLOFF_RANGE                   (0.615f  )  // distant samples contribute less
++    #define XE_GTAO_DEFAULT_SAMPLE_DISTRIBUTION_POWER       (2.0f    )  // small crevices more important than big surfaces
++    #define XE_GTAO_DEFAULT_THIN_OCCLUDER_COMPENSATION      (0.0f    )  // the new 'thickness heuristic' approach
++    #define XE_GTAO_DEFAULT_FINAL_VALUE_POWER               (2.2f    )  // modifies the final ambient occlusion value using power function - this allows some of the above heuristics to do different things
++    #define XE_GTAO_DEFAULT_DEPTH_MIP_SAMPLING_OFFSET       (3.30f   )  // main trade-off between performance (memory bandwidth) and quality (temporal stability is the first affected, thin objects next)
++
++    #define XE_GTAO_OCCLUSION_TERM_SCALE                    (1.5f)      // for packing in UNORM (because raw, pre-denoised occlusion term can overshoot 1 but will later average out to 1)
++
++    // From https://www.shadertoy.com/view/3tB3z3 - except we're using R2 here
++    #define XE_HILBERT_LEVEL    6U
++    #define XE_HILBERT_WIDTH    ( (1U << XE_HILBERT_LEVEL) )
++    #define XE_HILBERT_AREA     ( XE_HILBERT_WIDTH * XE_HILBERT_WIDTH )
++    inline uint HilbertIndex( uint posX, uint posY )
++    {   
++        uint index = 0U;
++        for( uint curLevel = XE_HILBERT_WIDTH/2U; curLevel > 0U; curLevel /= 2U )
++        {
++            uint regionX = ( posX & curLevel ) > 0U;
++            uint regionY = ( posY & curLevel ) > 0U;
++            index += curLevel * curLevel * ( (3U * regionX) ^ regionY);
++            if( regionY == 0U )
++            {
++                if( regionX == 1U )
++                {
++                    posX = uint( (XE_HILBERT_WIDTH - 1U) ) - posX;
++                    posY = uint( (XE_HILBERT_WIDTH - 1U) ) - posY;
++                }
++
++                uint temp = posX;
++                posX = posY;
++                posY = temp;
++            }
++        }
++        return index;
++    }
++
++#ifdef __cplusplus
++
++    struct GTAOSettings
++    {
++        int         QualityLevel                        = 2;        // 0: low; 1: medium; 2: high; 3: ultra
++        int         DenoisePasses                       = 1;        // 0: disabled; 1: sharp; 2: medium; 3: soft
++        float       Radius                              = 0.5f;     // [0.0,  ~ ]   World (view) space size of the occlusion sphere.
++
++        // auto-tune-d settings
++        float       RadiusMultiplier                    = XE_GTAO_DEFAULT_RADIUS_MULTIPLIER;
++        float       FalloffRange                        = XE_GTAO_DEFAULT_FALLOFF_RANGE;
++        float       SampleDistributionPower             = XE_GTAO_DEFAULT_SAMPLE_DISTRIBUTION_POWER;
++        float       ThinOccluderCompensation            = XE_GTAO_DEFAULT_THIN_OCCLUDER_COMPENSATION;    
++        float       FinalValuePower                     = XE_GTAO_DEFAULT_FINAL_VALUE_POWER;
++        float       DepthMIPSamplingOffset              = XE_GTAO_DEFAULT_DEPTH_MIP_SAMPLING_OFFSET;
++    };
++
++    template<class T> inline T clamp( T const & v, T const & min, T const & max ) { assert( max >= min ); if( v < min ) return min; if( v > max ) return max;  return v; }
++
++    // If using TAA then set noiseIndex to frameIndex % 64 - otherwise use 0
++    inline void GTAOUpdateConstants( XeGTAO::GTAOConstants& consts, int viewportWidth, int viewportHeight, const XeGTAO::GTAOSettings & settings, const float projMatrix[16], bool rowMajor, unsigned int frameCounter )
++    {
++        consts.ViewportSize                 = { viewportWidth, viewportHeight };
++        consts.ViewportPixelSize            = { 1.0f / (float)viewportWidth, 1.0f / (float)viewportHeight };
++
++        float depthLinearizeMul = (rowMajor)?(-projMatrix[3 * 4 + 2]):(-projMatrix[3 + 2 * 4]);     // float depthLinearizeMul = ( clipFar * clipNear ) / ( clipFar - clipNear );
++        float depthLinearizeAdd = (rowMajor)?( projMatrix[2 * 4 + 2]):( projMatrix[2 + 2 * 4]);     // float depthLinearizeAdd = clipFar / ( clipFar - clipNear );
++
++        // correct the handedness issue. need to make sure this below is correct, but I think it is.
++        if( depthLinearizeMul * depthLinearizeAdd < 0 )
++            depthLinearizeAdd = -depthLinearizeAdd;
++        consts.DepthUnpackConsts            = { depthLinearizeMul, depthLinearizeAdd };
++
++        float tanHalfFOVY = 1.0f / ((rowMajor)?(projMatrix[1 * 4 + 1]):(projMatrix[1 + 1 * 4]));    // = tanf( drawContext.Camera.GetYFOV( ) * 0.5f );
++        float tanHalfFOVX = 1.0F / ((rowMajor)?(projMatrix[0 * 4 + 0]):(projMatrix[0 + 0 * 4]));    // = tanHalfFOVY * drawContext.Camera.GetAspect( );
++        consts.CameraTanHalfFOV             = { tanHalfFOVX, tanHalfFOVY };
++
++        consts.NDCToViewMul                 = { consts.CameraTanHalfFOV.x * 2.0f, consts.CameraTanHalfFOV.y * -2.0f };
++        consts.NDCToViewAdd                 = { consts.CameraTanHalfFOV.x * -1.0f, consts.CameraTanHalfFOV.y * 1.0f };
++
++        consts.NDCToViewMul_x_PixelSize     = { consts.NDCToViewMul.x * consts.ViewportPixelSize.x, consts.NDCToViewMul.y * consts.ViewportPixelSize.y };
++
++        consts.EffectRadius                 = settings.Radius;
++
++        consts.EffectFalloffRange           = settings.FalloffRange;
++        consts.DenoiseBlurBeta              = (settings.DenoisePasses==0)?(1e4f):(1.2f);    // high value disables denoise - more elegant & correct way would be do set all edges to 0
++
++        consts.RadiusMultiplier             = settings.RadiusMultiplier;
++        consts.SampleDistributionPower      = settings.SampleDistributionPower;
++        consts.ThinOccluderCompensation     = settings.ThinOccluderCompensation;
++        consts.FinalValuePower              = settings.FinalValuePower;
++        consts.DepthMIPSamplingOffset       = settings.DepthMIPSamplingOffset;
++        consts.NoiseIndex                   = (settings.DenoisePasses>0)?(frameCounter % 64):(0);
++        consts.Padding0 = 0;
++    }
++
++#ifdef IMGUI_API
++    inline bool GTAOImGuiSettings( XeGTAO::GTAOSettings & settings )
++    {
++        bool hadChanges = false;
++    
++        ImGui::PushItemWidth( 120.0f );
++
++        ImGui::Text( "Performance/quality settings:" );
++
++        ImGui::Combo( "Quality Level", &settings.QualityLevel, "Low\0Medium\0High\0Ultra\00");
++        if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "Higher quality settings use more samples per pixel but are slower" );
++        settings.QualityLevel       = clamp( settings.QualityLevel , 0, 3 );
++
++        ImGui::Combo( "Denoising level", &settings.DenoisePasses, "Disabled\0Sharp\0Medium\0Soft\00");
++        if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "The amount of edge-aware spatial denoise applied" );
++        settings.DenoisePasses      = clamp( settings.DenoisePasses , 0, 3 );
++
++        ImGui::Text( "Visual settings:" );
++
++        settings.Radius             = clamp( settings.Radius, 0.0f, 100000.0f );
++
++        hadChanges |= ImGui::InputFloat( "Effect radius",               &settings.Radius              , 0.05f, 0.0f, "%.2f" );
++        if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "World (viewspace) effect radius\nExpected range: depends on the scene & requirements, anything from 0.01 to 1000+" );
++        settings.Radius                             = clamp( settings.Radius                          , 0.0f, 10000.0f      );
++
++        if( ImGui::CollapsingHeader( "Auto-tuned settings (heuristics)" ) )
++        {
++            hadChanges |= ImGui::InputFloat( "Radius multiplier",    &settings.RadiusMultiplier , 0.05f, 0.0f, "%.2f" );
++            if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "Multiplies the 'Effect Radius' - used by the auto-tune to best match raytraced ground truth\nExpected range: [0.3, 3.0], defaults to %.3f", XE_GTAO_DEFAULT_RADIUS_MULTIPLIER );
++            settings.RadiusMultiplier               = clamp( settings.RadiusMultiplier          , 0.3f, 3.0f          );
++
++            hadChanges |= ImGui::InputFloat( "Falloff range",        &settings.FalloffRange     , 0.05f, 0.0f, "%.2f" );
++            if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "Gently reduce sample impact as it gets out of 'Effect radius' bounds\nExpected range: [0.0, 1.0], defaults to %.3f", XE_GTAO_DEFAULT_FALLOFF_RANGE );
++            settings.FalloffRange                   = clamp( settings.FalloffRange              , 0.0f, 1.0f      );
++
++            hadChanges |= ImGui::InputFloat( "Sample distribution power",   &settings.SampleDistributionPower  , 0.05f, 0.0f, "%.2f" );
++            if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "Make samples on a slice equally distributed (1.0) or focus more towards the center (>1.0)\nExpected range: [1.0, 3.0], 2defaults to %.3f", XE_GTAO_DEFAULT_SAMPLE_DISTRIBUTION_POWER );
++            settings.SampleDistributionPower        = clamp( settings.SampleDistributionPower   , 1.0f, 3.0f      );
++
++            hadChanges |= ImGui::InputFloat( "Thin occluder compensation",   &settings.ThinOccluderCompensation, 0.05f, 0.0f, "%.2f" );
++            if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "Slightly reduce impact of samples further back to counter the bias from depth-based (incomplete) input scene geometry data\nExpected range: [0.0, 0.7], defaults to %.3f", XE_GTAO_DEFAULT_THIN_OCCLUDER_COMPENSATION );
++            settings.ThinOccluderCompensation       = clamp( settings.ThinOccluderCompensation      , 0.0f, 0.7f       );
++
++            hadChanges |= ImGui::InputFloat( "Final power",                 &settings.FinalValuePower, 0.05f, 0.0f, "%.2f" );
++            if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "Applies power function to the final value: occlusion = pow( occlusion, finalPower )\nExpected range: [0.5, 5.0], defaults to %.3f", XE_GTAO_DEFAULT_FINAL_VALUE_POWER );
++            settings.FinalValuePower                = clamp( settings.FinalValuePower           , 0.5f, 5.0f       );
++
++            hadChanges |= ImGui::InputFloat( "Depth MIP sampling offset",   &settings.DepthMIPSamplingOffset, 0.05f, 0.0f, "%.2f" );
++            if( ImGui::IsItemHovered( ) ) ImGui::SetTooltip( "Mainly performance (texture memory bandwidth) setting but as a side-effect reduces overshadowing by thin objects and increases temporal instability\nExpected range: [2.0, 6.0], defaults to %.3f", XE_GTAO_DEFAULT_DEPTH_MIP_SAMPLING_OFFSET );
++            settings.DepthMIPSamplingOffset         = clamp( settings.DepthMIPSamplingOffset    , 0.0f, 30.0f      );
++        }
++
++        ImGui::PopItemWidth( );
++
++        return hadChanges;
++    }
++#endif // IMGUI_API
++
++}   // close the namespace
++
++#endif // #ifdef __cplusplus
++
++
++#endif // __XE_GTAO_TYPES_H__
++)XEGTAO"
 diff --git a/runtime/kernel/boot.cpp b/runtime/kernel/boot.cpp
 index aa0d5da..8c7e74b 100644
 --- a/runtime/kernel/boot.cpp
@@ -5720,7 +7906,7 @@ index 86cf14a..ce8a50f 100644
  
  // Exceptions dispatch like NT on x86: each handler of the fs:[0] chain is called (record, frame, context,
 diff --git a/runtime/xdk/d3d8.cpp b/runtime/xdk/d3d8.cpp
-index cb38363..a3a9f0d 100644
+index cb38363..5f806eb 100644
 --- a/runtime/xdk/d3d8.cpp
 +++ b/runtime/xdk/d3d8.cpp
 @@ -39,6 +39,10 @@ using namespace kernel;
@@ -5812,7 +7998,21 @@ index cb38363..a3a9f0d 100644
  }
  
  // The library's default render and texture stage states; its pushes land in the scratch buffer
-@@ -266,8 +306,8 @@ HLE_STDCALL(Direct3D_CreateDevice, 6) {
+@@ -243,6 +283,13 @@ void VerticalBlank(X86Context& ctx) {
+ gpu::State& State() { return g_state; }
+ std::recursive_mutex& Lock() { return g_lock; }
+ 
++void ApplyAmbientOcclusion(const std::array<float, 16>& projection) {
++    std::lock_guard lock(g_lock);
++    if (!g_backend) return;
++    Walk(Dev(kDevPush));
++    g_backend->AmbientOcclusion(g_state, projection);
++}
++
+ }  // namespace d3d
+ 
+ using namespace d3d;
+@@ -266,8 +313,8 @@ HLE_STDCALL(Direct3D_CreateDevice, 6) {
      uint32_t auto_depth = R32(pp + 0x20), depth_fmt = R32(pp + 0x24), interval = R32(pp + 0x30);
      if (!w) w = 640;
      if (!h) h = 480;
@@ -5823,7 +8023,7 @@ index cb38363..a3a9f0d 100644
      std::memset(HostPtr(kDevice), 0, XDK_CDevice_Size);
      W32(kDevicePtr, kDevice);
      ScratchPush();
-@@ -286,6 +326,10 @@ HLE_STDCALL(Direct3D_CreateDevice, 6) {
+@@ -286,6 +333,10 @@ HLE_STDCALL(Direct3D_CreateDevice, 6) {
          if (kRenderThread) g_backend = gpu::CreateThreadedBackend(std::move(g_backend));
      }
      g_state = gpu::State{};
@@ -5834,7 +8034,7 @@ index cb38363..a3a9f0d 100644
      g_state.viewport = {0, 0, w, h, 0.0f, 1.0f};
      SetDev(kDevRenderTarget, g_buffers[1]);
      SetDev(kDevDepth, g_depth);
-@@ -368,6 +412,14 @@ HLE_STDCALL(D3DResource_BlockUntilNotBusy, 1) {
+@@ -368,6 +419,14 @@ HLE_STDCALL(D3DResource_BlockUntilNotBusy, 1) {
      gpu::MarkDirty(a[0]);
      return 0;
  }
@@ -5849,7 +8049,7 @@ index cb38363..a3a9f0d 100644
  HLE_STDCALL(D3DResource_IsBusy, 1) {
      std::lock_guard<std::recursive_mutex> lock(g_lock);
      uint32_t res = a[0];
-@@ -414,7 +466,12 @@ HLE_STDCALL(D3D_MakeRequestedSpace, 2) {
+@@ -414,7 +473,12 @@ HLE_STDCALL(D3D_MakeRequestedSpace, 2) {
  }
  
  HLE_STDCALL(D3DDevice_BlockUntilVerticalBlank, 0) {
@@ -5863,7 +8063,7 @@ index cb38363..a3a9f0d 100644
      return 0;
  }
  HLE_STDCALL(D3DDevice_SetFlickerFilter, 1) { return 0; }
-@@ -445,6 +502,7 @@ HLE_STDCALL(D3DDevice_SetGammaRamp, 2) {
+@@ -445,6 +509,7 @@ HLE_STDCALL(D3DDevice_SetGammaRamp, 2) {
  
  HLE_STDCALL(D3DDevice_SetRenderTarget, 2) {
      std::lock_guard<std::recursive_mutex> lock(g_lock);
@@ -5871,7 +8071,7 @@ index cb38363..a3a9f0d 100644
      uint32_t rt = a[0] ? a[0] : Dev(kDevRenderTarget), zs = a[1];
      AddRef(ctx, rt);
      uint32_t old_rt = Dev(kDevRenderTarget), old_zs = Dev(kDevDepth);
-@@ -541,6 +599,7 @@ HLE_STDCALL(D3DDevice_CopyRects, 5) {
+@@ -541,6 +606,7 @@ HLE_STDCALL(D3DDevice_CopyRects, 5) {
  
  HLE_STDCALL(D3DDevice_SetViewport, 1) {
      std::lock_guard<std::recursive_mutex> lock(g_lock);
@@ -5879,7 +8079,7 @@ index cb38363..a3a9f0d 100644
      uint32_t v = a[0];
      g_state.viewport = {R32(v), R32(v + 4), R32(v + 8), R32(v + 12), GF(v + 16), GF(v + 20)};
      g_state.scissor_count = 0;
-@@ -556,6 +615,8 @@ HLE_STDCALL(D3DDevice_SetScissors, 3) {
+@@ -556,6 +622,8 @@ HLE_STDCALL(D3DDevice_SetScissors, 3) {
  }
  
  HLE_STDCALL(D3DDevice_SetScreenSpaceOffset, 2) {
@@ -5888,7 +8088,7 @@ index cb38363..a3a9f0d 100644
      g_state.ss_offset_x = ArgF(a, 0);
      g_state.ss_offset_y = ArgF(a, 1);
      UpdateViewportConstants();
-@@ -748,6 +809,101 @@ HLE_STDCALL(D3DDevice_SetIndices, 2) {
+@@ -748,6 +816,101 @@ HLE_STDCALL(D3DDevice_SetIndices, 2) {
  
  // shaders
  
@@ -5990,7 +8190,7 @@ index cb38363..a3a9f0d 100644
  HLE_STDCALL(D3DDevice_CreateVertexShader, 4) {
      std::lock_guard<std::recursive_mutex> lock(g_lock);
      uint32_t decl = a[0], func = a[1], out = a[2];
-@@ -802,66 +958,169 @@ HLE_STDCALL(D3DDevice_GetVertexShaderFunction, 3) {
+@@ -802,66 +965,169 @@ HLE_STDCALL(D3DDevice_GetVertexShaderFunction, 3) {
  HLE_STDCALL(D3DDevice_SetVertexShader, 1) {
      std::lock_guard<std::recursive_mutex> lock(g_lock);
      uint32_t h = a[0];
@@ -6183,7 +8383,7 @@ index cb38363..a3a9f0d 100644
      ps->handle = rec;
      g_ps[rec] = ps;
      W32(a[1], rec);
-@@ -870,32 +1129,30 @@ HLE_STDCALL(D3DDevice_CreatePixelShader, 2) {
+@@ -870,32 +1136,30 @@ HLE_STDCALL(D3DDevice_CreatePixelShader, 2) {
  
  HLE_STDCALL(D3DDevice_DeletePixelShader, 1) {
      std::lock_guard<std::recursive_mutex> lock(g_lock);
@@ -6231,7 +8431,7 @@ index cb38363..a3a9f0d 100644
      // the definition loads the combiner state like the XDK pushes it
      const uint32_t* d = g_state.ps->def;
      auto put = [&](uint32_t method, uint32_t v) { g_state.simple[method >> 2] = v; };
-@@ -929,10 +1186,18 @@ HLE_STDCALL(D3DDevice_SetPixelShaderConstant, 3) {
+@@ -929,10 +1193,18 @@ HLE_STDCALL(D3DDevice_SetPixelShaderConstant, 3) {
  
  // drawing
  
@@ -6250,7 +8450,7 @@ index cb38363..a3a9f0d 100644
      if (g_backend) g_backend->Draw(g_state, a[0], a[1], a[2], nullptr);
      return 0;
  }
-@@ -941,6 +1206,8 @@ HLE_STDCALL(D3DDevice_DrawIndexedVertices, 3) {
+@@ -941,6 +1213,8 @@ HLE_STDCALL(D3DDevice_DrawIndexedVertices, 3) {
      std::lock_guard<std::recursive_mutex> lock(g_lock);
      Walk(Dev(kDevPush));
      SyncDeferred();
@@ -6259,7 +8459,7 @@ index cb38363..a3a9f0d 100644
      const uint8_t* indices = a[2] ? static_cast<const uint8_t*>(HostPtr(a[2])) : nullptr;
      if (g_backend) g_backend->Draw(g_state, a[0], 0, a[1], indices);
      return 0;
-@@ -974,11 +1241,13 @@ uint32_t UpVertices(const void* src, uint32_t bytes) {
+@@ -974,11 +1248,13 @@ uint32_t UpVertices(const void* src, uint32_t bytes) {
      return g_up_header;
  }
  
@@ -6274,7 +8474,7 @@ index cb38363..a3a9f0d 100644
      g_backend->Draw(g_state, prim, 0, count, nullptr);
      g_state.streams[0] = stream;
  }
-@@ -1001,6 +1270,34 @@ uint32_t g_im_prim = 0, g_im_mask = 0;  // open primitive, slots it wrote
+@@ -1001,6 +1277,34 @@ uint32_t g_im_prim = 0, g_im_mask = 0;  // open primitive, slots it wrote
  float g_im_attr[64];                    // 16 slots of x y z w
  std::vector<float> g_im_vertices;       // every slot per vertex
  
@@ -6309,7 +8509,7 @@ index cb38363..a3a9f0d 100644
  // visibility tests: depth passing pixels are counted while enabled, a report gets the count since the clear,
  // at a physical address in the first 16 MB
  void ApplyVisibilityMethod(uint32_t m, uint32_t v) {
-@@ -1050,16 +1347,19 @@ void EndPrimitive() {
+@@ -1050,16 +1354,19 @@ void EndPrimitive() {
  }
  
  // reads the commands pushed since the last call: vertex data between a begin and an end is drawn, visibility tests
@@ -6332,7 +8532,7 @@ index cb38363..a3a9f0d 100644
              float f, *a = g_im_attr;
              bool last = true;  // the slot's last component
              std::memcpy(&f, &v, 4);
-@@ -1101,7 +1401,7 @@ void Walk(uint32_t end) {
+@@ -1101,7 +1408,7 @@ void Walk(uint32_t end) {
              if (a == g_im_attr && last) g_im_vertices.insert(g_im_vertices.end(), g_im_attr, g_im_attr + 64);
          }
      }
@@ -6341,7 +8541,7 @@ index cb38363..a3a9f0d 100644
  }
  }  // namespace
  }  // namespace d3d
-@@ -1109,7 +1409,8 @@ void Walk(uint32_t end) {
+@@ -1109,7 +1416,8 @@ void Walk(uint32_t end) {
  HLE_STDCALL(D3DDevice_DrawVerticesUP, 4) {
      std::lock_guard<std::recursive_mutex> lock(g_lock);
      Walk(Dev(kDevPush));
@@ -6351,7 +8551,7 @@ index cb38363..a3a9f0d 100644
      return 0;
  }
  
-@@ -1136,6 +1437,7 @@ HLE_STDCALL(D3DDevice_EndPush, 1) {
+@@ -1136,6 +1444,7 @@ HLE_STDCALL(D3DDevice_EndPush, 1) {
          }
          for (uint32_t i = 0; i < n; i++, p += 4) {
              uint32_t m = head & 0x40000000 ? method : method + i * 4, v = R32(p);
@@ -6359,7 +8559,7 @@ index cb38363..a3a9f0d 100644
              ApplyVisibilityMethod(m, v);
              if (m == kInlineArray) {
                  if (prim) vertices.push_back(v);
-@@ -1146,7 +1448,9 @@ HLE_STDCALL(D3DDevice_EndPush, 1) {
+@@ -1146,7 +1455,9 @@ HLE_STDCALL(D3DDevice_EndPush, 1) {
                  vertices.clear();
              } else if (prim) {
                  uint32_t stride = VertexBytes(), bytes = uint32_t(vertices.size()) * 4;
@@ -6370,6 +8570,17 @@ index cb38363..a3a9f0d 100644
                  else LOG_FIRST(8, "d3d: EndPush primitive %u dropped, %u bytes of vertices of %u", prim, bytes, stride);
                  prim = 0;
              }
+diff --git a/runtime/xdk/d3d8.h b/runtime/xdk/d3d8.h
+index 977d028..82d03db 100644
+--- a/runtime/xdk/d3d8.h
++++ b/runtime/xdk/d3d8.h
+@@ -7,5 +7,6 @@ namespace d3d {
+ 
+ gpu::State& State();
+ std::recursive_mutex& Lock();
++void ApplyAmbientOcclusion(const std::array<float, 16>& projection);
+ 
+ }  // namespace d3d
 diff --git a/runtime/xdk/dsound.cpp b/runtime/xdk/dsound.cpp
 index 05977b5..cfa607d 100644
 --- a/runtime/xdk/dsound.cpp

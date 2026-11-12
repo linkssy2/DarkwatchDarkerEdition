@@ -1,0 +1,2316 @@
+{
+  "initial_arcs": {
+    "TrooperSolo|STAND": 0,
+    "TrooperSolo|CROUCH": 0,
+    "TrooperCoop|STAND": 0,
+    "TrooperCoop|CROUCH": 0,
+    "BlueTrooperSolo|STAND": 0,
+    "BlueTrooperSolo|CROUCH": 0,
+    "BlueTrooperCoop|STAND": 0,
+    "BlueTrooperCoop|CROUCH": 0,
+    "RedTrooperSolo|STAND": 0,
+    "RedTrooperSolo|CROUCH": 0,
+    "RedTrooperCoop|STAND": 0,
+    "RedTrooperCoop|CROUCH": 0,
+    "BossTalaSolo|STAND": 0,
+    "BossTalaSolo|CROUCH": 0,
+    "BossTalaCoop|STAND": 0,
+    "BossTalaCoop|CROUCH": 0,
+    "Chaz|STAND": 0,
+    "Chaz|CROUCH": 0,
+    "JerichoCoop|STAND": 0,
+    "JerichoCoop|CROUCH": 0,
+    "CivilianJerichoSolo|STAND": 0,
+    "CivilianJerichoSolo|CROUCH": 0,
+    "CivilianJerichoCoop|STAND": 30,
+    "CivilianJerichoCoop|CROUCH": 0,
+    "CassidySolo|STAND": 30,
+    "CassidySolo|CROUCH": -30,
+    "CassidyPlayerTwo|STAND": 30,
+    "CassidyPlayerTwo|CROUCH": -45,
+    "CassidySpectralSolo|STAND": 60,
+    "CassidySpectralSolo|CROUCH": -60,
+    "CassidySpectralPlayerTwo|STAND": 90,
+    "CassidySpectralPlayerTwo|CROUCH": -45,
+    "TalaSolo|STAND": 0,
+    "TalaSolo|CROUCH": -60,
+    "TalaCoop|STAND": 0,
+    "TalaCoop|CROUCH": -60,
+    "VampireTalaSolo|STAND": 15,
+    "VampireTalaSolo|CROUCH": 30,
+    "VampireTalaCoop|STAND": 0,
+    "VampireTalaCoop|CROUCH": -45
+  },
+  "aim": [
+    {
+      "actor": "TrooperSolo",
+      "stance": "STAND",
+      "source_sha256": "c62acb1140bfbb1fd885875edc5f6bf311a5cff06796f2ef2bdc14fa7f72724e",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperSolo",
+      "stance": "STAND",
+      "source_sha256": "a32f6c4df78661c342d1eeb8631c22910debae10d9db834c13b6fc144cbb0794",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperSolo",
+      "stance": "STAND",
+      "source_sha256": "2d86d6e241c8a79f7c39922c9e39e7e4963da6e52fa4451ed189767bc9d0878f",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperSolo",
+      "stance": "STAND",
+      "source_sha256": "75abb2db4fe75a779567114d7e438a58573773de6684c576ab07f1d04fe8de9e",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "3ec706cfa0eb95d22f386ccbab2e1bd2deb8d06b0d475844dc44ac176391e610",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "171b57aebd2fa7ceaaa4efb13af69d0999b4b804fdb352f1ea6482bbb931728b",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "822f3e9e206c42f03f26af7f1b262137065b5740b6c0e6f54a25f33cc8580089",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "7341f31b03fbba1ba2c32a02b5512ff929ef8ce89693aae530b0d212c4df9f1b",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "94f0a766cf6c84b09ab3269d5529672056834cffe268ab1fafd043dd73433159",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "d18da0389acbb65a1c2dc2d3381a82c247e8a054ffc9f40dfb0e5d1eb98023c0",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "7afbc9e56c3b9b3f54c3f9e24418694d84160cf03d2b55befd064ecdd9234867",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "03a3b1ab7ad2998ad392718545a8cf52f882fcd1c3b2ad3a365d00173fd470fb",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperCoop",
+      "stance": "STAND",
+      "source_sha256": "c62acb1140bfbb1fd885875edc5f6bf311a5cff06796f2ef2bdc14fa7f72724e",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperCoop",
+      "stance": "STAND",
+      "source_sha256": "a32f6c4df78661c342d1eeb8631c22910debae10d9db834c13b6fc144cbb0794",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperCoop",
+      "stance": "STAND",
+      "source_sha256": "2d86d6e241c8a79f7c39922c9e39e7e4963da6e52fa4451ed189767bc9d0878f",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperCoop",
+      "stance": "STAND",
+      "source_sha256": "75abb2db4fe75a779567114d7e438a58573773de6684c576ab07f1d04fe8de9e",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "3ec706cfa0eb95d22f386ccbab2e1bd2deb8d06b0d475844dc44ac176391e610",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "171b57aebd2fa7ceaaa4efb13af69d0999b4b804fdb352f1ea6482bbb931728b",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "822f3e9e206c42f03f26af7f1b262137065b5740b6c0e6f54a25f33cc8580089",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "7341f31b03fbba1ba2c32a02b5512ff929ef8ce89693aae530b0d212c4df9f1b",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "94f0a766cf6c84b09ab3269d5529672056834cffe268ab1fafd043dd73433159",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "d18da0389acbb65a1c2dc2d3381a82c247e8a054ffc9f40dfb0e5d1eb98023c0",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "7afbc9e56c3b9b3f54c3f9e24418694d84160cf03d2b55befd064ecdd9234867",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "03a3b1ab7ad2998ad392718545a8cf52f882fcd1c3b2ad3a365d00173fd470fb",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperSolo",
+      "stance": "STAND",
+      "source_sha256": "d9193bbcb7bf62a00628af89f5766367ea16d4cb0e3ba57b5aa82774260fafc2",
+      "degrees": -10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperSolo",
+      "stance": "STAND",
+      "source_sha256": "9f871b8bfbb93c55694be9baf379d8c4593b1d47cc9a8453e1d8c2c1878c0ec1",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperSolo",
+      "stance": "STAND",
+      "source_sha256": "fe162ea11b80961d0182579190330489f1bdd6b5e538903bbf2ef0552395142d",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperSolo",
+      "stance": "STAND",
+      "source_sha256": "5d8c079c785740bfde49ea3ac2891d00e54030c5ed42f9469f8d131f6a397b9b",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "ac2090ebc2660aa171208107fd8691827b18e3c545afc374a34f71d6f0a1c9a7",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "418a3e5c2fa317b465ca6c130417211842a121a6efb2d238fbbb7c5b7dba872c",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "66bc217c7b1e06b71096e803fe1bc1302bad3e4c653709231654ad31587600af",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "8be4931865d01def6921a1f2287c6e4fc75a83c1abf193b826c77c71f524a418",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "fe37f3b29d90a03049cb81acea87c24d08ab59d5ad457fca204144100d322124",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "b8a97c79207a3281581b4c5e39763c3cc28d5b03598c65965157ee0d003a243f",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "1d2576b49ab7e40d3a583bd2cab17c03571065b5de5eab350af4d850c599583d",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "7449608d96d4cc8c686484b5e3ef30b8dc1e4c5a188e6d3ef69065d6d98dbfc8",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperCoop",
+      "stance": "STAND",
+      "source_sha256": "d9193bbcb7bf62a00628af89f5766367ea16d4cb0e3ba57b5aa82774260fafc2",
+      "degrees": -10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperCoop",
+      "stance": "STAND",
+      "source_sha256": "9f871b8bfbb93c55694be9baf379d8c4593b1d47cc9a8453e1d8c2c1878c0ec1",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperCoop",
+      "stance": "STAND",
+      "source_sha256": "fe162ea11b80961d0182579190330489f1bdd6b5e538903bbf2ef0552395142d",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperCoop",
+      "stance": "STAND",
+      "source_sha256": "5d8c079c785740bfde49ea3ac2891d00e54030c5ed42f9469f8d131f6a397b9b",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "ac2090ebc2660aa171208107fd8691827b18e3c545afc374a34f71d6f0a1c9a7",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "418a3e5c2fa317b465ca6c130417211842a121a6efb2d238fbbb7c5b7dba872c",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "66bc217c7b1e06b71096e803fe1bc1302bad3e4c653709231654ad31587600af",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "8be4931865d01def6921a1f2287c6e4fc75a83c1abf193b826c77c71f524a418",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "fe37f3b29d90a03049cb81acea87c24d08ab59d5ad457fca204144100d322124",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "b8a97c79207a3281581b4c5e39763c3cc28d5b03598c65965157ee0d003a243f",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "1d2576b49ab7e40d3a583bd2cab17c03571065b5de5eab350af4d850c599583d",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BlueTrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "7449608d96d4cc8c686484b5e3ef30b8dc1e4c5a188e6d3ef69065d6d98dbfc8",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperSolo",
+      "stance": "STAND",
+      "source_sha256": "d9193bbcb7bf62a00628af89f5766367ea16d4cb0e3ba57b5aa82774260fafc2",
+      "degrees": -10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperSolo",
+      "stance": "STAND",
+      "source_sha256": "9f871b8bfbb93c55694be9baf379d8c4593b1d47cc9a8453e1d8c2c1878c0ec1",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperSolo",
+      "stance": "STAND",
+      "source_sha256": "fe162ea11b80961d0182579190330489f1bdd6b5e538903bbf2ef0552395142d",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperSolo",
+      "stance": "STAND",
+      "source_sha256": "5d8c079c785740bfde49ea3ac2891d00e54030c5ed42f9469f8d131f6a397b9b",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "ac2090ebc2660aa171208107fd8691827b18e3c545afc374a34f71d6f0a1c9a7",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "418a3e5c2fa317b465ca6c130417211842a121a6efb2d238fbbb7c5b7dba872c",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "66bc217c7b1e06b71096e803fe1bc1302bad3e4c653709231654ad31587600af",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "8be4931865d01def6921a1f2287c6e4fc75a83c1abf193b826c77c71f524a418",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "fe37f3b29d90a03049cb81acea87c24d08ab59d5ad457fca204144100d322124",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "b8a97c79207a3281581b4c5e39763c3cc28d5b03598c65965157ee0d003a243f",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "1d2576b49ab7e40d3a583bd2cab17c03571065b5de5eab350af4d850c599583d",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperSolo",
+      "stance": "CROUCH",
+      "source_sha256": "7449608d96d4cc8c686484b5e3ef30b8dc1e4c5a188e6d3ef69065d6d98dbfc8",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperCoop",
+      "stance": "STAND",
+      "source_sha256": "d9193bbcb7bf62a00628af89f5766367ea16d4cb0e3ba57b5aa82774260fafc2",
+      "degrees": -10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperCoop",
+      "stance": "STAND",
+      "source_sha256": "9f871b8bfbb93c55694be9baf379d8c4593b1d47cc9a8453e1d8c2c1878c0ec1",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperCoop",
+      "stance": "STAND",
+      "source_sha256": "fe162ea11b80961d0182579190330489f1bdd6b5e538903bbf2ef0552395142d",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperCoop",
+      "stance": "STAND",
+      "source_sha256": "5d8c079c785740bfde49ea3ac2891d00e54030c5ed42f9469f8d131f6a397b9b",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "ac2090ebc2660aa171208107fd8691827b18e3c545afc374a34f71d6f0a1c9a7",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "418a3e5c2fa317b465ca6c130417211842a121a6efb2d238fbbb7c5b7dba872c",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "66bc217c7b1e06b71096e803fe1bc1302bad3e4c653709231654ad31587600af",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "8be4931865d01def6921a1f2287c6e4fc75a83c1abf193b826c77c71f524a418",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "fe37f3b29d90a03049cb81acea87c24d08ab59d5ad457fca204144100d322124",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "b8a97c79207a3281581b4c5e39763c3cc28d5b03598c65965157ee0d003a243f",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "1d2576b49ab7e40d3a583bd2cab17c03571065b5de5eab350af4d850c599583d",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "RedTrooperCoop",
+      "stance": "CROUCH",
+      "source_sha256": "7449608d96d4cc8c686484b5e3ef30b8dc1e4c5a188e6d3ef69065d6d98dbfc8",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaSolo",
+      "stance": "STAND",
+      "source_sha256": "e6cb60c54c8a18635effa46f86d9ae09a8b4f1e826cf847985766230c0ff804c",
+      "degrees": -100,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaSolo",
+      "stance": "STAND",
+      "source_sha256": "368ff7bd58f1691e119e994d653f0dbcda903daba11c2e8ae727e3e966f8b45a",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaSolo",
+      "stance": "STAND",
+      "source_sha256": "db631bc0a34515b684a7fd0b236245496f57927fdef572bae81e814384837a4d",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaSolo",
+      "stance": "STAND",
+      "source_sha256": "4c648b38331adf698003d87b9eb799f1aef319919365ae9744e8d595ea148979",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "8ea16e2e75cd4dc7532617d4c5c4897a176ce44a2d7e1975bb67ebcc6772c77a",
+      "degrees": 60,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "60c9da99a85c628ee797403ea333aa7621c01caf3bac17a98bedc53e306e7f52",
+      "degrees": 20,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "89bf2e974f6b59861590aa3d83d41b623c4cff5ae4ca4969d76489ddaed76204",
+      "degrees": 20,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "2c8a4a76a58b6f7ee3623417b205184005adcb03128d66b844a98d04f2fae358",
+      "degrees": -110,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "5e4bc35e2546754631a89d4a79d32ca66d8cf03a964dc863dfdcbe192bfbae00",
+      "degrees": 20,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "4608b5dccd3a6321c7263d2525bfd365c19c0795a79d64a97fb04df3f29e82c8",
+      "degrees": -110,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "d7ad3492bfb7cf75b1c465129e3e03a6b460a521d0b12062b066bef82fda1e3c",
+      "degrees": -110,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "7075254c1004cc507b188d0f09dbfeb4d02ba5b3d651d8c4dddd7188bf2ffd94",
+      "degrees": -110,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaCoop",
+      "stance": "STAND",
+      "source_sha256": "e6cb60c54c8a18635effa46f86d9ae09a8b4f1e826cf847985766230c0ff804c",
+      "degrees": -100,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaCoop",
+      "stance": "STAND",
+      "source_sha256": "368ff7bd58f1691e119e994d653f0dbcda903daba11c2e8ae727e3e966f8b45a",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaCoop",
+      "stance": "STAND",
+      "source_sha256": "db631bc0a34515b684a7fd0b236245496f57927fdef572bae81e814384837a4d",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaCoop",
+      "stance": "STAND",
+      "source_sha256": "4c648b38331adf698003d87b9eb799f1aef319919365ae9744e8d595ea148979",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "8ea16e2e75cd4dc7532617d4c5c4897a176ce44a2d7e1975bb67ebcc6772c77a",
+      "degrees": 60,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "60c9da99a85c628ee797403ea333aa7621c01caf3bac17a98bedc53e306e7f52",
+      "degrees": 20,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "89bf2e974f6b59861590aa3d83d41b623c4cff5ae4ca4969d76489ddaed76204",
+      "degrees": 20,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "2c8a4a76a58b6f7ee3623417b205184005adcb03128d66b844a98d04f2fae358",
+      "degrees": -110,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "5e4bc35e2546754631a89d4a79d32ca66d8cf03a964dc863dfdcbe192bfbae00",
+      "degrees": 20,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "4608b5dccd3a6321c7263d2525bfd365c19c0795a79d64a97fb04df3f29e82c8",
+      "degrees": -110,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "d7ad3492bfb7cf75b1c465129e3e03a6b460a521d0b12062b066bef82fda1e3c",
+      "degrees": -110,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "BossTalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "7075254c1004cc507b188d0f09dbfeb4d02ba5b3d651d8c4dddd7188bf2ffd94",
+      "degrees": -110,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "JerichoCoop",
+      "stance": "STAND",
+      "source_sha256": "3f4d2e248498a9c9264b5c877fa605643675dc4e97007fc6c4fe4e9f066bdad3",
+      "degrees": 10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "JerichoCoop",
+      "stance": "STAND",
+      "source_sha256": "7c63d7c6ce7e6aaa8a65ae1a1173c33da243920074f630ec50a5ec35036b81fd",
+      "degrees": 10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "JerichoCoop",
+      "stance": "STAND",
+      "source_sha256": "d7be9b7773567fa9aeb6dc52a64a92a8d5fa796f631c28c2fbff1013c4d7464d",
+      "degrees": 10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "JerichoCoop",
+      "stance": "STAND",
+      "source_sha256": "0b34d34e975bcbfaafa7e6d65a6eba5db1d941c9ab6d8b79dd9feb58595d01ad",
+      "degrees": 10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "JerichoCoop",
+      "stance": "CROUCH",
+      "source_sha256": "51813eff22949f271050ce7f4884870668f7f2c7066dd10f227c94a9a642101b",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "JerichoCoop",
+      "stance": "CROUCH",
+      "source_sha256": "c2d616df28e484d6753d3547c0b071e5947c6feb24348b53c7f85669ef558bf6",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "JerichoCoop",
+      "stance": "CROUCH",
+      "source_sha256": "e8539a9848a72e4864bc1b914fd9ef646de7eed8654cb4b7201c29ac67f6846b",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "JerichoCoop",
+      "stance": "CROUCH",
+      "source_sha256": "aefc1ecbd7a59c0b7e7a69738def17e14f299b597107f5aedaf92486fec0f315",
+      "degrees": -110,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "JerichoCoop",
+      "stance": "CROUCH",
+      "source_sha256": "129696dd715a72329b252daefdf83fb9d3acadb4d43f2bc6e5ffd4d9dbf2182d",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "JerichoCoop",
+      "stance": "CROUCH",
+      "source_sha256": "e3d5f859ca5989880b7da28cacece4a54290f6ffa7932ece3c48bcb8b4f4acb1",
+      "degrees": -110,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "JerichoCoop",
+      "stance": "CROUCH",
+      "source_sha256": "11b445b5ea8c3c2b0ded051cf65b196e63bf591df0f74f47945db673ed679e0b",
+      "degrees": -110,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "JerichoCoop",
+      "stance": "CROUCH",
+      "source_sha256": "399b1685b60ea4268019e784aa0cee38ba852297541a59fcedc78f9e85d7ca26",
+      "degrees": -100,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoSolo",
+      "stance": "STAND",
+      "source_sha256": "6219c26869edf7e8212b2e855942ade226ea84690e1853141f50f1d5550241dd",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoSolo",
+      "stance": "STAND",
+      "source_sha256": "c7f2ec9bd99eccf687e7ba744dcc257e4a8625a82e2c2be60d4f837074d49cd7",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoSolo",
+      "stance": "STAND",
+      "source_sha256": "cad7ae5d807e2feab7e76a775486d228a542495ce619afb74a69740c3b2663ed",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoSolo",
+      "stance": "STAND",
+      "source_sha256": "8f8097ca7f7c062684c0cb9726a04d634a68155c9981a7b47405b0fec04cc73c",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoSolo",
+      "stance": "CROUCH",
+      "source_sha256": "dd167b5b6627a0ba01d0e26e7b26081b92d3c9e6ab3148feb7291049efd5c9f1",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoSolo",
+      "stance": "CROUCH",
+      "source_sha256": "c2d616df28e484d6753d3547c0b071e5947c6feb24348b53c7f85669ef558bf6",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoSolo",
+      "stance": "CROUCH",
+      "source_sha256": "9643b7b9d4a321c66b1e97a1467f96e0dee170a85c35e30388c64957ad759736",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoSolo",
+      "stance": "CROUCH",
+      "source_sha256": "5e29104eec55ecc3ca0ac6562989b181260a12a3d3a818d9485904c4b36e74ad",
+      "degrees": -110,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoSolo",
+      "stance": "CROUCH",
+      "source_sha256": "179fe4ba2ef1c9129825a6fc954da2a4bc883f36b0a51a770ae2200099fc2642",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoSolo",
+      "stance": "CROUCH",
+      "source_sha256": "b6f2b6dfa4f0bfbebb0034177df85b26bb776792d217bb61de41b9ca95e47899",
+      "degrees": -110,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoSolo",
+      "stance": "CROUCH",
+      "source_sha256": "11b445b5ea8c3c2b0ded051cf65b196e63bf591df0f74f47945db673ed679e0b",
+      "degrees": -110,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoSolo",
+      "stance": "CROUCH",
+      "source_sha256": "00a13f355fc8492e7f5983382ee11f7d1e3387e498832d55741ccfc47d573217",
+      "degrees": -100,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoCoop",
+      "stance": "STAND",
+      "source_sha256": "6219c26869edf7e8212b2e855942ade226ea84690e1853141f50f1d5550241dd",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoCoop",
+      "stance": "STAND",
+      "source_sha256": "c7f2ec9bd99eccf687e7ba744dcc257e4a8625a82e2c2be60d4f837074d49cd7",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoCoop",
+      "stance": "STAND",
+      "source_sha256": "cad7ae5d807e2feab7e76a775486d228a542495ce619afb74a69740c3b2663ed",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoCoop",
+      "stance": "STAND",
+      "source_sha256": "8f8097ca7f7c062684c0cb9726a04d634a68155c9981a7b47405b0fec04cc73c",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoCoop",
+      "stance": "CROUCH",
+      "source_sha256": "dd167b5b6627a0ba01d0e26e7b26081b92d3c9e6ab3148feb7291049efd5c9f1",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoCoop",
+      "stance": "CROUCH",
+      "source_sha256": "c2d616df28e484d6753d3547c0b071e5947c6feb24348b53c7f85669ef558bf6",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoCoop",
+      "stance": "CROUCH",
+      "source_sha256": "9643b7b9d4a321c66b1e97a1467f96e0dee170a85c35e30388c64957ad759736",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoCoop",
+      "stance": "CROUCH",
+      "source_sha256": "5e29104eec55ecc3ca0ac6562989b181260a12a3d3a818d9485904c4b36e74ad",
+      "degrees": -110,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoCoop",
+      "stance": "CROUCH",
+      "source_sha256": "179fe4ba2ef1c9129825a6fc954da2a4bc883f36b0a51a770ae2200099fc2642",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoCoop",
+      "stance": "CROUCH",
+      "source_sha256": "b6f2b6dfa4f0bfbebb0034177df85b26bb776792d217bb61de41b9ca95e47899",
+      "degrees": -110,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoCoop",
+      "stance": "CROUCH",
+      "source_sha256": "11b445b5ea8c3c2b0ded051cf65b196e63bf591df0f74f47945db673ed679e0b",
+      "degrees": -110,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CivilianJerichoCoop",
+      "stance": "CROUCH",
+      "source_sha256": "00a13f355fc8492e7f5983382ee11f7d1e3387e498832d55741ccfc47d573217",
+      "degrees": -100,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySolo",
+      "stance": "STAND",
+      "source_sha256": "9c250e381c3b7b6c3670f48c8d92aadf7158f9d80b3f0b7ecc424156006aae2e",
+      "degrees": -30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySolo",
+      "stance": "STAND",
+      "source_sha256": "072906e7fb5fe09ddf020686d675d27d6f2fb7a514833bebc0213afedc454f6c",
+      "degrees": 30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySolo",
+      "stance": "STAND",
+      "source_sha256": "ecc2f25b40aef03b771dc6e31afb9fe851f95d7bbb467214083fc75933cfeb30",
+      "degrees": 30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySolo",
+      "stance": "STAND",
+      "source_sha256": "b9d776649d5c8db15370d16b21c29bac4b0e03c1dba07e256e87ea22903371ed",
+      "degrees": 30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySolo",
+      "stance": "CROUCH",
+      "source_sha256": "aff3316df1e1f540808a78da07185ab6e93e853c53a8b41f0b590c622dbb447a",
+      "degrees": -120,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySolo",
+      "stance": "CROUCH",
+      "source_sha256": "171b57aebd2fa7ceaaa4efb13af69d0999b4b804fdb352f1ea6482bbb931728b",
+      "degrees": -120,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySolo",
+      "stance": "CROUCH",
+      "source_sha256": "62d238ef2440460327ff37b6fd79138e964222b6b740504428f68448616adeb9",
+      "degrees": 20,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySolo",
+      "stance": "CROUCH",
+      "source_sha256": "9a8573bb7880a07ea80d701545cb40a8e9d321599673f1d98259a654a8943742",
+      "degrees": -40,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySolo",
+      "stance": "CROUCH",
+      "source_sha256": "033b0b6989851069364cd28ffa09c474d215944de2eed94d2bafa68786e95413",
+      "degrees": 20,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySolo",
+      "stance": "CROUCH",
+      "source_sha256": "7d6c39b7f629607e9b2660b625108f9757692c190003990c93f3bdd0f28653e3",
+      "degrees": -40,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySolo",
+      "stance": "CROUCH",
+      "source_sha256": "7afbc9e56c3b9b3f54c3f9e24418694d84160cf03d2b55befd064ecdd9234867",
+      "degrees": -120,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySolo",
+      "stance": "CROUCH",
+      "source_sha256": "daa7f26eb10e0a4490cba2c74cac15166f07de030f8a20f97c547606d1215dea",
+      "degrees": -40,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidyPlayerTwo",
+      "stance": "STAND",
+      "source_sha256": "9c250e381c3b7b6c3670f48c8d92aadf7158f9d80b3f0b7ecc424156006aae2e",
+      "degrees": -30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidyPlayerTwo",
+      "stance": "STAND",
+      "source_sha256": "072906e7fb5fe09ddf020686d675d27d6f2fb7a514833bebc0213afedc454f6c",
+      "degrees": 30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidyPlayerTwo",
+      "stance": "STAND",
+      "source_sha256": "ecc2f25b40aef03b771dc6e31afb9fe851f95d7bbb467214083fc75933cfeb30",
+      "degrees": 30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidyPlayerTwo",
+      "stance": "STAND",
+      "source_sha256": "b9d776649d5c8db15370d16b21c29bac4b0e03c1dba07e256e87ea22903371ed",
+      "degrees": 30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidyPlayerTwo",
+      "stance": "CROUCH",
+      "source_sha256": "aff3316df1e1f540808a78da07185ab6e93e853c53a8b41f0b590c622dbb447a",
+      "degrees": -120,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidyPlayerTwo",
+      "stance": "CROUCH",
+      "source_sha256": "171b57aebd2fa7ceaaa4efb13af69d0999b4b804fdb352f1ea6482bbb931728b",
+      "degrees": -120,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidyPlayerTwo",
+      "stance": "CROUCH",
+      "source_sha256": "62d238ef2440460327ff37b6fd79138e964222b6b740504428f68448616adeb9",
+      "degrees": 20,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidyPlayerTwo",
+      "stance": "CROUCH",
+      "source_sha256": "9a8573bb7880a07ea80d701545cb40a8e9d321599673f1d98259a654a8943742",
+      "degrees": -40,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidyPlayerTwo",
+      "stance": "CROUCH",
+      "source_sha256": "033b0b6989851069364cd28ffa09c474d215944de2eed94d2bafa68786e95413",
+      "degrees": 20,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidyPlayerTwo",
+      "stance": "CROUCH",
+      "source_sha256": "7d6c39b7f629607e9b2660b625108f9757692c190003990c93f3bdd0f28653e3",
+      "degrees": -40,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidyPlayerTwo",
+      "stance": "CROUCH",
+      "source_sha256": "7afbc9e56c3b9b3f54c3f9e24418694d84160cf03d2b55befd064ecdd9234867",
+      "degrees": -120,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidyPlayerTwo",
+      "stance": "CROUCH",
+      "source_sha256": "daa7f26eb10e0a4490cba2c74cac15166f07de030f8a20f97c547606d1215dea",
+      "degrees": -40,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source_sha256": "00da9a9ea8a7f65b198e5bc1046615b7b02a8c7e5d8451ddb40af2994796017e",
+      "degrees": -50,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source_sha256": "8b58c861131c36fd445fff53b90564c96be1138e9030f756c84a81782e8b5aa7",
+      "degrees": 70,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source_sha256": "8c6b1032b4f3f40d59b341f02ca585f49587558561a195791d4fe421f03ec946",
+      "degrees": 70,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source_sha256": "94e4e885d3e5e9f791a501c441ba6bb0ce65568894c29d5dacba607d758b8b5f",
+      "degrees": 70,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source_sha256": "db87d69489aa55afcf0fae61ae9a0dc50c27c19e1d4fc9cbbce08d904816b843",
+      "degrees": 90,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source_sha256": "60c9da99a85c628ee797403ea333aa7621c01caf3bac17a98bedc53e306e7f52",
+      "degrees": -70,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source_sha256": "7a2228db5842517f9c3643e6618cb11f713a98dc292f6d14a817beee9bf06204",
+      "degrees": 20,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source_sha256": "db93ffec655bf271f150b7b7bdefc6169d3801d4b41eb4e1a130473e4c5a4548",
+      "degrees": -70,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source_sha256": "484a8ea95f00647d259499daa49fb863eae26a0438862177868e43629355bf65",
+      "degrees": 20,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source_sha256": "a3003f38838aa6e8b85cd25d7ce71c4b70a431303f5d00ab0224b19c8500f7d4",
+      "degrees": -70,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source_sha256": "d7ad3492bfb7cf75b1c465129e3e03a6b460a521d0b12062b066bef82fda1e3c",
+      "degrees": -70,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source_sha256": "f282cf3d91f1c89a980cd415ed2ef062a27809a035af88d19654fd6b83c009f1",
+      "degrees": -70,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source_sha256": "00da9a9ea8a7f65b198e5bc1046615b7b02a8c7e5d8451ddb40af2994796017e",
+      "degrees": -50,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source_sha256": "8b58c861131c36fd445fff53b90564c96be1138e9030f756c84a81782e8b5aa7",
+      "degrees": 70,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source_sha256": "8c6b1032b4f3f40d59b341f02ca585f49587558561a195791d4fe421f03ec946",
+      "degrees": 70,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source_sha256": "94e4e885d3e5e9f791a501c441ba6bb0ce65568894c29d5dacba607d758b8b5f",
+      "degrees": 70,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source_sha256": "db87d69489aa55afcf0fae61ae9a0dc50c27c19e1d4fc9cbbce08d904816b843",
+      "degrees": 90,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source_sha256": "60c9da99a85c628ee797403ea333aa7621c01caf3bac17a98bedc53e306e7f52",
+      "degrees": -70,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source_sha256": "7a2228db5842517f9c3643e6618cb11f713a98dc292f6d14a817beee9bf06204",
+      "degrees": 20,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source_sha256": "db93ffec655bf271f150b7b7bdefc6169d3801d4b41eb4e1a130473e4c5a4548",
+      "degrees": -70,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source_sha256": "484a8ea95f00647d259499daa49fb863eae26a0438862177868e43629355bf65",
+      "degrees": 20,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source_sha256": "a3003f38838aa6e8b85cd25d7ce71c4b70a431303f5d00ab0224b19c8500f7d4",
+      "degrees": -70,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source_sha256": "d7ad3492bfb7cf75b1c465129e3e03a6b460a521d0b12062b066bef82fda1e3c",
+      "degrees": -70,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source_sha256": "f282cf3d91f1c89a980cd415ed2ef062a27809a035af88d19654fd6b83c009f1",
+      "degrees": -70,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaSolo",
+      "stance": "STAND",
+      "source_sha256": "b57162fe5cc372f13bd211c580343546068b96f25393a205076d52fca5a7478f",
+      "degrees": -40,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaSolo",
+      "stance": "STAND",
+      "source_sha256": "c24befb8b356dc6fbfa27d32ba31957bed7b0941761a340c8e5ed19223b2832a",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaSolo",
+      "stance": "STAND",
+      "source_sha256": "4c81aee06795b1c94a6feee66d624d5ccc3763cef5904ca866e8e66b1457b67b",
+      "degrees": 10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaSolo",
+      "stance": "STAND",
+      "source_sha256": "9796702a825a77b7e498d28bcb5222d2bd45318da3834ae5dc3b8efbb4c70b48",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "6e0cc7d0d7fdbff6374f83b0acc437c9495cae21382ba9de635090b2d03395cf",
+      "degrees": 100,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "171b57aebd2fa7ceaaa4efb13af69d0999b4b804fdb352f1ea6482bbb931728b",
+      "degrees": -60,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "6854c2e0cc694c9a76c7e3f9ca2458e9b3b462e444b674d7919321c5ae44178b",
+      "degrees": 10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "894c14ac4167bc45db149523a3436d1d1d6cb7fac54b6bb309c740d9a10228f8",
+      "degrees": -60,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "697f88c46a7e246f7b068f9f68abd48c4e304772f60acc3e4cac85a72721ecaf",
+      "degrees": 10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "1c5a7d93e277b483ba76176654058565e353208974eab524f9d8d185df3c88b5",
+      "degrees": -60,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "7afbc9e56c3b9b3f54c3f9e24418694d84160cf03d2b55befd064ecdd9234867",
+      "degrees": -60,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "083b9c3278718830757c1ede1de5c8f736072643ff318817a559283e8c192ed5",
+      "degrees": -60,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaCoop",
+      "stance": "STAND",
+      "source_sha256": "b57162fe5cc372f13bd211c580343546068b96f25393a205076d52fca5a7478f",
+      "degrees": -40,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaCoop",
+      "stance": "STAND",
+      "source_sha256": "c24befb8b356dc6fbfa27d32ba31957bed7b0941761a340c8e5ed19223b2832a",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaCoop",
+      "stance": "STAND",
+      "source_sha256": "4c81aee06795b1c94a6feee66d624d5ccc3763cef5904ca866e8e66b1457b67b",
+      "degrees": 10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaCoop",
+      "stance": "STAND",
+      "source_sha256": "9796702a825a77b7e498d28bcb5222d2bd45318da3834ae5dc3b8efbb4c70b48",
+      "degrees": 0,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "6e0cc7d0d7fdbff6374f83b0acc437c9495cae21382ba9de635090b2d03395cf",
+      "degrees": 100,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "171b57aebd2fa7ceaaa4efb13af69d0999b4b804fdb352f1ea6482bbb931728b",
+      "degrees": -60,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "6854c2e0cc694c9a76c7e3f9ca2458e9b3b462e444b674d7919321c5ae44178b",
+      "degrees": 10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "894c14ac4167bc45db149523a3436d1d1d6cb7fac54b6bb309c740d9a10228f8",
+      "degrees": -60,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "697f88c46a7e246f7b068f9f68abd48c4e304772f60acc3e4cac85a72721ecaf",
+      "degrees": 10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "1c5a7d93e277b483ba76176654058565e353208974eab524f9d8d185df3c88b5",
+      "degrees": -60,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "7afbc9e56c3b9b3f54c3f9e24418694d84160cf03d2b55befd064ecdd9234867",
+      "degrees": -60,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "TalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "083b9c3278718830757c1ede1de5c8f736072643ff318817a559283e8c192ed5",
+      "degrees": -60,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaSolo",
+      "stance": "STAND",
+      "source_sha256": "754aea9b51bf6f9040a04faa2e391d339ff210deb357836bda22f2943432f5a9",
+      "degrees": -30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaSolo",
+      "stance": "STAND",
+      "source_sha256": "385b44f18eac602d15c63ca985bde148ca6add87912b481d714ed4a1a9d76503",
+      "degrees": 10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaSolo",
+      "stance": "STAND",
+      "source_sha256": "bc08439da91cb6034c17ee79cc1a469dc253e21ffa8cd683702b911451a22b53",
+      "degrees": 10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaSolo",
+      "stance": "STAND",
+      "source_sha256": "533c79d8ffb9e5305e05780d333197fed58da18506cb21d4e946ffa10a9c2abd",
+      "degrees": -40,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "f984704bbb5f86b454745b6f17b1b689c00898f79c9b442d490f1df6d573aff3",
+      "degrees": 120,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "171b57aebd2fa7ceaaa4efb13af69d0999b4b804fdb352f1ea6482bbb931728b",
+      "degrees": -120,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "87802d7bfde00a0a4c28c12ed2db2e5fe5d1c921aea8845fef05a57340a95b0a",
+      "degrees": 30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "0ed28d77b4e09132930e634be9a2949eed354b0bc3addf8243213aaf193a898e",
+      "degrees": -120,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "709be2a8f3b1c17fa3e50fb8adc1545d80100a262af31494559c8dc8ddc83f46",
+      "degrees": 30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "a14be77cd37cbc031c120c85cfa694d03d1e64586775587a2264693aeb61e286",
+      "degrees": -30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "7afbc9e56c3b9b3f54c3f9e24418694d84160cf03d2b55befd064ecdd9234867",
+      "degrees": -120,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaSolo",
+      "stance": "CROUCH",
+      "source_sha256": "4278884b290c688c481142b91df5b65b9c134a11373872b90f8a8fca5b3d6135",
+      "degrees": -30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaCoop",
+      "stance": "STAND",
+      "source_sha256": "754aea9b51bf6f9040a04faa2e391d339ff210deb357836bda22f2943432f5a9",
+      "degrees": -30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaCoop",
+      "stance": "STAND",
+      "source_sha256": "385b44f18eac602d15c63ca985bde148ca6add87912b481d714ed4a1a9d76503",
+      "degrees": 10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaCoop",
+      "stance": "STAND",
+      "source_sha256": "bc08439da91cb6034c17ee79cc1a469dc253e21ffa8cd683702b911451a22b53",
+      "degrees": 10,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaCoop",
+      "stance": "STAND",
+      "source_sha256": "533c79d8ffb9e5305e05780d333197fed58da18506cb21d4e946ffa10a9c2abd",
+      "degrees": -40,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "f984704bbb5f86b454745b6f17b1b689c00898f79c9b442d490f1df6d573aff3",
+      "degrees": 120,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "171b57aebd2fa7ceaaa4efb13af69d0999b4b804fdb352f1ea6482bbb931728b",
+      "degrees": -120,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "87802d7bfde00a0a4c28c12ed2db2e5fe5d1c921aea8845fef05a57340a95b0a",
+      "degrees": 30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "0ed28d77b4e09132930e634be9a2949eed354b0bc3addf8243213aaf193a898e",
+      "degrees": -120,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "709be2a8f3b1c17fa3e50fb8adc1545d80100a262af31494559c8dc8ddc83f46",
+      "degrees": 30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "a14be77cd37cbc031c120c85cfa694d03d1e64586775587a2264693aeb61e286",
+      "degrees": -30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "7afbc9e56c3b9b3f54c3f9e24418694d84160cf03d2b55befd064ecdd9234867",
+      "degrees": -120,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    },
+    {
+      "actor": "VampireTalaCoop",
+      "stance": "CROUCH",
+      "source_sha256": "4278884b290c688c481142b91df5b65b9c134a11373872b90f8a8fca5b3d6135",
+      "degrees": -30,
+      "phases": 5,
+      "stock_and_body_nonregressing": true
+    }
+  ],
+  "crossbow": [
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "2bf74e2dadf6ec8ae1fa26b7db457118c2fe2d59d375d0fd9b98ad7b2cec4f2d",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "5c0d216382506a14469b9af116b4c567011da1000202a9dab4267b4dd4c63b31",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "5415f058592233363b9374b5be69f0121c0ff7f2d5013431cb15f949dbc2a03b",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "1e1823fcbc34daea6e96b1f6af6877a24c68f9332e21312aef3a72753b1b4ed4",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "2da18a107051089bba877accb0430ad0ffec6915836c96591bb598c734d14721",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "c4e26f866b581eb8b78eef8c948862e4298ae9c01fc719c4c6e72cb0842e0d63",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "0e84dda6274d04b32d4f64022ade4cb21b9e94ef2d0aba1bf34f71a70a1d51a4",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "0bf8e0f6c68982a466b2c3f37059c1ca669114950f231b87a9bfc56663fb8ed2",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source": "201e367cb53b005b31443c2f61aec5cf514a5c421297e0f401f320c38aa9500b",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source": "28e9651f79f9e198797651a0d988f70ad78064e393bbf4ed6ecf41efdfb1ede6",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source": "590e5d934447f3a8bc12868b96c933789b0865cb9ba1eab32cf2738c0b0876d3",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source": "968fbc6221679db7a856cc2197f7c00551691346cbbab2c00bb27f209db15cf0",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source": "dff901336c19836a3cf93f78f5719756ef87653521dd2a8f775e3a6ca765f727",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source": "2701936fd4040a4e0a9036d3f9d00f8722ee94aaef89fe0a4df37c77304e2918",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source": "93889e465bc37efe1f49f2e8469b6943610f16cc347d3f6a4001bea6f5f43ea1",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "cf5a28e6871aeabd5a8a5288b5370477ac5f43d218350937589facb3b53dd2b7",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "10d2a577cb5fa25f71ea3716c0bc218e1246b6e3a4ccbce99f4116caa4b1fb36",
+      "degrees": -5
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "5965c9d86142073970c42d7de8a0489de43abafdec9fcfc1a533cbf2ca019388",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "96a5893db83f01a077e8de4a1a62d44aff549e372d0535c2da03fcaa60410980",
+      "degrees": -10
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "4fdf1bedafd76af9e22f416a5c7b8d40ca23ced8522e827b750e2deb83dcac16",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source": "d391197017aed342673fc1e156a5d9e086c85a3ff67a1068972c681e71d99553",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source": "9acac84524497d5d36f628ee71e648e4bfb24beb65eccb2ba16e69105ff31add",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source": "9208669c343d3627e11fda6adbc859c626c60f0752e283754fb81e68d663d81f",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source": "e6cae9dfb5243fbdbf0a37cc07b540a58cd0b988c265debfa6ce1828a7d1af0a",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source": "86067a61f32d71ee8bd7cd1be2766cb32f9abaa712abc76d4d3b96a5d05cc5f6",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source": "271a8aa2742afd569afeab99c684c0b53fa54f6a3a4e0f0922bd9317d3059c76",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source": "edb982e8eec0061c601d7d6f780aa1eea7c98113095686a6a3e93176c90ad17c",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source": "053dcc9c6a90910e5bd8bc9742a4cbc12a5e5cad441efcef9b5d8e8ea9264fa7",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "1287c24a6c6f7b880a1c365babfca0b6330b67d3232a0daa28e9cddaa4fb2c36",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source": "dfd253771bf4745c970d11fd86e9b80d54d470b15ed0cd7a8ab96fcb130b31c4",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "f248748771556ecfe3f4a204bcf198f10bc4797f20f735804b672b9a56ca0b3b",
+      "degrees": -5
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "CROUCH",
+      "source": "ce2f6d5b37a33e822695a0c3da71916dfadb6f15cd838521ab6c9bfff50e6bdd",
+      "degrees": -5
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "998491f9d6dd0b27d2c2c48e3d66eac26edfaade3e43f614fd23b0fb0d2ca398",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "591179f66692bced4df69ddf740f272503f7d28d4da9255a226f8b030255ea1f",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "821af89a9abd1c42c337578e4bf1b95edeaaa239a2896ed0ea55ee2606a80506",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "bf49f3ebb49067571a2cbd2614f1659a82c0a733dcbe4084039607f48148ae9e",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralSolo",
+      "stance": "STAND",
+      "source": "dac9f9cf2f68009b3ad39938bba33f4bd2bc69f15050f82411330ec77a3836c6",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "2bf74e2dadf6ec8ae1fa26b7db457118c2fe2d59d375d0fd9b98ad7b2cec4f2d",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "5c0d216382506a14469b9af116b4c567011da1000202a9dab4267b4dd4c63b31",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "5415f058592233363b9374b5be69f0121c0ff7f2d5013431cb15f949dbc2a03b",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "1e1823fcbc34daea6e96b1f6af6877a24c68f9332e21312aef3a72753b1b4ed4",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "2da18a107051089bba877accb0430ad0ffec6915836c96591bb598c734d14721",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "c4e26f866b581eb8b78eef8c948862e4298ae9c01fc719c4c6e72cb0842e0d63",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "0e84dda6274d04b32d4f64022ade4cb21b9e94ef2d0aba1bf34f71a70a1d51a4",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "0bf8e0f6c68982a466b2c3f37059c1ca669114950f231b87a9bfc56663fb8ed2",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source": "201e367cb53b005b31443c2f61aec5cf514a5c421297e0f401f320c38aa9500b",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source": "28e9651f79f9e198797651a0d988f70ad78064e393bbf4ed6ecf41efdfb1ede6",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source": "590e5d934447f3a8bc12868b96c933789b0865cb9ba1eab32cf2738c0b0876d3",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source": "968fbc6221679db7a856cc2197f7c00551691346cbbab2c00bb27f209db15cf0",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source": "dff901336c19836a3cf93f78f5719756ef87653521dd2a8f775e3a6ca765f727",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source": "2701936fd4040a4e0a9036d3f9d00f8722ee94aaef89fe0a4df37c77304e2918",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source": "93889e465bc37efe1f49f2e8469b6943610f16cc347d3f6a4001bea6f5f43ea1",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "cf5a28e6871aeabd5a8a5288b5370477ac5f43d218350937589facb3b53dd2b7",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "10d2a577cb5fa25f71ea3716c0bc218e1246b6e3a4ccbce99f4116caa4b1fb36",
+      "degrees": -5
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "5965c9d86142073970c42d7de8a0489de43abafdec9fcfc1a533cbf2ca019388",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "96a5893db83f01a077e8de4a1a62d44aff549e372d0535c2da03fcaa60410980",
+      "degrees": -10
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "4fdf1bedafd76af9e22f416a5c7b8d40ca23ced8522e827b750e2deb83dcac16",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source": "d391197017aed342673fc1e156a5d9e086c85a3ff67a1068972c681e71d99553",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source": "9acac84524497d5d36f628ee71e648e4bfb24beb65eccb2ba16e69105ff31add",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source": "9208669c343d3627e11fda6adbc859c626c60f0752e283754fb81e68d663d81f",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source": "e6cae9dfb5243fbdbf0a37cc07b540a58cd0b988c265debfa6ce1828a7d1af0a",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source": "86067a61f32d71ee8bd7cd1be2766cb32f9abaa712abc76d4d3b96a5d05cc5f6",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source": "271a8aa2742afd569afeab99c684c0b53fa54f6a3a4e0f0922bd9317d3059c76",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source": "edb982e8eec0061c601d7d6f780aa1eea7c98113095686a6a3e93176c90ad17c",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source": "053dcc9c6a90910e5bd8bc9742a4cbc12a5e5cad441efcef9b5d8e8ea9264fa7",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "1287c24a6c6f7b880a1c365babfca0b6330b67d3232a0daa28e9cddaa4fb2c36",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source": "dfd253771bf4745c970d11fd86e9b80d54d470b15ed0cd7a8ab96fcb130b31c4",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "f248748771556ecfe3f4a204bcf198f10bc4797f20f735804b672b9a56ca0b3b",
+      "degrees": -5
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "CROUCH",
+      "source": "ce2f6d5b37a33e822695a0c3da71916dfadb6f15cd838521ab6c9bfff50e6bdd",
+      "degrees": -5
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "998491f9d6dd0b27d2c2c48e3d66eac26edfaade3e43f614fd23b0fb0d2ca398",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "591179f66692bced4df69ddf740f272503f7d28d4da9255a226f8b030255ea1f",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "821af89a9abd1c42c337578e4bf1b95edeaaa239a2896ed0ea55ee2606a80506",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "bf49f3ebb49067571a2cbd2614f1659a82c0a733dcbe4084039607f48148ae9e",
+      "degrees": 0
+    },
+    {
+      "actor": "CassidySpectralPlayerTwo",
+      "stance": "STAND",
+      "source": "dac9f9cf2f68009b3ad39938bba33f4bd2bc69f15050f82411330ec77a3836c6",
+      "degrees": 0
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 #include "third_person_weapon.h"
+#include "ejected_clips.h"
 #include "kernel/kernel.h"
 #include "kernel/memory.h"
 #include <array>
@@ -129,6 +130,7 @@ const Part* Match(const uint8_t* base, uint32_t hierarchy, uint32_t bones) {
 }
 
 void DarkwatchWeaponSkinPalette(X86Context& ctx, uint8_t* base) {
+    if (DarkwatchEjectedClipSkinPalette(ctx, base)) return;
     uint32_t atomic=0, offset=0, hierarchy=0, flags=0, bones=0, matrices=0, output=0, skin=0, palette_count=0;
     if (base==kernel::g_base && Read(base, uint64_t(ctx.esp)+8, atomic) && atomic &&
         Read(base, 0x4BA834, offset) && offset && offset<0x1000 &&

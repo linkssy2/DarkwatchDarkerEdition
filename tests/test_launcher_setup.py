@@ -143,7 +143,9 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         shutil.copyfile(ROOT / "launcher/gameplay_hd.py", self.payload / "gameplay_hd.py")
         shutil.copyfile(ROOT / "launcher/language_pack.py", self.payload / "language_pack.py")
         for name in ('character_animation.py', 'character_archive.py', 'character_assets.py',
-                     'character_repaint.py', 'character_content.py', 'character_update.py', 'character-update.json.gz', 'character_boss.py',
+                     'character_repaint.py', 'character_content.py', 'character_update.py', 'character-update.json.gz',
+                     'character_campaign.py', 'character_campaign_pose.py', 'character_dropped_clips.py',
+                     'character-campaign-angles.json', 'character_boss.py',
                      'character_boss_effects.py', 'character_spectral_hands.py', 'character_hand_seams.py',
                      'character_secondary.py', 'character_preview.py', 'character_roster.py', 'character_tala.py',
                      'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'enemy_blood.py', 'character_cinematic.py',
@@ -235,7 +237,8 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
             return Path(self.backend.use_iso(self.iso)["install_dir"])
 
     def test_incremental_update_payload_must_be_complete(self):
-        for name in ('character_update.py', 'character-update.json.gz'):
+        for name in ('character_update.py', 'character-update.json.gz', 'character_campaign.py',
+                     'character_campaign_pose.py', 'character_dropped_clips.py', 'character-campaign-angles.json'):
             with self.subTest(file=name):
                 path = self.payload / name
                 data = path.read_bytes()
@@ -553,6 +556,33 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
                 break
             time.sleep(.02)
         self.assertEqual((current / "worker-ran.txt").read_text(), "harmless launcher fixture")
+
+    def test_reviewed_campaign_build_identities(self):
+        current = self.install_disc()
+        metadata = json.loads((current / 'install.json').read_text())
+        self.assertEqual(self.backend.content_files(metadata), setup.character_content.INSTALLED)
+        identity = next(iter(setup.CAMPAIGN_BUILDS))
+        metadata['campaign_feedback_sha256'] = identity
+        self.assertEqual(self.backend.content_files(metadata), setup.CAMPAIGN_BUILDS[identity])
+        for invalid in ('unreviewed', {}, True):
+            metadata['campaign_feedback_sha256'] = invalid
+            with self.assertRaises(setup.SetupError):
+                self.backend.content_files(metadata)
+
+    def test_skip_intro_setting_and_launch_environment(self):
+        self.assertFalse(self.backend.skip_intro())
+        self.assertTrue(self.backend.set_skip_intro('on')['skip_intro'])
+        with self.assertRaises(setup.SetupError):
+            self.backend.set_skip_intro('invalid')
+        self.install_disc()
+        popen = subprocess.Popen
+        with patch.object(subprocess, 'Popen', wraps=popen) as launched:
+            self.backend.play()
+        self.assertEqual(launched.call_args.kwargs['env']['DARKWATCH_SKIP_INTRO'], '1')
+        self.backend.set_skip_intro('off')
+        with patch.object(subprocess, 'Popen', wraps=popen) as launched, patch.dict(os.environ, {'DARKWATCH_SKIP_INTRO':'1'}):
+            self.backend.play()
+        self.assertNotIn('DARKWATCH_SKIP_INTRO', launched.call_args.kwargs['env'])
 
     def test_opt_in_session_and_setup_diagnostics(self):
         self.assertFalse(self.backend.diagnostic_logging())

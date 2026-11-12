@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / 'launcher'))
 import character_archive as archive
 import character_assets as art
 import character_content as content
+import character_campaign
 
 
 def pin(data):
@@ -157,7 +158,7 @@ class CharacterConversionTests(unittest.TestCase):
                     for row in archive.read(raw)['entries']}
         self.assertEqual(resources(final['LvlSingl.pck']), resources(appended))
         self.assertLess(len(final['LvlSingl.pck']), len(appended))
-        metadata = dict(schema_version=1, content_revision=content.CONTENT_REVISION,
+        metadata = dict(schema_version=1, content_revision=content.BASE_REVISION,
                         originals={name: pin(data) for name,data in originals.items()},
                         v7_archives={name: pin(data) for name,data in first.items()},
                         base_archives={name: pin(data) for name,data in base.items()},
@@ -175,7 +176,9 @@ class CharacterConversionTests(unittest.TestCase):
                 (payload/'character-catalog.json').write_bytes(raw)
                 return pin(raw)['sha256']
             installed = {name:(len(data),pin(data)['sha256']) for name,data in final.items()}
-            with patch.object(content, 'INSTALLED', installed), patch.object(content, 'build_resources', side_effect=lambda *args: copy.deepcopy((groups,extension,spectral))), \
+            with patch.object(content, 'INSTALLED', installed), patch.object(content, 'BASE_INSTALLED', installed), \
+                    patch.object(character_campaign, 'build', return_value={}), \
+                    patch.object(content, 'build_resources', side_effect=lambda *args: copy.deepcopy((groups,extension,spectral))), \
                     patch.object(content.character_roster, 'prepare', side_effect=lambda *args, **kwargs: (copy.deepcopy(roster), {})), \
                     patch.object(content.revolver_content, 'prepare', side_effect=lambda *args: copy.deepcopy(revolver)), \
                     patch.object(content.revolver_content, 'prepare_fanning', return_value=fanning), \

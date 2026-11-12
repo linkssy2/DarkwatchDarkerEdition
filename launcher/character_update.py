@@ -23,7 +23,7 @@ import third_person_animation as animation
 import enemy_blood
 
 RECIPE_NAME = 'character-update.json.gz'
-RECIPE_SHA256 = 'e3d15b5e2ae6999d3be290b5ea88e194ec18627015483c03f1d657168dbbae0d'
+RECIPE_SHA256 = '92af7b90e21f4dc74eb5cdc00c303706ea0cdfbf4940ff36778aa4947ae51ece'
 CHUNK = 4 * 1024 * 1024
 
 
@@ -354,7 +354,59 @@ def index_bytes(item, previous):
     return result
 
 
-def try_prepare(assets,payload,previous_assets,metadata,cancel,progress):
+def try_reuse_base(assets, previous_assets, metadata, cancel, progress, finalize):
+    """Reuse the verified prior release before applying the campaign corrections."""
+    import character_content
+    assets, previous_assets = Path(assets), Path(previous_assets)
+    if assets.resolve() == previous_assets.resolve():
+        raise ValueError('Character update requires a separate stage')
+    try:
+        root_info = previous_assets.lstat()
+    except OSError:
+        return False
+    reparse = getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0)
+    if not stat.S_ISDIR(root_info.st_mode) or getattr(root_info, 'st_file_attributes', 0) & reparse:
+        return False
+    with ExitStack() as stack:
+        streams = {}
+        for name, expected in metadata['installed'].items():
+            cancel()
+            try:
+                path = previous_assets / name
+                info = path.lstat()
+                if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or
+                        getattr(info, 'st_file_attributes', 0) & reparse or info.st_size != expected['size']):
+                    return False
+                stream = stack.enter_context(path.open('rb'))
+            except OSError:
+                return False
+            digest_value = hashlib.sha256()
+            while block := stream.read(CHUNK):
+                cancel()
+                digest_value.update(block)
+            if digest_value.hexdigest() != expected['sha256']:
+                return False
+            stream.seek(0)
+            streams[name] = stream
+        for name, expected in metadata['originals'].items():
+            character_content.checked_file(assets / name, expected, cancel)
+        progress('Reusing verified installed character resources...')
+        with tempfile.TemporaryDirectory(prefix='.campaign-update-', dir=assets) as temporary:
+            staged = Path(temporary)
+            for name, stream in streams.items():
+                with (staged / name).open('xb') as output:
+                    while block := stream.read(CHUNK):
+                        cancel()
+                        output.write(block)
+                character_content.checked_file(staged / name, metadata['installed'][name], cancel)
+            finalize(staged)
+            cancel()
+            for name in streams:
+                os.replace(staged / name, assets / name)
+    return True
+
+
+def try_prepare(assets,payload,previous_assets,metadata,cancel,progress, *, finalize=None):
     import character_content
     assets,previous_assets=Path(assets),Path(previous_assets)
     if assets.resolve()==previous_assets.resolve():
@@ -452,6 +504,8 @@ def try_prepare(assets,payload,previous_assets,metadata,cancel,progress):
                         emit(bytes(item['index']['start']-position))
                         emit(index_bytes(item,parsed[name]))
                 character_content.checked_file(staged/name,item['after'],cancel)
+            if finalize is not None:
+                finalize(staged)
             cancel()
             for name in plan['archives']:
                 os.replace(staged/name,assets/name)

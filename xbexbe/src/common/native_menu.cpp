@@ -1,4 +1,5 @@
 #include "native_menu.h"
+#include "skip_intro.h"
 #include "coop_characters.h"
 #include "graphics_route.h"
 #include "graphics_hud.h"
@@ -353,6 +354,12 @@ void DarkwatchMenuInput(X86Context& ctx, uint8_t* base) {
         // Entering/revealing the title establishes a baseline; loading/attract/focus edges cannot start it.
         pointer.wheel = 0;
         if (pointer.title != previous_title) return;
+        static bool skipped_start = false;
+        if (!skipped_start && DarkwatchSkipIntro()) {
+            skipped_start = true;
+            ctx.eax |= 0x200;
+            return;
+        }
         if (now.key_presses != previous.key_presses) {ctx.eax |= 0x200; return;}
         auto click = now;
         click.x = now.left_x; click.y = now.left_y; click.width = now.left_width; click.height = now.left_height;

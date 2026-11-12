@@ -117,6 +117,25 @@ def solve(shoulder,elbow,wrist,target):
     return middle,endpoint
 
 
+def outside_elbow(local, parents, first, *, forward_weight=.3, side_weight=2.0):
+    """Keep the wrist fixed while bending the elbow below/outside the chest."""
+    before = world(local, parents)
+    shoulder, elbow, wrist = (before[b][1] for b in (first, first+1, first+2))
+    axis = unit(sub(wrist, shoulder))
+    up = (0., 1., 0.)
+    side = unit(sub(before[18][1], before[13][1]))
+    forward = unit(cross(side, up))
+    pole = add(sub(scale(side, side_weight if first == 18 else -side_weight), up), scale(forward, forward_weight))
+    pole = unit(sub(pole, scale(axis, dot(pole, axis))))
+    upper = sub(elbow, shoulder)
+    along = dot(upper, axis)
+    radius = length(sub(upper, scale(axis, along)))
+    middle = add(shoulder, add(scale(axis, along), scale(pole, radius)))
+    after = dict(before)
+    after[first] = a._multiply(before[first][0], align(upper, sub(middle, shoulder))), shoulder
+    after[first+1] = a._multiply(before[first+1][0], align(sub(wrist, elbow), sub(wrist, middle))), middle
+    return localize(after, parents)
+
 class SupportRetarget:
     arm_bones=ARMS
     def __init__(self,source_model,target_model,source_grip,target_grip,target_bones=22):

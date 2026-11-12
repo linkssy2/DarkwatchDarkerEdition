@@ -28,6 +28,8 @@ uint64_t ContextId(uint32_t key, std::string_view original) {
 }
 struct Copy {const char* english; const char* spanish;};
 constexpr Copy copy[]{
+    {"AMBIENT OCCLUSION", "OCLUSIÓN AMBIENTAL"},
+    {"Contact shadows for both players. May reduce performance.", "Sombras de contacto para ambos jugadores. Puede reducir el rendimiento."},
     {"DISPLAY", "PANTALLA"},
     {"PERFORMANCE", "RENDIMIENTO"},
     {"ARTWORK", "ARTE"},

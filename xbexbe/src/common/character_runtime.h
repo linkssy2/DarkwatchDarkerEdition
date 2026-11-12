@@ -18,6 +18,7 @@ bool DarkwatchCharacterIsTalaPlayer(const uint8_t* base, uint32_t actor);
 
 // Content hashes and the native audio-bank owner are checked independently.
 bool DarkwatchCharacterContentReady();
+bool DarkwatchPrivateClipFixtureReady();
 bool DarkwatchCharacterAudioReady(uint8_t* base, const char** failure = nullptr, bool tala = false);
 bool DarkwatchAudioBankBudget(X86Context& ctx, uint8_t* base);
 void DarkwatchCharacterInitialize(X86Context& ctx, uint8_t* base);

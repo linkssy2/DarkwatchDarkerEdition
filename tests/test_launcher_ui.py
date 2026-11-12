@@ -154,6 +154,12 @@ class ProtocolFixture {
             Console.WriteLine("{\"event\":\"result\",\"message\":\"Idioma: português do Brasil.\",\"installed\":true,\"ready\":true,\"portuguese_installed\":true,\"language\":\"pt-BR\"}");
             return 0;
         }
+        if(mode=="skip-on"||mode=="skip-off") {
+            int at=Array.IndexOf(args,"--set-skip-intro");bool enabled=mode=="skip-on";
+            if(at<0||at+1>=args.Length||args[at+1]!=(enabled?"on":"off"))return 19;
+            Console.WriteLine(new JavaScriptSerializer().Serialize(new { @event="result",message="Skip intro changed",skip_intro=enabled }));
+            return 0;
+        }
         if(mode=="diagnostics-on"||mode=="diagnostics-off") {
             int at=Array.IndexOf(args,"--set-diagnostics");bool enabled=mode=="diagnostics-on";
             if(at<0||at+1>=args.Length||args[at+1]!=(enabled?"on":"off"))return 19;
@@ -400,6 +406,12 @@ class LauncherUiHarness {
             Click(l,"DiagnosticsButton");Pump(()=>!(bool)Field(l,"busy"));Idle(l);
             Check((bool)Field(l,"diagnosticLogging")==enabled,"Diagnostic toggle did not persist response");
             Check(((string)Element<Button>(l,"DiagnosticsButton").Content).EndsWith(enabled?"ON":"OFF"),"Diagnostic toggle label stale");
+        }
+        foreach(bool enabled in new[]{true,false}) {
+            Environment.SetEnvironmentVariable("DARKWATCH_UI_FIXTURE_MODE",enabled?"skip-on":"skip-off");
+            Click(l,"SkipIntroButton");Pump(()=>!(bool)Field(l,"busy"));Idle(l);
+            Check((bool)Field(l,"skipIntro")==enabled,"Skip intro response not retained");
+            Check(((string)Element<Button>(l,"SkipIntroButton").Content).EndsWith(enabled?"ON":"OFF"),"Skip intro label stale");
         }
         Evidence["real_helper_and_verify_event"]=true;
     }

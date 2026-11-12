@@ -5,6 +5,7 @@ actual ready grip below the chest; authored fire, pump and reload still run.
 """
 import copy
 import hashlib
+import math
 import struct
 
 import character_weapon_pose as p
@@ -227,9 +228,13 @@ def prepare_table(raw,read,read_original,target_model,target_locator,basis,actor
     return raw,additions
 
 
+MASCULINE_GAIT_ACTORS = {'Chaz', 'JerichoCoop', 'CivilianJerichoSolo', 'CivilianJerichoCoop',
+                         'TrooperSolo', 'TrooperCoop', 'BlueTrooperSolo', 'BlueTrooperCoop',
+                         'RedTrooperSolo', 'RedTrooperCoop'}
+
+
 class AimedMotion(p.SupportRetarget):
-    # Arms and their spine ancestors need one basis before native pose mixing;
-    # opposite chest/arm rotations do not cancel after interpolation.
+    # Preserve the pinned base conversion; campaign head stabilization follows it.
     arm_bones=(7,8,9,*HOLD_BONES)
 
     def relaxed_arm(self,base):
@@ -242,6 +247,48 @@ class AimedMotion(p.SupportRetarget):
             rotation=p.a._multiply(pose[bone][0],p.align(p.sub(pose[child][1],pose[bone][1]),direction))
             local[bone]=p.a._multiply(rotation,p.a._inverse(pose[self.parents[bone]][0])),local[bone][1]
         return local
+
+    def masculine_free_arm(self, data):
+        """Author standing locomotion only; crouch retains its stance-specific arm pose."""
+        clip = p.Clip(data, self.bones)
+        self.arm_bones = (18, 19, 20)
+        reference = clip.pose(self.target, .5)
+        def axes(local):
+            world = p.world(local, self.parents)
+            up = p.unit(p.sub(world[9][1], world[7][1]))
+            side = p.sub(world[18][1], world[13][1])
+            side = p.unit(p.sub(side, p.scale(up, p.dot(side, up))))
+            return world, up, side, p.unit(p.cross(side, up))
+        def swing(phase):
+            world, up, side, forward = axes(clip.pose(self.target, phase))
+            arm = p.sub(world[19][1], world[18][1])
+            return math.atan2(p.dot(arm, forward), -p.dot(arm, up))
+        values = [swing(i / 60) for i in range(61)]
+        middle = (min(values) + max(values)) * .5
+        extent = (max(values) - min(values)) * .5
+        cache = {}
+        def sample(phase):
+            if phase in cache:
+                return cache[phase]
+            local = clip.pose(self.target, phase)
+            # Retain shoulder motion, but prevent source arm twist from steering the hand inward.
+            for bone in (18, 19, 20):
+                local[bone] = reference[bone][0], local[bone][1]
+            world, up, side, forward = axes(local)
+            stride = max(-1., min(1., (swing(phase) - middle) / extent)) if extent > .01 else 0.
+            theta = .38 * stride
+            # Reference walks open the elbow behind the hip and bend it on the forward swing.
+            bend = .32 + .22 * stride
+            for bone, child, angle, tilt in ((18, 19, theta, .48), (19, 20, theta + bend, .16)):
+                direction = p.add(p.scale(up, -math.cos(angle) * math.cos(tilt)),
+                                  p.add(p.scale(forward, math.sin(angle)),
+                                        p.scale(side, math.cos(angle) * math.sin(tilt))))
+                world = p.world(local, self.parents)
+                rotation = p.a._multiply(world[bone][0], p.align(p.sub(world[child][1], world[bone][1]), direction))
+                local[bone] = p.a._multiply(rotation, p.a._inverse(world[self.parents[bone]][0])), local[bone][1]
+            cache[phase] = local
+            return local
+        return self._encode_rotations(clip, sample, (), synchronize=False)
 
     def bake_motion(self,data,ready,*,free_arm=False):
         # Preserve the authored swing below the shoulder instead of the raised
@@ -305,57 +352,202 @@ def _motion_key(group,node):
 
 
 class ShotgunSupport(p.SupportRetarget):
-    arm_bones=(18,19,20,21)
+    arm_bones=(18,19,20)
+
+    def __init__(self,*args,right_offset=0.,**kwargs):
+        super().__init__(*args,**kwargs)
+        # Measured palm-up frame underneath the original shotgun fore-end.
+        # Apply it in bind space so gloves and the added body rigs agree.
+        frame=((-.302737528,-.092976450,.948527886),
+               (.003112172,-.995321281,-.096570351),
+               (.953068650,-.026283532,.301611273))
+        self.contact_rotation=p.a._multiply(p.world(self.target,self.parents)[20][0],frame)
+        points=[]
+        model=args[1]
+        for index in range(sum(kind==15 for kind,*_ in p.b._records(model))):
+            geometry=skin._geometry(model,index,allowed_bones=(self.bones,))
+            inverse=geometry['inverse'][20]
+            for position,weights in zip(geometry['positions'],geometry['weights']):
+                if weights.get(20,0.)+weights.get(21,0.)<=.5:continue
+                local=tuple(sum(position[j]*inverse[j*4+i]for j in range(3))+inverse[12+i]for i in range(3))
+                if .03<local[0]<.09:points.append(local)
+        if not points:raise ValueError('Shotgun support palm is unavailable')
+        center=tuple(sum(point[i]for point in points)/len(points)for i in range(3))
+        self.contact_position=p.sub((.25,.055,-.05),p.rotate(center,self.contact_rotation))
+        self.contact_grip=self.target_grip[0],p.add(self.target_grip[1],p.scale(self.target_grip[0][0],right_offset))
 
     def shift_grip(self,local,new_offset,old_offset=0.):
-        # A small inward support contact keeps the fingers on the fore-end
-        # during native partial-weight aiming. Never move the trigger hand.
-        before=p.world(local,self.parents);result=dict(before)
-        mount=p.mul(self.target_grip,before[16])
-        shift=p.rotate((0.,0.,new_offset-old_offset),mount[0])
-        s,e,w=(before[bone][1]for bone in(18,19,20))
-        middle,endpoint=p.solve(s,e,w,p.add(w,shift))
-        result[18]=p.a._multiply(before[18][0],p.align(p.sub(e,s),p.sub(middle,s))),s
-        result[19]=p.a._multiply(before[19][0],p.align(p.sub(w,e),p.sub(endpoint,middle))),middle
-        result[20]=before[20][0],endpoint
-        result[21]=p.mul(p.mul(before[21],p.inverse(before[20])),result[20])
-        return p.localize(result,self.parents)
+        before=p.world(local,self.parents);after=dict(before)
+        desired=p.mul((self.contact_rotation,self.contact_position),p.mul(self.contact_grip,before[16]))
+        shoulder,elbow,wrist=(before[b][1]for b in(18,19,20))
+        middle,endpoint=p.solve(shoulder,elbow,wrist,desired[1])
+        after[18]=p.a._multiply(before[18][0],p.align(p.sub(elbow,shoulder),p.sub(middle,shoulder))),shoulder
+        after[19]=p.a._multiply(before[19][0],p.align(p.sub(wrist,elbow),p.sub(endpoint,middle))),middle
+        after[20]=desired[0],endpoint
+        after[21]=p.mul(p.mul(before[21],p.inverse(before[20])),after[20])
+        after=p.world(p.outside_elbow(p.localize(after,self.parents),self.parents,18,forward_weight=1.),self.parents)
+        # Roll the humerus toward the natural underhand bend plane. Joint
+        # positions, forearm/hand orientation and the complete gun stay fixed.
+        axis=p.unit(p.sub(after[19][1],shoulder));half=math.pi/12
+        roll=p.a._quaternion_matrix((*p.scale(axis,math.sin(half)),math.cos(half)))
+        rotation=p.a._multiply(before[18][0],p.align(p.sub(elbow,shoulder),p.sub(after[19][1],shoulder)))
+        after[18]=p.a._multiply(rotation,roll),shoulder
+        after[19]=p.a._multiply(before[19][0],p.align(p.sub(wrist,elbow),p.sub(endpoint,after[19][1]))),after[19][1]
+        return p.localize(after,self.parents)
+
+    def bake_support(self,data,reference=None,*,native_aim=False):
+        # Reuse the existing absolute/additive contact encoder. This is a
+        # complete support pose, not an additional weapon attachment offset.
+        if native_aim:
+            # The native full-right pose carries the elbow around the chest.
+            # Fade out the underhand adjustment toward that authored endpoint.
+            target=p.Clip(data,self.bones,True)
+            if reference is None or not target.flags&0x10000000:raise ValueError('Expected Shotgun aim reference')
+            base=p.Clip(reference,self.bones).pose(self.target,.5)
+            corrected=self.shift_grip(base,1.)
+            neutral={bone:(p.a.IDENTITY,(0.,0.,0.))for bone in base}
+            def sample(phase):
+                delta=target.pose(neutral,phase)
+                return {bone:(p.a._multiply(p.a._inverse(corrected[bone][0]),p.a._multiply(base[bone][0],delta[bone][0])),
+                              delta[bone][1])for bone in base}
+            phases={0.,1.}
+            for times,_ in target.tracks.values():phases.update(times)
+            return self._encode_rotations(target,sample,phases)
+        return self.bake_grip(data,1.)if reference is None else self.bake_grip_delta(reference,data,1.)
 
 
-def _prepare_shotgun_support(raw,read,read_original,model,locator,basis,actor):
-    affected={'CassidySolo','CassidySpectralSolo','TalaSolo','VampireTalaSolo',
-              'BossTalaSolo','CassidyPlayerTwo','CassidySpectralPlayerTwo','TalaCoop'}
-    if actor not in affected:return raw,{}
-    tree=p.art.decode(raw);rows=[];ready=None;prefix=PREFIX+'support/'
+def _prepare_shotgun_support(raw,read,read_original,model,locator,basis,actor,offsets):
+    if actor not in p.GRIP_ACTORS:raise ValueError('Unsupported Shotgun support actor')
+    # The original glove rigs already cradle this fore-end. Their larger
+    # fingers must keep that authored contact instead of the slimmer-hand fit.
+    if actor in {'Chaz','JerichoCoop','CivilianJerichoSolo','CivilianJerichoCoop',
+                 'TrooperSolo','TrooperCoop','BlueTrooperSolo','BlueTrooperCoop','RedTrooperSolo','RedTrooperCoop'}:
+        return raw,{}
+    tree=p.art.decode(raw);rows=[];references={};prefix=PREFIX+'support-under/'
     for group in tree['children']:
         name=group['attributes'].get('ToolName')
-        if name not in('Alert Poses UB','Shotgun Aim','Weapon Shoot'):continue
+        if name not in('Alert Poses UB','Crouch Alert Poses','Shotgun Aim','Weapon Shoot'):continue
         for node in group['children']:
             if node['name']!='KeyframeAnimation':continue
             flags={c['attributes']['Flag']for c in node['children']if c['name']=='Modifier'}
-            if not {'SHOTGUN','STAND'}<=flags:continue
+            if 'SHOTGUN'not in flags:continue
             if flags&p.WEAPONS!={'SHOTGUN'}:raise ValueError('Mixed Shotgun support selector')
-            path=p.art.norm(node['attributes']['Name'])+'.sanm';rows.append((node,path))
-            if name=='Alert Poses UB':
-                if ready is not None:raise ValueError('Duplicate Shotgun support reference')
-                ready=path
-    if ready is None:raise ValueError('Missing Shotgun support reference')
-    if ready.startswith(prefix):return raw,{}
-    expected=CONTACT_MODELS[actor]
-    if isinstance(expected,str):expected=(expected,)
-    if hashlib.sha256(model).hexdigest()not in expected:raise ValueError('Unrecognized Shotgun support model')
-    data=read(ready);bones=struct.unpack_from('<I',data,8)[0]
+            stance='CROUCH'if'CROUCH'in flags else'STAND'
+            path=p.art.norm(node['attributes']['Name'])+'.sanm';rows.append((node,path,stance))
+            if name in('Alert Poses UB','Crouch Alert Poses'):
+                if stance in references:raise ValueError('Duplicate Shotgun support reference')
+                references[stance]=path
+    if set(references)!={'STAND','CROUCH'}:raise ValueError('Missing Shotgun support references')
+    if all(path.startswith(prefix)for path in references.values()):return raw,{}
+    data={stance:read(path)for stance,path in references.items()};bones=struct.unpack_from('<I',data['STAND'],8)[0]
     source_locator=basis[:-4]+('_coop.bllist'if basis==p.a.STORM else'.bllist')
-    solver=ShotgunSupport(read_original(basis),model,p._grip(read_original(source_locator)),p._grip(locator),bones)
+    solver=ShotgunSupport(read_original(basis),model,p._grip(read_original(source_locator)),p._grip(locator),bones,
+                         right_offset=offsets.get((actor,'Shotgun'),(0.,0.))[0])
     additions={};cache={}
-    for node,path in rows:
-        if path not in cache:
+    for node,path,stance in rows:
+        native_aim=node['attributes'].get('AnimationID')=='AIM_POSE_RIGHT'
+        key=path,stance,native_aim
+        if key not in cache:
             original=read(path)
-            output=(solver.bake_grip_delta(data,original,.012)if struct.unpack_from('<I',original,20)[0]&0x10000000
-                    else solver.bake_grip(original,.012))
-            name=prefix+hashlib.sha256(output).hexdigest()[:24];cache[path]=name;additions[name+'.sanm']=output
-        node['attributes']['Name']=cache[path]
+            output=solver.bake_support(original,data[stance]if struct.unpack_from('<I',original,20)[0]&0x10000000 else None,
+                                      native_aim=native_aim)
+            name=prefix+hashlib.sha256(output).hexdigest()[:24];cache[key]=name;additions[name+'.sanm']=output
+        node['attributes']['Name']=cache[key]
     return p.art.encode(tree),additions
+
+
+# Minimum measured rifle-stock clearance for the native crouched rigs.
+RIFLE_CROUCH_CLEARANCE = {
+    'Chaz': (0.06, 0.0),
+    'JerichoCoop': (0.06, 0.0),
+    'CivilianJerichoSolo': (0.06, 0.0),
+    'TrooperSolo': (0.06, 0.0),
+    'BlueTrooperSolo': (0.06, 0.0),
+    'RedTrooperSolo': (0.06, 0.0),
+    'CassidySpectralSolo': (0.1, 0.0),
+    'TalaSolo': (0.1, 0.0),
+    'VampireTalaSolo': (0.1, 0.0),
+    'CivilianJerichoCoop': (0.1, 0.0),
+    'CassidyPlayerTwo': (0.06, 0.04),
+    'CassidySpectralPlayerTwo': (0.06, 0.04),
+    'TalaCoop': (0.06, 0.04),
+    'TrooperCoop': (0.02, 0.04),
+    'BlueTrooperCoop': (0.02, 0.04),
+    'RedTrooperCoop': (0.02, 0.04),
+}
+
+
+class RifleClearance(p.SupportRetarget):
+    arm_bones = HOLD_BONES
+
+    def shift_grip(self, local, new_offset, old_offset=0.):
+        before = p.world(local, self.parents)
+        gun = p.mul(self.target_grip, before[16])
+        delta = p.add(p.scale(gun[0][2], self.clearance[0]), (0., self.clearance[1], 0.))
+        # Extreme aim may already use the whole arm. Move the paired contacts
+        # only as far as both native-length chains can reach.
+        amount = 1.
+        for first in (13, 18):
+            shoulder, elbow, wrist = (before[b][1] for b in (first, first+1, first+2))
+            radius = p.length(p.sub(elbow, shoulder)) + p.length(p.sub(wrist, elbow)) - 1e-6
+            offset = p.sub(wrist, shoulder); square = p.dot(delta, delta)
+            dot = p.dot(offset, delta)
+            bound = (-dot + math.sqrt(max(0., dot*dot-square*(p.dot(offset, offset)-radius*radius)))) / square
+            amount = min(amount, max(0., bound))
+        delta = p.scale(delta, amount)
+        after = dict(before)
+        for first in (13, 18):
+            shoulder, elbow, wrist = (before[b][1] for b in (first, first+1, first+2))
+            middle, endpoint = p.solve(shoulder, elbow, wrist, p.add(wrist, delta))
+            after[first] = p.a._multiply(before[first][0], p.align(p.sub(elbow, shoulder), p.sub(middle, shoulder))), shoulder
+            after[first+1] = p.a._multiply(before[first+1][0], p.align(p.sub(wrist, elbow), p.sub(endpoint, middle))), middle
+            after[first+2] = before[first+2][0], endpoint
+            after[first+3] = p.mul(local[first+3], after[first+2])
+        return p.localize(after, self.parents)
+
+
+def _prepare_rifle_clearance(raw, read, read_original, model, locator, basis, actor):
+    if actor not in RIFLE_CROUCH_CLEARANCE:
+        return raw, {}
+    tree = p.art.decode(raw); selected = []; reference = None
+    prefix = PREFIX + 'rifle-clearance/'
+    for group in tree['children']:
+        kind = group['attributes'].get('ToolName')
+        if kind not in ('Crouch Alert Poses', 'Rifle Aim', 'Weapon Shoot'):
+            continue
+        for node in group['children']:
+            if node['name'] != 'KeyframeAnimation': continue
+            flags = {c['attributes']['Flag'] for c in node['children'] if c['name'] == 'Modifier'}
+            if not {'RIFLE', 'CROUCH'} <= flags: continue
+            path = p.art.norm(node['attributes']['Name']) + '.sanm'
+            selected.append((group, node, path, flags))
+            if kind == 'Crouch Alert Poses':
+                if reference is not None: raise ValueError('Duplicate crouched rifle ready')
+                reference = path
+    if reference is None: raise ValueError('Missing crouched rifle ready')
+    if reference.startswith(prefix): return raw, {}
+    data = read(reference); bones = struct.unpack_from('<I', data, 8)[0]
+    source_locator = basis[:-4] + ('_coop.bllist' if basis == p.a.STORM else '.bllist')
+    solver = RifleClearance(read_original(basis), model, p._grip(read_original(source_locator)), p._grip(locator), bones)
+    solver.clearance = RIFLE_CROUCH_CLEARANCE[actor]
+    additions = {}; cache = {}
+    for group, node, path, flags in selected:
+        if path not in cache:
+            original = read(path)
+            output = (solver.bake_grip_delta(data, original, 1.) if struct.unpack_from('<I', original, 20)[0] & 0x10000000
+                      else solver.bake_grip(original, 1.))
+            name = prefix + hashlib.sha256(output).hexdigest()[:24]
+            cache[path] = name; additions[name + '.sanm'] = output
+        replacement = copy.deepcopy(node); replacement['attributes']['Name'] = cache[path]
+        replacement['children'] = [c for c in replacement['children'] if not (c['name'] == 'Modifier' and c['attributes']['Flag'] in p.WEAPONS-{'RIFLE'})]
+        index = next(i for i, entry in enumerate(group['children']) if entry is node)
+        replacements = [replacement]
+        if flags & (p.WEAPONS-{'RIFLE'}):
+            node['children'] = [c for c in node['children'] if not(c['name'] == 'Modifier' and c['attributes']['Flag'] == 'RIFLE')]
+            replacements.insert(0, node)
+        group['children'][index:index+1] = replacements
+        group['attributes']['KeyedAnimationCount'] = str(sum(n['name'] == 'KeyframeAnimation' for n in group['children']))
+    return p.art.encode(tree), additions
 
 
 def prepare_aimed_motion_table(raw,read,read_original,model,locator,basis,actor,offsets):
@@ -365,8 +557,10 @@ def prepare_aimed_motion_table(raw,read,read_original,model,locator,basis,actor,
     raw,adjusted=shoulder.prepare_table(raw,read,read_original,model,locator,basis,actor,offsets)
     previous=read
     read=lambda path:adjusted[path]if path in adjusted else previous(path)
-    raw,support=_prepare_shotgun_support(raw,read,read_original,model,locator,basis,actor)
+    raw,support=_prepare_shotgun_support(raw,read,read_original,model,locator,basis,actor,offsets)
     adjusted.update(support)
+    raw,rifle=_prepare_rifle_clearance(raw,read,read_original,model,locator,basis,actor)
+    adjusted.update(rifle)
     tree=p.art.decode(raw);references={}
     for group in tree['children']:
         name=group['attributes'].get('ToolName')

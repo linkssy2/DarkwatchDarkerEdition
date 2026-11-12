@@ -13,12 +13,15 @@ struct ControlsSettings {
     bool aim_centering = true;
     bool carry_all_weapons = false;
     bool keep_starting_revolver = false;
+    bool ground_pound_anytime = false;
     std::array<std::array<int, 2>, 2> weapon_buttons{{{{-1, -1}}, {{-1, -1}}}};
     std::array<bool, 2> walk_toggle{};
     std::array<int, 2> walk_buttons{{-1, -1}};
     std::array<int, 2> shoulder_buttons{{-1, -1}};
+    std::array<int, 2> camera_buttons{{-1, -1}};
 };
 
+bool GetGroundPoundAnytime();
 bool GetCarryAllWeapons();
 bool GetKeepStartingRevolver();
 ControlsSettings ControlsDefaults();

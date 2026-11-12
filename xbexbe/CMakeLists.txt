@@ -28,6 +28,7 @@ set(XBE_HOST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/common/game_info.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/skin_palette.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/third_person_weapon.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/controls.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/ground_pound.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/revolver_ammo.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/carry_all_weapons.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/coop_respawn_weapons.cpp"
@@ -65,6 +66,7 @@ set(XBE_HOST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/common/game_info.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/graphics.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/graphics_route.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/graphics_camera.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/ambient_occlusion.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/third_person_visibility.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/third_person_death.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/third_person_aim.cpp"
@@ -80,11 +82,19 @@ set(XBE_HOST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/common/game_info.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/graphics_reticle.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/graphics_hud.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/hd_ui.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/skip_intro.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/cri_diagnostic.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/cri_lifetime.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/sound_pool.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/horse_diagnostic.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/horse_voice_diagnostic.cpp")
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/common/ragdolls.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/common/third_person_locomotion.cpp"
+        PROPERTIES COMPILE_DEFINITIONS DARKWATCH_PRIVATE_CLIPS)
+list(APPEND XBE_HOST_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/common/ejected_clips.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/common/ejected_clips_contacts.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/common/ejected_clips_runtime.cpp")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS config/game.toml)
 file(STRINGS config/game.toml GAME_PARTITIONS REGEX "^partitions *=")
 string(REGEX MATCH "[0-9]+" GAME_PARTITIONS "${GAME_PARTITIONS}")
@@ -113,6 +123,11 @@ set(SHADER_PREPARATION_INPUTS
     "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/XboxXBERecomp/runtime/gpu/vertex.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/XboxXBERecomp/runtime/gpu/state.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/XboxXBERecomp/runtime/gpu/d3d12.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/XboxXBERecomp/runtime/gpu/gtao.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/XboxXBERecomp/runtime/gpu/gtao.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/XboxXBERecomp/runtime/gpu/xegtao/XeGTAO.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/XboxXBERecomp/runtime/gpu/xegtao/types.inl"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/XboxXBERecomp/runtime/gpu/xegtao/core.inl"
     "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/XboxXBERecomp/runtime/gpu/backend.h")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${SHADER_PREPARATION_INPUTS})
 set(SHADER_PREPARATION_FINGERPRINT "")

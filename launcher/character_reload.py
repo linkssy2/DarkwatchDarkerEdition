@@ -14,6 +14,7 @@ import struct
 import character_assets as art
 import character_boss as boss
 import character_weapon_pose as pose
+import character_spectral_hands as skin
 import character_weapon_shoulder as shoulder
 
 # Exact float32 durations from the pinned disc's ChazHands action resources.
@@ -54,7 +55,7 @@ REDEEMER_GRASPS = {
 # Native POV contact intervals: the ejected parts outside these intervals are
 # intentionally free. Only the body follows them; their mechanical clips stay intact.
 MECHANICAL = {
-    'Crossbow': ('CROSSBOW', 8, 1, .08, .75, .4,
+    'Crossbow': ('CROSSBOW', 8, 1, .175, .75, .4,
         'accessories/weapons/dwcrossbow/base_pov_dwcrossbow.rx1',
         'accessories/weapons/dwcrossbow/sanm/pov_dwcrossbow_reload.sanm',
         'characters/player_first/sanm/lo/pov_chaz_reload_dwcrossbow.sanm'),
@@ -244,7 +245,54 @@ class MechanicalMotion(RedeemerMotion):
         for bone in (12, 13, 14, 15, 16): anchor[bone] = settled[bone]
         self.contact_before = pose.world(anchor, self.solver.parents)
         self.contact_after = dict(self.contact_before)
+        if weapon == 'Crossbow':
+            self.palm_contact = loading_palm_contact(model, bones)
+            self.contact_before, self.contact_after = self.crossbow_holding()
+            # Grip around the magazine's side instead of folding the body wrist
+            # over its top during the native withdrawal turn.
+            cosine, sine = math.cos(math.radians(-45)), math.sin(math.radians(-45))
+            self.grasp = pose.mul(self.grasp,
+                (((1., 0., 0.), (0., cosine, sine), (0., -sine, cosine)), (0., 0., 0.)))
+            # Grasp the native cartridge's rear underside so the shorter body
+            # arm can reach it without pulling the crossbow back into the neck.
+            self.grasp = self.grasp[0], pose.sub((.010, -.075, -.075),
+                pose.rotate(self.palm_contact, self.grasp[0]))
         self.start, self.end = self.contact(self.contact_start), self.contact(self.contact_end)
+
+    def crossbow_holding(self):
+        # Keep the stock outside the right flank. Standing and crouch have
+        # different body-to-aim yaw, so use the actual shoulder line for both.
+        before = pose.world(self.ready, self.solver.parents)
+        after = dict(before)
+        shoulder, elbow, wrist = (before[b][1] for b in (13, 14, 15))
+        gun = pose.mul(self.grip, before[16])
+        up = (0., 1., 0.)
+        right = pose.sub(before[13][1], before[18][1])
+        right = pose.unit((right[0], 0., right[2]))
+        forward = pose.unit(pose.cross(up, right))
+        if pose.dot(forward, gun[0][0]) < 0.: forward = pose.scale(forward, -1.)
+        length = pose.length(pose.sub(elbow, shoulder)) + pose.length(pose.sub(wrist, elbow))
+        target = pose.add(shoulder, pose.add(pose.scale(forward, length*.15),
+            pose.add(pose.scale(up, -length*.65), pose.scale(right, length*.35))))
+        bore = pose.unit(pose.sub(forward, right))
+        weapon_right = pose.unit(pose.cross(bore, up))
+        rotation = (bore, up, weapon_right)
+        cosine, sine = math.cos(math.radians(10)), math.sin(math.radians(10))
+        rotation = pose.a._multiply(((cosine, sine, 0.), (-sine, cosine, 0.), (0., 0., 1.)), rotation)
+        cosine, sine = math.cos(math.radians(15)), math.sin(math.radians(15))
+        rotation = pose.a._multiply(((1., 0., 0.), (0., cosine, sine), (0., -sine, cosine)), rotation)
+        weapon = pose.mul(before[16], pose.inverse(before[15]))
+        wrist_to_gun = pose.mul(self.grip, weapon)
+        middle, endpoint = pose.solve(shoulder, elbow, wrist, target)
+        after[13] = pose.a._multiply(before[13][0], pose.align(
+            pose.sub(elbow, shoulder), pose.sub(middle, shoulder))), shoulder
+        after[14] = pose.a._multiply(before[14][0], pose.align(
+            pose.sub(wrist, elbow), pose.sub(endpoint, middle))), middle
+        after[15] = pose.a._multiply(pose.a._inverse(wrist_to_gun[0]), rotation), endpoint
+        after[16] = pose.mul(weapon, after[15])
+        after = pose.world(pose.outside_elbow(pose.localize(after, self.solver.parents),
+                                            self.solver.parents, 13, side_weight=.5), self.solver.parents)
+        return before, after
 
     def part_pose(self, phase):
         native = pose.world(self.weapon.pose(self.weapon_bind, phase), self.weapon_parents)[self.part]
@@ -253,7 +301,52 @@ class MechanicalMotion(RedeemerMotion):
     def contact(self, phase):
         desired = pose.mul(pose.mul(self.grasp, self.part_pose(phase)),
                            pose.mul(self.grip, self.contact_after[16]))
-        return self.solver.fit_contacts(self.contact_before, self.contact_after, desired, reach_fraction=.95)
+        result = self.solver.fit_contacts(self.contact_before, self.contact_after, desired, reach_fraction=.95)
+        if self.weapon_name == 'Crossbow':
+            result = pose.outside_elbow(result, self.solver.parents, 13, side_weight=.5)
+            result = pose.outside_elbow(result, self.solver.parents, 18)
+            result = soften_loading_wrist(result, self.solver.parents, self.palm_contact)
+        return result
+
+    def sample(self, phase):
+        local = super().sample(phase)
+        if self.weapon_name != 'Crossbow' or self.contact_start <= phase <= self.contact_end:
+            return local
+        # The cartridge stays seated until .175; use that interval to lower
+        # the gun smoothly, then keep its stock outside the neck on return.
+        if phase < self.contact_start:
+            first, last, amount = self.ready, self.start, phase/self.contact_start
+        else:
+            first, last, amount = self.end, self.ready, (phase-self.contact_end)/(1-self.contact_end)
+        raw_amount = amount
+        amount = self.transition(amount)
+        before = pose.world(local, self.solver.parents)
+        start, finish = (pose.world(value, self.solver.parents) for value in (first, last))
+        target = pose.add(pose.scale(start[15][1], 1-amount), pose.scale(finish[15][1], amount))
+        right = pose.sub(start[13][1], start[18][1])
+        right = pose.unit((right[0], 0., right[2]))
+        length = pose.length(pose.sub(start[14][1], start[13][1])) + pose.length(pose.sub(start[15][1], start[14][1]))
+        target = pose.add(target, pose.scale(right, .06*length*math.sin(math.pi*raw_amount)**2))
+        rotation = _rotation_mix(start[15][0], finish[15][0], amount)
+        shoulder, elbow, wrist = (before[bone][1] for bone in (13, 14, 15))
+        middles = []
+        for endpoint_pose in (start, finish):
+            source_elbow = pose.add(shoulder, pose.sub(endpoint_pose[14][1], endpoint_pose[13][1]))
+            source_wrist = pose.add(shoulder, pose.sub(endpoint_pose[15][1], endpoint_pose[13][1]))
+            middle, endpoint = pose.solve(shoulder, source_elbow, source_wrist, target)
+            middles.append(middle)
+        axis = pose.unit(pose.sub(endpoint, shoulder))
+        upper = pose.sub(middles[0], shoulder)
+        center = pose.add(shoulder, pose.scale(axis, pose.dot(upper, axis)))
+        first_pole, last_pole = (pose.sub(middle, center) for middle in middles)
+        turn = _rotation_mix(pose.a.IDENTITY, pose.align(first_pole, last_pole), amount)
+        middle = pose.add(center, pose.rotate(first_pole, turn))
+        after = dict(before)
+        after[13] = pose.a._multiply(before[13][0], pose.align(pose.sub(elbow, shoulder), pose.sub(middle, shoulder))), shoulder
+        after[14] = pose.a._multiply(before[14][0], pose.align(pose.sub(wrist, elbow), pose.sub(endpoint, middle))), middle
+        after[15] = rotation, endpoint
+        after[16] = pose.mul(pose.mul(before[16], pose.inverse(before[15])), after[15])
+        return pose.localize(after, self.solver.parents)
 
 
 def prepare_mechanical_table(raw, read, read_original, model, locator, basis, actor, offsets):
@@ -353,118 +446,206 @@ def fit_loading_hand(before, parents, desired, paired_solver=None):
     return pose.localize(after, parents)
 
 
+def loading_palm_contact(model, bones):
+    """Measure the loading palm in wrist space without including forearm skin."""
+    points = []
+    for index in range(sum(kind == 15 for kind, *_ in pose.b._records(model))):
+        geometry = skin._geometry(model, index, allowed_bones=(bones,))
+        for position, weights in zip(geometry['positions'], geometry['weights']):
+            if weights.get(20, 0.) <= .95:
+                continue
+            local = skin._point(position, geometry['inverse'][20])
+            if .03 < local[0] < .09:
+                points.append(local)
+    if not points:
+        raise ValueError('Loading palm is unavailable')
+    return tuple(sum(point[i] for point in points)/len(points) for i in range(3))
+
+
+def soften_loading_wrist(local, parents, palm_contact, weight=1.):
+    """Relax loading-hand flex around its contact, retaining gun and arm lengths."""
+    if weight == 0.:
+        return local
+    before = pose.world(local, parents)
+    axis = pose.unit(before[20][0][0])
+    forearm = pose.unit(pose.sub(before[20][1], before[19][1]))
+    limit = math.radians(20.)
+    if pose.dot(axis, forearm) >= math.cos(limit):
+        return local
+    contact = pose.add(before[20][1], pose.rotate(palm_contact, before[20][0]))
+    current = before
+    # Rotating around the palm keeps the cartridge contact fixed. Refitting
+    # the original-length arm then changes the wrist position slightly;
+    # converge against that forearm, without moving the held weapon.
+    for _ in range(5):
+        forearm = pose.unit(pose.sub(current[20][1], current[19][1]))
+        axis = before[20][0][0]
+        angle = math.acos(max(-1., min(1., pose.dot(pose.unit(axis), forearm))))
+        amount = weight*max(0., 1-limit/angle) if angle > 1e-6 else 0.
+        rotation = _rotation_mix(pose.a.IDENTITY, pose.align(axis, forearm), amount)
+        rotation = pose.a._multiply(before[20][0], rotation)
+        position = pose.sub(contact, pose.rotate(palm_contact, rotation))
+        result = fit_loading_hand(before, parents, (rotation, position))
+        current = pose.world(result, parents)
+    return result
+
+
+# Actual distal-thumb pads, measured in the prepared body's wrist15 space.
+RIFLE_THUMBS = {
+    '37bb3be6b4578ce57d3595ac7a2b034952da255949c4322db2ab8259827b3a3b': (0.1374156587449327, 0.032166933926465045, -0.11598649796052057),
+    '49481eb60e07c8286d18332cd937a4e55922b7eca23a95e9db417897b6400a10': (0.11810964135135908, 0.011484339359588628, -0.057724504421974604),
+    'ab5cd1e6e409eeb650297932503f04eb408ef1ace669b49397f4e07ca36f4eef': (0.11514651156286874, 0.05320408301273153, -0.08992761569123038),
+    '08d3c57bc2e28f5a38c26e86f2798b8fa60f47c5552d5ea7cef588ddaddf8ad0': (0.11562428750477005, 0.042307437340749564, -0.06394374276844407),
+    '86ae91129740abb0075d4785a114fcbbef6b1f9f690213f243ed4d42f2f11a5b': (0.08586047247804791, 0.04658186686572866, -0.08648275332967754),
+    'a1abaac00ac4b1cc24fa16077478defea463791f0475d9f41f6daf989845c657': (0.08600194816228776, 0.07205606427956485, -0.0986631216008691),
+    '52f07f4e0568cfde03c28467ccd3e5f73ef06b40fd9327b7a7af5558e65e17ae': (0.1374156587449327, 0.032166933926465045, -0.11598649796052057),
+    '61ec2ceac3ebf48f560413492ef566918cc4b6e17ea2348ca8318a5db7899efb': (0.10476014791647331, 0.04792199264701765, -0.06303603876579854),
+    '697d68592b6c53ce250f22e298d2770c6a8de8f4c990219b35f4b0128b2aa478': (0.13741489133257664, 0.032167538814466656, -0.11598540628919903),
+    '9d1691d4fa15f1939dbd4c64479c28693c9ce701e78b1745868a1dad2cbb8c5f': (0.09246189784853402, 0.03533367759136056, -0.058356052509052826),
+    '4b0262b4f9cda044eb915e6d5141e8c666a2a8bf4fb8c8faf21e84bbafd81143': (0.11810964135135908, 0.011484339359588628, -0.057724504421974604),
+}
+RIFLE_NATIVE_THUMB = (-0.007930847954767768, -0.001732180052801257, -0.01107308506088177)
+
+
 class RifleSupportMotion:
-    """Keep the rifle supported during its native pre/post reload phases."""
-    def __init__(self, adapted, insertion, ready, read_original, model, locator, basis, offset, action, bridge_ready=False):
-        if action not in ('PRERELOAD', 'POSTRELOAD') or basis not in (pose.a.CHAZ, pose.a.STORM):
-            raise ValueError('Unsupported rifle support phase')
+    """Support the lever rifle with the left hand and load its side gate with the right."""
+    def __init__(self, adapted, ready, read_original, model, locator, basis, offset, action, core_ready=None):
+        if action not in PHASES or basis not in (pose.a.CHAZ, pose.a.STORM):
+            raise ValueError('Unsupported rifle loading phase')
         bones = struct.unpack_from('<I', adapted, 8)[0]
         source_locator = basis[:-4] + ('_coop.bllist' if basis == pose.a.STORM else '.bllist')
         self.solver = pose.SupportRetarget(read_original(basis), model,
             pose._grip(read_original(source_locator)), pose._grip(locator), bones)
-        self.solver.arm_bones = (17, 18, 19, 20, 21)
         self.target = pose.Clip(adapted, bones)
-        if self.target.flags & 0x10000000 or set(self.target.parts) - {1, 4, 8} or 4 not in self.target.parts:
-            raise ValueError('Rifle support requires an absolute body pose')
-        self.bridge_ready = bridge_ready
+        if self.target.flags & 0x10000000 or set(self.target.parts)-{1,4,8} or not {4,8} <= self.target.parts.keys():
+            raise ValueError('Rifle loading requires an absolute body pose')
+        self.solver.arm_bones = tuple(range(7,22))
         self.action = action
-        # Among the admitted shared holds, only Spectral Cassidy uses 51 bones.
-        # Her two prepared rigs need an earlier return to the clear authored
-        # path so the stock does not sweep through the torso during entry.
-        self.ready_window = (.1875 if basis == pose.a.STORM else .25) if bones == 51 else .5
-        if bridge_ready:
-            held_pose = pose.Clip(ready, bones).pose(self.solver.target, .5)
-            insert_pose = pose.Clip(insertion, bones).pose(self.solver.target, 0. if action == 'PRERELOAD' else 1.)
-            self.pose_first, self.pose_last = ((held_pose, insert_pose) if action == 'PRERELOAD' else (insert_pose, held_pose))
+        self.parents = self.solver.parents
+        self.ready_local = dict(self.solver.target)
+        for raw in ((core_ready,ready) if core_ready is not None else (ready,)):
+            clip = pose.Clip(raw,bones); local = clip.pose(self.solver.target,.5)
+            mask = struct.unpack_from('<'+'I'*bones,raw,clip.parts[1]['keys']) if 1 in clip.parts else (0,)*bones
+            self.ready_local.update((bone,value) for bone,value in local.items() if not mask[bone])
+        self.ready = pose.world(self.ready_local, self.parents)
         grip = self.solver.target_grip
         self.grip = grip[0], pose.add(grip[1], pose.scale(grip[0][0], offset))
-        def contact(raw, phase):
-            world = pose.world(pose.Clip(raw, bones).pose(self.solver.target, phase), self.solver.parents)
-            return pose.mul(world[20], pose.inverse(pose.mul(self.grip, world[16])))
-        held = contact(ready, .5)
-        if action == 'PRERELOAD': self.first, self.last = held, contact(insertion, 0.)
-        else: self.first, self.last = contact(insertion, 1.), held
-        self.fp_bind, self.fp_parents = pose.rig(read_original('characters/player_first/base_pov_chaz.rx1'), 22)
-        self.fp = pose.Clip(read_original('characters/player_first/sanm/med/pov_chaz_' + action.lower() + '_dwrifle.sanm'), 22)
-        self.fp_first, self.fp_last = self.native_contact(0.), self.native_contact(1.)
+        self.gun = pose.mul(self.grip, self.ready[16])
+        inverse = pose.inverse(self.gun)
+        self.contacts = {bone:pose.mul(self.ready[bone],inverse) for bone in (15,20)}
+        try: self.thumb = RIFLE_THUMBS[hashlib.sha256(model).hexdigest()]
+        except KeyError: raise ValueError('Unrecognized rifle loading-hand model') from None
+        self.ready_thumb = pose.add(self.contacts[15][1],pose.rotate(self.thumb,self.contacts[15][0]))
+        hand = read_original('characters/player_first/base_pov_chaz.rx1')
+        if hashlib.sha256(hand).hexdigest() != 'a323481cc83532c746ff5926e3c7f033a455f91309a6161c06569ba4b7759b77':
+            raise ValueError('Unrecognized native rifle loading-hand source')
+        self.fp_bind,self.fp_parents = pose.rig(hand,22)
+        self.native = {phase:pose.Clip(read_original('characters/player_first/sanm/med/pov_chaz_'+phase.lower()+'_dwrifle.sanm'),22) for phase in PHASES}
+        side = pose.sub(self.ready[18][1],self.ready[13][1]); side = pose.unit((side[0],0.,side[2]))
+        up = (0.,1.,0.); forward = pose.unit(pose.cross(side,up))
+        bore = pose.unit(pose.add(pose.add(pose.scale(forward,.55),pose.scale(side,.835)),pose.scale(up,.12)))
+        top = pose.unit(pose.sub(up,pose.scale(bore,pose.dot(up,bore))))
+        center = pose.scale(pose.add(self.ready[18][1],self.ready[13][1]),.5)
+        position = pose.add(center,pose.add(pose.scale(forward,.25),pose.add(pose.scale(side,-.04),pose.scale(up,-.23))))
+        self.held = (bore,top,pose.cross(bore,top)),position
 
-    def native_contact(self, phase):
-        world = pose.world(self.fp.pose(self.fp_bind, phase), self.fp_parents)
-        return pose.mul(world[4], pose.inverse(world[21]))
+    def native_thumb(self, action, phase):
+        world = pose.world(self.native[action].pose(self.fp_bind,phase),self.fp_parents)
+        thumb = pose.mul(world[20],pose.inverse(world[21]))
+        return pose.add(thumb[1],pose.rotate(RIFLE_NATIVE_THUMB,thumb[0]))
 
     def sample(self, phase):
-        local = self.target.pose(self.solver.target, phase)
-        # The old source swept an empty hand above the rifle. Keep it on a
-        # continuous path between the actual support grip and cartridge handoff.
-        amount = phase**3 * (10 + phase*(-15 + 6*phase))
-        if self.bridge_ready:
-            # The shared ready chain must also be the reload's real endpoint.
-            # Ease into/out of the authored path, retaining its clear middle
-            # trajectory rather than cutting straight through the torso.
-            start_window, end_window = ((self.ready_window, .25) if self.action == 'PRERELOAD' else (.25, .5))
-            anchor, blend = None, 0.
-            if phase < start_window:
-                t = phase/start_window
-                anchor, blend = self.pose_first, 1-t**3*(10+t*(-15+6*t))
-            elif phase > 1-end_window:
-                t = (phase-(1-end_window))/end_window
-                anchor, blend = self.pose_last, t**3*(10+t*(-15+6*t))
-            for bone in range(7, 22):
-                if anchor is not None:
-                    local[bone] = _rotation_mix(local[bone][0], anchor[bone][0], blend), local[bone][1]
-            if anchor is not None:
-                for bone in (16, 21):
-                    local[bone] = local[bone][0], pose.add(pose.scale(local[bone][1], 1-blend), pose.scale(anchor[bone][1], blend))
-        before = pose.world(local, self.solver.parents)
-        relative = (_rotation_mix(self.first[0], self.last[0], amount),
-                    pose.add(pose.scale(self.first[1], 1-amount), pose.scale(self.last[1], amount)))
-        # Preserve the original POV hand's small settling motion. Its endpoints
-        # are rebased onto the body grip/handoff so neither transition snaps.
-        native = self.native_contact(phase)
-        baseline = (_rotation_mix(self.fp_first[0], self.fp_last[0], phase),
-                    pose.add(pose.scale(self.fp_first[1], 1-phase), pose.scale(self.fp_last[1], phase)))
-        relative = (pose.a._multiply(relative[0], pose.a._multiply(pose.a._inverse(baseline[0]), native[0])),
-                    pose.add(relative[1], pose.sub(native[1], baseline[1])))
-        desired = pose.mul(relative, pose.mul(self.grip, before[16]))
-        return fit_loading_hand(before, self.solver.parents, desired, self.solver)
+        smooth = phase**3*(10+phase*(-15+6*phase))
+        amount = smooth if self.action=='PRERELOAD' else 1-smooth if self.action=='POSTRELOAD' else 1.
+        mount = (_rotation_mix(self.gun[0],self.held[0],amount),
+                 pose.add(pose.scale(self.gun[1],1-amount),pose.scale(self.held[1],amount)))
+        thumb = self.native_thumb('RELOAD',phase) if self.action=='RELOAD' else pose.add(
+            pose.scale(self.ready_thumb,1-amount),pose.scale(self.native_thumb('RELOAD',0. if self.action=='PRERELOAD' else 1.),amount))
+        contact = pose.add(pose.rotate(thumb,mount[0]),mount[1])
+        original = pose.a._multiply(self.contacts[15][0],mount[0]); hand = original
+        shoulder,elbow,wrist = (self.ready[b][1] for b in (13,14,15))
+        reach_fraction = 1-.015*amount
+        reach = reach_fraction*(pose.length(pose.sub(elbow,shoulder))+pose.length(pose.sub(wrist,elbow)))
+        # Rotate around the measured thumb contact instead of folding the wrist
+        # to imitate the first-person rig's independently articulated fingers.
+        for _ in range(8):
+            position = pose.sub(contact,pose.rotate(self.thumb,hand)); offset = pose.sub(position,shoulder)
+            end = pose.add(shoulder,pose.scale(pose.unit(offset),min(reach,pose.length(offset))))
+            middle,_ = pose.solve(shoulder,elbow,wrist,end)
+            forearm = pose.unit(pose.sub(position,middle)); axis = original[0]
+            angle = math.acos(max(-1.,min(1.,pose.dot(pose.unit(axis),forearm))))
+            turn = _rotation_mix(pose.a.IDENTITY,pose.align(axis,forearm),amount*max(0.,1-math.radians(35)/max(angle,1e-9)))
+            hand = pose.a._multiply(original,turn)
+        targets = {15:(hand,pose.sub(contact,pose.rotate(self.thumb,hand))),20:pose.mul(self.contacts[20],mount)}
+        centers,radii = [],[]
+        for first in (13,18):
+            shoulder,elbow,wrist = (self.ready[b][1] for b in (first,first+1,first+2))
+            centers.append(pose.sub(shoulder,targets[first+2][1]))
+            radii.append(reach_fraction*(pose.length(pose.sub(elbow,shoulder))+pose.length(pose.sub(wrist,elbow))))
+        displacement = (0.,0.,0.); corrections = [displacement,displacement]
+        for _ in range(100):
+            previous = displacement
+            for i in (0,1):
+                trial = pose.add(displacement,corrections[i]); offset = pose.sub(trial,centers[i]); size = pose.length(offset)
+                projected = trial if size<=radii[i] else pose.add(centers[i],pose.scale(offset,radii[i]/size))
+                corrections[i] = pose.sub(trial,projected); displacement = projected
+            if pose.length(pose.sub(previous,displacement))<1e-10: break
+        if pose.length(displacement)>.06:
+            raise ValueError('Rifle workspace needs excessive reach correction')
+        mount = mount[0],pose.add(mount[1],displacement)
+        world = dict(self.ready)
+        for bone,first in ((15,13),(20,18)):
+            target = targets[bone][0],pose.add(targets[bone][1],displacement)
+            shoulder,elbow,wrist = (world[b][1] for b in (first,first+1,first+2))
+            middle,end = pose.solve(shoulder,elbow,wrist,target[1])
+            world[first] = pose.a._multiply(world[first][0],pose.align(pose.sub(elbow,shoulder),pose.sub(middle,shoulder))),shoulder
+            world[first+1] = pose.a._multiply(world[first+1][0],pose.align(pose.sub(wrist,elbow),pose.sub(end,middle))),middle
+            world[first+2] = target[0],end
+        world[16] = pose.mul(self.ready_local[16],world[15]); world[21] = pose.mul(self.ready_local[21],world[20])
+        local = pose.localize(world,self.parents)
+        for first in (13,18):
+            before = pose.world(local,self.parents)
+            target = pose.world(pose.outside_elbow(local,self.parents,first,side_weight=.65),self.parents)
+            shoulder,elbow,wrist = (before[b][1] for b in (first,first+1,first+2))
+            axis = pose.unit(pose.sub(wrist,shoulder)); upper = pose.sub(elbow,shoulder); along = pose.dot(upper,axis)
+            old = pose.sub(upper,pose.scale(axis,along)); new = pose.sub(pose.sub(target[first+1][1],shoulder),pose.scale(axis,along))
+            radial = pose.unit(pose.add(pose.scale(pose.unit(old),1-amount),pose.scale(pose.unit(new),amount)))
+            middle = pose.add(shoulder,pose.add(pose.scale(axis,along),pose.scale(radial,pose.length(old))))
+            before[first] = pose.a._multiply(before[first][0],pose.align(upper,pose.sub(middle,shoulder))),shoulder
+            before[first+1] = pose.a._multiply(before[first+1][0],pose.align(pose.sub(wrist,elbow),pose.sub(wrist,middle))),middle
+            local = pose.localize(before,self.parents)
+        world = pose.world(local,self.parents)
+        # The common held-attachment path uses this independent gun socket.
+        # Spectral's skin publication retains its original finger16 relation.
+        local[16] = pose.mul(pose.mul(pose.inverse(self.grip),mount),pose.inverse(world[15]))
+        return local
 
     def bake(self):
         phases = {i/240 for i in range(241)}
-        for times, _ in self.target.tracks.values(): phases.update(times)
-        cache = {}
-        def sample(phase):
-            if phase not in cache: cache[phase] = self.sample(phase)
-            return cache[phase]
-        for phase in phases: sample(phase)
-        if self.bridge_ready:
-            self.solver.arm_bones = tuple(range(7, 22))
-        elif any(pose.length(pose.sub(pose.world(value, self.solver.parents)[15][1],
-                pose.world(self.target.pose(self.solver.target, phase), self.solver.parents)[15][1])) > 1e-8
-                for phase, value in cache.items()):
-            self.solver.arm_bones = tuple(range(13, 22))
-        data = self.solver._encode_rotations(self.target, sample, phases)
-        if not self.bridge_ready: return data
-        section = boss.sections(data, self.solver.bones)[1].get(8)
+        for times,_ in self.target.tracks.values(): phases.update(times)
+        cache = {phase:self.sample(phase) for phase in phases}
+        data = self.solver._encode_rotations(self.target,cache.__getitem__,phases)
+        section = boss.sections(data,self.solver.bones)[1].get(8)
         if section is None: raise ValueError('Missing reload socket translations')
-        keys, indices = bytearray(), []
-        for bone, first in enumerate(section['indices']):
+        keys,indices = bytearray(),[]
+        for bone,first in enumerate(section['indices']):
             if first == pose.MISSING:
-                if bone in (16, 21): raise ValueError('Missing reload socket translation')
-                indices.append(first)
-                continue
+                if bone in (16,21): raise ValueError('Missing rifle socket translation')
+                indices.append(first); continue
             indices.append(len(keys)//16)
-            stop = min([i for i in section['indices'] if first < i < pose.MISSING] + [section['count']])
-            if bone in (16, 21):
-                for phase in sorted(phases): keys += struct.pack('<f3f', phase, *sample(phase)[bone][1])
+            stop = min([i for i in section['indices'] if first<i<pose.MISSING]+[section['count']])
+            if bone in (16,21):
+                for phase in sorted(phases): keys += struct.pack('<f3f',phase,*cache[phase][bone][1])
             else: keys += data[section['keys']+16*first:section['keys']+16*stop]
-        block = struct.pack('<I', len(keys)//16) + struct.pack('<'+'I'*self.solver.bones, *indices) + keys
-        return data[:section['start']] + block + data[section['end']:]
+        block = struct.pack('<I',len(keys)//16)+struct.pack('<'+'I'*self.solver.bones,*indices)+keys
+        return data[:section['start']]+block+data[section['end']:]
 
 
 def prepare_rifle_support_table(raw, read, read_original, model, locator, basis, offset=0., *, bridge_ready=False):
-    """Fit pre/post contact and optional ready joins; preserve loop and events."""
+    """Fit loading contact and ready joins; preserve selectors, clocks and events."""
     tree = art.decode(raw)
     ready, candidates = {}, {}
+    core_ready = None
     for group in tree['children']:
         if group['name'] != 'AnimationGroup': continue
         stance = {'Alert Poses UB':'STAND', 'Crouch Alert Poses':'CROUCH'}.get(group['attributes'].get('ToolName'))
@@ -473,6 +654,9 @@ def prepare_rifle_support_table(raw, read, read_original, model, locator, basis,
             flags = {c['attributes']['Flag'] for c in node['children'] if c['name'] == 'Modifier'}
             if 'RIFLE' not in flags: continue
             action = node['attributes'].get('AnimationID')
+            if group['attributes'].get('ToolName') == 'Alert Poses' and action == 'IDLE':
+                if core_ready is not None: raise ValueError('Duplicate rifle standing core')
+                core_ready = read(art.norm(node['attributes']['Name']) + '.sanm')
             if stance and action == 'IDLE': ready[stance] = read(art.norm(node['attributes']['Name']) + '.sanm')
             if action in PHASES:
                 selected = flags & {'STAND', 'CROUCH'}
@@ -480,23 +664,22 @@ def prepare_rifle_support_table(raw, read, read_original, model, locator, basis,
                 if key in candidates or len(selected) > 1 or flags - selected != {'RIFLE', 'OUT_OF_VEHICLE'}:
                     raise ValueError('Unsupported rifle reload selector')
                 candidates[key] = (group, node)
-    if set(ready) != {'STAND', 'CROUCH'} or any(
+    if core_ready is None or set(ready) != {'STAND', 'CROUCH'} or any(
             {stance for action, stance in candidates if action == phase} not in ({None}, {'STAND', 'CROUCH'}) for phase in PHASES):
         raise ValueError('Incomplete rifle support routes')
     additions = {}
     for (action, selected), (group, node) in candidates.items():
-        if action == 'RELOAD': continue
         source = read(art.norm(node['attributes']['Name']) + '.sanm')
         replacements = []
-        for stance in (selected,) if selected else ('STAND', 'CROUCH'):
-            insertion_node = candidates['RELOAD', stance if ('RELOAD', stance) in candidates else None][1]
-            insertion = read(art.norm(insertion_node['attributes']['Name']) + '.sanm')
-            data = RifleSupportMotion(source, insertion, ready[stance], read_original, model, locator, basis, offset, action, bridge_ready).bake()
+        stances = (selected,) if selected else ('STAND', 'CROUCH')
+        for stance in stances:
+            data = RifleSupportMotion(source, ready[stance], read_original, model, locator, basis, offset, action,
+                                      core_ready if stance == 'STAND' else None).bake()
             name = PREFIX + 'rifle-support/' + hashlib.sha256(data).hexdigest()[:24]
             additions[name + '.sanm'] = data
             replacement = copy.deepcopy(node)
             replacement['attributes']['Name'] = name
-            if bridge_ready: replacement['attributes']['BlendIn'] = '0.001000'
+            if bridge_ready and action != 'RELOAD': replacement['attributes']['BlendIn'] = '0.001000'
             if not selected: replacement['children'].append(dict(name='Modifier', attributes={'Flag':stance}, children=[], value=None))
             replacements.append(replacement)
         index = next(i for i, value in enumerate(group['children']) if value is node)

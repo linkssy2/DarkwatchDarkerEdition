@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "content_revision": "character-reload-path-v34",
+  "content_revision": "character-reload-right-wrist-v36",
   "originals": {
     "audio.pck": {
       "size": 137741272,
@@ -4147,6 +4147,12 @@
       "offset": 24023165,
       "size": 16584,
       "sha256": "0046ff761a34f33977c88de9e8190e60cc24850a395734604aa8ea7dc189f4b4"
+    },
+    "characters/player_first/sanm/med/pov_chaz_reload_dwrifle.sanm": {
+      "archive": "packfile.pck",
+      "offset": 24135384,
+      "size": 6032,
+      "sha256": "776b4a921e88ef3429954f65cc33ee56578398a4a4e0be302113963e5f09e55d"
     }
   },
   "v7_outputs": {
@@ -7447,12 +7453,12 @@
   },
   "installed": {
     "packfile.pck": {
-      "size": 176743625,
-      "sha256": "fd642c3700c3f33537deba8d19ee1d731ca599bfcf27e4a88c6c8ea685941ae7"
+      "size": 180615493,
+      "sha256": "b65720e8b43c3d938d296f0a2a617c747e233b9670096d65a0b88ef5b84dc50a"
     },
     "LvlSingl.pck": {
-      "size": 2378623555,
-      "sha256": "d458ea662037bfaf28ecc11a68dae330a63c79b5a072e934e0c08e9b414ef140"
+      "size": 2399384131,
+      "sha256": "097bade9fad236a7e5e7f5cab83985368df3aba1246e1dd1ca0592bcfcc9d860"
     },
     "audio.pck": {
       "size": 152395109,

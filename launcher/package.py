@@ -16,7 +16,7 @@ REFERENCE = REPO.parent / 'Urban Chaos Riot Response Recompiled'
 PYTHON = REFERENCE / '.tools/python'
 VS = Path('C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools')
 CRT = VS / 'VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT'
-VERSION = '0.7.8'
+VERSION = '0.7.9'
 RELEASE_PROFILE = {'name': 'release-candidate', 'diagnostics': False, 'strict_assets': True}
 LAUNCHER = 'Darkwatch Darker Edition.exe'
 DIRECT_PLAY = 'Play Darkwatch.exe'
@@ -24,7 +24,7 @@ CRT_FILES = ('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
 PYTHON_FILES = ('python.exe', 'python312.dll', 'python3.dll', 'python312.zip',
                 'vcruntime140.dll', 'vcruntime140_1.dll', '_hashlib.pyd',
                 'libcrypto-3.dll', '_ssl.pyd', 'libssl-3.dll', '_socket.pyd', 'select.pyd', 'unicodedata.pyd',
-                '_ctypes.pyd', 'libffi-8.dll', 'LICENSE.txt')
+                '_ctypes.pyd', 'libffi-8.dll', 'pyexpat.pyd', 'LICENSE.txt')
 FORBIDDEN = {'.iso', '.xiso', '.xbe', '.pck', '.xmv', '.wmv', '.wav', '.pdb', '.log', '.dmp', '.pyc', '.dwt', '.pack'}
 GENERATED = {
     'payload/python/python312._pth': 'python312.zip\n.\n..\n',
@@ -36,7 +36,7 @@ Setup prepares local resources and shaders, without extracting the whole disc.
 Existing installations are reused. Updates preserve your ISO, saves and add-ons.
 Prefer to remove the ISO after setup? Use Select Game > Import once instead.
 ''',
-    'README.txt': '''Darkwatch: Darker Edition - 0.7.8
+    'README.txt': '''Darkwatch: Darker Edition - 0.7.9
 
 Matching Windows and experimental Linux/Proton packages. Co-op remains BETA.
 Keep using the existing separate 0.7 HD texture pack; no new pack or
@@ -206,6 +206,7 @@ See licenses/ for dependency notices and artwork sources.
 ''',
     'licenses/DEPENDENCIES.txt': '''XboxXBERecomp by TGP482 (MIT): https://github.com/TGP482/Xbox-XBERecomp
 SDK dependencies, including Dear ImGui, SDL3 and toml++: XboxXBERecomp-third-party.txt.
+Intel XeGTAO (MIT): https://github.com/GameTechDev/XeGTAO; see XeGTAO.txt.
 SDL's bundled HIDAPI is distributed under its BSD license: HIDAPI-license.txt
 and HIDAPI-BSD.txt.
 ISO import uses this project's own standard-library XDVDFS reader.
@@ -290,6 +291,7 @@ def sources():
         'payload/runtime/darkwatch_xbe.exe': runtime / 'darkwatch_xbe.exe',
         'payload/runtime/darkwatch_hd_ui_builder.exe': runtime / 'darkwatch_hd_ui_builder.exe',
         'licenses/XboxXBERecomp.txt': REPO / 'third_party/XboxXBERecomp/LICENSE',
+        'licenses/XeGTAO.txt': REPO / 'third_party/XboxXBERecomp/runtime/gpu/xegtao/LICENSE',
         'licenses/KawaiiPhysics.txt': REPO / 'licenses/KawaiiPhysics.txt',
         'licenses/XboxXBERecomp-third-party.txt': REPO / 'third_party/XboxXBERecomp/THIRD_PARTY.txt',
         'licenses/HIDAPI-license.txt': REPO / 'build/xbexbe/_deps/sdl3-src/src/hidapi/LICENSE.txt',
@@ -297,7 +299,9 @@ def sources():
         'licenses/Microsoft-Visual-Studio-Redist.txt': VS / 'Licenses/1033/Redist.txt',
         'licenses/ARTWORK-SOURCES.md': HERE / 'assets/SOURCES.md',
     }
-    for name in ('character_content.py', 'character_update.py', 'character-update.json.gz', 'character_animation.py', 'character_assets.py',
+    for name in ('character_content.py', 'character_update.py', 'character-update.json.gz',
+                 'character_campaign.py', 'character_campaign_pose.py', 'character_dropped_clips.py',
+                 'character-campaign-angles.json', 'character_animation.py', 'character_assets.py',
                  'character_archive.py', 'character_repaint.py', 'character_boss.py',
                  'character_boss_effects.py', 'character_spectral_hands.py', 'character_hand_seams.py',
                  'character_secondary.py', 'character_preview.py', 'character_roster.py', 'character_tala.py', 'character_tala_shape.py',
@@ -440,7 +444,7 @@ def check_character_catalog(plan, build):
     recipe = plan.get('payload/' + character_update.RECIPE_NAME)
     if recipe is None or not recipe.is_file():
         raise ValueError('Character update recipe is missing from the package.')
-    character_update.recipe(recipe.parent, catalog)
+    character_update.recipe(recipe.parent, character_content.base_catalog(catalog))
     source_name = 'xbexbe/src/common/character_content.cpp'
     recorded = {row['path']: row['sha256'] for row in build.get('host_sources', {}).get('files', [])}
     if recorded.get(source_name) != sha(REPO / source_name):

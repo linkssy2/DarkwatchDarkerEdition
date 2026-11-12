@@ -1,5 +1,6 @@
 #include "cpu/x86_ops.h"
 #include "kernel/memory.h"
+#include "third_person_body.h"
 #include <array>
 #include <cmath>
 #include <cstring>
@@ -63,7 +64,7 @@ bool RegisteredPlayer(const uint8_t* base, uint32_t actor) {
     }
     return matches == 1 && seen == (1u << players) - 1;
 }
-float Offset(const X86Context& ctx, const uint8_t* base) {
+float Offset(const X86Context& ctx, const uint8_t* base, uint32_t& owner_actor, uint32_t& attachment_row) {
     const uint32_t weapon = ctx.ecx;
     constexpr uint32_t item_types[]{0x418390, 0x417E90, 0x417F78, 0x418098, 0x418150, 0x418208};
     uint32_t item = 0;
@@ -155,8 +156,47 @@ float Offset(const X86Context& ctx, const uint8_t* base) {
             !Read(base, row + 4, refs) || !Span(base, refs, refs_count * 16) ||
             uint64_t(refs) + refs_count * 16 != ctx.esi || ctx.edi < refs || ctx.edi >= ctx.esi ||
             (ctx.edi - refs) % 16 || !Read(base, ctx.edi, attached) || attached != weapon) return 0;
+        attachment_row = uint32_t(row);
     }
-    return matches == 1 ? offset : 0;
+    if (matches != 1) return 0;
+    owner_actor = actor;
+    return offset;
+}
+bool ReloadAttachment(const X86Context& ctx, uint8_t* base, uint32_t actor, uint32_t row,
+                      std::array<float,16>& matrix) {
+    if (!Name(base, uint64_t(ctx.ecx)+0x50, "Rifle") ||
+        (!Name(base, uint64_t(actor)+0x50, "CassidySpectralSolo") &&
+         !Name(base, uint64_t(actor)+0x50, "CassidySpectralPlayerTwo"))) return false;
+    uint32_t bone=0;
+    std::array<float,4> q{};
+    std::array<float,3> position{};
+    if (!Read(base,uint64_t(row)+8,bone) || bone!=16 || !Read(base,uint64_t(row)+0x30,q) ||
+        !Read(base,uint64_t(row)+0x18,position)) return false;
+    float norm=0;
+    for(float value:q) { if(!std::isfinite(value)) return false; norm+=value*value; }
+    for(float value:position) if(!std::isfinite(value) || std::abs(value)>2.f) return false;
+    if(!std::isfinite(norm) || std::abs(norm-1.f)>.02f) return false;
+    std::array<float,16> socket{};
+    if(!DarkwatchRifleReloadSocket(ctx,base,actor,socket)) return false;
+    const float scale=1.f/std::sqrt(norm);
+    for(float& value:q) value*=scale;
+    const auto [x,y,z,w]=q;
+    const float local[3][3]{{1-2*(y*y+z*z),2*(x*y+z*w),2*(x*z-y*w)},
+        {2*(x*y-z*w),1-2*(x*x+z*z),2*(y*z+x*w)},
+        {2*(x*z+y*w),2*(y*z-x*w),1-2*(x*x+y*y)}};
+    auto result=matrix;
+    // Keep the native RenderWare matrix flags/padding. Only compose the
+    // actual body locator with the separately authored reload gun socket.
+    for(unsigned r=0;r<3;++r) for(unsigned a=0;a<3;++a) {
+        result[r*4+a]=0;
+        for(unsigned k=0;k<3;++k) result[r*4+a]+=local[r][k]*socket[k*4+a];
+    }
+    for(unsigned a=0;a<3;++a) {
+        result[12+a]=socket[12+a];
+        for(unsigned k=0;k<3;++k) result[12+a]+=position[k]*socket[k*4+a];
+    }
+    matrix=result;
+    return true;
 }
 }
 
@@ -166,7 +206,8 @@ X86_FUNC(sub_00216244) {
         Read(base, ctx.esp, caller) && caller == 0xAA1E3 &&
         Read(base, uint64_t(ctx.esp) + 4, matrix) && uint64_t(ctx.esp) + 0x18 == matrix &&
         Span(base, matrix, 64)) {
-        const float offset = Offset(ctx, base);
+        uint32_t actor=0, row=0;
+        const float offset = Offset(ctx, base, actor, row);
         if (offset) {
             std::array<float, 16> original;
             std::memcpy(original.data(), base + matrix, sizeof(original));
@@ -182,9 +223,10 @@ X86_FUNC(sub_00216244) {
                 } restore{base + matrix, original};
                 std::array<float, 16> adjusted;
                 std::memcpy(adjusted.data(), original.data(), sizeof(adjusted));
+                ReloadAttachment(ctx,base,actor,row,adjusted);
                 // Measured along each held weapon's length from actual hand
                 // skin. Keep orientation and transverse grip depth unchanged.
-                for (unsigned axis = 0; axis < 3; ++axis) adjusted[12 + axis] += original[axis] * offset;
+                for (unsigned axis = 0; axis < 3; ++axis) adjusted[12 + axis] += adjusted[axis] * offset;
                 std::memcpy(base + matrix, adjusted.data(), sizeof(adjusted));
                 __imp__sub_00216244(ctx, base);
                 return;

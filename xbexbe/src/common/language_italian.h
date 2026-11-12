@@ -3,6 +3,8 @@
 namespace darkwatch::language {
 struct ItalianCopy { const char* english; const char* italian; };
 inline constexpr ItalianCopy copy_italian[]{
+    {"AMBIENT OCCLUSION", "OCCLUSIONE AMBIENTALE"},
+    {"Contact shadows for both players. May reduce performance.", "Ombre di contatto per entrambi i giocatori. Può ridurre le prestazioni."},
     {"DISPLAY", "SCHERMO"},
     {"PERFORMANCE", "PRESTAZIONI"},
     {"ARTWORK", "GRAFICA"},

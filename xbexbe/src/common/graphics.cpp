@@ -148,7 +148,7 @@ int g_capture_action = -1, g_capture_slot = 0, g_conflict_action = -1;
 constexpr const char* kActions[] = {"D-PAD UP", "D-PAD DOWN", "D-PAD LEFT", "D-PAD RIGHT",
     "START", "BACK", "LEFT STICK CLICK", "RIGHT STICK CLICK", "A BUTTON", "B BUTTON",
     "X BUTTON", "Y BUTTON", "BLACK BUTTON", "WHITE BUTTON", "LEFT TRIGGER", "RIGHT TRIGGER",
-    "MOVE FORWARD", "MOVE BACKWARD", "MOVE LEFT", "MOVE RIGHT", "NEXT WEAPON", "PREVIOUS WEAPON", "WALK", "SWAP SHOULDER"};
+    "MOVE FORWARD", "MOVE BACKWARD", "MOVE LEFT", "MOVE RIGHT", "NEXT WEAPON", "PREVIOUS WEAPON", "WALK", "SWAP SHOULDER", "CYCLE CAMERA"};
 constexpr const char* kDescriptions[] = {"Navigate up with the original D-pad.", "Navigate down with the original D-pad.",
     "Navigate left with the original D-pad.", "Navigate right with the original D-pad.",
     "Open the original pause menu.", "Send the original Xbox Back action.",
@@ -160,7 +160,7 @@ constexpr const char* kDescriptions[] = {"Navigate up with the original D-pad.",
     "Move forward with the left stick.", "Move backward with the left stick.",
     "Strafe left with the left stick.", "Strafe right with the left stick.",
     "Equip the next carried weapon.", "Equip the previous carried weapon.",
-    "Hold or toggle slower movement using Walk Mode.", "Switch camera shoulder."};
+    "Hold or toggle slower movement using Walk Mode.", "Switch camera shoulder.", "Cycle first person, third person and centered camera."};
 bool WeaponCycleAction(unsigned action) {
     return action == unsigned(input::PcAction::NextWeapon) || action == unsigned(input::PcAction::PreviousWeapon);
 }
@@ -254,6 +254,7 @@ void Close() {
 bool PlayerTwoControls() { return g_original_draft.paused && g_original_draft.input_port == 1; }
 int ControlsPort() { return PlayerTwoControls() ? 1 : 0; }
 int& ExtraPadButton(unsigned action) {
+    if (action == unsigned(input::PcAction::CycleCamera)) return g_controls_draft.camera_buttons[ControlsPort()];
     if (action == unsigned(input::PcAction::SwapShoulder)) return g_controls_draft.shoulder_buttons[ControlsPort()];
     return action == unsigned(input::PcAction::Walk) ? g_controls_draft.walk_buttons[ControlsPort()]
         : g_controls_draft.weapon_buttons[ControlsPort()][action - unsigned(input::PcAction::NextWeapon)];
@@ -272,10 +273,13 @@ void ApplyControls() {
     pending.walk_buttons[1 - ControlsPort()] = current.walk_buttons[1 - ControlsPort()];
     pending.shoulder_buttons[ControlsPort()] = g_controls_draft.shoulder_buttons[ControlsPort()];
     pending.shoulder_buttons[1 - ControlsPort()] = current.shoulder_buttons[1 - ControlsPort()];
+    pending.camera_buttons[ControlsPort()] = g_controls_draft.camera_buttons[ControlsPort()];
+    pending.camera_buttons[1 - ControlsPort()] = current.camera_buttons[1 - ControlsPort()];
     pending.sight_toggle[ControlsPort()] = g_controls_draft.sight_toggle[ControlsPort()];
     pending.sight_toggle[1 - ControlsPort()] = current.sight_toggle[1 - ControlsPort()];
     pending.carry_all_weapons = g_controls_draft.carry_all_weapons;
     pending.keep_starting_revolver = g_controls_draft.keep_starting_revolver;
+    pending.ground_pound_anytime = g_controls_draft.ground_pound_anytime;
     if (!ControlsApply(pending)) {
         g_notice = "Cannot apply these bindings. Check for duplicate or reserved keys.";
         return;
@@ -603,6 +607,8 @@ void ControllerLayoutContent(float scale) {
                         for (auto& button : buttons) if (button == int(result - 1)) button = -1;
                         auto& walk = g_controls_draft.walk_buttons[ControlsPort()];
                         if (walk == int(result - 1)) walk = -1;
+                        auto& camera = g_controls_draft.camera_buttons[ControlsPort()];
+                        if (camera == int(result - 1)) camera = -1;
                         auto& shoulder = g_controls_draft.shoulder_buttons[ControlsPort()];
                         if (shoulder == int(result - 1)) shoulder = -1;
                         ExtraPadButton(unsigned(g_pad_capture_action)) = int(result - 1);
@@ -634,7 +640,7 @@ void ControllerLayoutContent(float scale) {
     ImGui::SetCursorPos({0, 160 * scale});
     ImGui::BeginChild("Controller layout scroll", {938 * scale, 280 * scale + extra_height}, ImGuiChildFlags_NavFlattened);
     ImGui::BeginDisabled(capturing);
-    constexpr unsigned order[]{8,9,10,11,14,15,13,12,6,7,0,1,2,3,4,5,16,17,20,21,22,23};
+    constexpr unsigned order[]{8,9,10,11,14,15,13,12,6,7,0,1,2,3,4,5,16,17,20,21,22,23,24};
     for (unsigned index : order) {
         const bool stick = index == 16 || index == 17;
         const bool extra = index >= 20;
@@ -711,6 +717,7 @@ void ControllerLayoutContent(float scale) {
         g_controls_draft.weapon_buttons[ControlsPort()] = {-1, -1};
         g_controls_draft.walk_buttons[ControlsPort()] = -1;
         g_controls_draft.shoulder_buttons[ControlsPort()] = -1;
+        g_controls_draft.camera_buttons[ControlsPort()] = -1;
         g_notice = "Controller buttons reset in this draft. Apply from Controls to save.";
     }
     ImGui::SetCursorPos({720 * scale, 542 * scale + extra_height});
@@ -787,6 +794,9 @@ void ControlsContent(float scale, bool just_opened) {
     layout.Finish();
     if (player_two) layout.Help("Player 2 settings. Use Controller Layout to change buttons.");
     layout.Section("GAMEPLAY OPTIONS");
+    { MenuRow row("GROUND POUND ANYTIME", layout.Row(), scale);
+      Toggle("##ground pound anytime", g_controls_draft.ground_pound_anytime); }
+    layout.Help("Both players. Press crouch after jumping. Works without unlocking the jump rune.");
     { MenuRow row("CARRY ALL WEAPONS", layout.Row(), scale);
       Toggle("##carry all weapons", g_controls_draft.carry_all_weapons); }
     layout.Help("Both players. Extra weapons stay stored until this is on.");
@@ -803,7 +813,7 @@ void ControlsContent(float scale, bool just_opened) {
         ImGui::TableSetupColumn(language::Text("PRIMARY"), ImGuiTableColumnFlags_WidthFixed, 180 * scale);
         ImGui::TableSetupColumn(language::Text("ALT KEY"), ImGuiTableColumnFlags_WidthFixed, 180 * scale);
         ImGui::TableHeadersRow();
-        constexpr unsigned order[]{16,17,18,19,22,23,20,21,15,14,8,9,10,11,12,13,6,7,4,5,0,1,2,3};
+        constexpr unsigned order[]{16,17,18,19,22,23,24,20,21,15,14,8,9,10,11,12,13,6,7,4,5,0,1,2,3};
         for (unsigned action : order) {
             const bool available = !WeaponCycleAction(action) || g_controls_draft.carry_all_weapons;
             ImGui::BeginDisabled(!available);
@@ -868,6 +878,7 @@ void ControlsContent(float scale, bool just_opened) {
             const auto other_buttons = g_controls_draft.weapon_buttons[1];
             const auto other_walk_toggle = g_controls_draft.walk_toggle[1];
             const auto other_walk_button = g_controls_draft.walk_buttons[1];
+            const auto other_camera_button = g_controls_draft.camera_buttons[1];
             const auto other_shoulder_button = g_controls_draft.shoulder_buttons[1];
             const auto other_sight_toggle = g_controls_draft.sight_toggle[1];
             g_controls_draft = ControlsDefaults();
@@ -875,6 +886,7 @@ void ControlsContent(float scale, bool just_opened) {
             g_controls_draft.walk_toggle[1] = other_walk_toggle;
             g_controls_draft.walk_buttons[1] = other_walk_button;
             g_controls_draft.shoulder_buttons[1] = other_shoulder_button;
+            g_controls_draft.camera_buttons[1] = other_camera_button;
             g_controls_draft.sight_toggle[1] = other_sight_toggle;
             g_notice = "PC defaults restored in this draft. Select Apply to save.";
         }
@@ -1547,6 +1559,10 @@ void DarkwatchGraphicsUi(double fps) {
     for (unsigned i = 0; i < std::size(aniso_values); ++i) if (g_draft.aniso == aniso_values[i]) aniso = int(i);
     if (Choice("##aniso", &aniso, "Original\0" "1x\0" "2x\0" "4x\0" "8x\0" "16x\0")) g_draft.aniso = aniso_values[aniso];
     }
+    { MenuRow row("AMBIENT OCCLUSION", layout.Row(), scale);
+    Toggle("##ambient_occlusion", g_draft.ambient_occlusion);
+    layout.Help("Contact shadows for both players. May reduce performance.");
+    }
     layout.Section("ARTWORK");
     { MenuRow row("HD ARTWORK", layout.Row(), scale);
     int hd_ui = g_view_draft.hd_ui ? 1 : 0;
@@ -1571,10 +1587,9 @@ void DarkwatchGraphicsUi(double fps) {
     }
     layout.Section("CAMERA");
     { MenuRow row("CAMERA VIEW", layout.Row(), scale);
-    int camera_mode = int(g_view_draft.camera_mode);
-    if (Choice("##camera_mode", &camera_mode, "First Person\0Third Person - Centered\0Third Person - Shoulder\0"))
-        g_view_draft.camera_mode = view::CameraMode(camera_mode);
-    layout.Help("On-foot camera. Each player chooses their own view.");
+    ImGui::TextUnformatted(language::Text(g_view_draft.camera_mode == view::CameraMode::FirstPerson ? "First Person" :
+        g_view_draft.camera_mode == view::CameraMode::Shoulder ? "Third Person - Shoulder" : "Third Person - Centered"));
+    layout.Help("Use Cycle Camera during gameplay. Assign its button in Controls.");
     }
     { MenuRow row("FIELD OF VIEW", layout.Row(), scale);
     int fov = int(g_view_draft.fov_percent);

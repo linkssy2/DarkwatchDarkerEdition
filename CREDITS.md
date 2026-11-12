@@ -1,5 +1,9 @@
 # Credits
 
+- **[XeGTAO — Intel](https://github.com/GameTechDev/XeGTAO):** the MIT-licensed
+  ambient-occlusion implementation, adapted for the game's Direct3D 12 renderer.
+  Its pinned source and license are retained with the runtime patch.
+
 - **[@brandonsoto](https://github.com/brandonsoto):** Steam Deck and live Linux
   testing, with feedback helping improve the Linux/Proton experience.
 

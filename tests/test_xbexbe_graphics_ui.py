@@ -103,6 +103,7 @@ bool ObservedCombo(const char* label,int* current,const char* items,int maximum=
  auto p=GetCursorScreenPos();float width=CalcItemWidth(),height=GetFrameHeight();
  bool observe=record_combo_text&&(std::string(label)=="##carry all weapons"||std::string(label)=="##walk mode"||std::string(label)=="##show_hud"||std::string(label)=="##reticle target"||std::string(label)=="##reticle color mode"||std::string(label)=="##fps"||std::string(label)=="##vsync"||std::string(label)=="##msaa"||std::string(label)=="##aniso"||std::string(label)=="##hd_ui"||std::string(label)=="##subtitles"||std::string(label)=="##cutscene_borders"||std::string(label)=="##movie_scaling"||std::string(label)=="##hd_textures"||std::string(label)=="##forever_ragdolls"||std::string(label)=="##player one character"||std::string(label)=="##player two character"||std::string(label)=="##sound output");
  observe|=record_combo_text&&std::string(label)=="##keep starting revolver";
+ observe|=record_combo_text&&std::string(label)=="##ground pound anytime";
  observe|=record_combo_text&&std::string(label)=="##sight mode";
  observe|=record_combo_text&&std::string(label)=="##aspect";
  observe|=record_combo_text&&std::string(label)=="##camera_mode";
@@ -264,7 +265,7 @@ static ControlsSettings controls;
 static uint32_t capture_result=0;
 static bool capture_active=false;
 static unsigned controls_applies=0,original_applies=0,configure_calls=0,preset_applies=0;
-ControlsSettings ControlsDefaults(){ControlsSettings s;s.bindings[1].keys[0]='J';s.bindings[1].keys[1]='K';s.bindings[16].keys[0]='W';s.bindings[17].keys[0]='S';s.bindings[20].keys[0]=']';s.bindings[21].keys[0]='[';s.bindings[22].keys[0]=VK_CAPITAL;s.bindings[23].keys[0]='V';return s;}
+ControlsSettings ControlsDefaults(){ControlsSettings s;s.bindings[1].keys[0]='J';s.bindings[1].keys[1]='K';s.bindings[16].keys[0]='W';s.bindings[17].keys[0]='S';s.bindings[20].keys[0]=']';s.bindings[21].keys[0]='[';s.bindings[22].keys[0]=VK_CAPITAL;s.bindings[23].keys[0]='V';s.bindings[24].keys[0]='T';return s;}
 ControlsSettings ControlsSnapshot(){return controls;}
 bool ControlsApply(const ControlsSettings& s){controls=s;++controls_applies;return true;}
 void ControlsBeginCapture(){capture_active=true;capture_result=0;}
@@ -886,7 +887,7 @@ int main(){
   const auto other=input::maps[1-port];const auto pc=darkwatch::controls;
   const auto applied=input::pad_applies,saved=saves;
   ClickNamed("CONTROLLER LAYOUT...",port==0);Frame();CHECK(g_controller_layout&&g_layout_family==family);
-  CHECK(layout_rows.size()==22);
+  CHECK(layout_rows.size()==23);
   ClickLayoutRow(0);CHECK(g_pad_capture_action==8&&input::pad_capture&&input::pad_owner==int(port));
   // B is a valid gameplay binding and must not also close the layout.
   input::pad_capture_result=10;io.AddKeyEvent(ImGuiKey_GamepadFaceRight,true);Frame();
@@ -1026,7 +1027,7 @@ int main(){
  Navigate(0,2,field_ids["##internal"]);const auto internal=g_draft.render_percent;
  PadTap(0,16);PadTap(0,8);CHECK(g_draft.render_percent>internal);
  PadTap(0,32);CHECK(g_open&&!g_leave); // B finishes slider editing before leaving its page.
- for(const char* field:{"##vsync","##cap","##fps","##msaa","##aniso","##hd_ui","##hd_textures","##ui_aspect","##camera_mode","##fov","##weapon_fov","##show_hud","##reticle","##subtitles","##movie_scaling","##cutscene_borders","##forever_ragdolls"})
+ for(const char* field:{"##vsync","##cap","##fps","##msaa","##aniso","##hd_ui","##hd_textures","##ui_aspect","##fov","##weapon_fov","##show_hud","##reticle","##subtitles","##movie_scaling","##cutscene_borders","##forever_ragdolls"})
   Navigate(0,2,field_ids[field]);
  CHECK(ImGui::FindWindowByName("Graphics")->DC.ChildWindows[0]->Scroll.y>0);
  CHECK(!g_view_draft.forever_ragdolls);
@@ -1125,7 +1126,7 @@ int main(){
    CHECK(!std::strcmp(ActionDescription(21),"Equip the previous carried weapon."));
   }
   g_original_draft.controller_preset=0;
-  ClickNamed("CONTROLLER LAYOUT...",true);Frame();CHECK(layout_rows.size()==22);
+  ClickNamed("CONTROLLER LAYOUT...",true);Frame();CHECK(layout_rows.size()==23);
   const auto normal=g_pad_draft;
   ClickLayoutRow(18);CHECK(g_pad_capture_action==20&&input::pad_owner==int(port));
   for(unsigned reserved:{5u,6u}){
@@ -1141,7 +1142,7 @@ int main(){
   // Unbind is an actual separate, reachable button beside the selected action.
   Frame();auto r=layout_rows[18].second;auto* child=ImGui::FindWindowByName("Controls")->DC.ChildWindows[0];
   ImGui::SetScrollY(child,child->Scroll.y+(r.y+r.w)/2-(child->InnerRect.Min.y+child->InnerRect.Max.y)/2);Frame();Frame();
-  CHECK(repeated_buttons["UNBIND"].size()==4);auto point=repeated_buttons["UNBIND"][0];Click(point.x,point.y);Frame();
+  CHECK(repeated_buttons["UNBIND"].size()==5);auto point=repeated_buttons["UNBIND"][0];Click(point.x,point.y);Frame();
   CHECK(g_controls_draft.weapon_buttons[port][0]==-1&&g_controls_draft.weapon_buttons[port][1]==6);
   ClickLayoutRow(18);input::pad_capture_result=9;Frame();Frame();
   ClickNamed("BACK");Frame();
@@ -1360,7 +1361,7 @@ int main(){
   const auto before=view::Snapshot(player),other=view::Snapshot(1-player);
   OpenViewPage(player);CHECK(SameView(g_view_draft,before));
   const auto old_saves=saves,old_displays=displays;
-  SelectQuality("##camera_mode",player?2:1,player?"Third Person - Shoulder":"Third Person - Centered");
+  CHECK(!field_ids.contains("##camera_mode"));
   ClickField("##fov",player?.2f:.9f);
   ClickField("##weapon_fov",player?.15f:.85f);
   CHECK(slider_ranges["##reticle"].first==0&&slider_ranges["##reticle"].second==200);
@@ -1493,6 +1494,7 @@ int main(){
   CHECK(!darkwatch::controls.walk_toggle[0]&&!darkwatch::controls.walk_toggle[1]);
   OpenControls(port);CHECK(!g_controls_draft.carry_all_weapons&&!g_controls_draft.keep_starting_revolver);
   SelectQuality("##keep starting revolver",1,"On");CHECK(g_controls_draft.keep_starting_revolver&&!darkwatch::controls.keep_starting_revolver);
+  SelectQuality("##ground pound anytime",1,"On");CHECK(g_controls_draft.ground_pound_anytime&&!darkwatch::controls.ground_pound_anytime);
   SelectQuality("##walk mode",1,"Toggle");CHECK(g_controls_draft.walk_toggle[port]&&!darkwatch::controls.walk_toggle[port]);
   if(!port){
    // Walking can be rebound independently while Carry All is off.
@@ -1500,14 +1502,14 @@ int main(){
    darkwatch::capture_result='H';darkwatch::capture_active=false;Frame();Frame();
    CHECK(g_controls_draft.bindings[22].keys[0]=='H'&&!g_controls_draft.carry_all_weapons);
   }
-  ClickNamed("CONTROLLER LAYOUT...",true);Frame();CHECK(layout_rows.size()==22);
+  ClickNamed("CONTROLLER LAYOUT...",true);Frame();CHECK(layout_rows.size()==23);
   const auto normal=g_pad_draft;ClickLayoutRow(20);CHECK(g_pad_capture_action==22&&input::pad_owner==int(port));
   for(unsigned reserved:{5u,6u}){input::pad_capture_result=reserved;Frame();Frame();CHECK(input::pad_capture&&g_pad_capture_action==22&&g_controls_draft.walk_buttons[port]==-1);}
   // A physical button can have only one gameplay override, including dormant weapon overrides.
   g_controls_draft.weapon_buttons[port]={6,7};input::pad_capture_result=7;Frame();Frame();
   CHECK(g_controls_draft.walk_buttons[port]==6&&g_controls_draft.weapon_buttons[port][0]==-1&&g_controls_draft.weapon_buttons[port][1]==7&&g_pad_draft==normal);
   CHECK(darkwatch::controls.walk_buttons[port]==-1);
-  Frame();CHECK(repeated_buttons["UNBIND"].size()==4);auto unbind=repeated_buttons["UNBIND"][2];Click(unbind.x,unbind.y);Frame();
+  Frame();CHECK(repeated_buttons["UNBIND"].size()==5);auto unbind=repeated_buttons["UNBIND"][2];Click(unbind.x,unbind.y);Frame();
   CHECK(g_controls_draft.walk_buttons[port]==-1&&g_controls_draft.weapon_buttons[port][1]==7);
   ClickLayoutRow(20);input::pad_capture_result=9;Frame();Frame();
   ClickNamed("BACK");Frame();SelectQuality("##carry all weapons",1,"On");
@@ -1520,6 +1522,7 @@ int main(){
   darkwatch::controls.mouse_millidegrees=123;const auto keyboard=darkwatch::controls.bindings;
   if(port)g_controls_draft.mouse_millidegrees=999;
   const auto saved=saves;ClickNamed("APPLY");Poll();Frame();
+  CHECK(darkwatch::controls.ground_pound_anytime);
   CHECK(saves==saved+1&&darkwatch::controls.walk_toggle[port]&&darkwatch::controls.walk_buttons[port]==12&&darkwatch::controls.keep_starting_revolver);
   CHECK(darkwatch::controls.walk_toggle[1-port]&&darkwatch::controls.walk_buttons[1-port]==11&&!darkwatch::controls.carry_all_weapons);
   if(port)CHECK(darkwatch::controls.mouse_millidegrees==123&&!std::memcmp(&keyboard,&darkwatch::controls.bindings,sizeof(keyboard)));
@@ -1560,7 +1563,7 @@ int main(){
    darkwatch::capture_result=VK_XBUTTON2;darkwatch::capture_active=false;Frame();Frame();
    CHECK(g_controls_draft.bindings[23].keys[0]==VK_XBUTTON2&&!g_controls_draft.carry_all_weapons);
   }
-  ClickNamed("CONTROLLER LAYOUT...",true);Frame();CHECK(layout_rows.size()==22);
+  ClickNamed("CONTROLLER LAYOUT...",true);Frame();CHECK(layout_rows.size()==23);
   const auto normal=g_pad_draft;ClickLayoutRow(21);CHECK(g_pad_capture_action==23&&input::pad_owner==int(port));
   for(unsigned reserved:{5u,6u}){input::pad_capture_result=reserved;Frame();Frame();CHECK(input::pad_capture&&g_controls_draft.shoulder_buttons[port]==-1);}
   // Shoulder, Walk and weapon overrides compete for one physical button even with Carry All off.
@@ -1570,7 +1573,7 @@ int main(){
   CHECK(g_controls_draft.walk_buttons[port]==6&&g_controls_draft.shoulder_buttons[port]==-1);
   g_controls_draft.weapon_buttons[port]={7,8};ClickLayoutRow(21);input::pad_capture_result=8;Frame();Frame();
   CHECK(g_controls_draft.shoulder_buttons[port]==7&&g_controls_draft.weapon_buttons[port][0]==-1&&g_controls_draft.weapon_buttons[port][1]==8);
-  Frame();CHECK(repeated_buttons["UNBIND"].size()==4);auto unbind=repeated_buttons["UNBIND"].back();Click(unbind.x,unbind.y);Frame();
+  Frame();CHECK(repeated_buttons["UNBIND"].size()==5);auto unbind=repeated_buttons["UNBIND"][3];Click(unbind.x,unbind.y);Frame();
   CHECK(g_controls_draft.shoulder_buttons[port]==-1&&g_controls_draft.walk_buttons[port]==6);
   ClickLayoutRow(21);input::pad_capture_result=13;Frame();Frame();ClickNamed("BACK");Frame();
   darkwatch::controls.shoulder_buttons[1-port]=11;const auto keyboard=darkwatch::controls.bindings;
@@ -1837,18 +1840,15 @@ int main(){
  for(unsigned player:{0u,1u}){
   view::Apply({},player);const auto other=view::Snapshot(1-player);
   OpenViewPage(player);io.AddMousePosEvent(-100,-100);PadFrames(player);
-  Navigate(player,2,field_ids["##camera_mode"]);PadTap(player,16);PadTap(player,2);PadTap(player,16);
-  CHECK(g_view_draft.camera_mode==view::CameraMode::Centered&&view::Snapshot(player).camera_mode==view::CameraMode::FirstPerson);
-  Navigate(player,2,button_ids["APPLY"]);PadTap(player,16);PadFrames(player);
-  CHECK(view::Snapshot(player).camera_mode==view::CameraMode::Centered&&SameView(view::Snapshot(1-player),other));
-  Navigate(player,1,field_ids["##camera_mode"]);PadTap(player,16);PadTap(player,2);PadTap(player,16);
-  CHECK(g_view_draft.camera_mode==view::CameraMode::Shoulder);
-  Navigate(player,2,button_ids["APPLY"]);PadTap(player,16);PadFrames(player);
-  CHECK(view::Snapshot(player).camera_mode==view::CameraMode::Shoulder&&SameView(view::Snapshot(1-player),other));
-  PadTap(player,32);CHECK(!g_open);OpenViewPage(player);
-  CHECK(g_view_draft.camera_mode==view::CameraMode::Shoulder);
+  CHECK(!field_ids.contains("##camera_mode"));
+  CHECK(g_view_draft.camera_mode==view::CameraMode::FirstPerson);
+  PadTap(player,32);CHECK(!g_open);
+  auto changed=view::Snapshot(player);changed.camera_mode=view::CameraMode::Shoulder;
+  view::Apply(changed,player);OpenViewPage(player);
+  CHECK(g_view_draft.camera_mode==view::CameraMode::Shoulder&&SameView(view::Snapshot(1-player),other));
+  PadTap(player,32);CHECK(!g_open);
  }
- std::puts("PASS Camera View: both controller owners choose centered/shoulder, apply independently, return and reopen");
+ std::puts("PASS Camera View: read-only mode reflects each gameplay camera independently after reopening");
  ImGui::DestroyContext();
 }
 '''
@@ -1883,6 +1883,11 @@ int main(){
     def test_walk_mode_bindings_and_player_isolation(self):
         helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")]
         ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + WALK_CONTROLS_UI)
+        self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+
+    def test_camera_cycle_bindings_and_player_isolation(self):
+        driver = SHOULDER_CONTROLS_UI.replace('shoulder_buttons', 'camera_buttons').replace('SwapShoulder', 'CycleCamera').replace('[23]', '[24]').replace('capture_action==23', 'capture_action==24').replace("'V'", "'T'").replace('layout_rows[21]', 'layout_rows[22]').replace('binding_buttons[46]', 'binding_buttons[48]').replace('ClickLayoutRow(21)', 'ClickLayoutRow(22)').replace('UNBIND"][3]', 'UNBIND"][4]').replace('ClickNamed("V"', 'ClickNamed("T"')
+        ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + PLAYER_VIEW_UI[:PLAYER_VIEW_UI.index("int main(){")] + GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")] + driver)
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
 
     def test_shoulder_bindings_and_player_isolation(self):

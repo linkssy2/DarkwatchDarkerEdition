@@ -10,6 +10,9 @@ void DarkwatchConfigurePlayerCamera(X86Context& ctx, uint8_t* base);
 void DarkwatchConfigureCinematicCamera(X86Context& ctx, uint8_t* base);
 // Original camera update: retain cinematic framing and per-player view preferences.
 void DarkwatchUpdateCameraView(X86Context& ctx, uint8_t* base);
+// Admit only a registered player's current native perspective projection.
+bool DarkwatchWorldProjectionMatches(const uint8_t* base, uint32_t camera,
+                                    const std::array<float, 16>& projection);
 // Keep the third-person reticle centered on its native camera-target aiming ray.
 bool DarkwatchThirdPersonReticle(const uint8_t* base, uint32_t player, float& ndc_x, float& ndc_y);
 // Live on-foot body visible in third-person or to the other local co-op player.

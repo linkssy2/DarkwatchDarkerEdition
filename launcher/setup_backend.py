@@ -57,8 +57,11 @@ CHUNK = 8 * 1024 * 1024
 PARTITIONS = (0, 0x18300000)
 EXE = "darkwatch_xbe.exe"
 SETTINGS = "darkwatch_xbe_settings.toml"
+# Exact reviewed local campaign builds; arbitrary installation-provided hashes are never trusted.
+CAMPAIGN_BUILDS = {'b96f88fd964f149c11915794a595f9597ab29a8209166d54d4f05a5cc2bf3c04': {'packfile.pck': (199254290, '7f520632e0f2ceac93b3d0cccdf91af8011907d399ae85dec01e2c3c6fe68a83'), 'LvlSingl.pck': (3012989507, '0afa41525e9983e6df7580b27caba1824f4a0c8a23a5030abc0422fa14e58f94'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, 'd5880fb87e6f12dab0faeb5f5a1b2b9f8fa53df304624ed7a17885df3688ad37': {'packfile.pck': (200704954, '656c752a29c0dfa52bfb557f911a40233ef53c13bdaa67b56c6b38ffbf3b38df'), 'LvlSingl.pck': (3045288515, '6553332771df115b726b9e2b7d3dba2f7a24ae59134f3cfdb41ca0f886eb1692'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, 'dcddfb265d8578e3dedb9651db05dd2681c192ec3cd8cbb40f666a24869749c4': {'packfile.pck': (200704954, 'a414e23dae485790f1aba7e36e63746c0f7cb6eb66a69ca0861db705d8146719'), 'LvlSingl.pck': (3045288515, 'a2724db84e595461b5ed4c2e35613fb925f2cdf6233692c9e1859e6f96cf6f9f'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, 'e918d35dc34a1e6718af978828dff8ea32efe5dcf7f2f556c073f33c8b5e26cf': {'packfile.pck': (200704954, '5204b0dce560336ba80cb65d6dfc4e73a0504f73d5742dc2c6e837c03f215fac'), 'LvlSingl.pck': (3045288515, '797f73cab89874e431ea94996b158b19afa77eb940e03c3266ab9079e2b07bfb'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, '5eefd4a5a7406b2d30b5ff0ddec8d31e8eaf2151d966a5e2b06c0481883cadbe': {'packfile.pck': (200704954, '02774c265a1f838adf99db7ee946b59695ac6d6638e86c4b3b6db3179e848907'), 'LvlSingl.pck': (3045288515, '7d81366ee928f4db9e328a47ce42b9057378656a71059f586e15d85591ea7631'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, '4a2be3fee76f967a76f98c5c3ce8bba48ba133f4130f0a230d4d2e7304180646': {'packfile.pck': (200442226, '3736a8837f9d36e83216aae940118a7944d19e81b9a30794f7799779fe6b9206'), 'LvlSingl.pck': (3031343683, '19bf1ec7de1dd65eaee13c98fef01aebb6c48fe496c7ec1214309fa3c6514ed6'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, 'ed8ca59ef3abb0c3cb5ecece02d15379d9ce9f594bf0692acb90a34a21d287cc': {'packfile.pck': (200442226, '02bef06ae69fb66e6358d16fef1eeb494060ad1da7f23b2e951c8c2392092067'), 'LvlSingl.pck': (3031343683, '6d93ed66a681d77987736a69cc53ac2df2dc9372104022243a492eb57a04d0e4'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}}
+
 DISC_SOURCE = "disc-source.toml"
-PACKAGE_VERSION = "0.7.8"
+PACKAGE_VERSION = "0.7.9"
 RELEASE_PROFILE = {"name": "release-candidate", "diagnostics": False, "strict_assets": True}
 # Maximum time without a completed shader, not a limit on the whole preparation.
 SHADER_PREPARE_TIMEOUT = 15 * 60
@@ -295,6 +298,8 @@ class Setup:
         for path in ("payload/supported-disc.json", "payload/intake.py", "payload/bonus_content.py", "payload/installed_source.py",
                      "payload/gameplay_hd.py", "payload/gameplay-hd-catalog.json", "payload/hd_ui/overrides.toml",
                      "payload/character_content.py", "payload/character_update.py", "payload/character-update.json.gz",
+                     "payload/character_campaign.py", "payload/character_campaign_pose.py",
+                     "payload/character_dropped_clips.py", "payload/character-campaign-angles.json",
                      "payload/character_animation.py", "payload/character_assets.py",
                      "payload/character_archive.py", "payload/character_repaint.py", "payload/character-catalog.json",
                      "payload/character_boss.py", "payload/character_boss_effects.py", "payload/character_spectral_hands.py",
@@ -387,7 +392,7 @@ class Setup:
                     disc_sha256=self.files["payload/supported-disc.json"],
                     content_revision=character_content.CONTENT_REVISION,
                     source={key: metadata.get(key) for key in
-                            ("source_mode", "iso_path", "iso_size", "iso_mtime_ns")})
+                            ("source_mode", "iso_path", "iso_size", "iso_mtime_ns", "campaign_feedback_sha256")})
 
     def load_verification(self, current, installed=False):
         self.verified_files = {}
@@ -472,13 +477,22 @@ class Setup:
             self.notify("progress", "Copying prior launcher saves into this portable folder", percent=97)
             yield current
 
+    def content_files(self, metadata):
+        variant = metadata.get("campaign_feedback_sha256")
+        if variant is None:
+            return character_content.INSTALLED
+        if not isinstance(variant, str) or variant not in CAMPAIGN_BUILDS:
+            raise SetupError("This campaign build is not recognized by this launcher. Keep the existing installation.")
+        return CAMPAIGN_BUILDS[variant]
+
     def installed_files(self, current):
         metadata = read_json(safe_path(current, "install.json"))
         if metadata.get("disc_sha256") != self.files["payload/supported-disc.json"]:
             raise SetupError("Installed disc version differs. Import the supported ISO again.")
         if metadata.get("content_revision") != character_content.CONTENT_REVISION:
             raise SetupError("This installation needs the character content update. Choose Update Game in the launcher.")
-        files = [("assets/" + f["path"], *character_content.INSTALLED.get(f["path"], (f["size"], f["sha256"])))
+        content = self.content_files(metadata)
+        files = [("assets/" + f["path"], *content.get(f["path"], (f["size"], f["sha256"])))
                  for f in self.assets if metadata.get("source_mode") != "iso" or
                  f["path"] == "default.xbe" or f["path"] in character_content.INSTALLED]
         for path, digest in self.files.items():
@@ -619,7 +633,21 @@ class Setup:
         return self.status()
 
     def status(self):
-        return dict(self.installation_status(), diagnostic_logging=self.diagnostic_logging(), diagnostics_dir=str(self.local_root / "logs"))
+        return dict(self.installation_status(), skip_intro=self.skip_intro(), diagnostic_logging=self.diagnostic_logging(), diagnostics_dir=str(self.local_root / "logs"))
+
+    def skip_intro(self):
+        return safe_path(self.local_root, ".skip-intro").is_file()
+
+    def set_skip_intro(self, value):
+        if value not in ("on", "off"):
+            raise SetupError("Choose skip intro on or off.")
+        self.local_root.mkdir(parents=True, exist_ok=True)
+        path = safe_path(self.local_root, ".skip-intro")
+        if value == "on":
+            path.touch()
+        else:
+            path.unlink(missing_ok=True)
+        return dict(self.status(), message="Skip intro applies to the next game session.")
 
     def diagnostic_logging(self):
         return safe_path(self.local_root, ".diagnostic-logging").is_file()
@@ -1074,6 +1102,9 @@ class Setup:
         if metadata.get("disc_sha256") != self.files["payload/supported-disc.json"]:
             raise SetupError("The installed disc revision does not match this update.")
         rebuild = metadata.get("content_revision") != character_content.CONTENT_REVISION
+        content = self.content_files(metadata)
+        if rebuild and metadata.get("campaign_feedback_sha256"):
+            raise SetupError("Keep this campaign build while its content update is prepared. No installed files were changed.")
         direct = metadata.get("source_mode") == "iso"
         if direct:
             self.validate_iso_marker(current, metadata)
@@ -1089,7 +1120,7 @@ class Setup:
                 continue  # Unmodified data stays in the authenticated ISO.
             if rebuild and name in character_content.INSTALLED:
                 continue  # Restored originals are authenticated before conversion below.
-            size, digest = character_content.INSTALLED.get(name, (item["size"], item["sha256"]))
+            size, digest = content.get(name, (item["size"], item["sha256"]))
             source = safe_path(current, "assets/" + name)
             if not source.is_file() or source.stat().st_size != size or self.digest(source, cached=True) != digest:
                 raise SetupError(f"Installed game data is damaged: {name}. Repair from your ISO; your saves are kept.")
@@ -1369,6 +1400,8 @@ class Setup:
         self.check_cancel()
         require_closed()
         environment = game_environment()
+        if self.skip_intro():
+            environment["DARKWATCH_SKIP_INTRO"] = "1"
         if self.diagnostic_logging():
             environment["XBE_SESSION_LOG"] = "1"
             environment["XBE_SESSION_LOG_DIR"] = str(safe_path(self.local_root, "logs"))
@@ -1397,6 +1430,7 @@ def main(argv=None):
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument("--status", action="store_true")
     action.add_argument("--set-diagnostics", choices=("on", "off"))
+    action.add_argument("--set-skip-intro", choices=("on", "off"))
     action.add_argument("--check-updates", action="store_true")
     action.add_argument("--download-update", action="store_true")
     parser.add_argument("--launcher-pid", type=int)
@@ -1469,6 +1503,8 @@ def main(argv=None):
                 result = setup.install_portuguese()
             elif args.set_language:
                 result = setup.set_language(args.set_language)
+            elif args.set_skip_intro:
+                result = setup.set_skip_intro(args.set_skip_intro)
             elif args.set_diagnostics:
                 result = setup.set_diagnostics(args.set_diagnostics)
             elif args.play:

@@ -17,9 +17,9 @@ using Microsoft.Win32;
 #if !DIRECT_PLAY
 [assembly: AssemblyTitle("Darkwatch: Darker Edition")]
 [assembly: AssemblyProduct("Darkwatch: Darker Edition")]
-[assembly: AssemblyVersion("0.7.8.0")]
-[assembly: AssemblyFileVersion("0.7.8.0")]
-[assembly: AssemblyInformationalVersion("0.7.8")]
+[assembly: AssemblyVersion("0.7.9.0")]
+[assembly: AssemblyFileVersion("0.7.9.0")]
+[assembly: AssemblyInformationalVersion("0.7.9")]
 #endif
 
 namespace DarkwatchDarkerEdition
@@ -35,7 +35,7 @@ namespace DarkwatchDarkerEdition
         readonly JavaScriptSerializer json = new JavaScriptSerializer();
         bool busy, installed, ready, updateAvailable, closing, cancelRequested, hdTexturesInstalled, spanishInstalled, spanishAudioInstalled, portugueseInstalled, frenchInstalled, germanInstalled, italianInstalled, updatingLanguage;
         string language = "en", sourceMode = "extracted";
-        bool diagnosticLogging;
+        bool diagnosticLogging, skipIntro;
         string cancelFile, gameDirectory, diagnosticsDirectory;
         readonly Action cancelPreparation;
         bool checkingRelease, startupStarted, windowClosed, completeUpdate, manageOpen, sourceOpen, releaseRequested, freshStatus;
@@ -204,6 +204,7 @@ namespace DarkwatchDarkerEdition
             };
             Get<Button>("VerifyButton").Click += async delegate { await Run("--verify", null); };
             Get<Button>("PlayButton").Click += async delegate { await Run("--play", null); };
+            Get<Button>("SkipIntroButton").Click += async delegate { await Run("--set-skip-intro", skipIntro ? "off" : "on"); };
             Get<Button>("DiagnosticsButton").Click += async delegate { await Run("--set-diagnostics", diagnosticLogging ? "off" : "on"); };
             Get<Button>("LogsButton").Click += delegate {
                 try {
@@ -405,6 +406,9 @@ namespace DarkwatchDarkerEdition
 
         void SetButtons()
         {
+            Get<Button>("SkipIntroButton").IsEnabled = !busy;
+            Get<Button>("SkipIntroButton").Content = Copy("SKIP INTRO: ", "OMITIR INTRO: ") + (skipIntro ? "ON" : "OFF");
+            Get<Button>("SkipIntroButton").ToolTip = Copy("Start at profile selection. Campaign cutscenes are unchanged.", "Inicia en la selección de perfil. Las escenas de campaña no cambian.");
             Get<Button>("DiagnosticsButton").IsEnabled = !busy;
             Get<Button>("DiagnosticsButton").Content = Copy("DIAGNOSTIC LOGGING: ", "REGISTRO DIAGNÓSTICO: ") + (diagnosticLogging ? "ON" : "OFF");
             Get<Button>("DiagnosticsButton").ToolTip = Copy("For the next session. Saves local logs for troubleshooting; nothing is uploaded. May reduce performance. Turn off afterward.", "Para la próxima sesión. Guarda registros locales; no se suben. Puede reducir el rendimiento. Desactívalo después.");
@@ -418,6 +422,7 @@ namespace DarkwatchDarkerEdition
             Get<StackPanel>("ManagePanel").Visibility = showManage ? Visibility.Visible : Visibility.Collapsed;
             Get<StackPanel>("SourcePanel").Visibility = showSource ? Visibility.Visible : Visibility.Collapsed;
             Get<Grid>("LaunchActions").Visibility = idle ? Visibility.Visible : Visibility.Collapsed;
+            Get<Button>("SkipIntroButton").Visibility = idle ? Visibility.Visible : Visibility.Collapsed;
             Get<Button>("ManageButton").Visibility = idle ? Visibility.Visible : Visibility.Collapsed;
             Get<Button>("ImportButton").Visibility = ready ? Visibility.Collapsed : Visibility.Visible;
             Get<Button>("PlayButton").Visibility = ready ? Visibility.Visible : Visibility.Collapsed;
@@ -504,6 +509,7 @@ namespace DarkwatchDarkerEdition
             if (item.TryGetValue("event", out kind) && Object.Equals(kind, "status"))
                 freshStatus = item.TryGetValue("installed", out statusInstalled) && Object.Equals(statusInstalled, false);
             if (item.TryGetValue("installed", out value)) installed = Convert.ToBoolean(value);
+            if (item.TryGetValue("skip_intro", out value)) skipIntro = Convert.ToBoolean(value);
             if (item.TryGetValue("diagnostic_logging", out value)) diagnosticLogging = Convert.ToBoolean(value);
             if (item.TryGetValue("diagnostics_dir", out value)) diagnosticsDirectory = Convert.ToString(value);
             if (item.TryGetValue("ready", out value)) ready = Convert.ToBoolean(value);

@@ -237,6 +237,15 @@ int main(){
   CHECK(ControlsSnapshot().shoulder_buttons==defaults.shoulder_buttons&&ControlsSnapshot().weapon_buttons[1][0]==9);
   CHECK(ControlsApply(restored));
  }
+ for(bool enabled:{false,true}) {
+  auto test=defaults;test.ground_pound_anytime=enabled;test.camera_buttons={6,8};
+  CHECK(ControlsApply(test)&&app::Save());CHECK(ControlsApply(defaults));app::Load();
+  CHECK(GetGroundPoundAnytime()==enabled&&ControlsSnapshot().camera_buttons==test.camera_buttons);
+ }
+ Write("ground_pound_anytime='bad'\n");app::Load();CHECK(!GetGroundPoundAnytime());
+ Write("[key_bindings]\nright_trigger=[84,0]\n");app::Load();
+ CHECK(ControlsSnapshot().bindings[fire].keys[0]=='T'&&!ControlsSnapshot().bindings[size_t(PcAction::CycleCamera)].keys[0]);
+ CHECK(ControlsApply(restored));
  // Sight modes persist independently without changing legacy bindings or accepting malformed values.
  for(const auto modes:{std::array<bool,2>{false,false},std::array<bool,2>{false,true},
                        std::array<bool,2>{true,false},std::array<bool,2>{true,true}}){

@@ -166,6 +166,7 @@ void ApplyWalkInput(int port, input::Pad& pad) {
     const bool on_foot = input::GetMouseSnapshot().active && WalkTarget(kernel::g_base, port, actor, right_stick);
     darkwatch::ControlsWalkInput(port, pad, on_foot, right_stick, actor);
     DarkwatchShoulderInput(port, pad, on_foot, actor);
+    DarkwatchCycleCameraInput(port, pad, on_foot, actor);
 }
 
 struct SightState {

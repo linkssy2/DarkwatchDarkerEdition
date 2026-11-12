@@ -9,9 +9,9 @@ using System.Windows;
 
 [assembly: AssemblyTitle("Play Darkwatch: Darker Edition")]
 [assembly: AssemblyProduct("Darkwatch: Darker Edition")]
-[assembly: AssemblyVersion("0.7.8.0")]
-[assembly: AssemblyFileVersion("0.7.8.0")]
-[assembly: AssemblyInformationalVersion("0.7.8")]
+[assembly: AssemblyVersion("0.7.9.0")]
+[assembly: AssemblyFileVersion("0.7.9.0")]
+[assembly: AssemblyInformationalVersion("0.7.9")]
 
 namespace DarkwatchDarkerEdition
 {

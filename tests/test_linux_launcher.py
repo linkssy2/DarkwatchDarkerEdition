@@ -601,6 +601,10 @@ def check(version, platform):
             popen, _ = self.action_patches(Process([dict(event="result", ready=False)]))
             self.assertEqual(linux.run_action(self.root, self.tools, "--set-diagnostics", value, lambda _: None), 0)
             self.assertEqual(popen.call_args.args[0][-2:], ["--set-diagnostics", value])
+        for value in ("on", "off"):
+            popen, _ = self.action_patches(Process([dict(event="result", ready=False)]))
+            self.assertEqual(linux.run_action(self.root, self.tools, "--set-skip-intro", value, lambda _: None), 0)
+            self.assertEqual(popen.call_args.args[0][-2:], ["--set-skip-intro", value])
         self.write(self.root / "GameData/.diagnostic-logging", "")
         process = Process(code=17)
         process.stdout = io.StringIO("Proton fixture startup failure\n")
@@ -967,7 +971,7 @@ def check(version, platform):
         download.assert_not_called()
         home = output.call_args_list[0].args[0]
         self.assertEqual([line for line in home.splitlines() if line[:1].isdigit()],
-                         ["1 Play", "2 Manage installation", "3 Check / Install Updates", "0 Exit"])
+                         ["1 Play", "2 Manage installation", "3 Check / Install Updates", "4 Skip intro", "0 Exit"])
         self.assertIn("Manage installation → Select Game", home)
         self.assertIn("Manage installation → Use Existing Install", home)
         self.assertNotIn("Install HD", home)
@@ -1112,7 +1116,7 @@ class UmuLauncherTests(unittest.TestCase):
         popen, _ = self.action_patches(Process())
         for action, value in (("--use-iso", disc), ("--import-iso", disc),
                               ("--install-hd-textures", disc), ("--install-spanish", disc),
-                              ("--set-language", "es"), ("--set-diagnostics", "on"),
+                              ("--set-language", "es"), ("--set-diagnostics", "on"), ("--set-skip-intro", "on"),
                               ("--verify", None), ("--status", None), ("--update", None), ("--play", None)):
             with self.subTest(action=action):
                 popen.return_value = Process([dict(event="result", ready=True)])
