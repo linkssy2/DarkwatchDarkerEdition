@@ -31,6 +31,18 @@ int main(){
  constexpr auto J=Character::Jericho,C=Character::Cassidy,S=Character::SpectralCassidy;
  static_assert(int(J)==0&&int(C)==1&&int(S)==2);
  app::Load();assert((characters()==std::array{J,J}));
+ const std::array defaults{Character::Trooper,Character::Trooper,Character::Trooper,Character::Trooper};
+ assert(versus_characters()==defaults);
+ for(unsigned port=0;port<4;++port)for(unsigned id=0;id<kCharacterCount;++id){
+  auto choices=defaults;choices[port]=Character(id);
+  assert(set_versus_characters(choices)&&app::Save());
+  assert(set_versus_characters(defaults));app::Load();assert(versus_characters()==choices);
+  assert((characters()==std::array{J,J}));
+  choices[port]=Character(-1);const auto before=versus_characters();
+  assert(!set_versus_characters(choices)&&versus_characters()==before);
+ }
+ Write("versus_player_one_character='Unknown'\nversus_player_two_character=7\nversus_player_three_character=[]\nversus_player_four_character={}\n");
+ app::Load();assert(versus_characters()==defaults);
  assert(configured_character(0)==J&&configured_character(1)==J&&configured_character(2)==J&&configured_character(~0u)==J);
  static_assert(kCharacterCount==10&&int(Character::Tala)==7&&int(Character::VampireTala)==8&&int(Character::BossTala)==9);
  for(unsigned one=0;one<kCharacterCount;++one)for(unsigned two=0;two<kCharacterCount;++two){

@@ -222,7 +222,7 @@ namespace input {
 static DeviceSnapshot device;
 static ControllerFamily connected_family=ControllerFamily::Xbox, player_two_family=ControllerFamily::Xbox;
 PadBindings DefaultPadBindings(){PadBindings b{};for(unsigned i=0;i<b.size();++i)b[i]=uint8_t(i);return b;}
-static PadBindings maps[2]{DefaultPadBindings(),DefaultPadBindings()};
+static PadBindings maps[4]{DefaultPadBindings(),DefaultPadBindings(),DefaultPadBindings(),DefaultPadBindings()};
 static bool pad_capture=false,pad_present=true;
 static unsigned pad_capture_result=0,pad_applies=0;
 static int pad_owner=-1;
@@ -260,6 +260,9 @@ bool BackCoopSetup(uint8_t*,uint32_t owner,unsigned player){
  ++coop_backs;if(coop_setup.ready[player])coop_setup.ready[player]=false;else coop_setup.owner=0;return true;
 }
 static bool gameplay_available=true;
+static int monster_screams_volume=100;
+int MonsterScreamsVolume(){return monster_screams_volume;}
+void SetMonsterScreamsVolume(int value){monster_screams_volume=std::clamp(value,0,100);}
 bool GameplayTexturesAvailable(){return gameplay_available;}
 static ControlsSettings controls;
 static uint32_t capture_result=0;
@@ -273,7 +276,18 @@ void ControlsCancelCapture(){capture_active=false;capture_result=0;input::Cancel
 bool ControlsCapturing(){return capture_active;}
 uint32_t ControlsTakeCapture(){auto result=capture_result;capture_result=0;return result;}
 std::string ControlsKeyName(uint32_t key){return key==VK_CAPITAL?"Caps Lock":key==input::kMouseWheel?"Mouse Wheel":key==input::kMouseWheelUp?"Wheel Up":key==input::kMouseWheelDown?"Wheel Down":key?std::string(1,char(key)):"Unbound";}
+static uint32_t native_pause_entry=0,native_pause_owner=0;
 GraphicsRouteState QueryGraphicsMenuRoute(const uint8_t*){return route;}
+GraphicsRouteState PrepareMultiplayerPauseMenu(uint8_t*,uint32_t root){return route.multiplayer_pause&&route.options==root?route:GraphicsRouteState{};}
+static unsigned pause_selections=0,pause_selected=99;
+bool ActivateMultiplayerPauseEntry(uint8_t*,uint32_t root,unsigned index){
+ if(!route.multiplayer_pause||root!=route.options||index>=5)return false;
+ ++pause_selections;pause_selected=index;route.multiplayer_pause=false;
+ if(index>0&&index<4){native_pause_entry=index;native_pause_owner=root;route.route=GraphicsMenuRoute::Controls;route.page+=4;}
+ else route={};
+ return true;
+}
+
 bool SetGraphicsSubtitles(uint8_t*,uint32_t expected,bool enabled){
  CHECK(expected==route.options);++subtitle_calls;route.subtitles=enabled;return true;
 }
@@ -289,7 +303,7 @@ bool SetControllerPreset(uint8_t*,uint32_t expected,int32_t preset){
  CHECK(expected==route.options);++preset_applies;if(preset<0||preset>4)return false;route.controller_preset=preset;return true;
 }
 bool OpenControllerConfiguration(uint8_t*,uint32_t expected){CHECK(expected==route.options);++configure_calls;route.route=GraphicsMenuRoute::Hidden;return true;}
-static uint32_t native_pause_entry=0,native_pause_owner=0;
+
 bool EnsureNativePauseEntries(uint8_t*){return route.paused&&route.route==GraphicsMenuRoute::OptionsMain;}
 bool EnsureDesktopQuitEntry(uint8_t*){return false;}
 static uint32_t character_owner=0;
@@ -300,9 +314,10 @@ bool ContinueSinglePlayer(uint8_t*,uint32_t owner){CHECK(owner==character_owner)
 namespace preview {
 static unsigned draws=0;static settings::Character drawn=settings::Character::Jericho;static double elapsed=0;
 static std::vector<settings::Character> frame_characters;
+static std::vector<std::pair<ImVec2,ImVec2>> frame_bounds;
 bool Initialize(ImFontAtlas*,const std::filesystem::path&,const std::filesystem::path&){return false;}
 bool Draw(settings::Character character,ImVec2 minimum,ImVec2 maximum,double seconds,bool){
- CHECK(maximum.x>minimum.x&&maximum.y>minimum.y&&seconds>=0);++draws;drawn=character;elapsed=seconds;frame_characters.push_back(character);return true;
+ CHECK(maximum.x>minimum.x&&maximum.y>minimum.y&&seconds>=0);++draws;drawn=character;elapsed=seconds;frame_characters.push_back(character);frame_bounds.push_back({minimum,maximum});return true;
 }
 }
 bool ConfirmDesktopQuit(uint8_t*,uint32_t owner){CHECK(owner==character_owner);++quit_confirmations;return quit_post_ok;}
@@ -314,7 +329,7 @@ uint32_t TakeNativePauseEntry(uint8_t*,uint32_t expected){
 static double fixture_fps=60;
 static ImVec2 fixture_display={1280,720};
 static void Frame(float elapsed=1.f/60){
- rendered_text.clear();layout_rows.clear();repeated_buttons.clear();darkwatch::preview::frame_characters.clear();
+ rendered_text.clear();layout_rows.clear();repeated_buttons.clear();darkwatch::preview::frame_characters.clear();darkwatch::preview::frame_bounds.clear();
  auto& io=ImGui::GetIO();io.DeltaTime=elapsed;io.DisplaySize=fixture_display;
  ImGui::NewFrame();DarkwatchGraphicsUi(fixture_fps);ImGui::Render();
 }
@@ -881,10 +896,10 @@ int main(){
  };
  // Widget clicks drive the production row/capture state; only physical reports are stubbed here.
  // The companion pad-bindings suite exercises real SDL polling and remapping end to end.
- for(unsigned port:{0u,1u})for(auto family:{input::ControllerFamily::Xbox,input::ControllerFamily::PlayStation,input::ControllerFamily::Switch}){
+ for(unsigned port:{0u,1u,2u,3u})for(auto family:{input::ControllerFamily::Xbox,input::ControllerFamily::PlayStation,input::ControllerFamily::Switch}){
   input::maps[port]=input::DefaultPadBindings();
   input::connected_family=input::player_two_family=family;input::device={1,true,family};controls(port);
-  const auto other=input::maps[1-port];const auto pc=darkwatch::controls;
+  const auto other=input::maps[(port+1)%4];const auto pc=darkwatch::controls;
   const auto applied=input::pad_applies,saved=saves;
   ClickNamed("CONTROLLER LAYOUT...",port==0);Frame();CHECK(g_controller_layout&&g_layout_family==family);
   CHECK(layout_rows.size()==23);
@@ -905,7 +920,7 @@ int main(){
   ClickNamed("RESET BUTTONS");CHECK(g_pad_draft==input::DefaultPadBindings()&&input::maps[port]==input::DefaultPadBindings());
   ClickLayoutRow(0);input::pad_capture_result=10;Frame();Frame();
   ClickNamed("BACK");Frame();CHECK(!g_controller_layout&&g_pad_draft[8]==9);
-  ClickNamed("APPLY");CHECK(input::maps[port][8]==9&&input::maps[port][9]==8&&input::maps[1-port]==other);
+  ClickNamed("APPLY");CHECK(input::maps[port][8]==9&&input::maps[port][9]==8&&input::maps[(port+1)%4]==other);
   CHECK(input::pad_applies==applied+1&&saves==saved+1);Poll();Frame();
   if(port)CHECK(!std::memcmp(&pc,&darkwatch::controls,sizeof(pc)));
   // Back from Controls discards a pending reset, preserving the last applied per-player map.
@@ -913,7 +928,7 @@ int main(){
   controls(port);CHECK(g_pad_draft[8]==9&&input::maps[port][8]==9);
   ClickNamed("CONTROLLER LAYOUT...",port==0);Frame();ClickLayoutRow(0);CHECK(input::pad_capture);
   route.options+=4;Poll();Frame();CHECK(g_open&&!g_controller_layout&&!input::pad_capture&&g_pad_capture_action<0);
-  CHECK(input::maps[port][8]==9&&input::maps[1-port]==other);
+  CHECK(input::maps[port][8]==9&&input::maps[(port+1)%4]==other);
  }
  std::puts("PASS real ImGui pad rebinding: both players and three families, row capture, swap, B binding, cancel, reset, Apply, discard, owner changes");
  auto open_audio=[&](){
@@ -960,7 +975,7 @@ int main(){
  ClickNamed("APPLY");Poll();Frame();CHECK(audio::GetSoundOutput()==audio::SoundOutput::Surround71&&audio::ActiveSoundOutput()==audio::SoundOutput::Stereo);
  ClickNamed("BACK");open_audio();CHECK(g_sound_output_draft==2);
  // Audio is a separate native pause entry, for either owner, with a normal page pop on Back.
- for(unsigned port:{0u,1u}){
+ for(unsigned port:{0u,1u,2u,3u}){
   hidden();route.route=darkwatch::GraphicsMenuRoute::Controls;route.paused=true;route.options=0x622200+port*0x1000;route.page=route.options+0x100;
   route.input_port=port;route.controls_available=true;route.audio_available=true;route.audio={60,50,40};
   button_centers.clear();darkwatch::native_pause_owner=route.options;darkwatch::native_pause_entry=1;
@@ -1201,14 +1216,16 @@ int main(){
 COOP_UI = r'''
 static void PlayerButton(const char* label,unsigned player){
  Frame();const auto* window=ImGui::FindWindowByName("Co-op");CHECK(window);
- const float middle=window->Pos.x+window->Size.x/2;
- for(auto point:repeated_buttons[label])if((point.x>=middle)==bool(player)){Click(point.x,point.y);return;}
+ const bool vertical=darkwatch::view::Snapshot().vertical_split;
+ const float middle=vertical?window->Pos.x+window->Size.x/2:window->Pos.y+310*MenuScale();
+ for(auto point:repeated_buttons[label])if(((vertical?point.x:point.y)>=middle)==bool(player)){Click(point.x,point.y);return;}
  CHECK(false);
 }
 static bool PlayerHighlight(const char* label,unsigned player){
  const auto* window=ImGui::FindWindowByName("Co-op");CHECK(window);
- const float middle=window->Pos.x+window->Size.x/2;
- for(auto point:repeated_buttons[label])if((point.x>=middle)==bool(player)){
+ const bool vertical=darkwatch::view::Snapshot().vertical_split;
+ const float middle=vertical?window->Pos.x+window->Size.x/2:window->Pos.y+310*MenuScale();
+ for(auto point:repeated_buttons[label])if(((vertical?point.x:point.y)>=middle)==bool(player)){
   const float width=std::strcmp(label,"READY")==0||std::strcmp(label,"CANCEL READY")==0?280.f:190.f;
   unsigned corners=0;
   for(const auto& vertex:window->DrawList->VtxBuffer)
@@ -1494,7 +1511,7 @@ int main(){
   CHECK(!darkwatch::controls.walk_toggle[0]&&!darkwatch::controls.walk_toggle[1]);
   OpenControls(port);CHECK(!g_controls_draft.carry_all_weapons&&!g_controls_draft.keep_starting_revolver);
   SelectQuality("##keep starting revolver",1,"On");CHECK(g_controls_draft.keep_starting_revolver&&!darkwatch::controls.keep_starting_revolver);
-  SelectQuality("##ground pound anytime",1,"On");CHECK(g_controls_draft.ground_pound_anytime&&!darkwatch::controls.ground_pound_anytime);
+  CHECK(!field_ids.contains("##ground pound anytime"));
   SelectQuality("##walk mode",1,"Toggle");CHECK(g_controls_draft.walk_toggle[port]&&!darkwatch::controls.walk_toggle[port]);
   if(!port){
    // Walking can be rebound independently while Carry All is off.
@@ -1522,7 +1539,6 @@ int main(){
   darkwatch::controls.mouse_millidegrees=123;const auto keyboard=darkwatch::controls.bindings;
   if(port)g_controls_draft.mouse_millidegrees=999;
   const auto saved=saves;ClickNamed("APPLY");Poll();Frame();
-  CHECK(darkwatch::controls.ground_pound_anytime);
   CHECK(saves==saved+1&&darkwatch::controls.walk_toggle[port]&&darkwatch::controls.walk_buttons[port]==12&&darkwatch::controls.keep_starting_revolver);
   CHECK(darkwatch::controls.walk_toggle[1-port]&&darkwatch::controls.walk_buttons[1-port]==11&&!darkwatch::controls.carry_all_weapons);
   if(port)CHECK(darkwatch::controls.mouse_millidegrees==123&&!std::memcmp(&keyboard,&darkwatch::controls.bindings,sizeof(keyboard)));
@@ -1747,6 +1763,7 @@ int main(){
                                GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")] + driver)
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
 
+
     def test_per_player_view_settings_and_confirmation(self):
         ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + PLAYER_VIEW_UI)
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
@@ -1786,44 +1803,27 @@ int main(){
         ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + driver)
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
 
-    def test_split_layout_draft_apply_cancel_and_controller(self):
-        helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")] + PLAYER_VIEW_UI[:PLAYER_VIEW_UI.index("int main(){")]
-        driver = r'''
-int main(){
- ImGui::CreateContext();auto& io=ImGui::GetIO();io.IniFilename=nullptr;
- io.ConfigFlags|=ImGuiConfigFlags_NavEnableKeyboard|ImGuiConfigFlags_NavEnableGamepad;
- ImFontConfig font;font.SizePixels=22;g_body=io.Fonts->AddFontDefault(&font);g_title=g_body;
- unsigned char* pixels;int w,h;io.Fonts->GetTexDataAsRGBA32(&pixels,&w,&h);
- for(bool controller:{false,true})for(unsigned entry:{0u,1u,2u}){
-  HiddenViewPage();SeedPlayerViews();const unsigned player=entry==2?1:0;
-  const auto p0=view::Snapshot(),p1=view::Snapshot(1);const auto aspect=actual.aspect_ratio;
-  const auto old_saves=saves,old_displays=displays;
-  OpenViewPage(player,entry!=0);CHECK(!g_view_draft.vertical_split);
-  record_combo_text=!controller;
-  if(controller){io.AddMousePosEvent(-100,-100);PadFrames(player);Navigate(player,2,field_ids["##split_layout"]);
-   PadTap(player,16);PadTap(player,2);PadTap(player,16);
-  }else SelectQuality("##split_layout",1,"Side by Side");
-  CHECK(g_view_draft.vertical_split&&!view::Snapshot().vertical_split);
-  CHECK(SameView(view::Snapshot(),p0)&&SameView(view::Snapshot(1),p1));
-  if(controller){Navigate(player,2,button_ids["APPLY"]);PadTap(player,16);}else ClickNamed("APPLY");
-  CHECK(saves==old_saves+1&&displays==old_displays&&!g_confirm);
-  CHECK(view::Snapshot().vertical_split&&view::Snapshot(1).vertical_split&&actual.aspect_ratio==aspect);
-  CHECK(SameView(view::Snapshot(),p0)&&SameView(view::Snapshot(1),p1));
-  if(controller){Navigate(player,1,field_ids["##split_layout"]);PadTap(player,16);PadTap(player,1);PadTap(player,16);PadTap(player,32);}
-  else {SelectQuality("##split_layout",0,"Top and Bottom");ClickNamed("BACK");}
-  CHECK(!g_open&&view::Snapshot().vertical_split&&saves==old_saves+1);
-  OpenViewPage(player,entry!=0);CHECK(g_view_draft.vertical_split);
-  if(controller){io.AddMousePosEvent(-100,-100);PadFrames(player);Navigate(player,2,field_ids["##split_layout"]);
-   PadTap(player,16);PadTap(player,1);PadTap(player,16);Navigate(player,2,button_ids["APPLY"]);PadTap(player,16);
-  }else {SelectQuality("##split_layout",0,"Top and Bottom");ClickNamed("APPLY");}
-  CHECK(!view::Snapshot().vertical_split&&!view::Snapshot(1).vertical_split&&saves==old_saves+2);
-  CHECK(SameView(view::Snapshot(),p0)&&SameView(view::Snapshot(1),p1));HiddenViewPage();
- }
- std::puts("PASS split layout: main and both pause owners, mouse/controller, Apply, Back discard, reopen, shared layout and independent player views");
+    def test_split_layout_coop_selection_mouse_controller_and_save_failure(self):
+        prefix = FIXTURE[:FIXTURE.index("int main(){")]
+        helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")]
+        driver = COOP_UI[:COOP_UI.index(' open();')+len(' open();')]+r"""
+ const auto original=view::Snapshot(),other=view::Snapshot(1);const auto initial=saves;
+ ClickNamed("Top and Bottom");Frame();CHECK(view::Snapshot().vertical_split&&saves==initial+1);
+ CHECK(!darkwatch::coop_setup.ready[0]&&!darkwatch::coop_setup.ready[1]);
+ io.AddMousePosEvent(-100,-100);PadFrames(0);PadTap(0,2);PadTap(0,2);CHECK(g_coop_focus[0]==3);
+ PadTap(0,16);CHECK(!view::Snapshot().vertical_split&&saves==initial+2);
+ save_ok=false;PadTap(0,8);CHECK(!view::Snapshot().vertical_split&&std::strstr(g_notice,"Could not change"));save_ok=true;
+ PadTap(0,8);CHECK(view::Snapshot().vertical_split);
+ const auto current=saves;PadTap(1,2);PadTap(1,16);CHECK(darkwatch::coop_setup.ready[1]);
+ ClickNamed("Side by Side");Frame();CHECK(view::Snapshot().vertical_split&&saves==current);
+ PadTap(0,16);CHECK(view::Snapshot().vertical_split&&saves==current);
+ CHECK(view::Snapshot().fov_percent==original.fov_percent&&view::Snapshot(1).camera_mode==other.camera_mode);
+ PadTap(0,1);CHECK(g_coop_focus[0]==2);PadTap(0,16);CHECK(darkwatch::coop_commits==1&&!g_open);
+ std::puts("PASS split selection: mouse/controller, ready lock, save rollback, independent views, native start");
  ImGui::DestroyContext();
 }
-'''
-        ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + driver)
+"""
+        ran = self.run_fixture(prefix + helpers + driver)
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
 
 

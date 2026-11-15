@@ -60,6 +60,7 @@ struct Commands {
 static float render_aspect;
 static unsigned aspect_reads;
 static app::Settings settings;
+const app::GameInfo app::kGame{};
 float app::RenderAspect(){++aspect_reads;return render_aspect;}
 app::Settings app::Snapshot(){return settings;}
 '''

@@ -4,6 +4,8 @@
 #include "common/graphics_view.h"
 #include "common/controls.h"
 #include "common/weapon_input.h"
+#include "common/weapon_wheel.h"
+#include "common/versus_menu.h"
 #include "common/camera_input.h"
 #include "common/sight_mode.h"
 #include "common/audio_settings.h"
@@ -23,7 +25,7 @@ void InitDirectMouse();
 void ApplyWalkInput(int port, input::Pad& pad);
 void ApplySightInput(int port, input::Pad& pad);
 void LoadFrontendAssets() { darkwatch::SyncAudioDevice(kernel::g_base); darkwatch::InitializeMenuCursor(); darkwatch::skin::Finalize(); darkwatch::preview::Finalize(); darkwatch::InitializeHdUi(); }
-void DrawUi(double fps) { DarkwatchGraphicsUi(fps); DarkwatchMenuUi(fps); }
+void DrawUi(double fps) { DarkwatchGraphicsUi(fps); DarkwatchMenuUi(fps); DarkwatchVersusDraw(); DarkwatchWeaponWheelDraw(); }
 }
 
 const app::GameInfo app::kGame = {
@@ -42,8 +44,10 @@ const app::GameInfo app::kGame = {
     .window = DarkwatchGraphicsWindow,
     .message = darkwatch::ControlsMessage,
     .ui = DrawUi,
-    .pad = [](int port, input::Pad& pad) { DarkwatchGraphicsPad(port, pad); ApplyWalkInput(port, pad); DarkwatchWeaponInput(port, pad); ApplySightInput(port, pad); },
+    .pad = [](int port, input::Pad& pad) { if (DarkwatchVersusPad(port, pad)) return; DarkwatchGraphicsPad(port, pad); ApplyWalkInput(port, pad); DarkwatchWeaponInput(port, pad); ApplySightInput(port, pad); },
     .prepare = darkwatch::PrepareShaders,
+    .scene_blur = DarkwatchWeaponWheelOpen,
+    .scene_blur_bounds = DarkwatchWeaponWheelViewport,
 };
 
 #include <array>
@@ -116,8 +120,8 @@ bool AimComponent(const uint8_t* base, uint32_t actor, uint32_t vtable, uint32_t
 bool WalkTarget(const uint8_t* base, int port, uint32_t& actor, bool& right_stick) {
     uint32_t game = 0, players = 0, records = 0, found = 0;
     uint16_t count = 0;
-    if (port < 0 || port >= 2 || !AimRead(base, 0x4AC9A0, game) ||
-        !AimField(base, game, 0x44, players) || !players || players > 2 ||
+    if (port < 0 || port >= 4 || !AimRead(base, 0x4AC9A0, game) ||
+        !AimField(base, game, 0x44, players) || !players || players > 4 ||
         !AimField(base, game, 0x50, count) || count < players || count > 64 ||
         !AimField(base, game, 0x54, records) || !records) return false;
     unsigned seen = 0, ports = 0;
@@ -130,7 +134,7 @@ bool WalkTarget(const uint8_t* base, int port, uint32_t& actor, bool& right_stic
             !AimRead(base, record + 0x128, local)) return false;
         seen |= 1u << ordinal;
         if (!local && input_port == ~0u) continue;
-        if (local != 1 || input_port >= 2 || (ports & (1u << input_port))) return false;
+        if (local != 1 || input_port >= 4 || (ports & (1u << input_port))) return false;
         ports |= 1u << input_port;
         if (input_port == unsigned(port)) found = uint32_t(record);
     }
@@ -176,10 +180,10 @@ struct SightState {
     bool down = false, armed = false, cancel = false, blocked = true, toggle = true;
 };
 std::mutex sight_lock;
-std::array<SightState, 2> sight_states;
+std::array<SightState, 4> sight_states;
 
 void ApplySightInput(int port, input::Pad& pad) {
-    if (port < 0 || port >= 2) return;
+    if (port < 0 || port >= 4) return;
     const auto frame = input::GetMouseSnapshot();
     const bool toggle = darkwatch::ControlsSnapshot().sight_toggle[port];
     uint32_t actor = 0; bool lefty = false;
@@ -370,7 +374,7 @@ double MouseDegrees(const MousePair& p, const MouseTarget& t, unsigned axis) {
 
 bool MouseEligible(const X86Context& ctx, uint8_t* base, unsigned axis,
                    const input::MouseSnapshot& s, MouseTarget& t) {
-    if (!s.active) {
+    if (!s.active || DarkwatchWeaponWheelBlocksLook(s.generation)) {
         DiscardMouse(s, t); TraceMouse(s, t, axis, "inactive"); return false;
     }
     if (const char* reason = ReadMouseTarget(ctx, base, axis, t)) {

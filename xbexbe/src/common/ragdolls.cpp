@@ -6,6 +6,7 @@
 #include <cstring>
 
 X86_EXTERN_FUNC(__imp__sub_00016DF2);
+X86_EXTERN_FUNC(__imp__sub_000715A5);
 X86_EXTERN_FUNC(__imp__sub_0009E86A);
 X86_EXTERN_FUNC(__imp__sub_0006D7CA);
 X86_EXTERN_FUNC(__imp__sub_00213677);
@@ -32,6 +33,43 @@ template<class T> bool Read(const uint8_t* base, uint64_t at, T& value) {
     if (!Span(base, at, sizeof(T))) return false;
     std::memcpy(&value, base + at, sizeof(value)); return true;
 }
+uint32_t OwnedComponent(const uint8_t* base, uint32_t actor, uint32_t wanted);
+uint32_t SeveredMotion(const uint8_t* base, uint32_t actor) {
+    uint32_t name = 0;
+    if (!actor || OwnedComponent(base, actor, 0x4227A4) ||
+        OwnedComponent(base, actor, 0x41F878) || OwnedComponent(base, actor, 0x422674) ||
+        !OwnedComponent(base, actor, 0x41766C) ||
+        !Read(base, uint64_t(actor) + 0x50, name) || !name) return 0;
+    // Exact m_HavokProxies of the disc's NPC dismemberment templates, not scenery debris.
+    constexpr const char* names[]{"BansheeArm", "BansheeHead", "BraveArm", "BraveHead",
+        "GunslingerArm", "GunslingerHead", "ReaperArm", "ReaperHead", "RiflemanArm", "RiflemanHead",
+        "SuperBansheeArm", "SuperBansheeHead", "SuperReaperArm", "SuperReaperHead"};
+    bool matched = false;
+    for (const auto* candidate : names) {
+        const auto size = std::strlen(candidate) + 1;
+        if (Span(base, uint64_t(name) + 2, size) && !std::memcmp(base + uint64_t(name) + 2, candidate, size)) {
+            matched = true; break;
+        }
+    }
+    return matched ? OwnedComponent(base, actor, 0x41D648) : 0;
+}
+bool KeepSeveredPart(const uint8_t* base, uint32_t timeout) {
+    uint32_t type = 0, actor = 0, state = 0, name = 0, body = 0, world = 0;
+    uint8_t removed = 0, fading = 0;
+    if (!Read(base, timeout, type) || type != 0x41766C ||
+        !Read(base, uint64_t(timeout) + 0xC, actor) || !actor ||
+        OwnedComponent(base, actor, 0x41766C) != timeout ||
+        OwnedComponent(base, actor, 0x4227A4) || OwnedComponent(base, actor, 0x41F878) ||
+        OwnedComponent(base, actor, 0x422674) ||
+        !Read(base, uint64_t(timeout) + 0x18, state) || !state ||
+        !Read(base, uint64_t(state) + 4, removed) || removed ||
+        !Read(base, uint64_t(state) + 5, fading) || fading ||
+        !Read(base, uint64_t(actor) + 0x50, name) || !name) return false;
+    const auto motion = SeveredMotion(base, actor);
+    return motion && Read(base, uint64_t(motion) + 0x9C, body) && body &&
+        Read(base, uint64_t(body) + 8, world) && world;
+}
+
 bool KeepBody(const uint8_t* base, uint32_t timeout) {
     uint32_t type = 0, actor = 0, flags = 0, state = 0, list = 0;
     uint16_t count = 0; uint8_t removed = 0, fading = 0;
@@ -87,11 +125,26 @@ bool CorpsePhysicsCommand(const X86Context& ctx, const uint8_t* base) {
 }
 }
 
+// Use the original interactive-prop collision setup for retained NPC parts.
+// Their rigid body, mass, bullet impulse and explosion handlers remain native.
+X86_FUNC(sub_000715A5) {
+    uint32_t actor = 0; uint8_t gib = 0;
+    const auto component = ctx.ecx;
+    const bool retained = darkwatch::view::Snapshot().forever_ragdolls &&
+        Read(base, uint64_t(component) + 0xC, actor) &&
+        SeveredMotion(base, actor) == component && component &&
+        Read(base, uint64_t(component) + 0x25, gib) && gib == 1;
+    if (retained) base[uint64_t(component) + 0x25] = 0;
+    __imp__sub_000715A5(ctx, base);
+    if (retained) base[uint64_t(component) + 0x25] = gib;
+}
+
 // Original HealthComponent marks death and broadcasts it before the CSM starts
 // this corpse timeout. Hold only its fade/removal countdown: death events,
 // scripted removal and level teardown remain native.
 X86_FUNC(sub_00016DF2) {
-    if (darkwatch::view::Snapshot().forever_ragdolls && Span(base, ctx.esp, 8) && KeepBody(base, ctx.ecx)) {
+    if (darkwatch::view::Snapshot().forever_ragdolls && Span(base, ctx.esp, 8) &&
+        (KeepBody(base, ctx.ecx) || KeepSeveredPart(base, ctx.ecx))) {
         ctx.esp += 8; // Original thiscall returns with ret 4.
         return;
     }
@@ -179,11 +232,17 @@ bool PlayerCorpseContact(const uint8_t* base, uint32_t player_shape, uint32_t co
     uint32_t flags = 0, wrapper = 0, impl = 0, collection = 0, bodies = 0, count = 0, world = 0;
     uint8_t active = 0;
     if (!CollisionProperties(base, player_shape, player) || !CollisionProperties(base, corpse_shape, corpse) ||
-        player.actor == corpse.actor || corpse.kind != 1 || corpse.category != 0x200 ||
+        player.actor == corpse.actor || corpse.kind != 1 || (corpse.category != 0x200 && corpse.category != 0x200000) ||
         // Native CSM/state setup adds these flags to the player's base category.
         ((player.category & ~0x02500000u) != 2 && (player.category & ~0x02500000u) != 3) ||
         !Read(base, uint64_t(player.actor) + 0x90, flags) || (flags & 2) ||
         !OwnedComponent(base, player.actor, 0x4227A4)) return false;
+    if (corpse.category == 0x200000) {
+        const auto motion = SeveredMotion(base, corpse.actor);
+        uint32_t body = 0;
+        return motion && Read(base, uint64_t(motion) + 0x9C, body) && body == corpse.body &&
+            KeepSeveredPart(base, OwnedComponent(base, corpse.actor, 0x41766C));
+    }
     auto animation = OwnedComponent(base, corpse.actor, 0x41D258);
     uint32_t rig_offset = 0x90;
     if (animation) {

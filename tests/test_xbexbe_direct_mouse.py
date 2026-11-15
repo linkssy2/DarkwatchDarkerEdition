@@ -58,6 +58,12 @@ int darkwatch::PrepareShaders() { return 0; }
 void DarkwatchGraphicsPad(int, input::Pad&) {}
 // Weapon cycling has its own real input fixture; this fixture isolates aiming.
 void DarkwatchWeaponInput(int, input::Pad&) {}
+void DarkwatchVersusDraw() {}
+bool DarkwatchVersusPad(int,input::Pad&) {return false;}
+void DarkwatchWeaponWheelDraw() {}
+bool DarkwatchWeaponWheelBlocksLook(uint64_t) {return false;}
+bool DarkwatchWeaponWheelOpen() {return false;}
+std::array<float,4> DarkwatchWeaponWheelViewport() {return {0,0,1,1};}
 // Shoulder switching has a separate production-input fixture.
 void DarkwatchShoulderInput(int, input::Pad&, bool, uint32_t) {}
 void DarkwatchCycleCameraInput(int, input::Pad&, bool, uint32_t) {}

@@ -3,20 +3,22 @@
 #include <cstdint>
 
 namespace darkwatch::viewport {
-enum class Kind { Invalid, Full, Horizontal, Vertical };
+enum class Kind { Invalid, Full, Horizontal, Vertical, Quadrant };
 struct View {
     Kind kind = Kind::Invalid;
     uint32_t player = 0;
-    bool Split() const {return kind == Kind::Horizontal || kind == Kind::Vertical;}
+    bool Split() const {return kind == Kind::Horizontal || kind == Kind::Vertical || kind == Kind::Quadrant;}
 };
 // Match only the native full view and the two supported split layouts.
-inline View Identify(uint32_t x, uint32_t y, uint32_t width, uint32_t height) {
+inline View Identify(uint32_t x, uint32_t y, uint32_t width, uint32_t height, unsigned players = 4) {
     constexpr uint32_t one = 0x3F800000, half = 0x3EFEB852, second = 0x3F00A3D7;
     if (!x && !y && width == one && height == one) return {Kind::Full, 0};
     if (!x && width == one && height == half && (!y || y == second))
         return {Kind::Horizontal, y ? 1u : 0u};
     if (!y && height == one && width == half && (!x || x == second))
         return {Kind::Vertical, x ? 1u : 0u};
+    if (width == half && height == half && (!x || x == second) && (!y || y == second))
+        return {Kind::Quadrant, (y ? 2u : 0u) + (x ? 1u : 0u) - (players == 3 && y ? 1u : 0u)};
     return {};
 }
 inline std::array<uint32_t, 4> Split(bool vertical, uint32_t player) {

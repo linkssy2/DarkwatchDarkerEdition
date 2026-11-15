@@ -136,7 +136,7 @@ void DarkwatchGroundPound(X86Context& ctx, uint8_t* base) {
     const uint32_t power_args[]{0x21210E, actor, rune};
     std::memcpy(base + call.esp, power_args, sizeof(power_args));
     sub_000B9204(call, base);
-    const bool unlocked = darkwatch::GetGroundPoundAnytime() || (call.eax & 0xFF) != 0;
+    const bool unlocked = (call.eax & 0xFF) != 0;
     call = ctx;
     call.ecx = map; call.esp = ctx.esp - 32;
     const uint32_t args[]{0x21210E, crouch};

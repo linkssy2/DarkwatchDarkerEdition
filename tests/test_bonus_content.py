@@ -62,7 +62,7 @@ class BonusImportTests(unittest.TestCase):
         (payload / "runtime").mkdir(parents=True)
         (payload / "hd_ui").mkdir()
         (payload / "character-art").mkdir()
-        for name in ('character_content.py', 'character_update.py', 'character-update.json.gz',
+        for name in ('content_profile.py', 'character_banshee.py', 'character_content.py', 'character_update.py', 'character-update.json.gz',
                      'character_campaign.py', 'character_campaign_pose.py', 'character_dropped_clips.py',
                      'character-campaign-angles.json', 'character_animation.py', 'character_assets.py',
                      'character_archive.py', 'character_repaint.py', 'character-catalog.json',
@@ -93,7 +93,7 @@ class BonusImportTests(unittest.TestCase):
         self.iso = self.root / "original.iso"
         make_iso(self.iso, self.data)
         self.backend = setup.Setup(self.package, self.package / "GameData", notify=lambda *a, **kw: None)
-        def fixture_characters(assets, payload, cancel, progress):
+        def fixture_characters(assets, payload, cancel, progress, *, previous_assets=None):
             # The archive/retarget adapter is covered separately. Keep these
             # original bonus-selector boundary tests on their tiny fixture.
             target = assets / 'packfile.pck'
@@ -112,7 +112,7 @@ class BonusImportTests(unittest.TestCase):
                                 side_effect=lambda assets, output, originals, cancel: cancel())
         recovery.start()
         self.addCleanup(recovery.stop)
-        def fixture_preview(assets, output, cancel):
+        def fixture_preview(assets, output, cancel, **kwargs):
             # Preview parsing is tested against real models elsewhere; this ISO is synthetic.
             cancel()
             data = b'synthetic private preview cache'
@@ -132,7 +132,7 @@ class BonusImportTests(unittest.TestCase):
             self.addCleanup(mocked.stop)
 
     def install(self):
-        return Path(self.backend.import_iso(self.iso)["install_dir"])
+        return Path(self.backend.import_iso(self.iso, profile='enhanced')["install_dir"])
 
     def snapshot(self):
         return {p.relative_to(self.backend.root).as_posix(): p.read_bytes()
@@ -168,10 +168,9 @@ class BonusImportTests(unittest.TestCase):
         current = self.install()
         self.assertNotEqual(current, previous)
         self.assertEqual(self.backend.verify(), current)
-        self.assertEqual((previous / "assets/packfile.pck").read_bytes(), ORIGINAL)
+        self.assertFalse(previous.exists())
         for relative, data in state.items():
             self.assertEqual((current / relative).read_bytes(), data)
-            self.assertEqual((previous / relative).read_bytes(), data)
 
     def test_wrong_original_disc_or_mixed_iso_never_publishes_stage(self):
         self.install()

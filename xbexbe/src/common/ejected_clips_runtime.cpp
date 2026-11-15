@@ -148,7 +148,7 @@ void KickFeet(const X86Context& ctx,uint8_t* base,const std::array<uint32_t,2>& 
         }
     }
 }
-struct Held { uint32_t owner=0,weapon=0,item=0;const Release* release=nullptr; };
+struct Held { uint32_t owner=0,weapon=0,item=0;const Release* release=nullptr;uint32_t attachment=0; };
 bool Owned(const uint8_t* base,uint32_t actor,unsigned hand,Held& out) {
     uint32_t flags=0;
     if (hand>1 || !Read(base,uint64_t(actor)+0x90,flags) || (flags&2) ||
@@ -156,17 +156,26 @@ bool Owned(const uint8_t* base,uint32_t actor,unsigned hand,Held& out) {
     const auto inventory=Component(base,actor,0x41F29C);
     uint32_t mode=0,slots=0,categories=0,index=0,slot=0,type=0,owner=0,weapon=0,parent=0;
     uint16_t count=0,ncategory=0;
-    if (!inventory || !Read(base,uint64_t(inventory)+0x64,mode) || mode ||
-        !Read(base,uint64_t(inventory)+0x88,count) || !count || count>64 ||
+    if (!inventory || !Read(base,uint64_t(inventory)+0x64,mode) || mode>1) return false;
+    uint32_t attachment=actor;
+    // Native 94863 selects the owned hands in mode 1; 94C80 reparents the slots.
+    if (mode==1) {
+        uint32_t parent_ref=0,hands_owner=0;
+        if (!Read(base,uint64_t(inventory)+0x54,attachment) || !attachment ||
+            !Read(base,uint64_t(attachment)+0x78,parent_ref) || !Read(base,parent_ref,hands_owner) || hands_owner!=actor ||
+            !Component(base,attachment,0x4228D4) || !Component(base,attachment,0x41D258)) return false;
+    }
+    if (!Read(base,uint64_t(inventory)+0x88,count) || !count || count>64 ||
         !Read(base,uint64_t(inventory)+0x8C,slots) || !Span(base,slots,count*4) ||
         !Read(base,uint64_t(inventory)+0x78,ncategory) || !ncategory || ncategory>4 ||
         !Read(base,uint64_t(inventory)+0x7C,categories) || !Read(base,categories,index) || index>=count ||
         !Read(base,uint64_t(slots)+index*4,slot) || !Read(base,slot,type) || type!=0x41F570 ||
         !Name(base,uint64_t(slot)+4,"loc_RightHand") || !Read(base,uint64_t(slot)+8,owner) || owner!=inventory ||
-        !Read(base,uint64_t(slot)+0xC,weapon) || !weapon || !Read(base,uint64_t(slot)+0x1C,parent) || parent!=actor) return false;
+        !Read(base,uint64_t(slot)+0xC,weapon) || !weapon || !Read(base,uint64_t(slot)+0x1C,parent) || parent!=attachment) return false;
     const Release* release=nullptr;
     for (const auto& candidate:releases) if (Name(base,uint64_t(weapon)+0x50,candidate.name)) release=&candidate;
     if (!release) return false;
+    if (mode==1 && release->kind!=Kind::Redeemer && release->kind!=Kind::DualPistol) return false;
     uint32_t item=Component(base,weapon,release->item),item_owner=0;
     if (!item || !Read(base,uint64_t(item)+0x58,item_owner) || item_owner!=actor ||
         !Name(base,uint64_t(item)+0x24,release->name)) return false;
@@ -188,13 +197,13 @@ bool Owned(const uint8_t* base,uint32_t actor,unsigned hand,Held& out) {
                 if (++matches!=1 || !Read(base,left,type) || type!=0x41F570 ||
                     !Read(base,uint64_t(left)+8,owner) || owner!=inventory ||
                     !Read(base,uint64_t(left)+0xC,attached) || attached!=child ||
-                    !Read(base,uint64_t(left)+0x1C,parent) || parent!=actor) return false;
+                    !Read(base,uint64_t(left)+0x1C,parent) || parent!=attachment) return false;
             }
             if (matches!=1) return false;
             weapon=child;item=child_item;
         }
     } else if (hand) return false;
-    out={actor,weapon,item,release};return true;
+    out={actor,weapon,item,release,attachment};return true;
 }
 struct Reload { uint32_t controller=0,hierarchy=0,clock=0,resource=0;float phase=0; };
 bool Clock(const uint8_t* base,const Held& held,Reload& result) {
@@ -262,7 +271,7 @@ Matrix Placement(const Release& release,const Matrix& gun) {
     return result;
 }
 bool AttachedRow(const uint8_t* base,uint32_t row,const Held& held,unsigned hand) {
-    const auto locator=Component(base,held.owner,0x422590);
+    const auto locator=Component(base,held.attachment,0x422590);
     uint16_t n=0;uint32_t rows=0;
     if (!locator || !Read(base,uint64_t(locator)+0x20,n) || !n || n>128 ||
         !Read(base,uint64_t(locator)+0x24,rows) || !Span(base,rows,n*0x40) ||
@@ -282,15 +291,15 @@ void Observe(const X86Context& entry,uint8_t* base) {
     if (!animation || uint64_t(animation)+0x30!=pose) return;
     std::array<uint32_t,2> players{};
     if (!Players(base,players)) return;
-    for (unsigned p=0;p<2;++p) if (players[p] && players[p]==actor) for (unsigned hand=0;hand<2;++hand) {
+    for (unsigned p=0;p<2;++p) if (players[p]) for (unsigned hand=0;hand<2;++hand) {
         Held held;Reload reload;Matrix gun;
-        if (!Owned(base,actor,hand,held) || !AttachedRow(base,entry.ecx,held,hand)) continue;
+        if (!Owned(base,players[p],hand,held) || held.attachment!=actor || !AttachedRow(base,entry.ecx,held,hand)) continue;
         auto& state=states[p*2+hand];
         if (!Clock(base,held,reload)) {state={};continue;}
         uint32_t zone=0,world=0;
-        if (!Read(base,uint64_t(actor)+0x68,zone) || !Read(base,uint64_t(actor)+0x6C,world) ||
+        if (!Read(base,uint64_t(held.owner)+0x68,zone) || !Read(base,uint64_t(held.owner)+0x6C,world) ||
             !Read(base,uint64_t(held.weapon)+0x10,gun) || !MatrixValid(gun)) continue;
-        if (state.held.owner!=actor || state.held.weapon!=held.weapon || state.reload.controller!=reload.controller ||
+        if (state.held.owner!=held.owner || state.held.weapon!=held.weapon || state.reload.controller!=reload.controller ||
             state.zone!=zone || state.world!=world ||
             reload.phase+.01f<state.reload.phase) state={};
         state.held=held;state.reload=reload;state.zone=zone;state.world=world;

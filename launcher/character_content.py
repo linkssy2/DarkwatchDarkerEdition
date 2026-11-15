@@ -28,7 +28,7 @@ import third_person_animation
 import enemy_blood
 
 BASE_REVISION = 'character-reload-right-wrist-v36'
-CONTENT_REVISION = 'character-campaign-feedback-v37'
+CONTENT_REVISION = 'character-jericho-rocket-hold-v44'
 CATALOG_SHA256 = 'dbb39545b03e60c701f8f9464764e2f216572f7f7b2800c7b76ab0646c321c87'
 CHARACTERS = 'xml/actortemplates_characters.bxml'
 BASE_INSTALLED = {
@@ -37,9 +37,9 @@ BASE_INSTALLED = {
     'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285'),
 }
 INSTALLED = {
-    'packfile.pck': (199441106, 'e19c6eeb1494bb7ede1f9976f0d402c970be44ae7da1a2754fd063a2b2e48257'),
-    'LvlSingl.pck': (3018752579, '55e931aa28853a38ad8c8072140b4cfcb4c30e6c9e4c27eb851d4d142b727180'),
-    'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285'),
+    'packfile.pck': (227357669, 'a7915d4e4943bed000037805bbe218489cb7d35c06b3d175b0c60021295a49d2'),
+    'LvlSingl.pck': (3075125827, '0f3cd694b05c2bc166ec9314868ecb25b0131016b626df2759dbda86dbbfd16c'),
+    'audio.pck': (152450452, 'fb164929befb6a333802863557c4a9d9544ad525c7cd8b7877b3f724fb896081'),
 }
 REPAINT = {
     1024: '73ca5d8c1ab1451c8863ee91139678f28af63b992934090acf233433ebabb3a3',
@@ -298,7 +298,11 @@ def prepare(assets, payload, cancel=lambda: None, progress=lambda message: None,
     metadata = base_catalog(final_metadata)
     def finalize(staged):
         import character_campaign
+        import character_versus
         outputs = character_campaign.build(staged, assets, payload, cancel, progress)
+        checked_file(assets / 'LvlMulti.pck', metadata['originals']['LvlMulti.pck'], cancel)
+        progress('Preparing versus characters and voices...')
+        outputs.update(character_versus.build(outputs['packfile.pck'], staged / 'audio.pck', assets / 'LvlMulti.pck', cancel))
         for name, path in outputs.items():
             checked_file(path, final_metadata['installed'][name], cancel)
         for name, path in outputs.items():

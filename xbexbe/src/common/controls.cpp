@@ -13,9 +13,10 @@ namespace darkwatch {
 namespace {
 std::mutex g_controls_lock, g_capture_lock, g_walk_lock;
 struct WalkState { uint64_t epoch = 0; uint32_t owner = 0; bool held = false, walking = false; };
-std::array<WalkState, 2> g_walk;
+std::array<WalkState, 4> g_walk;
 bool g_capturing = false;
 uint32_t g_captured = 0;
+constexpr const char* kPlayerKeys[]{"player_1", "player_2", "player_3", "player_4"};
 constexpr const char* kBindingKeys[] = {
     "dpad_up", "dpad_down", "dpad_left", "dpad_right", "start", "back", "left_thumb", "right_thumb",
     "a", "b", "x", "y", "black", "white", "left_trigger", "right_trigger",
@@ -41,7 +42,6 @@ ControlsSettings ControlsSnapshot() {
     return Settings();
 }
 
-bool GetGroundPoundAnytime() { return ControlsSnapshot().ground_pound_anytime; }
 bool GetCarryAllWeapons() { return ControlsSnapshot().carry_all_weapons; }
 bool GetKeepStartingRevolver() { return ControlsSnapshot().keep_starting_revolver; }
 
@@ -51,7 +51,7 @@ bool ControlsApply(const ControlsSettings& settings) {
         for (int button : buttons) if (button < -1 || button >= 16 || button == 4 || button == 5) return false;
         if (buttons[0] >= 0 && buttons[0] == buttons[1]) return false;
     }
-    for (unsigned port = 0; port < 2; ++port) {
+    for (unsigned port = 0; port < 4; ++port) {
         int button = next.walk_buttons[port];
         if (button < -1 || button >= 16 || button == 4 || button == 5) return false;
         if (button >= 0 && (button == next.weapon_buttons[port][0] || button == next.weapon_buttons[port][1])) return false;
@@ -60,7 +60,7 @@ bool ControlsApply(const ControlsSettings& settings) {
         if (button >= 0 && (button == next.walk_buttons[port] || button == next.weapon_buttons[port][0] ||
                            button == next.weapon_buttons[port][1])) return false;
     }
-    for (unsigned port = 0; port < 2; ++port) {
+    for (unsigned port = 0; port < 4; ++port) {
         const int button = next.camera_buttons[port];
         if (button < -1 || button >= 16 || button == 4 || button == 5) return false;
         if (button >= 0 && (button == next.walk_buttons[port] || button == next.shoulder_buttons[port] ||
@@ -89,10 +89,10 @@ void ControlsLoad(const void* table) {
     next.aim_centering = t["aim_centering"].value_or(next.aim_centering);
     next.carry_all_weapons = t["carry_all_weapons"].value_or(false);
     next.keep_starting_revolver = t["keep_starting_revolver"].value_or(false);
-    next.ground_pound_anytime = t["ground_pound_anytime"].value_or(false);
+    next.weapon_wheel = t["weapon_wheel"].value_or(true);
     if (const auto* buttons = t["weapon_cycle_buttons"].as_table()) {
-        for (unsigned port = 0; port < 2; ++port) {
-            const auto* row = (*buttons)[port ? "player_2" : "player_1"].as_array();
+        for (unsigned port = 0; port < 4; ++port) {
+            const auto* row = (*buttons)[kPlayerKeys[port]].as_array();
             if (!row || row->size() != 2) continue;
             std::array<int, 2> values{-1, -1};
             bool valid = true;
@@ -104,18 +104,18 @@ void ControlsLoad(const void* table) {
             if (valid && (values[0] == -1 || values[0] != values[1])) next.weapon_buttons[port] = values;
         }
     }
-    for (unsigned port = 0; port < 2; ++port) {
-        if (const auto* modes = t["sight_toggle"].as_array(); modes && modes->size() == 2)
+    for (unsigned port = 0; port < 4; ++port) {
+        if (const auto* modes = t["sight_toggle"].as_array(); modes && (modes->size() == 2 || modes->size() == 4) && port < modes->size())
             next.sight_toggle[port] = (*modes)[port].value_or(next.sight_toggle[port]);
-        if (const auto* modes = t["walk_toggle"].as_array(); modes && modes->size() == 2)
+        if (const auto* modes = t["walk_toggle"].as_array(); modes && (modes->size() == 2 || modes->size() == 4) && port < modes->size())
             next.walk_toggle[port] = (*modes)[port].value_or(false);
-        if (const auto* buttons = t["walk_buttons"].as_array(); buttons && buttons->size() == 2) {
+        if (const auto* buttons = t["walk_buttons"].as_array(); buttons && (buttons->size() == 2 || buttons->size() == 4) && port < buttons->size()) {
             const auto value = (*buttons)[port].value<int64_t>();
             if (value && *value >= 0 && *value < 16 && *value != 4 && *value != 5 &&
                 *value != next.weapon_buttons[port][0] && *value != next.weapon_buttons[port][1])
                 next.walk_buttons[port] = int(*value);
         }
-        if (const auto* buttons = t["shoulder_buttons"].as_array(); buttons && buttons->size() == 2) {
+        if (const auto* buttons = t["shoulder_buttons"].as_array(); buttons && (buttons->size() == 2 || buttons->size() == 4) && port < buttons->size()) {
             if (!(*buttons)[port].is_integer()) continue;
             const auto value = (*buttons)[port].value<int64_t>();
             if (value && *value >= 0 && *value < 16 && *value != 4 && *value != 5 &&
@@ -123,8 +123,8 @@ void ControlsLoad(const void* table) {
                 *value != next.weapon_buttons[port][1]) next.shoulder_buttons[port] = int(*value);
         }
     }
-    if (const auto* buttons = t["camera_buttons"].as_array(); buttons && buttons->size() == 2)
-        for (unsigned port = 0; port < 2; ++port) {
+    if (const auto* buttons = t["camera_buttons"].as_array(); buttons && (buttons->size() == 2 || buttons->size() == 4))
+        for (unsigned port = 0; port < buttons->size(); ++port) {
             const auto value = (*buttons)[port].is_integer() ? (*buttons)[port].value<int64_t>() : std::nullopt;
             if (value && *value >= 0 && *value < 16 && *value != 4 && *value != 5 &&
                 *value != next.walk_buttons[port] && *value != next.shoulder_buttons[port] &&
@@ -160,9 +160,9 @@ void ControlsLoad(const void* table) {
         ControlsApply(next);
     }
     const auto* controllers = t["controller_bindings"].as_table();
-    for (int port = 0; port < 2; ++port) {
+    for (int port = 0; port < 4; ++port) {
         auto bindings = input::DefaultPadBindings();
-        const auto* row = controllers ? (*controllers)[port ? "player_2" : "player_1"].as_array() : nullptr;
+        const auto* row = controllers ? (*controllers)[kPlayerKeys[port]].as_array() : nullptr;
         bool valid = row && row->size() == bindings.size();
         if (valid) for (size_t i = 0; i < bindings.size(); ++i) {
             const auto button = (*row)[i].value<int64_t>();
@@ -179,35 +179,36 @@ void ControlsSave(void* table) {
     t.erase("direct_mouse"); // Retire the legacy mouse-to-stick preference.
     t.insert_or_assign("mouse_millidegrees_per_count", int64_t(settings.mouse_millidegrees));
     t.insert_or_assign("zoom_sensitivity_percent", int64_t(settings.zoom_sensitivity_percent));
-    t.insert_or_assign("sight_toggle", toml::array{settings.sight_toggle[0], settings.sight_toggle[1]});
+    t.insert_or_assign("sight_toggle", toml::array{settings.sight_toggle[0], settings.sight_toggle[1], settings.sight_toggle[2], settings.sight_toggle[3]});
     t.insert_or_assign("aim_assistance", settings.aim_assistance);
     t.insert_or_assign("aim_centering", settings.aim_centering);
     t.insert_or_assign("carry_all_weapons", settings.carry_all_weapons);
     t.insert_or_assign("keep_starting_revolver", settings.keep_starting_revolver);
-    t.insert_or_assign("ground_pound_anytime", settings.ground_pound_anytime);
-    t.insert_or_assign("walk_toggle", toml::array{settings.walk_toggle[0], settings.walk_toggle[1]});
-    t.insert_or_assign("walk_buttons", toml::array{settings.walk_buttons[0], settings.walk_buttons[1]});
-    t.insert_or_assign("shoulder_buttons", toml::array{settings.shoulder_buttons[0], settings.shoulder_buttons[1]});
-    t.insert_or_assign("camera_buttons", toml::array{settings.camera_buttons[0], settings.camera_buttons[1]});
+    t.insert_or_assign("weapon_wheel", settings.weapon_wheel);
+    t.erase("ground_pound_anytime"); // Retire the testing override; the rune always gates this power.
+    t.insert_or_assign("walk_toggle", toml::array{settings.walk_toggle[0], settings.walk_toggle[1], settings.walk_toggle[2], settings.walk_toggle[3]});
+    t.insert_or_assign("walk_buttons", toml::array{settings.walk_buttons[0], settings.walk_buttons[1], settings.walk_buttons[2], settings.walk_buttons[3]});
+    t.insert_or_assign("shoulder_buttons", toml::array{settings.shoulder_buttons[0], settings.shoulder_buttons[1], settings.shoulder_buttons[2], settings.shoulder_buttons[3]});
+    t.insert_or_assign("camera_buttons", toml::array{settings.camera_buttons[0], settings.camera_buttons[1], settings.camera_buttons[2], settings.camera_buttons[3]});
     toml::table weapon_buttons;
-    for (unsigned port = 0; port < 2; ++port)
-        weapon_buttons.insert(port ? "player_2" : "player_1", toml::array{settings.weapon_buttons[port][0], settings.weapon_buttons[port][1]});
+    for (unsigned port = 0; port < 4; ++port)
+        weapon_buttons.insert(kPlayerKeys[port], toml::array{settings.weapon_buttons[port][0], settings.weapon_buttons[port][1]});
     t.insert_or_assign("weapon_cycle_buttons", std::move(weapon_buttons));
     toml::table bindings;
     for (size_t i = 0; i < settings.bindings.size(); ++i)
         bindings.insert(kBindingKeys[i], toml::array{int64_t(settings.bindings[i].keys[0]), int64_t(settings.bindings[i].keys[1])});
     t.insert_or_assign("key_bindings", std::move(bindings));
     toml::table controllers;
-    for (int port = 0; port < 2; ++port) {
+    for (int port = 0; port < 4; ++port) {
         toml::array row;
         for (auto button : input::GetPadBindings(port)) row.push_back(int64_t(button));
-        controllers.insert(port ? "player_2" : "player_1", std::move(row));
+        controllers.insert(kPlayerKeys[port], std::move(row));
     }
     t.insert_or_assign("controller_bindings", std::move(controllers));
 }
 
 void ControlsWalkInput(int port, input::Pad& pad, bool on_foot, bool right_stick, uint32_t owner) {
-    if (port < 0 || port >= 2) return;
+    if (port < 0 || port >= 4) return;
     const auto frame = input::GetMouseSnapshot();
     const auto settings = ControlsSnapshot();
     const int button = settings.walk_buttons[port];

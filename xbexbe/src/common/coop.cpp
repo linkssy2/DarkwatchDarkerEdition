@@ -22,6 +22,11 @@ void DarkwatchCoopLabel(X86Context& ctx, uint8_t* base) {
     ReplaceLiteral(ctx,base,0x429868,0x42A688); // XBL_XboxLive -> GEN_COOP
 }
 void DarkwatchCoopProfile(X86Context& ctx, uint8_t* base) {
+    if (HasLiteral(ctx,base,0x4298F8)) {
+        // Reserve the PC slot before versus scans devices, including later hot-plugs.
+        input::SetSinglePlayerController(false);
+        input::SetCoopKeyboard(!input::GetLastDevice().controller);
+    }
     ReplaceLiteral(ctx,base,0x4298F8,0x429918); // Xbox local profile-selection page.
 }
 void DarkwatchCoopCallback(X86Context& ctx, uint8_t*) {

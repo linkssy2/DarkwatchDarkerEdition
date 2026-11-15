@@ -430,7 +430,7 @@ def require_display(action):
                             "No installation files were changed.")
 
 
-def run_action(root, tools, action, input_path=None, output=print, status=None):
+def run_action(root, tools, action, input_path=None, output=print, status=None, content_profile=None):
     require_display(action)
     root = resolve_path(root)
     package = root / "windows"
@@ -472,6 +472,10 @@ def run_action(root, tools, action, input_path=None, output=print, status=None):
     command = runner + [wine_path(python), "-B",
                wine_path(adapter), "--package", wine_path(package), "--install-root", wine_path(root / "GameData"),
                "--cancel-file", wine_path(cancel), action]
+    if content_profile is not None:
+        if action not in ("--import-iso", "--use-iso") or content_profile not in ("original", "enhanced"):
+            raise LauncherError("Content choices apply only to fresh ISO installations.")
+        command += ["--content-profile", content_profile]
     if input_path:
         command.append(wine_path(input_path))
     elif language is not None:
@@ -584,6 +588,7 @@ def main(argv=None):
     parser.add_argument("--proton", type=Path, help="installed Proton folder or proton executable")
     parser.add_argument("--umu", action="store_true", help="use installed umu-run and Proton without Steam")
     parser.add_argument("--steam-root", type=Path, help="native Linux Steam installation folder")
+    parser.add_argument("--content-profile", choices=("original", "enhanced"), help="fresh installations only; default original")
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument("--import-iso", type=Path, metavar="FILE")
     actions.add_argument("--use-iso", type=Path, metavar="FILE", help="play from an Xbox ISO kept in its current location")
@@ -629,7 +634,7 @@ def main(argv=None):
         for name in ("import_iso", "use_iso", "install_hd_textures", "install_spanish", "install_french", "install_german", "install_italian", "install_portuguese", "set_language", "set_diagnostics", "set_skip_intro", "use_installation", "update", "verify", "play", "status"):
             value = getattr(args, name)
             if value:
-                return run_action(root, tools, "--" + name.replace("_", "-"), value if isinstance(value, (Path, str)) else None)
+                return run_action(root, tools, "--" + name.replace("_", "-"), value if isinstance(value, (Path, str)) else None, **({"content_profile": args.content_profile} if args.content_profile is not None else {}))
         if not sys.stdin.isatty():
             parser.error("Choose an action such as --status, --update, --use-installation FOLDER, --use-iso FILE, --import-iso FILE, or --play.")
         choices = {"1": "--import-iso", "2": "--use-installation", "3": "--verify", "4": "--status",
@@ -729,7 +734,11 @@ def main(argv=None):
                     value = value[1:-1]
                 path = Path(value)
             try:
-                run_action(root, tools, action, path)
+                profile = None
+                if action in ("--use-iso", "--import-iso") and not (installation_root(root) / "active.json").exists():
+                    answer = input("Include expanded characters, models and animations (+2.79 GiB)? [y/N]: ").strip().lower()
+                    profile = "enhanced" if answer in ("y", "yes") else "original"
+                run_action(root, tools, action, path, **({"content_profile": profile} if profile is not None else {}))
             except (LauncherError, OSError) as error:
                 diagnostic(root, repr(error))
                 print(str(error), file=sys.stderr)

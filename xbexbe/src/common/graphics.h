@@ -11,3 +11,6 @@ bool DarkwatchGraphicsVisible();
 // Called only after validating the original frontend owner on the guest thread.
 void DarkwatchCharactersOpen(uint32_t owner);
 void DarkwatchDesktopQuitOpen(uint32_t owner);
+
+// Publish and suppress only the validated multiplayer Pause main page.
+bool DarkwatchPauseMenuContent(uint8_t* base, uint32_t root);

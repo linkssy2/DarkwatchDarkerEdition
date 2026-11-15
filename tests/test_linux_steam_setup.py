@@ -46,7 +46,10 @@ class SteamSetupTests(unittest.TestCase):
         backend.main = mock.Mock(side_effect=main)
         return backend
 
-    def command(self, backend, *arguments, stdout=None, stderr=None, import_error=None, dialog_responses=None):
+    def command(self, backend, *arguments, stdout=None, stderr=None, import_error=None, dialog_responses=None, content_profile='original'):
+        # Existing feedback cases start after the caller has chosen its content.
+        if content_profile is not None and '--interactive' in arguments and any(a in arguments for a in ('--play', '--use-iso', '--import-iso')):
+            arguments = ('--content-profile', content_profile, *arguments)
         output = io.StringIO() if stdout is None else stdout
         errors = io.StringIO() if stderr is None else stderr
         with ExitStack() as stack:
@@ -58,6 +61,20 @@ class SteamSetupTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(sys, "stderr", errors))
             result = adapter.main(arguments)
         return result, output, errors, dialogs.call_args_list
+
+    def test_fresh_content_choice_and_cancel(self):
+        for choice, profile in ((6, 'enhanced'), (7, 'original'), (2, None)):
+            with self.subTest(choice=choice):
+                backend = self.worker([dict(event='result', message='Ready')])
+                code, _, _, dialogs = self.command(backend, '--interactive', '--use-iso', 'game.iso',
+                    content_profile=None, dialog_responses=[choice, True, True])
+                self.assertEqual(code, 0)
+                self.assertIn('Fresh installation content', dialogs[0].args[0])
+                if profile is None:
+                    backend.main.assert_not_called()
+                else:
+                    args = backend.main.call_args.args[0]
+                    self.assertEqual(args[args.index('--content-profile') + 1], profile)
 
     def test_import_acknowledges_start_and_result_preserving_json(self):
         events = [dict(event="progress", message="Checking disc", percent=2),

@@ -74,7 +74,7 @@ class PortugueseSetupTests(unittest.TestCase):
         old = f.snapshot(self.current)
         fresh = f.install_disc()
         self.assertNotEqual(fresh, self.current)
-        self.assertEqual(f.snapshot(self.current), old)
+        self.assertFalse(self.current.exists())
         self.assertTrue(f.backend.portuguese_valid(fresh))
         self.assertTrue(f.backend.spanish_valid(fresh))
         self.assertEqual(language_pack.selected(fresh), "pt-BR")

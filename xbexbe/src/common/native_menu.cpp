@@ -1,6 +1,7 @@
 #include "native_menu.h"
 #include "skip_intro.h"
 #include "coop_characters.h"
+#include "versus_menu.h"
 #include "graphics_route.h"
 #include "graphics_hud.h"
 #include "graphics_presentation.h"
@@ -279,7 +280,7 @@ void DarkwatchInvalidateMenuSnapshot() {
 bool DarkwatchHideReplacedMenuContent(X86Context& ctx, uint8_t* base) {
     if (DarkwatchHideGameplayHud(ctx, base)) return true;
     darkwatch::EnsureNativeOptionsEntries(base, ctx.esi);
-    return DarkwatchHideCoopSetupContent(ctx, base) ||
+    return DarkwatchPauseMenuContent(base, ctx.esi) || DarkwatchHideVersusContent(ctx.esi) || DarkwatchHideCoopSetupContent(ctx, base) ||
            darkwatch::HideFrontendSettingsContent(base, ctx.esi);
 }
 
@@ -287,6 +288,7 @@ void DarkwatchMenuRenderBegin(X86Context& ctx, uint8_t* base) {
     // A page can open after input polling. Publish its host replacement before
     // the original manager submits that page's first frame.
     DarkwatchCoopSetupRefresh(base);
+    DarkwatchVersusRefresh(base);
     collecting = {}; collecting.manager = ctx.ecx;
 }
 
@@ -340,7 +342,7 @@ void DarkwatchMenuInput(X86Context& ctx, uint8_t* base) {
     const auto scope = InputScope(base, ctx.esi);
     const auto previous = pointer.previous;
     const bool reset = !now.active || !previous.active || now.epoch != previous.epoch ||
-                       !SameScope(scope, pointer.scope) || DarkwatchGraphicsVisible();
+                       !SameScope(scope, pointer.scope) || DarkwatchGraphicsVisible() || DarkwatchVersusVisible();
     pointer.previous = now; pointer.scope = scope;
     if (!Fresh(state) || !SameScope(scope, state.scope) || state.hits.empty()) {pointer.wheel = 0; pointer.title = 0; return;}
     // Rebuild the membership check at the original input boundary; never trust a previous frame's pointer alone.
@@ -447,7 +449,7 @@ void DarkwatchRefreshMenuBars(uint8_t* base, uint64_t revision) {
 }
 
 void DarkwatchMenuUi(double) {
-    const bool host = DarkwatchGraphicsVisible();
+    const bool host = DarkwatchGraphicsVisible() || DarkwatchVersusVisible();
     bool menu;
     {
         std::lock_guard lock(snapshot_lock);

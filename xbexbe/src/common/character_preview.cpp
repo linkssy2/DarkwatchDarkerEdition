@@ -74,11 +74,16 @@ bool Load(std::span<const uint8_t> bytes, std::array<Model, settings::kCharacter
     uint64_t stored; std::memcpy(&stored, bytes.data() + bytes.size() - 8, 8);
     if (hd::Hash(bytes.first(bytes.size() - 8)) != stored || std::memcmp(bytes.data(), "DWCP0003", 8)) return false;
     Reader reader{bytes.first(bytes.size() - 8), 8};
-    if (reader.Value<uint32_t>() != 3 || reader.Value<uint32_t>() != models.size()) return false;
+    if (reader.Value<uint32_t>() != 3) return false;
+    const auto count = reader.Value<uint32_t>();
+    if (!count || count > models.size()) return false;
+    std::array<bool, settings::kCharacterCount> seen{};
     size_t atlas_pixels = 0;
-    for (uint32_t id = 0; id < models.size(); ++id) {
+    for (uint32_t entry = 0; entry < count; ++entry) {
+        const auto id = reader.Value<uint32_t>();
+        if (id >= models.size() || seen[id]) return false;
+        seen[id] = true;
         Model& model = models[id];
-        if (reader.Value<uint32_t>() != id) return false;
         const auto vertices = reader.Value<uint32_t>(), triangles = reader.Value<uint32_t>(), textures = reader.Value<uint32_t>();
         model.frame_count = reader.Value<uint32_t>(); model.duration = reader.Value<float>();
         if (!reader.good || !vertices || vertices > 12000 || !triangles || triangles > 24000 ||
@@ -211,6 +216,7 @@ bool Draw(settings::Character character, ImVec2 minimum, ImVec2 maximum, double 
         !Finite(minimum.x) || !Finite(minimum.y) || !Finite(maximum.x) || !Finite(maximum.y) ||
         maximum.x <= minimum.x || maximum.y <= minimum.y || !std::isfinite(elapsed_seconds)) return false;
     Model& model = state.models[id];
+    if (!model.frame_count || model.vertices.empty()) return false;
     const double time = std::max(0., elapsed_seconds);
     const float sample = float(std::fmod(time, model.duration) * model.frame_count / model.duration);
     const auto first = std::min(uint32_t(sample), model.frame_count - 1), second = (first + 1) % model.frame_count;

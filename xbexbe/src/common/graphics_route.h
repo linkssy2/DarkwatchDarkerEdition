@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <array>
 
 namespace darkwatch {
 enum class GraphicsMenuRoute { Hidden, OptionsMain, Visual, Controls, Audio };
@@ -18,6 +19,9 @@ struct GraphicsRouteState {
     int32_t controller_preset = -1; // Default, Chieftain, Lefty, Hopalong, Hoss; -1 unknown.
     bool paused = false;
     bool pause_settings_available = false;
+    bool multiplayer_pause = false;
+    bool multiplayer = false;
+    std::array<float, 4> pause_viewport{0, 0, 1, 1};
     uint32_t input_port = 0; // Guest port owning this local Pause; frontend uses port zero.
     bool audio_available = false;
     AudioSettings audio;
@@ -39,6 +43,8 @@ bool OpenControllerConfiguration(uint8_t* base, uint32_t expected_options);
 bool OpenPauseSettings(uint8_t* base, uint32_t expected_options);
 // Add real original MenuItem objects to the validated Pause main list.
 bool EnsureNativePauseEntries(uint8_t* base);
+GraphicsRouteState PrepareMultiplayerPauseMenu(uint8_t* base, uint32_t root);
+bool ActivateMultiplayerPauseEntry(uint8_t* base, uint32_t owner, unsigned index);
 // Consume the added row after the original action opened its Controls handler:
 // 0 = no added entry, 1 = Graphics, 2 = Controls, 3 = Audio.
 uint32_t TakeNativePauseEntry(uint8_t* base, uint32_t expected_options);

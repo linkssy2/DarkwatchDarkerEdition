@@ -15,6 +15,7 @@ import character_animation as animation
 import character_archive as archive
 import character_boss as boss
 import character_content
+import content_profile
 import character_spectral_hands as skin
 
 VERSION = 3
@@ -287,14 +288,18 @@ def _wrap(mesh):
     return vertices, triangles
 
 
-def build(read, cancel=lambda: None):
+def build(read, cancel=lambda: None, *, identities=None):
     idle = read(IDLE)
     if hashlib.sha256(idle).hexdigest() != IDLE_SHA:
         raise ValueError('Unsupported character preview idle')
     chaz = read(MODELS[0])
     reference = animation.frames(chaz)
-    output = bytearray(struct.pack('<8sII', MAGIC, VERSION, len(MODELS)))
-    for identity, name in enumerate(MODELS):
+    identities = tuple(range(len(MODELS))) if identities is None else tuple(identities)
+    if not identities or len(set(identities)) != len(identities) or any(i not in range(len(MODELS)) for i in identities):
+        raise ValueError('Invalid preview character selection')
+    output = bytearray(struct.pack('<8sII', MAGIC, VERSION, len(identities)))
+    for identity in identities:
+        name = MODELS[identity]
         raw = chaz if identity == 0 else read(name)
         clip = idle
         if identity in (2, 9):
@@ -326,10 +331,10 @@ def build(read, cancel=lambda: None):
     return bytes(output)
 
 
-def prepare(assets, output, cancel=lambda: None):
+def prepare(assets, output, cancel=lambda: None, *, profile="enhanced"):
     """Atomically create the cache from a complete admitted local installation."""
     source = Path(assets)/'packfile.pck'
-    size, expected = character_content.INSTALLED['packfile.pck']
+    size, expected = content_profile.files({'content_profile': profile})['packfile.pck']
     if source.stat().st_size != size:
         raise ValueError('Character preview archive size differs')
     raw = source.read_bytes(); cancel()
@@ -343,7 +348,7 @@ def prepare(assets, output, cancel=lambda: None):
         if not row:
             raise ValueError('Missing character preview resource: '+name)
         return raw[row['offset']:row['offset']+row['size']]
-    payload = build(read, cancel)
+    payload = build(read, cancel, identities=(0, 4, 5, 6) if profile == "original" else None)
     output = Path(output)
     temporary = None
     try:

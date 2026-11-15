@@ -1,6 +1,7 @@
 #include "common/weapon_input.h"
 #include "common/controls.h"
 #include "common/carry_all_weapons.h"
+#include "common/weapon_wheel.h"
 #include <array>
 #include <cstdint>
 #include <mutex>
@@ -13,11 +14,12 @@ struct State {
     bool release = false;
 };
 std::mutex lock;
-std::array<State, 2> states;
+std::array<State, 4> states;
 }
 
 void DarkwatchWeaponInput(int port, input::Pad& pad) {
-    if (port < 0 || port >= 2) return;
+    if (port < 0 || port >= 4) return;
+    const unsigned selected=DarkwatchWeaponWheelInput(port,pad);
     const auto frame = input::GetMouseSnapshot();
     const auto controls = darkwatch::ControlsSnapshot();
     const auto mapping = input::GetPadBindings(port);
@@ -38,6 +40,11 @@ void DarkwatchWeaponInput(int port, input::Pad& pad) {
     }
     std::lock_guard guard(lock);
     auto& state = states[port];
+    if (port==0 && DarkwatchWeaponWheelOpen()) {
+        state={frame.active_epoch,0,down};
+        DarkwatchQueueWeaponCycle(unsigned(port),0);
+        return;
+    }
     if (!frame.active || !frame.published_us || frame.active_epoch != state.epoch) {
         state = {frame.active_epoch, 0, down};
         DarkwatchQueueWeaponCycle(unsigned(port), 0);
@@ -53,10 +60,11 @@ void DarkwatchWeaponInput(int port, input::Pad& pad) {
         if (frame.published_us == state.started) return;
         state.release = false;
     }
-    if (state.action < 0 && (pressed == 1 || pressed == 2)) {
+    if (state.action < 0 && (selected || pressed == 1 || pressed == 2)) {
         const int action = DarkwatchWeaponCycleAction(unsigned(port));
         if (action >= 0 && action < 16) {
-            DarkwatchQueueWeaponCycle(unsigned(port), pressed == 1 ? 1 : -1);
+            if(selected) { if(!DarkwatchQueueWeaponSelection(unsigned(port),selected)) return; }
+            else DarkwatchQueueWeaponCycle(unsigned(port), pressed == 1 ? 1 : -1);
             state.action = action; state.started = frame.published_us;
         }
     }

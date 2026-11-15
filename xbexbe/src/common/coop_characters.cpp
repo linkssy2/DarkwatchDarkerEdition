@@ -157,7 +157,8 @@ darkwatch::CoopSetupState ReadState(const uint8_t* base) {
             !RefIs(base, message + 0x30, "message") ||
             !Read(base, record + 0x1C, ready) || ready > 1 ||
             !Read(base, record + 0x1D, connected) || connected > 1) return {};
-        result.characters[i] = darkwatch::settings::Character(selected);
+        result.characters[i] = !available && i == 1 && DarkwatchOriginalContentReady()
+            ? darkwatch::settings::Character::Trooper : darkwatch::settings::Character(selected);
         result.ready[i] = ready != 0;
         result.connected[i] = connected != 0;
         result.character_available &= available;

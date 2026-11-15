@@ -25,6 +25,10 @@ std::vector<std::pair<unsigned,int>> requests;
 int action[2]={1,11};
 int DarkwatchWeaponCycleAction(unsigned player){return action[player];}
 void DarkwatchQueueWeaponCycle(unsigned player,int direction){requests.emplace_back(player,direction);}
+unsigned wheel_selected=0;bool wheel_accept=false;
+unsigned DarkwatchWeaponWheelInput(int port,input::Pad&){return port?0:std::exchange(wheel_selected,0u);}
+bool DarkwatchWeaponWheelOpen(){return false;}
+bool DarkwatchQueueWeaponSelection(unsigned port,unsigned id){CHECK(port==0&&id==4);return wheel_accept;}
 uint64_t now=100000;
 void Frame(uint64_t delta=16667){input::AdvanceFrame(now+=delta);}
 void Neutral(){for(auto& p:fake_pads)for(auto& b:p.buttons)b=false;Frame(200000);input::Poll(0);input::Poll(1);Frame();input::Poll(0);input::Poll(1);requests.clear();}
@@ -70,7 +74,10 @@ int main(){
    for(int i=0;i<20;++i)CHECK(Poll(0).buttons==2);CHECK(requests.size()==1);
    Frame(100001);CHECK(Poll(0).buttons==2);Frame(49999);CHECK(!Poll(0).buttons);Frame();CHECK(!Poll(0).buttons);Neutral();
  }
- std::puts("PASS cycle input: original 150ms Swap pulse, both directions, co-op ownership, physical remap, repeats, context and focus gates");
+ // Rejected wheel choices must not fall through to an untargeted native Swap.
+ wheel_selected=4;Frame();p=Poll(0);CHECK(!p.buttons&&requests.empty());
+ wheel_accept=true;wheel_selected=4;Frame();p=Poll(0);CHECK(p.buttons==2&&requests.empty());Neutral();
+ std::puts("PASS cycle input: original 150ms Swap pulse, both directions, co-op ownership, physical remap, repeats, context, focus and rejected wheel choices");
 }
 '''
 

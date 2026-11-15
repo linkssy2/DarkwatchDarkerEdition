@@ -24,6 +24,8 @@ constexpr const char* CharacterName(Character character) {
 std::array<Character, 2> characters();
 Character configured_character(unsigned ordinal);
 bool set_characters(std::array<Character, 2> choices);
+std::array<Character, 4> versus_characters();
+bool set_versus_characters(std::array<Character, 4> choices);
 void LoadCharacters(const void* table);
 void SaveCharacters(void* table);
 } // namespace darkwatch::settings

@@ -100,7 +100,7 @@ class CharacterPreviewTests(unittest.TestCase):
             backend.verified_files = {}
             backend.check_cancel = lambda: None; backend.notify = lambda *a, **kw: None
             backend.digest = lambda p, cached=False: hashlib.sha256(p.read_bytes()).hexdigest()
-            def prepare(assets, destination, cancel):
+            def prepare(assets, destination, cancel, *, profile="enhanced"):
                 self.assertEqual(assets, current/'assets'); cancel(); destination.write_bytes(payload); return record
             with patch.object(setup, 'require_closed'), patch.object(preview, 'prepare', side_effect=prepare) as converter:
                 backend.prepare_previews(current)

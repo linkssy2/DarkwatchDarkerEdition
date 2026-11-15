@@ -167,7 +167,8 @@ bool EnsureMainEntries(uint8_t* base, uint32_t root, const X86Context& context, 
     if (!root || base != kernel::g_base || !Field(base, root, 0, root_type) || root_type != 0x42A608 ||
         !RefIs(base, root + 0x30, "main") ||
         !MainMenu(base, root, menu, rows, count, require_visible)) return false;
-    ResetCoopInput();
+    // Returning from versus rebuilds inactive Main beneath multiplayer pages.
+    if (ActiveMain(base) == root) ResetCoopInput();
     if (IsAdded(base, root, menu, rows, count)) return true;
     uint32_t peer, text, type, scale_mode;
     float rect[4], scale;

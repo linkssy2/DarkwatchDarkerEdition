@@ -48,6 +48,7 @@ import intake
 import bonus_content
 import gameplay_hd
 import character_content
+import content_profile
 import character_preview
 import language_pack
 import installed_source
@@ -61,7 +62,7 @@ SETTINGS = "darkwatch_xbe_settings.toml"
 CAMPAIGN_BUILDS = {'b96f88fd964f149c11915794a595f9597ab29a8209166d54d4f05a5cc2bf3c04': {'packfile.pck': (199254290, '7f520632e0f2ceac93b3d0cccdf91af8011907d399ae85dec01e2c3c6fe68a83'), 'LvlSingl.pck': (3012989507, '0afa41525e9983e6df7580b27caba1824f4a0c8a23a5030abc0422fa14e58f94'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, 'd5880fb87e6f12dab0faeb5f5a1b2b9f8fa53df304624ed7a17885df3688ad37': {'packfile.pck': (200704954, '656c752a29c0dfa52bfb557f911a40233ef53c13bdaa67b56c6b38ffbf3b38df'), 'LvlSingl.pck': (3045288515, '6553332771df115b726b9e2b7d3dba2f7a24ae59134f3cfdb41ca0f886eb1692'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, 'dcddfb265d8578e3dedb9651db05dd2681c192ec3cd8cbb40f666a24869749c4': {'packfile.pck': (200704954, 'a414e23dae485790f1aba7e36e63746c0f7cb6eb66a69ca0861db705d8146719'), 'LvlSingl.pck': (3045288515, 'a2724db84e595461b5ed4c2e35613fb925f2cdf6233692c9e1859e6f96cf6f9f'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, 'e918d35dc34a1e6718af978828dff8ea32efe5dcf7f2f556c073f33c8b5e26cf': {'packfile.pck': (200704954, '5204b0dce560336ba80cb65d6dfc4e73a0504f73d5742dc2c6e837c03f215fac'), 'LvlSingl.pck': (3045288515, '797f73cab89874e431ea94996b158b19afa77eb940e03c3266ab9079e2b07bfb'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, '5eefd4a5a7406b2d30b5ff0ddec8d31e8eaf2151d966a5e2b06c0481883cadbe': {'packfile.pck': (200704954, '02774c265a1f838adf99db7ee946b59695ac6d6638e86c4b3b6db3179e848907'), 'LvlSingl.pck': (3045288515, '7d81366ee928f4db9e328a47ce42b9057378656a71059f586e15d85591ea7631'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, '4a2be3fee76f967a76f98c5c3ce8bba48ba133f4130f0a230d4d2e7304180646': {'packfile.pck': (200442226, '3736a8837f9d36e83216aae940118a7944d19e81b9a30794f7799779fe6b9206'), 'LvlSingl.pck': (3031343683, '19bf1ec7de1dd65eaee13c98fef01aebb6c48fe496c7ec1214309fa3c6514ed6'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, 'ed8ca59ef3abb0c3cb5ecece02d15379d9ce9f594bf0692acb90a34a21d287cc': {'packfile.pck': (200442226, '02bef06ae69fb66e6358d16fef1eeb494060ad1da7f23b2e951c8c2392092067'), 'LvlSingl.pck': (3031343683, '6d93ed66a681d77987736a69cc53ac2df2dc9372104022243a492eb57a04d0e4'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}}
 
 DISC_SOURCE = "disc-source.toml"
-PACKAGE_VERSION = "0.7.9"
+PACKAGE_VERSION = "0.8.0"
 RELEASE_PROFILE = {"name": "release-candidate", "diagnostics": False, "strict_assets": True}
 # Maximum time without a completed shader, not a limit on the whole preparation.
 SHADER_PREPARE_TIMEOUT = 15 * 60
@@ -297,8 +298,8 @@ class Setup:
             sort_keys=True).encode()).hexdigest()
         for path in ("payload/supported-disc.json", "payload/intake.py", "payload/bonus_content.py", "payload/installed_source.py",
                      "payload/gameplay_hd.py", "payload/gameplay-hd-catalog.json", "payload/hd_ui/overrides.toml",
-                     "payload/character_content.py", "payload/character_update.py", "payload/character-update.json.gz",
-                     "payload/character_campaign.py", "payload/character_campaign_pose.py",
+                     "payload/content_profile.py", "payload/character_content.py", "payload/character_update.py", "payload/character-update.json.gz",
+                     "payload/character_banshee.py", "payload/character_campaign.py", "payload/character_campaign_pose.py",
                      "payload/character_dropped_clips.py", "payload/character-campaign-angles.json",
                      "payload/character_animation.py", "payload/character_assets.py",
                      "payload/character_archive.py", "payload/character_repaint.py", "payload/character-catalog.json",
@@ -480,7 +481,7 @@ class Setup:
     def content_files(self, metadata):
         variant = metadata.get("campaign_feedback_sha256")
         if variant is None:
-            return character_content.INSTALLED
+            return content_profile.files(metadata)
         if not isinstance(variant, str) or variant not in CAMPAIGN_BUILDS:
             raise SetupError("This campaign build is not recognized by this launcher. Keep the existing installation.")
         return CAMPAIGN_BUILDS[variant]
@@ -489,7 +490,7 @@ class Setup:
         metadata = read_json(safe_path(current, "install.json"))
         if metadata.get("disc_sha256") != self.files["payload/supported-disc.json"]:
             raise SetupError("Installed disc version differs. Import the supported ISO again.")
-        if metadata.get("content_revision") != character_content.CONTENT_REVISION:
+        if metadata.get("content_revision") != content_profile.revision(metadata):
             raise SetupError("This installation needs the character content update. Choose Update Game in the launcher.")
         content = self.content_files(metadata)
         files = [("assets/" + f["path"], *content.get(f["path"], (f["size"], f["sha256"])))
@@ -597,7 +598,7 @@ class Setup:
     def needs_update(self, current):
         metadata = read_json(safe_path(current, "install.json"))
         return (metadata.get("package_sha256") != self.package_sha256 or
-                metadata.get("content_revision") != character_content.CONTENT_REVISION)
+                metadata.get("content_revision") != content_profile.revision(metadata))
 
     def use_installation(self, folder):
         """Attach explicitly chosen existing data without copying it or its saves."""
@@ -680,7 +681,7 @@ class Setup:
                     pass
             if self.needs_update(current):
                 recoverable = (source_fields["source_mode"] == "iso" or
-                               metadata.get("content_revision") == character_content.CONTENT_REVISION or
+                               metadata.get("content_revision") == content_profile.revision(metadata) or
                                installed_source.has_recovery(safe_path(current, "source-recovery"), self.originals()))
                 return dict(installed=True, ready=False, update_available=recoverable,
                             hd_textures_installed=self.hd_status(current), install_dir=str(current),
@@ -734,7 +735,8 @@ class Setup:
             return
         require_closed()
         self.notify("progress", "Preparing character previews from your disc", percent=98, preparing=True)
-        record = character_preview.prepare(safe_path(current, "assets"), path, self.check_cancel)
+        record = character_preview.prepare(safe_path(current, "assets"), path, self.check_cancel,
+                                           profile=content_profile.selected(metadata))
         self.remember_verified(path, record["sha256"])
         metadata["character_preview"] = record
         write_json(safe_path(current, "install.json"), metadata)
@@ -811,7 +813,7 @@ class Setup:
         record = read_json(current / "install.json")
         if record.get("source_mode") == "iso":
             needed += sum(item["size"] for item in self.assets if item["path"] in ps2_spanish.XBOX)
-            needed += character_content.INSTALLED["packfile.pck"][0]
+            needed += self.content_files(record)["packfile.pck"][0]
             if shutil.disk_usage(self.root).free < needed:
                 raise SetupError(f"Not enough free space. Keep at least {needed / (1024 ** 3):.1f} GB free to prepare {label}.")
         with tempfile.TemporaryDirectory(prefix=f".{label.lower()}-ps2-", dir=self.root) as temporary:
@@ -986,6 +988,79 @@ class Setup:
             elif source.is_file():
                 self.copy_file(source, stage / path.name)
 
+    def cleanup_versions(self, current):
+        """Retire only committed sibling installs, keeping unique user files separately."""
+        require_closed()
+        versions = safe_path(self.root, "versions")
+        if not versions.is_dir() or self.active() != current:
+            return
+        active_record = read_json(safe_path(current, "install.json"))
+        generated = {EXE, "install.json", "hd-ui.pack", character_preview.NAME, DISC_SOURCE,
+                     ".verified-files.json"}
+        generated.update(path.removeprefix("payload/runtime/") for path in self.files
+                         if path.startswith("payload/runtime/"))
+        assets = {"assets/" + row["path"] for row in self.assets}
+        for entry in versions.iterdir():
+            if entry == current or not re.fullmatch("[0-9a-f]{32}", entry.name):
+                continue
+            try:
+                old = safe_path(versions, entry.name)
+                if old.resolve().parent != versions.resolve() or not old.is_dir():
+                    continue
+                if (active_record.get("source_mode") == "iso" and
+                        Path(active_record["iso_path"]).resolve().is_relative_to(old.resolve())):
+                    self.notify("progress", "An older folder contains your active ISO and was kept.", percent=100)
+                    continue
+                receipt = read_json(safe_path(old, "install.json"))
+                if receipt.get("disc_sha256") != self.files["payload/supported-disc.json"]:
+                    continue
+                # Validate every descendant before copying or removing anything. Never follow links.
+                files = []
+                for folder, dirs, names in os.walk(old, followlinks=False):
+                    for name in dirs + names:
+                        relative = (Path(folder) / name).relative_to(old).as_posix()
+                        path = safe_path(old, relative)
+                        if name in names:
+                            files.append((relative, path))
+                for relative, path in files:
+                    if (relative in generated or relative in assets or
+                            relative.startswith(("source-recovery/", "cache/"))):
+                        continue
+                    active_file = safe_path(current, relative)
+                    if (active_file.is_file() and path.stat().st_size == active_file.stat().st_size and
+                            self.digest(path) == self.digest(active_file)):
+                        continue
+                    # Old saves/settings, failed add-ons, logs and unknown files are never discarded.
+                    backup = safe_path(self.root, "preserved-user-data/" + entry.name + "/" + relative)
+                    if backup.exists():
+                        if not backup.is_file() or self.digest(path) != self.digest(backup):
+                            raise SetupError("A preserved user file differs; the older installation was kept.")
+                    else:
+                        backup.parent.mkdir(parents=True, exist_ok=True)
+                        self.copy_file(path, backup)
+                        if self.digest(path) != self.digest(backup):
+                            raise SetupError("User-data preservation failed; the older installation was kept.")
+                self.check_cancel()
+                require_closed()
+                if self.active() != current or safe_path(versions, entry.name).resolve().parent != versions.resolve():
+                    return
+                # Keep the receipt until last so an interrupted cleanup can be retried.
+                for child in old.iterdir():
+                    if child.name == "install.json":
+                        continue
+                    checked = safe_path(old, child.name)
+                    if checked.is_dir():
+                        shutil.rmtree(checked)
+                    else:
+                        checked.unlink()
+                safe_path(old, "install.json").unlink()
+                old.rmdir()
+                self.notify("progress", "Removed an older installation; unique user files were preserved.", percent=100)
+            except Cancelled:
+                return  # New install is already committed; cleanup may safely resume on the next update.
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                self.notify("progress", "The new installation is ready. An older copy was kept: " + str(error), percent=100)
+
     def prepare_shaders(self, current):
         self.check_cancel()
         require_closed()
@@ -1101,7 +1176,7 @@ class Setup:
         metadata = read_json(safe_path(current, "install.json"))
         if metadata.get("disc_sha256") != self.files["payload/supported-disc.json"]:
             raise SetupError("The installed disc revision does not match this update.")
-        rebuild = metadata.get("content_revision") != character_content.CONTENT_REVISION
+        rebuild = metadata.get("content_revision") != content_profile.revision(metadata)
         content = self.content_files(metadata)
         if rebuild and metadata.get("campaign_feedback_sha256"):
             raise SetupError("Keep this campaign build while its content update is prepared. No installed files were changed.")
@@ -1127,8 +1202,8 @@ class Setup:
         needed = 512 * 1024 * 1024 + sum(safe_path(self.package, name).stat().st_size for name in self.files if name.startswith("payload/runtime/"))
         if rebuild:
             needed += sum(item["size"] for item in self.assets if item["path"] in self.iso_preparation_names())
-            needed += (sum(size for size, _ in character_content.INSTALLED.values()) +
-                       max(size for size, _ in character_content.INSTALLED.values()))
+            needed += (sum(size for size, _ in content.values()) +
+                       max(size for size, _ in content.values()))
         if shutil.disk_usage(current).free < needed:
             raise SetupError(f"Not enough free space for the update. Keep at least {needed / (1024 ** 3):.1f} GB free; no installed files were changed.")
         with tempfile.TemporaryDirectory(prefix=".update-", dir=current) as temporary:
@@ -1147,10 +1222,10 @@ class Setup:
                         # Conversion does not read movies or the other untouched archives.
                         if item["path"] in self.iso_preparation_names() - character_content.INSTALLED.keys():
                             self.copy_file(safe_path(current, "assets/" + item["path"]), safe_path(assets, item["path"]))
-                character_content.prepare(assets, self.package / "payload", self.check_cancel,
+                content_profile.prepare(assets, self.package / "payload", self.check_cancel,
                                           lambda message: self.notify("progress", message, percent=40),
-                                          previous_assets=safe_path(current, "assets"))
-                for name, (size, digest) in character_content.INSTALLED.items():
+                                          previous_assets=safe_path(current, "assets"), profile=content_profile.selected(metadata))
+                for name, (size, digest) in content.items():
                     path = safe_path(assets, name)
                     if path.stat().st_size != size or self.digest(path) != digest:
                         raise SetupError("Updated character data failed verification; no installed files were changed.")
@@ -1192,16 +1267,17 @@ class Setup:
                 verified = self.verified_files[str(source.absolute())]["sha256"]
                 os.replace(source, destination)
                 self.remember_verified(destination, verified)
-            metadata.update(content_revision=character_content.CONTENT_REVISION,
+            metadata.update(content_revision=content_profile.revision(metadata),
                             package_sha256=self.package_sha256, artwork_sha256=self.artwork_sha256)
             write_json(current / "install.json", metadata)
         self.save_verification(current)
+        self.cleanup_versions(current)
         result = self.status()
         result["message"] = ("Game updated. Your ISO, prepared resources, saves, settings and add-ons were reused."
                              if direct else "Game updated. Your installed data, saves, settings and add-ons were reused; no ISO was needed.")
         return result
 
-    def use_drop_in_iso(self, directory):
+    def use_drop_in_iso(self, directory, profile=None):
         """Steam/Proton first launch can prepare a single user-provided image."""
         if self.active():
             return False  # Never replace an existing or repairable installation.
@@ -1214,29 +1290,30 @@ class Setup:
             raise SetupError("Several disc images are in assets. Choose one with Select Game or --use-iso FILE; no installation was changed.")
         self.notify("progress", "Found your disc in assets. Preparing direct ISO playback; keep the ISO in place.",
                     percent=0, automatic_setup=True)
-        self.use_iso(candidates[0])
+        self.use_iso(candidates[0], **({"profile": profile} if profile is not None else {}))
         return True
 
-    def use_iso(self, iso):
+    def use_iso(self, iso, profile=None):
         """Select a read-only ISO, or repair its location without preparing a second install."""
         iso = Path(iso).absolute()
         require_closed()
         self.verify_package()
         current = self.active()
         metadata = read_json(current / "install.json") if current else {}
+        profile = content_profile.choose(metadata, profile)
         if metadata.get("source_mode") != "iso":
-            return self.import_iso(iso, direct=True)
+            return self.import_iso(iso, direct=True, profile=profile)
         # Reconnection authenticates the new source before changing either source record.
         with self.open_iso(iso) as (source, offset, entries, record):
             self.read_iso_files(source, entries, verify_all=True)
-        files = (self.installed_files(current) if metadata.get("content_revision") == character_content.CONTENT_REVISION else
+        files = (self.installed_files(current) if metadata.get("content_revision") == content_profile.revision(metadata) else
                  [("assets/" + item["path"], item["size"], item["sha256"]) for item in self.assets if item["path"] == "default.xbe"])
         for relative, size, digest in files:
             if not relative.startswith("assets/"):
                 continue  # Package files are replaced by update() if required.
             path = safe_path(current, relative)
             if not path.is_file() or path.stat().st_size != size or self.digest(path) != digest:
-                return self.import_iso(iso, direct=True)
+                return self.import_iso(iso, direct=True, profile=profile)
         self.check_cancel()
         require_closed()
         self.write_iso_marker(current, record)
@@ -1246,12 +1323,16 @@ class Setup:
             return self.update()
         return self.status()
 
-    def import_iso(self, iso, direct=False):
+    def import_iso(self, iso, direct=False, profile=None):
         iso = Path(iso).absolute()
         require_closed()
         self.notify("progress", "Preparing your game", percent=0, preparing=True)
         self.verify_package()
         previous = self.active()
+        previous_record = read_json(previous / "install.json") if previous else {}
+        profile = content_profile.choose(previous_record, profile)
+        profile_record = {"content_profile": profile}
+        content = content_profile.files(profile_record)
         versions = safe_path(self.root, "versions")
         versions.mkdir(parents=True, exist_ok=True)
         version = uuid.uuid4().hex
@@ -1266,9 +1347,11 @@ class Setup:
                 # Streamed archive conversion retains its input until the next
                 # output is verified, in addition to the final staged files.
                 names = self.iso_preparation_names() if direct else {item["path"] for item in self.assets}
+                if direct and profile == "original":
+                    names.discard("LvlMulti.pck")
                 needed = (sum(f["size"] for f in self.assets if f["path"] in names) +
-                          sum(size for size, _ in character_content.INSTALLED.values()) +
-                          max(size for size, _ in character_content.INSTALLED.values()) + 512 * 1024 * 1024)
+                          sum(size for size, _ in content.values()) +
+                          max(size for size, _ in content.values()) + 512 * 1024 * 1024)
                 if previous and safe_path(previous, gameplay_hd.DIRECTORY).exists():
                     needed += self.hd_catalog.total
                 for language in language_pack.DISC_LANGUAGES:
@@ -1292,9 +1375,9 @@ class Setup:
             else:
                 self.verified_iso = None
                 installed_source.capture(stage / "assets", stage / "source-recovery", self.originals(), self.check_cancel)
-            character_content.prepare(stage / "assets", self.package / "payload", self.check_cancel,
-                                      lambda message: self.notify("progress", message, percent=86))
-            for name, (_, digest) in character_content.INSTALLED.items():
+            content_profile.prepare(stage / "assets", self.package / "payload", self.check_cancel,
+                                      lambda message: self.notify("progress", message, percent=86), profile=profile)
+            for name, (_, digest) in content.items():
                 self.remember_verified(stage / "assets" / name, digest)
             if direct:
                 for name in names - {"default.xbe", *character_content.INSTALLED}:
@@ -1310,7 +1393,7 @@ class Setup:
             self.notify("progress", "Preparing HD artwork from your disc", percent=87)
             self.build_hd(stage)
             self.notify("progress", "Preparing character previews from your disc", percent=88)
-            preview = character_preview.prepare(stage / "assets", stage / character_preview.NAME, self.check_cancel)
+            preview = character_preview.prepare(stage / "assets", stage / character_preview.NAME, self.check_cancel, profile=profile)
             self.remember_verified(stage / character_preview.NAME, preview["sha256"])
             self.check_cancel()
             require_closed()
@@ -1360,7 +1443,7 @@ class Setup:
                 hd = stage / "hd-ui.pack"
                 write_json(stage / "install.json", dict(schema_version=1, disc_sha256=self.files["payload/supported-disc.json"],
                            **source_record,
-                           content_revision=character_content.CONTENT_REVISION, partition_offset=offset,
+                           content_revision=content_profile.revision(profile_record), content_profile=profile, partition_offset=offset,
                            package_sha256=self.package_sha256, artwork_sha256=self.artwork_sha256,
                            character_preview=preview,
                            hd_ui=dict(size=hd.stat().st_size, sha256=self.digest(hd))))
@@ -1369,6 +1452,7 @@ class Setup:
                 require_closed()
                 write_json(self.root / "active.json", dict(version=version))
                 committed = True
+            self.cleanup_versions(stage)
             return dict(installed=True, ready=True, update_available=False, install_dir=str(stage), hd_textures_installed=self.hd_status(stage),
                         **self.source_status(stage), **self.language_status(stage),
                         message=("Darkwatch is ready. Keep the selected ISO available; only prepared resources were copied."
@@ -1426,6 +1510,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path, required=True)
     parser.add_argument("--install-root", type=Path, required=True)
+    parser.add_argument("--content-profile", choices=("original", "enhanced"), help="fresh installations only")
     parser.add_argument("--cancel-file", type=Path)
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument("--status", action="store_true")
@@ -1486,9 +1571,9 @@ def main(argv=None):
             return 0
         with exclusive(setup.root):
             if args.import_iso:
-                result = setup.import_iso(args.import_iso)
+                result = setup.import_iso(args.import_iso, profile=args.content_profile)
             elif args.use_iso:
-                result = setup.use_iso(args.use_iso)
+                result = setup.use_iso(args.use_iso, profile=args.content_profile)
             elif args.update:
                 result = setup.update()
             elif args.install_hd_textures:
@@ -1509,7 +1594,7 @@ def main(argv=None):
                 result = setup.set_diagnostics(args.set_diagnostics)
             elif args.play:
                 if args.auto_iso_folder:
-                    setup.use_drop_in_iso(args.auto_iso_folder)
+                    setup.use_drop_in_iso(args.auto_iso_folder, **({"profile": args.content_profile} if args.content_profile is not None else {}))
                 result = setup.play()
             else:
                 current = setup.verify()

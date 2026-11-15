@@ -191,6 +191,16 @@ def run_interactive(root, arguments):
             backend = importlib.import_module("setup_backend")
             original_emit = backend.emit
             backend.emit = capture
+            fresh = not (root / "GameData/active.json").exists() and not (root / "GameData/installation-location.json").exists()
+            installing = any(arg.partition("=")[0] in ("--use-iso", "--import-iso", "--auto-iso-folder") for arg in arguments)
+            if fresh and installing and not any(arg.partition("=")[0] == "--content-profile" for arg in arguments):
+                choice = notify("Fresh installation content\n\nInclude the expanded characters, enhanced models and animations?\n\n"
+                                "Yes: Enhanced (+2.79 GiB archive data)\nNo: Original playable characters, models and animations\nCancel: Stop setup", buttons=0x203)
+                if choice == 2:
+                    return 0
+                if choice not in (6, 7):
+                    raise RuntimeError("The installation content choice could not be displayed.")
+                arguments = arguments + ["--content-profile", "enhanced" if choice == 6 else "original"]
             if "--language" in arguments:
                 portuguese = notify("Português (Brasil) — tradução HNNEWGAMES\n\n"
                                     "Use Portuguese text and subtitles?\n"

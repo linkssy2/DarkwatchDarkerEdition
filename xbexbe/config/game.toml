@@ -876,6 +876,12 @@ call = "DarkwatchCharacterMissionBegin"
 at = 0x000C42BB
 call = "DarkwatchCharacterMissionEnd"
 
+# ResourceSet's original row loop: omit only unselected appended versus dependencies.
+[[hook]]
+at = 0x001BCFB9
+call = "DarkwatchVersusSkipPreload"
+on_true = 0x001BCFDB
+
 # The normalized local path is complete; archive lookup has not run yet.
 [[hook]]
 at = 0x001D2255
@@ -958,3 +964,13 @@ on_true = 0x000E9F02
 [[hook]]
 at = 0x001DDF29
 call = "DarkwatchGroundPoundInput"
+
+# Personal-camera walking bob, after native amplitude smoothing and before synthesis.
+[[hook]]
+at = 0x000BCD74
+call = "DarkwatchLimitMovementBob"
+
+# Native per-cue combined gain; retain category, distance, fades and pitch.
+[[hook]]
+at = 0x00210A31
+call = "DarkwatchMonsterVolume"

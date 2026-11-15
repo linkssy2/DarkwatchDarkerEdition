@@ -603,13 +603,13 @@ class LauncherUiHarness {
             Check(!task.IsCompleted,"Startup blocked UI instead of awaiting its helper");
             Finish(task);Finish((Task)Call(l,"Startup"));
             string[] seen=File.ReadAllLines(actions);
-            bool attempted=mode=="drop-one"||mode=="drop-unsupported";
+            bool attempted=false;
             Check(seen.Count(x=>x=="--status")==1&&seen.Count(x=>x=="--use-iso")== (attempted?1:0),"Wrong or repeated automatic ISO action: "+mode);
             Check(!seen.Contains("--import-iso")&&!seen.Contains("--play"),"Auto-detection extracted the whole ISO or launched a game");
             if(File.Exists(iso))Check(File.ReadAllText(iso)=="unchanged ISO fixture","Auto-detection changed source ISO");
-            if(mode=="drop-one")Check((bool)Field(l,"ready")&&!(bool)Field(l,"sourceOpen"),"Drop-in did not finish normally");
+            if(mode=="drop-one")Check(!(bool)Field(l,"ready")&&(bool)Field(l,"sourceOpen")&&Element<CheckBox>(l,"EnhancedContent").IsChecked==false,"Fresh install skipped content choice");
             if(mode=="drop-multiple"||mode=="drop-unsupported")Check((bool)Field(l,"sourceOpen"),"Ambiguous/unsupported image lost source chooser");
-            if(mode=="drop-unsupported")Check(Element<TextBlock>(l,"StatusText").Text.Contains("Unsupported"),"Unsupported ISO error was hidden");
+            if(mode=="drop-unsupported")Check(Element<TextBlock>(l,"StatusText").Text.Contains("Choose your content"),"Fresh content choice was hidden");
             Idle(l);
         }
         File.Delete(iso);File.Delete(second);

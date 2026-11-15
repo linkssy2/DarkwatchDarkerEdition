@@ -69,7 +69,7 @@ class DiscLanguagesSetupTests(unittest.TestCase):
         f.backend.set_language("fr")
         before = f.snapshot(self.current)
         fresh = f.install_disc()
-        self.assertEqual(f.snapshot(self.current), before)
+        self.assertFalse(self.current.exists())
         self.assertEqual(f.snapshot(fresh / "assets"), original)
         for code, resources in self.resources.items():
             self.assertEqual(f.snapshot(fresh / "language" / code), resources)

@@ -33,6 +33,21 @@ def chunk(tag, data):
 def only(raw, kind):
     return skin._one(raw, kind)
 
+def part_normal(packed, matrix):
+    """Keep the authored hard edges when moving a rigid island into bone space."""
+    normal = []
+    for shift, bits in ((0, 11), (11, 11), (22, 10)):
+        value = (packed >> shift) & ((1 << bits) - 1)
+        if value & (1 << (bits - 1)):
+            value -= 1 << bits
+        normal.append(value / ((1 << (bits - 1)) - 1))
+    transformed = [sum(normal[k] * matrix[k * 4 + a] for k in range(3)) for a in range(3)]
+    length = math.sqrt(sum(v * v for v in transformed))
+    if not math.isfinite(length) or length < 1e-8:
+        raise ValueError('Invalid original magazine normal')
+    x, y, z = (v / length for v in transformed)
+    return (round(x * 1023) & 2047) | ((round(y * 1023) & 2047) << 11) | ((round(z * 511) & 1023) << 22)
+
 def derive(raw, static, *, dual=False, crossbow=False):
     if dual and crossbow:
         raise ValueError('One source weapon required')
@@ -60,8 +75,7 @@ def derive(raw, static, *, dual=False, crossbow=False):
     half_extents = tuple((max((abs(p[k]) for p in positions)) for k in range(3)))
     radius = max((math.dist((0.0, 0.0, 0.0), p) for p in positions))
     indices = [remap[i] for tri in triangles for i in tri]
-    model = {'positions': positions, 'triangles': [tuple((remap[i] for i in tri)) for tri in triangles]}
-    normals = skin._normals(model)
+    normals = [part_normal(source['normals'][i], source['inverse'][part]) for i in used]
     vertex_bytes = b''.join((struct.pack('<3fII2f', *p, n, source['colors'][i], *source['uv'][i]) for i, p, n in zip(used, positions, normals)))
     na, nz = next(((a, z) for t, a, z, _ in boss._records(raw) if t == 1296))
     header_at = na + 16

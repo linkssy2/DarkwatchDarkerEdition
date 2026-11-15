@@ -150,6 +150,7 @@
               <Button x:Name="SourceBackButton" Content="← BACK" Width="96" Style="{StaticResource Quiet}" Margin="0,0,16,0"/>
               <TextBlock x:Name="SourceTitle" Text="SELECT GAME" FontFamily="Georgia" FontSize="21" VerticalAlignment="Center"/>
             </DockPanel>
+            <CheckBox x:Name="EnhancedContent" IsChecked="False" Foreground="#E8E2D2" Margin="0,0,0,14"><TextBlock TextWrapping="Wrap" Text="Include expanded characters, enhanced models and animations (+2.79 GiB). Unchecked keeps original playable characters and animations. Fresh installs only."/></CheckBox>
             <Button x:Name="UseIsoButton" Content="USE ISO DIRECTLY" Background="#701C25"/>
             <TextBlock x:Name="UseIsoHint" Text="Play from your Xbox ISO. Keep the ISO in place for future launches." FontSize="12" TextWrapping="Wrap" Foreground="#B8B7B5" Margin="0,7,0,18"/>
             <Button x:Name="ExtractIsoButton" Content="IMPORT ONCE" Style="{StaticResource Quiet}"/>
@@ -248,7 +249,7 @@
           <Grid Grid.Row="4" Margin="0,10,0,0">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="194"/></Grid.ColumnDefinitions>
             <StackPanel VerticalAlignment="Center">
-              <TextBlock Text="DARKER EDITION   /   0.7.9" Foreground="#676B72" FontSize="10"/>
+              <TextBlock Text="DARKER EDITION   /   0.8.0" Foreground="#676B72" FontSize="10"/>
               <TextBlock x:Name="ReleaseStatus" Text="Check GitHub for updates" Visibility="Collapsed" Foreground="#B8B7B5" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap"/>
             </StackPanel>
             <Grid x:Name="ReleaseActions" Grid.Column="2" Visibility="Collapsed">

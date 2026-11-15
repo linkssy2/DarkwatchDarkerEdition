@@ -18,6 +18,7 @@ import character_archive as archive
 import character_assets as art
 import character_content as content
 import character_campaign
+import character_versus
 
 
 def pin(data):
@@ -165,6 +166,8 @@ class CharacterConversionTests(unittest.TestCase):
                         spectral_archives={name: pin(data) for name,data in third.items()},
                         roster_archives={name: pin(data) for name,data in fourth.items()},
                         installed={name: pin(data) for name,data in final.items()})
+        originals['LvlMulti.pck'] = tiny_archive()
+        metadata['originals']['LvlMulti.pck'] = pin(originals['LvlMulti.pck'])
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             assets, payload = root/'assets', root/'payload'
@@ -177,7 +180,8 @@ class CharacterConversionTests(unittest.TestCase):
                 return pin(raw)['sha256']
             installed = {name:(len(data),pin(data)['sha256']) for name,data in final.items()}
             with patch.object(content, 'INSTALLED', installed), patch.object(content, 'BASE_INSTALLED', installed), \
-                    patch.object(character_campaign, 'build', return_value={}), \
+                    patch.object(character_campaign, 'build', side_effect=lambda staged, *args: {'packfile.pck': staged/'packfile.pck'}), \
+                    patch.object(character_versus, 'build', return_value={}), \
                     patch.object(content, 'build_resources', side_effect=lambda *args: copy.deepcopy((groups,extension,spectral))), \
                     patch.object(content.character_roster, 'prepare', side_effect=lambda *args, **kwargs: (copy.deepcopy(roster), {})), \
                     patch.object(content.revolver_content, 'prepare', side_effect=lambda *args: copy.deepcopy(revolver)), \
@@ -204,7 +208,8 @@ class CharacterConversionTests(unittest.TestCase):
                                         message.endswith(' in ' + name) for message in messages))
                 self.assertEqual({name:(assets/name).read_bytes() for name in final},final)
                 finish.assert_called_once_with(b'native model for derivation', b'third conversion')
-                self.assertEqual(set(p.name for p in assets.iterdir()),set(final))
+                self.assertEqual(set(p.name for p in assets.iterdir()),set(final) | {'LvlMulti.pck'})
+                self.assertEqual((assets/'LvlMulti.pck').read_bytes(), originals['LvlMulti.pck'])
                 # A later bad output cannot leave an earlier archive installed.
                 metadata['v7_archives']['audio.pck']['sha256'] = '0'*64
                 with patch.object(content, 'CATALOG_SHA256', reset()), self.assertRaisesRegex(ValueError,'verification failed'):

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import character_assets as art
 import character_archive as archive
+import character_banshee
 import character_dropped_clips
 import third_person_animation
 import character_campaign_pose as pose
@@ -59,8 +60,11 @@ def weapon_stage(pack, weapon, groups, prefix, convert, *, aliases=None, animati
     """Split shared weapon/stance routes before replacing only the requested motion."""
     pack.animation_key = animation_key
     changes = {}
+    actor_weapon = {'SNIPERRIFLE': 'SniperRifle', 'CROSSBOW': 'Crossbow',
+        'RAILRCKT': 'RocketLauncher', 'RIFLE': 'Rifle', 'SHOTGUN': 'Shotgun',
+        'DOUBLEPISTOL': 'Crossbow'}[weapon]  # Neck-only passes retain their existing reference rig.
     for alias in sorted(p.GRIP_ACTORS if aliases is None else aliases):
-        actors = {stance: pose.Actor(pack, 'SniperRifle' if weapon == 'SNIPERRIFLE' else 'Crossbow', stance, alias)
+        actors = {stance: pose.Actor(pack, actor_weapon, stance, alias)
                   for stance in ('STAND', 'CROUCH')}
         path = actors['STAND'].binding['table']
         tree = art.decode(pack.read(path))
@@ -83,6 +87,7 @@ def weapon_stage(pack, weapon, groups, prefix, convert, *, aliases=None, animati
                     nodes.append(other)
                 stances = ('CROUCH',) if 'CROUCH' in flags else ('STAND',) if 'STAND' in flags else ('STAND', 'CROUCH')
                 for stance in stances:
+                    actors[stance].action = node['attributes']['AnimationID']
                     result = convert(actors[stance], raw, name)
                     resource = 'characters/player_two/' + prefix + '/' + hashlib.sha256(result).hexdigest()[:24]
                     if resource + '.sanm' in changes and changes[resource + '.sanm'] != result:
@@ -104,10 +109,10 @@ def weapon_stage(pack, weapon, groups, prefix, convert, *, aliases=None, animati
     return changes
 
 
-def head_stage(pack):
+def head_stage(pack, animation_key=None):
     changes = {}
-    pack.animation_key = None
-    for alias in sorted(p.GRIP_ACTORS):
+    pack.animation_key = animation_key
+    for alias in sorted(p.GRIP_ACTORS if animation_key is None else p.GRIP_ACTORS - {'Chaz'}):
         actor = pose.Actor(pack, 'Crossbow', 'STAND', alias)
         references = {}
         for group, node in actor.rows:
@@ -219,6 +224,27 @@ def sniper_stage(pack, mode, angles, *, animation_key=None):
                         prefixes[mode], convert, aliases=aliases, animation_key=animation_key)
 
 
+def rocket_hold_stage(pack, animation_key=None):
+    def convert(actor, data, group):
+        if actor.stance != 'STAND':
+            return data
+        reference = pose.jericho_rocket_hold(actor, actor.ready)
+        def transform(actor, clip, phase):
+            local, base = composed(actor, clip, phase)
+            fixed = pose.jericho_rocket_hold(actor, base)
+            result = dict(local)
+            for bone in pose.BONES:
+                result[bone] = (p.a._multiply(p.a._inverse(reference[bone][0]), fixed[bone][0])
+                    if clip.flags & 0x10000000 else fixed[bone][0]), local[bone][1]
+            return result
+        return bake(actor, data, transform, dense=True)
+    return weapon_stage(pack, 'RAILRCKT', {'Alert Poses UB', 'Rocket Launcher Aim',
+        'Weapon Shoot', 'Movement UB RocketLauncher', 'Jump RocketLauncher',
+        'Vampire Jump RocketLauncher'}, 'jericho_rocket_hold', convert,
+        aliases={'Chaz', 'JerichoCoop'} if animation_key is None else {'JerichoCoop'},
+        animation_key=animation_key)
+
+
 def neck_stage(pack, *, animation_key=None, back=False):
     references = {}
     def convert(actor, data, group):
@@ -296,17 +322,6 @@ class Overlay:
 
 def animations(read, angles, cancel=lambda: None, progress=lambda message: None):
     pack = Overlay(read, cancel)
-    progress('Preparing corrected crossbow reloads...')
-    crossbow = {}
-    for alias in sorted(p.GRIP_ACTORS):
-        for stance in ('STAND', 'CROUCH'):
-            actor = pose.Actor(pack, 'Crossbow', stance, alias)
-            path = art.norm(actor.actions['RELOAD']['attributes']['Name']) + '.sanm'
-            raw = pose.crossbow_reload(actor)
-            if path in crossbow and crossbow[path] != raw:
-                raise ValueError('Conflicting crossbow reload')
-            crossbow[path] = raw
-    pack.changes.update(crossbow)
     progress('Preparing corrected weapon poses...')
     initial = sniper_stage(pack, 'initial', angles)
     for path in list(initial):
@@ -340,6 +355,26 @@ def animations(read, angles, cancel=lambda: None, progress=lambda message: None)
     pack.changes.update(sniper_stage(pack, 'crossbow', angles, animation_key='NotMulti'))
     progress('Preparing male walking animations...')
     pack.changes.update(gait_stage(pack))
+    for key in (None, 'NotMulti'):
+        pack.changes.update(rocket_hold_stage(pack, animation_key=key))
+    progress('Retargeting weapon reloads from first-person hands...')
+    for key in (None, 'NotMulti'):
+        pack.changes.update(weapon_stage(pack, 'CROSSBOW', {'Reload Crossbow'},
+            'pov_crossbow_reload', lambda actor, data, group: pose.FirstPersonReload(actor).bake(),
+            aliases=p.GRIP_ACTORS if key is None else p.GRIP_ACTORS - {'Chaz'},
+            animation_key=key))
+        pack.changes.update(weapon_stage(pack, 'SNIPERRIFLE', {'Reload Sniper Rifle'},
+            'pov_sniper_reload', lambda actor, data, group: pose.FirstPersonReload(actor).bake(),
+            aliases=p.GRIP_ACTORS if key is None else p.GRIP_ACTORS - {'Chaz'},
+            animation_key=key))
+        for flag, weapon in (('RIFLE', 'Rifle'), ('SHOTGUN', 'Shotgun'), ('RAILRCKT', 'RocketLauncher')):
+            pack.changes.update(weapon_stage(pack, flag, {'Reload ' + weapon},
+                'pov_' + weapon.lower() + '_reload',
+                lambda actor, data, group: pose.FirstPersonReload(actor, actor.action).bake(),
+                aliases=p.GRIP_ACTORS if key is None else p.GRIP_ACTORS - {'Chaz'},
+                animation_key=key))
+    # Solo presentations use separate tables; stabilize them after their pose edits.
+    pack.changes.update(head_stage(pack, animation_key='NotMulti'))
     return pack.changes
 
 
@@ -358,7 +393,7 @@ def build(staged, originals, payload, cancel=lambda: None, progress=lambda messa
                 return raw[entry['offset']:entry['offset'] + entry['size']]
             return entries, read
         _, base = reader(staged / 'packfile.pck')
-        _, original = reader(originals / 'packfile.pck')
+        original_entries, original = reader(originals / 'packfile.pck')
         angle_path = payload / 'character-campaign-angles.json'
         if angle_path.stat().st_size > 256 * 1024:
             raise ValueError('Campaign angle recipe is too large')
@@ -401,7 +436,11 @@ def build(staged, originals, payload, cancel=lambda: None, progress=lambda messa
                 level_changes[path] = raw
         # Rebase on the disc to stay within the native archive's 32-bit offsets.
         archive.compose_file(originals / 'LvlSingl.pck', level_changes, staged / 'LvlSingl.pck.campaign', cancel)
-    return {name: staged / (name + '.campaign') for name in ('packfile.pck', 'LvlSingl.pck')}
+        progress('Preparing banshee chest motion...')
+        archive.compose_file(staged / 'packfile.pck.campaign',
+            character_banshee.resources(original_entries, original), staged / 'packfile.pck.banshee', cancel)
+        (staged / 'packfile.pck.campaign').unlink()
+    return {'packfile.pck': staged / 'packfile.pck.banshee', 'LvlSingl.pck': staged / 'LvlSingl.pck.campaign'}
 
 
 def group_signature(tree, weapon):

@@ -68,8 +68,8 @@ uint32_t ActivePause(const uint8_t* base) {
             // EFB7C records the reciprocal HUD owner. The HUD itself can be
             // hidden while paused, so its visibility is deliberately not a gate.
             // F03E7/1E8F3D propagate the owning controller mask to Pause.
-            // CCE45 decodes this mask; local co-op uses ports zero and one.
-            if (!Read(base, uint64_t(root) + 0x24, local) || (local != 1 && local != 2) ||
+            // CCE45 decodes this mask; local multiplayer uses one bit per input port.
+            if (!Read(base, uint64_t(root) + 0x24, local) || (local != 1 && local != 2 && local != 4 && local != 8) ||
                 !Field(base, root, 0xF4, hud) || !Field(base, hud, 0x120, owned) || owned != root) return 0;
             if (PauseLayoutActive(base, root, visible_layout)) return 0;
             return root;
@@ -110,7 +110,7 @@ struct PauseRows {
     uint32_t owner = 0, main = 0, menu = 0, rows[3]{}, removed[2]{};
     bool consumed = false;
 };
-PauseRows g_pause_rows[2];
+PauseRows g_pause_rows[4];
 
 bool PauseMenu(const uint8_t* base, uint32_t owner, uint32_t& main, uint32_t& menu,
                uint32_t& items, uint16_t& count) {
@@ -118,7 +118,7 @@ bool PauseMenu(const uint8_t* base, uint32_t owner, uint32_t& main, uint32_t& me
     if (!Field(base, owner, 0xE8, main) || !Field(base, main, 0, type) || type != kPauseMainVtable ||
         !Field(base, main, 8, parent) || parent != owner || !Field(base, main, 4, menu) ||
         !Field(base, menu, 0, type) || type != 0x43C8B8 || !Span(base, menu, 0xA4) ||
-        !Read(base, uint64_t(menu) + 0x58, count) || (count != 6 && count != 7) ||
+        !Read(base, uint64_t(menu) + 0x58, count) || (count != 4 && count != 5 && count != 6 && count != 7) ||
         !Field(base, menu, 0x5C, items) || !Span(base, items, count * 4) ||
         !Field(base, menu, 0x68, selected) || selected >= count) return false;
     // Validate either the untouched authored list or our complete replacement.
@@ -126,26 +126,29 @@ bool PauseMenu(const uint8_t* base, uint32_t owner, uint32_t& main, uint32_t& me
         "XBL_XboxLiveOptions", "GEN_RestartMission", "GEN_QuitGame"};
     constexpr const char* added[]{"GEN_ResumeGame", "GEN_Lore", "~GRAPHICS",
         "~CONTROLS", "~AUDIO", "GEN_RestartMission", "GEN_QuitGame"};
+    constexpr const char* versus[]{"GEN_ResumeGame", "GEN_Options", "XBL_XboxLiveOptions", "GEN_QuitGame"};
+    constexpr const char* versus_added[]{"GEN_ResumeGame", "~GRAPHICS", "~CONTROLS", "~AUDIO", "GEN_QuitGame"};
+    const auto expected = count == 4 ? versus : count == 5 ? versus_added : count == 6 ? names : added;
     for (unsigned i = 0; i < count; ++i) {
         uint32_t item;
         if (!Read(base, uint64_t(items) + i * 4, item) || !Span(base, item, 0x68) ||
             !Field(base, item, 0, type) || type != 0x43C8F8 ||
             !Field(base, item, 4, parent) || parent != menu) return false;
-        if (!RefIs(base, item + 0x30, count == 6 ? names[i] : added[i])) return false;
+        if (!RefIs(base, item + 0x30, expected[i])) return false;
     }
     return true;
 }
 bool AddedRows(const PauseRows& rows, const uint8_t* base, uint32_t owner, uint32_t main, uint32_t menu,
                uint32_t items, uint16_t count) {
     if (rows.base != base || rows.owner != owner || rows.main != main ||
-        rows.menu != menu || count != 7) return false;
+        rows.menu != menu || (count != 5 && count != 7)) return false;
     const auto key = PauseControlsKey(base, owner);
     uint32_t page_key;
     if (!key || !Read(base, key, page_key)) return false;
     constexpr const char* names[]{"~GRAPHICS", "~CONTROLS", "~AUDIO"};
     for (unsigned i = 0; i < 3; ++i) {
         uint32_t item, value;
-        if (!Read(base, uint64_t(items) + (2 + i) * 4, item) || item != rows.rows[i] ||
+        if (!Read(base, uint64_t(items) + ((count == 5 ? 1 : 2) + i) * 4, item) || item != rows.rows[i] ||
             !RefIs(base, item + 0x30, names[i]) ||
             !Field(base, item, 0x50, value) || value != page_key) return false;
     }
@@ -287,7 +290,16 @@ GraphicsRouteState QueryGraphicsMenuRoute(const uint8_t* base) {
     if (result.paused) {
         uint8_t mask;
         if (!Read(base, uint64_t(options) + 0x24, mask)) return {};
-        result.input_port = mask == 2 ? 1 : 0;
+        result.input_port = mask == 8 ? 3 : mask == 4 ? 2 : mask == 2 ? 1 : 0;
+        result.multiplayer = RefIs(base, options + 0x30, "multiplayer_pause");
+        uint32_t hud, camera, type; std::array<float, 4> viewport;
+        // D835C copies the owning player's viewport to HUD+1DC's camera.
+        if (Field(base, options, 0xF4, hud) && Field(base, hud, 0x1DC, camera) &&
+            Field(base, camera, 0, type) && type == 0x43F97C &&
+            Read(base, uint64_t(camera) + 0x58, viewport) &&
+            std::all_of(viewport.begin(), viewport.end(), [](float v) {return std::isfinite(v) && v >= 0 && v <= 1;}) &&
+            viewport[2] > 0 && viewport[3] > 0 && viewport[0] + viewport[2] <= 1.001f &&
+            viewport[1] + viewport[3] <= 1.001f) result.pause_viewport = viewport;
     }
     // Only frontend Options uses E4BDD/E4D03's stack. In-game Pause is an
     // independently registered UI root, selected above from original input scope.
@@ -303,6 +315,10 @@ GraphicsRouteState QueryGraphicsMenuRoute(const uint8_t* base) {
         if (!Field(base, options, result.paused ? 0xE8 : 0xF0, main_page) || main_page != page) return {};
         result.route = GraphicsMenuRoute::OptionsMain;
         result.pause_settings_available = result.paused && PauseControlsKey(base, options);
+        uint32_t main, menu, items; uint16_t count;
+        result.multiplayer_pause = result.paused && RefIs(base, options + 0x30, "multiplayer_pause") &&
+            PauseMenu(base, options, main, menu, items, count) && count == 5 &&
+            AddedRows(g_pause_rows[result.input_port], base, options, main, menu, items, count);
     } else if (!result.paused && vtable == kVisualVtable) {
         result.route = GraphicsMenuRoute::Visual;
         uint32_t widget;
@@ -531,17 +547,19 @@ bool EnsureNativePauseEntries(uint8_t* base) {
         cached.consumed = false; // Observed return to the original main page.
         return true;
     }
+    const bool versus = count == 4;
+    const unsigned first = versus ? 1 : 2;
     uint32_t options_row, live_row;
-    if (count != 6 || !Read(base, uint64_t(items) + 8, options_row) || !RefIs(base, options_row + 0x30, "GEN_Options") ||
-        !Read(base, uint64_t(items) + 12, live_row) || !RefIs(base, live_row + 0x30, "XBL_XboxLiveOptions")) return false;
+    if ((count != 4 && count != 6) || !Read(base, uint64_t(items) + first * 4, options_row) || !RefIs(base, options_row + 0x30, "GEN_Options") ||
+        !Read(base, uint64_t(items) + (first + 1) * 4, live_row) || !RefIs(base, live_row + 0x30, "XBL_XboxLiveOptions")) return false;
     uint32_t shown, frame;
     float rect[4], baseline[4], live[4];
     if (!Field(base, menu, 0x64, shown) || shown || !Read(base, uint64_t(menu) + 0x10, rect) ||
-        rect[0] != 0.f || rect[1] != .29f || rect[2] != .8f || rect[3] != .71f ||
+        rect[0] != 0.f || rect[1] != (versus ? .16f : .29f) || rect[2] != .8f || rect[3] != (versus ? .62f : .71f) ||
         !PauseFrame(base, route.options, menu, frame) ||
         !Read(base, uint64_t(route.options) + 0xFC, baseline) ||
         !Read(base, uint64_t(frame) + 0x10, live) ||
-        baseline[0] != 0.f || baseline[1] != 0.f || baseline[2] != .42f || baseline[3] != .29f ||
+        baseline[0] != 0.f || baseline[1] != 0.f || baseline[2] != .42f || baseline[3] != (versus ? .45f : .29f) ||
         live[0] != baseline[0] || live[1] != baseline[1] || live[3] != baseline[3] ||
         thread->ctx->esp < 0x2000 || !Span(base, uint64_t(thread->ctx->esp) - 0x2000, 0x2000)) return false;
     const auto key = PauseControlsKey(base, route.options);
@@ -583,31 +601,63 @@ bool EnsureNativePauseEntries(uint8_t* base) {
     // both owned children for the original destructor, but hide and unfocus
     // them because base render/input traversal also walks the child list.
     uint32_t ordered[9], selected;
-    if (!Field(base, menu, 0x5C, items) || !Read(base, items, ordered) ||
-        !Field(base, menu, 0x68, selected) || selected >= 6) return false;
-    const uint32_t removed[]{ordered[2], ordered[3]};
+    if (!Field(base, menu, 0x5C, items) || !Span(base, items, (count + 3) * 4) ||
+        !Field(base, menu, 0x68, selected) || selected >= count) return false;
+    std::memcpy(ordered, base + items, (count + 3) * 4);
+    const uint32_t removed[]{ordered[first], ordered[first + 1]};
     for (const auto row : removed) {
         call.ecx = row;
         kernel::CallGuest(call, 0x1E8E4F, {0});
         call.ecx = row;
         kernel::CallGuest(call, 0x1E8E77, {0});
     }
-    const uint32_t final_rows[]{ordered[0], ordered[1], rows[0], rows[1], rows[2],
-        ordered[4], ordered[5], 0, 0};
-    std::memcpy(base + items, final_rows, sizeof(final_rows));
-    const uint16_t final_count = 7;
+    uint32_t final_rows[9]{};
+    std::copy_n(ordered, first, final_rows);
+    std::copy_n(rows, 3, final_rows + first);
+    std::copy(ordered + first + 2, ordered + count, final_rows + first + 3);
+    std::memcpy(base + items, final_rows, (count + 3) * 4);
+    const uint16_t final_count = count + 1;
     std::memcpy(base + menu + 0x58, &final_count, sizeof(final_count));
     // Preserve Restart/Quit selection when the new Audio entry shifts them.
-    if (selected >= 4) {
+    if (selected >= first + 2) {
         ++selected;
         std::memcpy(base + menu + 0x68, &selected, sizeof(selected));
     }
-    if (selected == 2 || selected == 3) {
-        call.ecx = rows[selected - 2];
+    if (selected == first || selected == first + 1) {
+        call.ecx = rows[selected - first];
         kernel::CallGuest(call, 0x1E8E4F, {base[menu + 0x2E]});
     }
-    // Original all-row layout fits seven entries within the existing frame/footer.
+    // Original all-row layout fits the new entries within each authored frame/footer.
     cached = {base, route.options, main, menu, {rows[0], rows[1], rows[2]}, {removed[0], removed[1]}, false};
+    DarkwatchInvalidateMenuSnapshot();
+    return true;
+}
+
+GraphicsRouteState PrepareMultiplayerPauseMenu(uint8_t* base, uint32_t root) {
+    uint32_t type;
+    if (!Field(base, root, 0, type) || type != kPauseVtable ||
+        !RefIs(base, root + 0x30, "multiplayer_pause")) return {};
+    EnsureNativePauseEntries(base);
+    const auto route = QueryGraphicsMenuRoute(base);
+    return route.multiplayer_pause && route.options == root ? route : GraphicsRouteState{};
+}
+
+bool ActivateMultiplayerPauseEntry(uint8_t* base, uint32_t owner, unsigned index) {
+    const auto route = QueryGraphicsMenuRoute(base);
+    const auto* thread = kernel::Current();
+    uint32_t main, menu, items, row; uint16_t count;
+    uint8_t enabled;
+    if (!route.multiplayer_pause || route.options != owner || index >= 5 ||
+        !thread || !thread->ctx || base != kernel::g_base ||
+        thread->ctx->esp < 0x1000 || !Span(base, thread->ctx->esp - 0x1000, 0x1000) ||
+        !PauseMenu(base, owner, main, menu, items, count) ||
+        !Read(base, uint64_t(items) + index * 4, row) || !Read(base, uint64_t(row) + 0x54, enabled) || !enabled) return false;
+    X86Context call = *thread->ctx;
+    call.ecx = menu;
+    kernel::CallGuest(call, 0x1EF329, {index});
+    if (!QueryGraphicsMenuRoute(base).multiplayer_pause) return false;
+    call = *thread->ctx; call.ecx = main;
+    kernel::CallGuest(call, 0xF64B3, {0});
     DarkwatchInvalidateMenuSnapshot();
     return true;
 }
@@ -622,10 +672,11 @@ uint32_t TakeNativePauseEntry(uint8_t* base, uint32_t expected_options) {
     if (!route.paused || route.options != expected_options || route.route != GraphicsMenuRoute::Controls ||
         cached.consumed || !PauseMenu(base, route.options, main, menu, items, count) ||
         !AddedRows(cached, base, route.options, main, menu, items, count) ||
-        !Field(base, menu, 0x68, selected) || selected < 2 || selected > 4 ||
-        !base[cached.rows[selected - 2] + 0x54]) return 0;
+        !Field(base, menu, 0x68, selected)) return 0;
+    const unsigned first = count == 5 ? 1 : 2;
+    if (selected < first || selected >= first + 3 || !base[cached.rows[selected - first] + 0x54]) return 0;
     cached.consumed = true;
-    return selected - 1;
+    return selected - first + 1;
 }
 }  // namespace darkwatch
 

@@ -143,8 +143,8 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         shutil.copyfile(ROOT / "launcher/gameplay_hd.py", self.payload / "gameplay_hd.py")
         shutil.copyfile(ROOT / "launcher/language_pack.py", self.payload / "language_pack.py")
         for name in ('character_animation.py', 'character_archive.py', 'character_assets.py',
-                     'character_repaint.py', 'character_content.py', 'character_update.py', 'character-update.json.gz',
-                     'character_campaign.py', 'character_campaign_pose.py', 'character_dropped_clips.py',
+                     'character_repaint.py', 'content_profile.py', 'character_content.py', 'character_update.py', 'character-update.json.gz',
+                     'character_banshee.py', 'character_campaign.py', 'character_campaign_pose.py', 'character_dropped_clips.py',
                      'character-campaign-angles.json', 'character_boss.py',
                      'character_boss_effects.py', 'character_spectral_hands.py', 'character_hand_seams.py',
                      'character_secondary.py', 'character_preview.py', 'character_roster.py', 'character_tala.py',
@@ -182,6 +182,11 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
                                                             sha(self.installed_data['packfile.pck']))})
         fixture.start()
         self.addCleanup(fixture.stop)
+        original = patch.object(setup.content_profile, 'ORIGINAL', dict(characters.INSTALLED))
+        original.start(); self.addCleanup(original.stop)
+        catalog = patch.object(characters, 'catalog', return_value={'originals': {
+            name: {'size': len(self.data[name]), 'sha256': sha(self.data[name])} for name in characters.INSTALLED}})
+        catalog.start(); self.addCleanup(catalog.stop)
         # Tiny setup fixtures are not PCK archives; the real recovery codec has
         # its own synthetic and original-disc reconstruction tests.
         def capture_source(assets, recovery, originals, cancel):
@@ -201,7 +206,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
                                   has_recovery=lambda folder, originals: all((folder / (name + '.tail')).is_file() for name in originals))
         recovery.start()
         self.addCleanup(recovery.stop)
-        def fixture_preview(assets, output, cancel):
+        def fixture_preview(assets, output, cancel, *, profile="enhanced"):
             # Preview codec has focused tests; exercise its real transaction here.
             cancel()
             data = b'synthetic private preview cache'
@@ -230,11 +235,68 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
 
     def install_disc(self):
         with setup.exclusive(self.install):
-            return Path(self.backend.import_iso(self.iso)["install_dir"])
+            return Path(self.backend.import_iso(self.iso, profile="enhanced")["install_dir"])
 
     def install_direct(self):
         with setup.exclusive(self.install):
-            return Path(self.backend.use_iso(self.iso)["install_dir"])
+            return Path(self.backend.use_iso(self.iso, profile="enhanced")["install_dir"])
+
+    def test_new_install_retires_old_copy_and_keeps_unique_user_files(self):
+        old = self.install_disc()
+        (old/'hdd').mkdir(exist_ok=True)
+        (old/'hdd/save.dat').write_bytes(b'campaign progress')
+        (old/'personal.txt').write_bytes(b'keep me')
+        current = self.install_disc()
+        self.assertFalse(old.exists())
+        self.assertEqual((current/'hdd/save.dat').read_bytes(), b'campaign progress')
+        backup = self.install/'preserved-user-data'/old.name
+        self.assertEqual((backup/'personal.txt').read_bytes(), b'keep me')
+        self.assertFalse((backup/'assets').exists())
+        self.assertEqual(self.backend.active(), current)
+
+    def test_old_save_conflicts_are_preserved_without_overwriting_current_save(self):
+        old = self.install_disc()
+        with patch.object(self.backend, 'cleanup_versions'):
+            current = self.install_disc()
+        for folder, data in ((old,b'old progress'), (current,b'new progress')):
+            (folder/'hdd').mkdir(exist_ok=True)
+            (folder/'hdd/save.dat').write_bytes(data)
+        self.backend.cleanup_versions(current)
+        self.assertFalse(old.exists())
+        self.assertEqual((current/'hdd/save.dat').read_bytes(), b'new progress')
+        self.assertEqual((self.install/'preserved-user-data'/old.name/'hdd/save.dat').read_bytes(), b'old progress')
+
+    def test_cleanup_keeps_old_version_when_preservation_fails_or_iso_is_inside(self):
+        old = self.install_disc()
+        (old/'personal.txt').write_bytes(b'keep me')
+        with patch.object(self.backend, 'cleanup_versions'):
+            current = self.install_disc()
+        with patch.object(self.backend, 'copy_file', side_effect=OSError('disk full')):
+            self.backend.cleanup_versions(current)
+        self.assertTrue(old.exists())
+        receipt = json.loads((current/'install.json').read_text())
+        receipt.update(source_mode='iso', iso_path=str(old/'own.iso'))
+        (current/'install.json').write_text(json.dumps(receipt))
+        (old/'own.iso').write_bytes(b'original disc must stay')
+        self.backend.cleanup_versions(current)
+        self.assertTrue(old.exists())
+        self.assertEqual((old/'own.iso').read_bytes(), b'original disc must stay')
+
+    def test_cleanup_interruption_keeps_receipt_for_safe_retry(self):
+        old = self.install_disc()
+        with patch.object(self.backend, 'cleanup_versions'):
+            current = self.install_disc()
+        real_remove = setup.shutil.rmtree
+        def fail(path, *args, **kwargs):
+            if Path(path).parent == old:
+                raise OSError('controlled interrupted removal')
+            return real_remove(path, *args, **kwargs)
+        with patch.object(setup.shutil, 'rmtree', side_effect=fail):
+            self.backend.cleanup_versions(current)
+        self.assertTrue((old/'install.json').is_file())
+        self.assertTrue(self.backend.status()['ready'])
+        self.backend.cleanup_versions(current)
+        self.assertFalse(old.exists())
 
     def test_incremental_update_payload_must_be_complete(self):
         for name in ('character_update.py', 'character-update.json.gz', 'character_campaign.py',
@@ -352,7 +414,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         before = self.snapshot(current)
         self.iso = self.iso.rename(self.root / 'Moved Español 🦇.iso')
         with patch.object(characters, 'prepare', side_effect=AssertionError('unnecessary content rebuild')):
-            result = self.backend.use_iso(self.iso)
+            result = self.backend.use_iso(self.iso, profile="enhanced")
         self.assertTrue(result['ready'])
         self.assertEqual(result['iso_path'], str(self.iso))
         self.assertEqual(self.backend.active(), current)
@@ -405,7 +467,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         record['content_revision'] = 'older-direct-content'
         setup.write_json(current / 'install.json', record)
         self.iso = self.iso.rename(self.root / 'relocated.iso')
-        self.assertTrue(self.backend.use_iso(self.iso)['ready'])
+        self.assertTrue(self.backend.use_iso(self.iso, profile="enhanced")['ready'])
         self.assertEqual(list((self.install / 'versions').iterdir()), [current])
         self.assertEqual(self.backend.verify(), current)
 
@@ -421,11 +483,11 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
             return writer(path, value)
         with patch.object(setup, 'write_json', side_effect=interrupt):
             with self.assertRaisesRegex(OSError, 'interrupted source receipt'):
-                self.backend.use_iso(self.iso)
+                self.backend.use_iso(self.iso, profile="enhanced")
         self.assertEqual((current / 'install.json').read_bytes(), original_receipt)
         self.assertFalse(self.backend.status()['ready'])
         with patch.object(characters, 'prepare', side_effect=AssertionError('unnecessary rebuild')):
-            self.assertTrue(self.backend.use_iso(self.iso)['ready'])
+            self.assertTrue(self.backend.use_iso(self.iso, profile="enhanced")['ready'])
         self.assertEqual(self.snapshot(current / 'assets'), assets)
         self.assertEqual(self.backend.active(), current)
 
@@ -627,10 +689,13 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         with self.assertRaisesRegex(setup.SetupError, "Older language ZIPs"):
             self.backend.install_spanish(archive)
         self.assertEqual(self.snapshot(current), before)
-        # An Xbox repair keeps the original version untouched and never activates
-        # unrecognized old Spanish content in the new version.
+        # Retire game data but preserve unrecognized optional media outside versions.
         repaired = self.install_disc()
-        self.assertEqual(self.snapshot(current), before)
+        self.assertFalse(current.exists())
+        backup = self.install/'preserved-user-data'/current.name
+        for name, data in before.items():
+            if name.startswith('language/'):
+                self.assertEqual((backup/name).read_bytes(), data)
         self.assertFalse((repaired / "language/es").exists())
         self.assertEqual(language_pack.selected(repaired), "es")
         with self.assertRaisesRegex(setup.SetupError, "PS2 ISO import"):
@@ -1059,7 +1124,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
             self.backend.set_language("es")
         self.assertEqual(language_pack.selected(repaired), "en")
         # The replaced community files remain in an inactive backup.
-        backups = list((current / "language").glob(".spanish-stage-*-previous"))
+        backups = list((self.install / "preserved-user-data" / current.name / "language").glob(".spanish-stage-*-previous"))
         self.assertEqual(len(backups), 1)
         self.assertEqual(self.snapshot(backups[0]), legacy)
         with self.assertRaisesRegex(setup.SetupError, "Older language ZIPs"):
@@ -1492,7 +1557,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         self.assertFalse((current / "hdd").exists())
         self.assertEqual(self.snapshot(legacy), before)
 
-    def test_repair_keeps_saves_bindings_cache_and_prior_version(self):
+    def test_repair_keeps_saves_bindings_cache_and_retires_prior_version(self):
         first = self.install_disc()
         user = {setup.SETTINGS: b"latest wheel binding", "hdd/E/save.dat": b"progress", "hdd2/E/save.dat": b"player2", "cache/shader.bin": b"cache"}
         for name, data in user.items():
@@ -1511,9 +1576,9 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         self.assertNotEqual(first, second)
         for name, data in user.items():
             self.assertEqual((second / name).read_bytes(), data)
-            self.assertEqual((first / name).read_bytes(), data)
+        self.assertFalse(first.exists())
         for relative in ('logs/old.log', 'CrashDumps/old.dmp'):
-            self.assertTrue((first / relative).is_file())
+            self.assertTrue((self.install / "preserved-user-data" / first.name / relative).is_file())
             self.assertFalse((second / relative).exists())
 
     def test_character_conversion_failure_and_cancel_preserve_old_install(self):
@@ -1522,7 +1587,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         for error in (ValueError('unsupported character resource'), setup.Cancelled('cancelled conversion')):
             with self.subTest(error=str(error)), patch.object(characters, 'prepare', side_effect=error):
                 with self.assertRaises(type(error)):
-                    self.backend.import_iso(self.iso)
+                    self.backend.import_iso(self.iso, profile="enhanced")
                 self.assertEqual(self.snapshot(self.install), before)
                 self.assertEqual(self.backend.active(), current)
 
@@ -1555,7 +1620,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
                          characters.CONTENT_REVISION)
         for name, data in user.items():
             self.assertEqual((second / name).read_bytes(), data)
-        self.assertEqual(self.snapshot(first), before)
+        self.assertFalse(first.exists())
 
     def test_disk_budget_includes_all_character_copies(self):
         original_bytes = sum(len(data) for data in self.data.values())
@@ -1615,7 +1680,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
                     self.backend.play()
                 self.assertFalse((current / "worker-ran.txt").exists())
                 with self.assertRaisesRegex(setup.SetupError, "Shader preparation"):
-                    self.backend.import_iso(self.iso)
+                    self.backend.import_iso(self.iso, profile="enhanced")
                 self.assertEqual((self.install / "active.json").read_bytes(), pointer)
                 self.assertEqual(set((self.install / "versions").iterdir()), {current})
 
@@ -1675,7 +1740,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         current = self.install_disc()
         with patch.dict(os.environ, {"DARKWATCH_TEST_BUILDER_FAIL": "1"}):
             with self.assertRaisesRegex(setup.SetupError, 'fixture preparation failed'):
-                self.backend.import_iso(self.iso)
+                self.backend.import_iso(self.iso, profile="enhanced")
         self.assertEqual(self.backend.active(), current)
         self.assertFalse(list(self.install.rglob('*.log')))
 
@@ -1686,27 +1751,27 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         bad = dict(self.data, **{"audio.pck": b"wrong fixture"})
         make_iso(self.iso, bad)
         with self.assertRaisesRegex(setup.SetupError, "damaged or unsupported"):
-            self.backend.import_iso(self.iso)
+            self.backend.import_iso(self.iso, profile="enhanced")
         self.assertEqual((self.install / "active.json").read_bytes(), pointer)
         self.assertEqual(set((self.install / "versions").iterdir()), before_versions)
         make_iso(self.iso, self.data)
         with patch.object(self.backend, "build_hd", side_effect=setup.Cancelled("cancelled")):
             with self.assertRaises(setup.Cancelled):
-                self.backend.import_iso(self.iso)
+                self.backend.import_iso(self.iso, profile="enhanced")
         self.assertEqual(self.backend.active(), current)
         self.assertEqual(set((self.install / "versions").iterdir()), before_versions)
         cancel = self.root / "cancel"
         cancel.touch()
         self.backend.cancel_file = cancel
         with self.assertRaises(setup.Cancelled):
-            self.backend.import_iso(self.iso)
+            self.backend.import_iso(self.iso, profile="enhanced")
         self.assertEqual(self.backend.active(), current)
 
     def test_builder_failure_and_commit_failure_are_transactional(self):
         current = self.install_disc()
         with patch.object(self.backend, "build_hd", side_effect=setup.SetupError("builder failed")):
             with self.assertRaisesRegex(setup.SetupError, "builder failed"):
-                self.backend.import_iso(self.iso)
+                self.backend.import_iso(self.iso, profile="enhanced")
         real_replace = os.replace
         def fail_commit(source, target):
             if Path(target) == self.install / "active.json":
@@ -1714,7 +1779,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
             return real_replace(source, target)
         with patch.object(os, "replace", side_effect=fail_commit):
             with self.assertRaisesRegex(OSError, "commit blocked"):
-                self.backend.import_iso(self.iso)
+                self.backend.import_iso(self.iso, profile="enhanced")
         self.assertEqual(self.backend.verify(), current)
 
     def test_cancel_stops_only_running_builder_and_keeps_install(self):
@@ -1730,7 +1795,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
             return child
         with patch.dict(os.environ, {"DARKWATCH_TEST_BUILDER_WAIT": "1"}), patch.object(subprocess, "Popen", side_effect=spawn):
             with self.assertRaises(setup.Cancelled):
-                self.backend.import_iso(self.iso)
+                self.backend.import_iso(self.iso, profile="enhanced")
         self.assertEqual(len(children), 1)
         self.assertIsNotNone(children[0].returncode)
         self.assertNotEqual(children[0].returncode, 0)
@@ -1757,7 +1822,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
     def test_running_game_blocks_import_and_duplicate_play(self):
         with patch.object(setup, "game_running", return_value=True):
             with self.assertRaisesRegex(setup.SetupError, "Close Darkwatch"):
-                self.backend.import_iso(self.iso)
+                self.backend.import_iso(self.iso, profile="enhanced")
             with self.assertRaisesRegex(setup.SetupError, "Close Darkwatch"):
                 self.backend.play()
 
@@ -1781,7 +1846,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
                     image = self.root / ('my disc' + extension)
                     make_iso(image, self.data, offset=offset)
                     with setup.exclusive(self.install):
-                        current = Path(self.backend.import_iso(image)['install_dir'])
+                        current = Path(self.backend.import_iso(image, profile="enhanced")['install_dir'])
                     self.assertEqual(self.backend.verify(), current)
                     for name, data in self.installed_data.items():
                         self.assertEqual((current / 'assets' / name).read_bytes(), data)
@@ -1797,7 +1862,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         assets.mkdir()
         shutil.copyfile(self.iso, assets / 'disc.iso')
         for action in (self.backend.status, lambda: self.backend.use_drop_in_iso(assets),
-                       lambda: self.backend.use_iso(self.iso), lambda: self.backend.import_iso(self.iso)):
+                       lambda: self.backend.use_iso(self.iso, profile="enhanced"), lambda: self.backend.import_iso(self.iso, profile="enhanced")):
             with self.assertRaisesRegex(setup.SetupError, 'active installation record is missing'):
                 action()
         self.assertEqual(list((self.install / 'versions').iterdir()), [current])
@@ -1814,7 +1879,8 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
 
     def test_explicit_version_selection_honors_choice_and_rejects_wrong_disc(self):
         previous = self.install_disc()
-        current = self.install_disc()
+        with patch.object(self.backend, 'cleanup_versions'):
+            current = self.install_disc()
         before = self.snapshot(current)
         self.assertEqual(self.backend.active(), current)
         self.backend.use_installation(previous)
@@ -1830,7 +1896,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
     def test_package_damage_and_escaped_active_pointer_rejected(self):
         (self.payload / "runtime" / setup.EXE).write_bytes(b"corrupt")
         with self.assertRaisesRegex(setup.SetupError, "Launcher file is damaged"):
-            self.backend.import_iso(self.iso)
+            self.backend.import_iso(self.iso, profile="enhanced")
         self.install.mkdir(exist_ok=True)
         (self.install / "active.json").write_text('{"version":"../escape"}')
         with self.assertRaisesRegex(setup.SetupError, "Installation record"):
@@ -1852,7 +1918,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         self.repin()
         backend = setup.Setup(self.package, self.install, notify=lambda *args, **kw: None)
         with self.assertRaisesRegex(setup.SetupError, "artwork package is incomplete"):
-            backend.import_iso(self.iso)
+            backend.import_iso(self.iso, profile="enhanced")
 
     def test_cli_json_contract_and_public_metadata(self):
         output = io.StringIO()

@@ -43,3 +43,6 @@ void DarkwatchEndWeaponView(X86Context& ctx, uint8_t* base);
 void DarkwatchBeginPowerView(X86Context& ctx, uint8_t* base);
 void DarkwatchEndPowerView(X86Context& ctx, uint8_t* base);
 void DarkwatchPowerViewProjection(X86Context& ctx, uint8_t* base);
+
+// Bound first-person walking bob by its current native movement amplitude.
+void DarkwatchLimitMovementBob(X86Context& ctx, uint8_t* base);

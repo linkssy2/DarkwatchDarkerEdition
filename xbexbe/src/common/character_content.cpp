@@ -11,16 +11,16 @@ namespace {
 struct ArchivePin { const char* guest_path; uint64_t size; std::string_view sha256; };
 #ifndef XBE_RELEASE
 constexpr std::array<ArchivePin, 3> kDevTestRoomArchives{{
-    {"D:\\packfile.pck", 210056365, "c817f7419d0ef62d5c977277d507cc3562ec4c42f999c8eb386ad55d249b31cd"},
-    {"D:\\LvlSingl.pck", 2487593903, "a0fdace2361471ef436813011beea610dc97b0861d50bbb9bbc2f1959adcafc9"},
-    {"D:\\audio.pck", 152632677, "4c16eb53a53b7b502ec77db68d68b940f1d75be46842d8761e80cccb79fa6540"},
+    {"D:\\packfile.pck", 227423205, "61b10d349f67745eeea0643bfb1ae7c397234c3fae49d69a8c24674fbde01750"},
+    {"D:\\LvlSingl.pck", 3134167983, "9aa065d8489ae98918e9d3555ae175a3ee1b1c7a3090359f4b0269de7384fe21"},
+    {"D:\\audio.pck", 152688020, "c4e48acc43189f22b8313c3a86313da31b0fceff85c47527e21ef5098456b398"},
 }};
-constexpr std::string_view kDevTestRoomFixture = "5561188cd6f3f6ca1af3d01b900f1d99e8f381ecd9ff229462a3ff1063018dde";
+constexpr std::string_view kDevTestRoomFixture = "7ddfccd3cc2cf3510dbcedfa947a11d153166aee3f9a1b7e99bd35d579fd3c91";
 #endif
 constexpr std::array<ArchivePin, 3> kCharacterArchives{{
-    {"D:\\packfile.pck", 199441106, "e19c6eeb1494bb7ede1f9976f0d402c970be44ae7da1a2754fd063a2b2e48257"},
-    {"D:\\LvlSingl.pck", 3018752579, "55e931aa28853a38ad8c8072140b4cfcb4c30e6c9e4c27eb851d4d142b727180"},
-    {"D:\\audio.pck", 152395109, "33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285"},
+    {"D:\\packfile.pck", 227357669, "a7915d4e4943bed000037805bbe218489cb7d35c06b3d175b0c60021295a49d2"},
+    {"D:\\LvlSingl.pck", 3075125827, "0f3cd694b05c2bc166ec9314868ecb25b0131016b626df2759dbda86dbbfd16c"},
+    {"D:\\audio.pck", 152450452, "fb164929befb6a333802863557c4a9d9544ad525c7cd8b7877b3f724fb896081"},
 }};
 
 constexpr std::array<ArchivePin, 3> kCampaignFeedbackArchives{{
@@ -258,6 +258,16 @@ bool CampaignFeedbackReady() {
 }
 }
 
+bool DarkwatchOriginalContentReady() {
+    constexpr std::array<ArchivePin, 3> pins{{
+        {"D:\\packfile.pck", 110109318, "4eb33149939efc9509620887383de8d551f6bca74935dadd52b6e26ac064a21a"},
+        {"D:\\LvlSingl.pck", 207710373, "ee1af353ad47b929b019e0b75ec605d980e8ef96466fb304277199665b4feaf5"},
+        {"D:\\audio.pck", 137741272, "ffa551a20dbe3abf0eb6359011fe62a693f7f8b67822920f2bb9d31fe77c2d43"},
+    }};
+    static const CharacterArchiveSet content(pins);
+    return content.ready;
+}
+
 bool DarkwatchCharacterContentReady() {
     if (CampaignFeedbackReady()) return true;
     // Call after mounting D: and before guest archive opens; retained locks force their read-only fallback.
@@ -276,5 +286,6 @@ bool DarkwatchPrivateClipFixtureReady() {
 }
 
 void DarkwatchCharacterInitialize(X86Context&, uint8_t*) {
-    (void)DarkwatchCharacterContentReady();
+    // Admit originals before guest writable opens can block the retained read locks.
+    if (!DarkwatchCharacterContentReady()) (void)DarkwatchOriginalContentReady();
 }

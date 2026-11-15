@@ -85,6 +85,17 @@ int main(){
   Write(invalid);audio::SetSurroundEnabled(true);app::Load();CHECK(!audio::SurroundEnabled());
   Write("surround_sound=true\n");app::Load();CHECK(audio::SurroundEnabled());
  }
+ for(int volume:{0,25,100}){
+  darkwatch::SetMonsterScreamsVolume(volume);CHECK(app::Save());
+  darkwatch::SetMonsterScreamsVolume(50);app::Load();CHECK(darkwatch::MonsterScreamsVolume()==volume);
+ }
+ Write("monster_screams_volume=-20\n");app::Load();CHECK(darkwatch::MonsterScreamsVolume()==0);
+ Write("monster_screams_volume=200\n");app::Load();CHECK(darkwatch::MonsterScreamsVolume()==100);
+ for(const char* invalid:{"'quiet'","false","0.5","[]"}){
+  Write((std::string("monster_screams_volume=")+invalid+"\n").c_str());
+  app::Load();CHECK(darkwatch::MonsterScreamsVolume()==100);
+ }
+ Write("");darkwatch::SetMonsterScreamsVolume(0);app::Load();CHECK(darkwatch::MonsterScreamsVolume()==100);
  // Callback writes must replace a malformed existing key while preserving unrelated entries.
  toml::table table{{"surround_sound","old value"},{"sound_output",42},{"unrelated",42}};
  audio::SetSurroundEnabled(false);darkwatch::AudioSave(&table);

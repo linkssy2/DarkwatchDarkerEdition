@@ -16,7 +16,7 @@ REFERENCE = REPO.parent / 'Urban Chaos Riot Response Recompiled'
 PYTHON = REFERENCE / '.tools/python'
 VS = Path('C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools')
 CRT = VS / 'VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT'
-VERSION = '0.7.9'
+VERSION = '0.8.0'
 RELEASE_PROFILE = {'name': 'release-candidate', 'diagnostics': False, 'strict_assets': True}
 LAUNCHER = 'Darkwatch Darker Edition.exe'
 DIRECT_PLAY = 'Play Darkwatch.exe'
@@ -30,13 +30,23 @@ GENERATED = {
     'payload/python/python312._pth': 'python312.zip\n.\n..\n',
     'assets/README.txt': '''Put your supported original Xbox Darkwatch ISO or XISO in this folder,
 then open Darkwatch Darker Edition.exe. On a fresh installation, one disc image
-is detected automatically and prepared for direct ISO playback. Keep it here.
+is detected automatically. Choose content in setup before preparing direct ISO playback. Keep it here.
 The launcher validates the disc first; multiple images require selecting one.
 Setup prepares local resources and shaders, without extracting the whole disc.
 Existing installations are reused. Updates preserve your ISO, saves and add-ons.
 Prefer to remove the ISO after setup? Use Select Game > Import once instead.
 ''',
-    'README.txt': '''Darkwatch: Darker Edition - 0.7.9
+    'README.txt': '''
+FRESH INSTALL CONTENT
+Original playable characters, models and animations are the default.
+Select Include expanded characters in setup to add the full roster and enhanced
+models/animations (about 2.79 GiB of extra game archives). Existing installs keep
+their choice; changing it requires a separate fresh installation.
+Successful installs and updates remove superseded version folders. Unique older
+saves, settings, add-ons and unknown files are kept under GameData/preserved-user-data.
+Failed or cancelled installations keep the previous working version.
+
+Darkwatch: Darker Edition - 0.8.0
 
 Matching Windows and experimental Linux/Proton packages. Co-op remains BETA.
 Keep using the existing separate 0.7 HD texture pack; no new pack or
@@ -57,7 +67,7 @@ platform package are shown; source, HD-only and prerelease uploads are skipped.
 Use a short writable path such as C:/Games/Darkwatch, not Program Files.
 Native Windows path handling still has the 260-character limit.
 For automatic first-time setup, put one supported Xbox ISO/XISO in the supplied
-assets folder and open the launcher. It prepares direct ISO playback; keep the
+assets folder and open the launcher. Choose content and Use ISO Directly; keep the
 ISO in that folder. Existing installations are reused. Multiple images open the
 source chooser, and an unsupported image produces an error without installation.
 Select Game offers three choices for your supported Xbox ISO or XISO:
@@ -133,7 +143,7 @@ Setup keeps about 1 MB of private recovery data so content updates can rebuild
 their original inputs locally. Older installations without it may require one
 final ISO import for a content update; runtime-only updates reuse them immediately.
 Select Game remains available to reselect the ISO or import missing/damaged files. A repair
-retains the previous installation and preserves saves; normal updates do not
+preserves saves and removes superseded installations after success; normal updates do not
 create another full installed copy. Temporary update files need free disk space
 and are removed on completion or cancellation. Keep a backup of your saves.
 Normal launches reuse verified files that have not changed. Play Darkwatch.exe
@@ -171,7 +181,7 @@ Original disc text and translated audio are not bundled with the launcher.
 Older Spanish ZIPs are no longer supported. Existing files stay intact until a
 successful PS2 import replaces them atomically, retaining the previous copy.
 Import / Repair preserves verified language installations and your choice;
-older or damaged language files remain in the previous installation folder.
+older or damaged language files are preserved under GameData/preserved-user-data.
 Each PS2 language includes mapped dialogue and 14 story/intro movie soundtracks.
 Silent/missing entries retain Xbox audio; music and untranslated extras stay
 original. Imported movies use the PS2 stereo mix, while English retains the
@@ -299,8 +309,8 @@ def sources():
         'licenses/Microsoft-Visual-Studio-Redist.txt': VS / 'Licenses/1033/Redist.txt',
         'licenses/ARTWORK-SOURCES.md': HERE / 'assets/SOURCES.md',
     }
-    for name in ('character_content.py', 'character_update.py', 'character-update.json.gz',
-                 'character_campaign.py', 'character_campaign_pose.py', 'character_dropped_clips.py',
+    for name in ('content_profile.py', 'character_content.py', 'character_update.py', 'character-update.json.gz',
+                 'character_banshee.py', 'character_campaign.py', 'character_campaign_pose.py', 'character_dropped_clips.py', 'character_versus.py',
                  'character-campaign-angles.json', 'character_animation.py', 'character_assets.py',
                  'character_archive.py', 'character_repaint.py', 'character_boss.py',
                  'character_boss_effects.py', 'character_spectral_hands.py', 'character_hand_seams.py',

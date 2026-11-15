@@ -929,6 +929,25 @@ def check(version, platform):
         backend.main.assert_called_once_with(["--package", "Z:\\game\\windows", "--play"])
         self.assertEqual(sleep.call_args_list, [mock.call(1), mock.call(1)])
 
+    def test_fresh_interactive_setup_requires_content_choice_and_keeps_existing_install(self):
+        for choice, expected in ((6,'enhanced'), (7,'original'), (2,None), (0,None)):
+            backend = SimpleNamespace(emit=mock.Mock(), main=mock.Mock(return_value=0))
+            with mock.patch.object(adapter.importlib, 'import_module', return_value=backend), \
+                 mock.patch.object(adapter, 'notify', side_effect=lambda *a, **kw: choice if kw.get('buttons') else 1):
+                result = adapter.run_interactive(self.root, ['--use-iso', 'own.iso'])
+            self.assertEqual(result, 1 if choice == 0 else 0)
+            if expected:
+                backend.main.assert_called_once_with(['--use-iso', 'own.iso', '--content-profile', expected])
+            else:
+                backend.main.assert_not_called()
+        self.write(self.root/'GameData/active.json', '{}')
+        backend = SimpleNamespace(emit=mock.Mock(), main=mock.Mock(return_value=0))
+        with mock.patch.object(adapter.importlib, 'import_module', return_value=backend), \
+             mock.patch.object(adapter, 'notify', return_value=1) as notify:
+            self.assertEqual(adapter.run_interactive(self.root, ['--use-iso', 'own.iso']), 0)
+        backend.main.assert_called_once_with(['--use-iso', 'own.iso'])
+        self.assertFalse(any(call.kwargs.get('buttons') for call in notify.call_args_list))
+
     def test_adapter_never_waits_after_error_or_nonplay_action(self):
         for code, action in ((1, "--play"), (0, "--status"), (0, "--verify"), (0, "--import-iso"), (0, "--install-hd-textures")):
             backend = SimpleNamespace(main=mock.Mock(return_value=code), game_running=mock.Mock())
@@ -949,7 +968,7 @@ def check(version, platform):
              mock.patch.object(linux.sys.stdin, "isatty", return_value=True), \
              mock.patch.object(linux, "steam_tools", return_value=self.tools), \
              mock.patch.object(linux, "run_action", return_value=0) as run, \
-             mock.patch("builtins.input", side_effect=["2", "1", "2", '"/tmp/My disc.iso"', "0", "0", "0"]), \
+             mock.patch("builtins.input", side_effect=["2", "1", "2", '"/tmp/My disc.iso"', "n", "0", "0", "0"]), \
              mock.patch("builtins.print"):
             self.assertEqual(linux.main([]), 0)
             run.assert_called_once()
@@ -988,7 +1007,7 @@ def check(version, platform):
 
     def test_direct_iso_cli_and_menu_keep_import_as_a_separate_choice(self):
         for arguments, answers in ((["--use-iso", "/tmp/My ISO.xiso"], []),
-                                  ([], ["2", "1", "1", "/tmp/My ISO.xiso", "0", "0", "0"])):
+                                  ([], ["2", "1", "1", "/tmp/My ISO.xiso", "n", "0", "0", "0"])):
             with self.subTest(arguments=arguments), mock.patch.object(linux.sys, "platform", "linux"), \
                  mock.patch.object(linux.sys.stdin, "isatty", return_value=True), \
                  mock.patch.object(linux, "steam_tools", return_value=self.tools), \

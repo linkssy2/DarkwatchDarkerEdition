@@ -56,6 +56,7 @@ def _geometry(raw, index, allowed_bones=(22,51)):
     uv = [struct.unpack_from('<2f',raw,vb+i*stride+20) for i in range(vertices)]
     uv1 = [struct.unpack_from('<2f',raw,vb+i*stride+28) for i in range(vertices)] if stride == 36 else []
     colors = [struct.unpack_from('<I',raw,vb+i*stride+16)[0] for i in range(vertices)]
+    normals = [struct.unpack_from('<I',raw,vb+i*stride+12)[0] for i in range(vertices)]
     triangles = []
     for i in range(count):
         _,_,n,offset,_,_ = struct.unpack_from('<6I',raw,header+36+i*24)
@@ -98,7 +99,7 @@ def _geometry(raw, index, allowed_bones=(22,51)):
     matrices = [struct.unpack_from('<16f',raw,inv+i*64) for i in range(bones)]
     if any(not math.isfinite(v) for row in positions+uv+matrices for v in row):
         raise ValueError('Nonfinite hand geometry')
-    return dict(positions=positions, uv=uv, uv1=uv1, colors=colors, triangles=triangles,
+    return dict(positions=positions, uv=uv, uv1=uv1, colors=colors, normals=normals, triangles=triangles,
                 weights=weights, inverse=matrices, skin_prefix=raw[start:start+2072],
                 inverse_bytes=raw[inv:inv+bones*64], geometry=raw[geos[index][0]-12:geos[index][1]])
 

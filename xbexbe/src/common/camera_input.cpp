@@ -13,11 +13,11 @@ struct ShoulderInput {
     bool held = false;
 };
 std::mutex g_shoulder_lock;
-std::array<ShoulderInput, 2> g_shoulder_input, g_camera_input;
+std::array<ShoulderInput, 4> g_shoulder_input, g_camera_input;
 }
 
 void DarkwatchShoulderInput(int port, input::Pad& pad, bool on_foot, uint32_t actor) {
-    if (port < 0 || port >= 2) return;
+    if (port < 0 || port >= 4) return;
     const auto frame = input::GetMouseSnapshot();
     const int button = darkwatch::ControlsSnapshot().shoulder_buttons[port];
     const bool physical = button >= 0 && button < 16 && (pad.physical_buttons & (1u << button));
@@ -44,7 +44,7 @@ void DarkwatchShoulderInput(int port, input::Pad& pad, bool on_foot, uint32_t ac
 }
 
 void DarkwatchCycleCameraInput(int port, input::Pad& pad, bool on_foot, uint32_t actor) {
-    if (port < 0 || port >= 2) return;
+    if (port < 0 || port >= 4) return;
     const auto frame = input::GetMouseSnapshot();
     const int button = darkwatch::ControlsSnapshot().camera_buttons[port];
     const bool physical = button >= 0 && button < 16 && (pad.physical_buttons & (1u << button));

@@ -8,20 +8,19 @@ struct ControlsSettings {
     input::PcBindings bindings;
     uint32_t mouse_millidegrees = 50;
     uint32_t zoom_sensitivity_percent = 100;
-    std::array<bool, 2> sight_toggle{{true, true}};
+    std::array<bool, 4> sight_toggle{{true, true, true, true}};
     bool aim_assistance = true;
     bool aim_centering = true;
     bool carry_all_weapons = false;
     bool keep_starting_revolver = false;
-    bool ground_pound_anytime = false;
-    std::array<std::array<int, 2>, 2> weapon_buttons{{{{-1, -1}}, {{-1, -1}}}};
-    std::array<bool, 2> walk_toggle{};
-    std::array<int, 2> walk_buttons{{-1, -1}};
-    std::array<int, 2> shoulder_buttons{{-1, -1}};
-    std::array<int, 2> camera_buttons{{-1, -1}};
+    bool weapon_wheel = true;
+    std::array<std::array<int, 2>, 4> weapon_buttons{{{{-1, -1}}, {{-1, -1}}, {{-1, -1}}, {{-1, -1}}}};
+    std::array<bool, 4> walk_toggle{};
+    std::array<int, 4> walk_buttons{{-1, -1, -1, -1}};
+    std::array<int, 4> shoulder_buttons{{-1, -1, -1, -1}};
+    std::array<int, 4> camera_buttons{{-1, -1, -1, -1}};
 };
 
-bool GetGroundPoundAnytime();
 bool GetCarryAllWeapons();
 bool GetKeepStartingRevolver();
 ControlsSettings ControlsDefaults();

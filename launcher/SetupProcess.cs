@@ -174,7 +174,7 @@ namespace DarkwatchDarkerEdition
         }
 
         public static ProcessStartInfo Create(string package, string installRoot, string action,
-                                              string argument = null, string cancelFile = null)
+                                              string argument = null, string cancelFile = null, string contentProfile = null)
         {
             if (PendingUpdate(Path.GetFullPath(package)))
                 throw new IOException("A launcher update is in progress. Close and reopen the launcher to finish recovery before playing or installing.");
@@ -184,6 +184,11 @@ namespace DarkwatchDarkerEdition
                 throw new IOException("Launcher files are missing. Extract the complete Darker Edition package and try again.");
             string args = "-B " + Quote(backend) + " --package " + Quote(package) + " --install-root " + Quote(installRoot) + " " + action;
             if (argument != null) args += " " + Quote(argument);
+            if (contentProfile != null) {
+                if ((action != "--use-iso" && action != "--import-iso") || (contentProfile != "original" && contentProfile != "enhanced"))
+                    throw new ArgumentException("Invalid fresh-install content choice.");
+                args += " --content-profile " + contentProfile;
+            }
             if (cancelFile != null) args += " --cancel-file " + Quote(cancelFile);
             if (action == "--download-update") args += " --launcher-pid " + Process.GetCurrentProcess().Id;
             var info = new ProcessStartInfo(python, args) {

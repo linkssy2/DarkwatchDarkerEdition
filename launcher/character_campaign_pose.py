@@ -29,11 +29,12 @@ class Actor:
         table = next((n['attributes']['value'] for n in art.child(art.child(node, 'AnimationComponent'), 'm_AnimationFiles')['children'] if n['attributes']['key'] == (pack.animation_key or ('NotMulti' if actor == 'Chaz' else 'Multi'))))
         self.rows = rows(art.decode(pack.read(art.norm(table) + '.bxml')))
         self.stance = stance
+        weapon_flag = 'RAILRCKT' if weapon == 'RocketLauncher' else weapon.upper()
         if weapon == "SniperRifle":
             self.rows = [("Reload SniperRifle" if g == "Reload Sniper Rifle" else g, n) for g, n in self.rows]
         self.binding = dict(actor=actor, model=model, locator=locator, table=art.norm(table) + '.bxml')
-        self.selected_rows = [(group, n) for group, n in self.rows if weapon.upper() in flags(n) and (group == 'Reload ' + weapon or (group in ('Alert Poses', 'Alert Poses UB', 'Crouch Alert Poses') and n['attributes']['AnimationID'] == 'IDLE'))]
-        self.actions = {n['attributes']['AnimationID']: n for group, n in self.rows if group == 'Reload ' + weapon and weapon.upper() in flags(n) and (stance in flags(n) or not flags(n) & {'STAND', 'CROUCH'})}
+        self.selected_rows = [(group, n) for group, n in self.rows if weapon_flag in flags(n) and (group == 'Reload ' + weapon or (group in ('Alert Poses', 'Alert Poses UB', 'Crouch Alert Poses') and n['attributes']['AnimationID'] == 'IDLE'))]
+        self.actions = {n['attributes']['AnimationID']: n for group, n in self.rows if group == 'Reload ' + weapon and weapon_flag in flags(n) and (stance in flags(n) or not flags(n) & {'STAND', 'CROUCH'})}
         self.data = {key: pack.read(art.norm(n['attributes']['Name']) + '.sanm') for key, n in self.actions.items()}
         self.bones = struct.unpack_from('<I', next(iter(self.data.values())), 8)[0]
         raw = pack.read(model)
@@ -41,7 +42,7 @@ class Actor:
         self.ready = dict(self.bind)
         for group, n in self.rows:
             groups = ('Alert Poses', 'Alert Poses UB') if stance == 'STAND' else ('Crouch Alert Poses',)
-            if group in groups and n['attributes']['AnimationID'] == 'IDLE' and (weapon.upper() in flags(n)):
+            if group in groups and n['attributes']['AnimationID'] == 'IDLE' and (weapon_flag in flags(n)):
                 clip = p.Clip(pack.read(art.norm(n['attributes']['Name']) + '.sanm'), self.bones)
                 local = clip.pose(self.bind, 0.5)
                 mask = self.mask(clip)
@@ -309,6 +310,197 @@ def crossbow_reload(actor):
     return encoder._encode_rotations(source, sample, (), synchronize=False)
 
 
+class FirstPersonReload:
+    """Retarget the original POV wrist paths, preserving body bone lengths."""
+    def __init__(self, actor, action='RELOAD'):
+        import character_reload as reload
+        self.actor, self.action = actor, action
+        self.rounds = actor.weapon in ('Rifle', 'Shotgun')
+        self.upper_body = actor.weapon in ('Rifle', 'Shotgun', 'RocketLauncher')
+        self.mechanical = None if self.rounds else reload.MECHANICAL[actor.weapon]
+        self.source = actor.clips[action]
+        self.bind, self.parents = p.rig(actor.pack.read('characters/player_first/base_pov_chaz.rx1'), 22)
+        if self.rounds:
+            self.native = {key: p.Clip(actor.pack.read('characters/player_first/sanm/med/pov_chaz_' +
+                key.lower() + '_dw' + actor.weapon.lower() + '.sanm'), 22)
+                for key in ('PRERELOAD', 'RELOAD', 'POSTRELOAD')}
+            self.clip = self.native[action]
+        else:
+            self.clip = p.Clip(actor.pack.read(self.mechanical[-1]), 22)
+            self.weapon_bind, self.weapon_parents = p.rig(actor.pack.read(self.mechanical[-3]), self.mechanical[1])
+            self.weapon = p.Clip(actor.pack.read(self.mechanical[-2]), self.mechanical[1])
+        self.fp_grip = p._grip(actor.pack.read('characters/player_first/base_pov_chaz.bllist'))
+        self.ready = actor.ready_world
+        self.gun = p.mul(actor.grip, self.ready[16])
+        self.hand_gun = p.mul(self.gun, p.inverse(self.ready[15]))
+        initial = p.world(self.native['PRERELOAD'].pose(self.bind, 0.), self.parents) if self.rounds else self.pov(0.)
+        self.reference = p.mul(self.fp_grip, initial[21])
+        left = p.mul(initial[4], p.inverse(self.reference))
+        self.left_mapping = p.mul(p.mul(self.ready[20], p.inverse(self.gun)), p.inverse(left))
+        right = p.mul(initial[14], p.inverse(self.reference))
+        self.right_mapping = p.mul(p.mul(self.ready[15], p.inverse(self.gun)), p.inverse(right))
+        self.solver = object.__new__(p.SupportRetarget)
+        self.solver.parents = actor.parents
+        self.solver.bones = actor.bones
+        self.solver.arm_bones = tuple(range(7, 22)) if self.upper_body else BONES
+        self.cache = {}
+        self.poles = None
+        if abs(actor.durations[action] - struct.unpack_from('<f', self.clip.data, 12)[0]) > .001:
+            raise ValueError(actor.weapon + ' body and POV clocks differ')
+
+    def pov(self, phase):
+        local = self.clip.pose(self.bind, phase)
+        if self.rounds and self.action != 'RELOAD':
+            import character_reload as reload
+            amount = max(0., (phase - .9) / .1) if self.action == 'PRERELOAD' else max(0., 1. - phase / .1)
+            amount = amount * amount * (3. - 2. * amount)
+            if amount:
+                # Native hand clips have small join offsets; use the exact insertion seam.
+                seam = self.native['RELOAD'].pose(self.bind, 0.)
+                local = {b: (reload._rotation_mix(local[b][0], seam[b][0], amount),
+                    p.add(p.scale(local[b][1], 1. - amount), p.scale(seam[b][1], amount))) for b in local}
+        return p.world(local, self.parents)
+
+    def raw_sample(self, phase):
+        import character_reload as reload
+        if phase in self.cache:
+            return self.cache[phase]
+        fp = self.pov(phase)
+        fp_gun = p.mul(self.fp_grip, fp[21])
+        gun = p.mul(p.mul(fp_gun, p.inverse(self.reference)), self.gun)
+        after = dict(self.ready)
+        wrist = (p.mul(p.mul(self.right_mapping, p.mul(fp[14], p.inverse(fp_gun))), gun)
+                 if self.actor.weapon == 'Rifle' else p.mul(p.inverse(self.hand_gun), gun))
+        shoulder, elbow, old_wrist = (self.ready[b][1] for b in (13, 14, 15))
+        delta = p.sub(wrist[1], shoulder)
+        reach = .95 * (p.length(p.sub(elbow, shoulder)) + p.length(p.sub(old_wrist, elbow)))
+        target = p.add(shoulder, p.scale(delta, min(1., reach / p.length(delta))))
+        middle, target = p.solve(shoulder, elbow, old_wrist, target)
+        after[13] = p.a._multiply(self.ready[13][0], p.align(p.sub(elbow, shoulder), p.sub(middle, shoulder))), shoulder
+        after[14] = p.a._multiply(self.ready[14][0], p.align(p.sub(old_wrist, elbow), p.sub(target, middle))), middle
+        after[15] = wrist[0], target
+        if self.actor.weapon != 'Rifle':
+            gun = p.mul(self.hand_gun, after[15])
+        after[16] = p.mul(p.inverse(self.actor.grip), gun)
+        relative = p.mul(self.left_mapping, p.mul(fp[4], p.inverse(fp_gun)))
+        if self.mechanical is not None:
+            # Match the renderer's shorter body-only cartridge travel during contact.
+            part = p.world(self.weapon.pose(self.weapon_bind, phase), self.weapon_parents)[self.mechanical[2]]
+            compact = reload.compact_part(self.actor.weapon, part)
+            # The sniper's earlier cylinder is freely ejected; do not pull the hand toward it.
+            begin, end = (.125, .8) if self.actor.weapon == 'Crossbow' else (self.mechanical[3], self.mechanical[4] + .05)
+            ramp = .1 if self.actor.weapon == 'RocketLauncher' else .05
+            if self.actor.weapon == 'RocketLauncher': begin, end = .225, .54
+            contact = max(0., min(1., (phase - begin) / ramp, (end - phase) / ramp))
+            contact = contact * contact * (3. - 2. * contact)
+            relative = relative[0], p.add(relative[1], p.scale(p.sub(compact[1], part[1]), contact))
+        desired = p.mul(relative, gun)
+        if self.actor.weapon == 'RocketLauncher':
+            # Route the loading hand in front of the head rather than through it.
+            forward = p.unit((self.gun[0][0][0], 0., self.gun[0][0][2]))
+            amount = max(0., min(1., phase / .15, (1. - phase) / .15))
+            amount = amount * amount * (3. - 2. * amount)
+            gap = .40 - p.dot(p.sub(desired[1], self.ready[10][1]), forward)
+            desired = desired[0], p.add(desired[1], p.scale(forward, max(0., gap) * amount))
+            drop = max(0., desired[1][1] - (self.ready[10][1][1] - .18))
+            desired = desired[0], p.add(desired[1], (0., -drop * amount, 0.))
+        local = self.solver.fit_contacts(self.ready, after, desired, reach_fraction=.95)
+        # Blend into the accepted standing/crouched pose at the action boundaries.
+        amount = (min(1., phase / .1) if self.action == 'PRERELOAD' else
+                  min(1., (1. - phase) / .1) if self.action == 'POSTRELOAD' else
+                  1.) if self.rounds else min(1., phase / .1, (1. - phase) / .1)
+        amount = amount * amount * (3. - 2. * amount)
+        result = self.source.pose(self.actor.bind, phase)
+        if self.upper_body:
+            # Retired reload torso/clavicle poses would offset the new POV arm paths.
+            for bone in set(range(7, 22)) - set(BONES):
+                result[bone] = self.actor.ready[bone][0], result[bone][1]
+        for bone in BONES:
+            if p.length(p.sub(result[bone][1], local[bone][1])) > 1e-5:
+                raise ValueError('POV retarget changed body arm lengths')
+            result[bone] = (reload._rotation_mix(self.actor.ready[bone][0], local[bone][0], amount), result[bone][1])
+        if self.actor.weapon == 'Rifle':
+            # The existing rifle socket lets the right hand leave the loading gate.
+            socket = local[16]
+            result[16] = (reload._rotation_mix(self.actor.ready[16][0], socket[0], amount),
+                          p.add(p.scale(self.actor.ready[16][1], 1. - amount), p.scale(socket[1], amount)))
+        self.cache[phase] = result
+        return result
+
+    def sample(self, phase):
+        import character_reload as reload
+        local = self.raw_sample(phase)
+        if self.actor.weapon not in ('SniperRifle', 'RocketLauncher'):
+            return local
+        # Transport the accepted bend along the wrist path, avoiding fixed-pole flips.
+        if self.poles is None:
+            initial = p.world(self.raw_sample(0.), self.actor.parents)
+            axis = p.unit(p.sub(initial[20][1], initial[18][1]))
+            upper = p.sub(initial[19][1], initial[18][1])
+            pole = p.unit(p.sub(upper, p.scale(axis, p.dot(upper, axis))))
+            self.poles = []
+            for i in range(121):
+                world = p.world(self.raw_sample(i / 120), self.actor.parents)
+                next_axis = p.unit(p.sub(world[20][1], world[18][1]))
+                pole = p.rotate(pole, p.align(axis, next_axis))
+                axis = next_axis
+                self.poles.append((axis, pole))
+        world = p.world(local, self.actor.parents)
+        shoulder, elbow, wrist = (world[b][1] for b in (18, 19, 20))
+        axis = p.unit(p.sub(wrist, shoulder))
+        prior_axis, pole = self.poles[min(120, int(phase * 120))]
+        pole = p.rotate(pole, p.align(prior_axis, axis))
+        if self.actor.weapon == 'RocketLauncher':
+            side = p.unit(p.sub(world[18][1], world[13][1]))
+            up = p.unit(p.sub(world[10][1], world[8][1]))
+            outside = p.sub(side, p.scale(up, .8))
+            desired = p.unit(p.sub(outside, p.scale(axis, p.dot(outside, axis))))
+            amount = max(0., min(1., phase / .08, (1. - phase) / .15))
+            amount = amount * amount * (3. - 2. * amount)
+            pole = p.rotate(pole, reload._rotation_mix(p.a.IDENTITY, p.align(pole, desired), amount))
+        upper = p.sub(elbow, shoulder)
+        along = p.dot(upper, axis)
+        radius = p.length(p.sub(upper, p.scale(axis, along)))
+        if phase > .9:
+            desired = p.unit(p.sub(upper, p.scale(axis, along)))
+            amount = (phase - .9) / .1
+            amount = amount * amount * (3. - 2. * amount)
+            pole = p.rotate(pole, reload._rotation_mix(p.a.IDENTITY, p.align(pole, desired), amount))
+        middle = p.add(shoulder, p.add(p.scale(axis, along), p.scale(pole, radius)))
+        world[18] = p.a._multiply(world[18][0], p.align(upper, p.sub(middle, shoulder))), shoulder
+        world[19] = p.a._multiply(world[19][0], p.align(p.sub(wrist, elbow), p.sub(wrist, middle))), middle
+        adjusted = p.localize(world, self.actor.parents)
+        result = dict(local)
+        for bone in (18, 19, 20):
+            result[bone] = adjusted[bone][0], local[bone][1]
+        return result
+
+    def bake(self):
+        phases = {i / 120 for i in range(121)}
+        for times, _ in self.clip.tracks.values():
+            phases.update(times)
+        samples = {phase: self.sample(phase) for phase in phases}
+        data = self.solver._encode_rotations(self.source, samples.__getitem__, phases)
+        if self.actor.weapon == 'Rifle':
+            import character_boss as boss
+            section = boss.sections(data, self.actor.bones)[1][8]
+            keys, indices = bytearray(), []
+            for bone, first in enumerate(section['indices']):
+                if first == p.MISSING:
+                    if bone == 16: raise ValueError('Missing rifle reload socket')
+                    indices.append(first)
+                    continue
+                indices.append(len(keys) // 16)
+                stop = min([i for i in section['indices'] if first < i < p.MISSING] + [section['count']])
+                if bone == 16:
+                    for phase in sorted(phases): keys += struct.pack('<f3f', phase, *samples[phase][bone][1])
+                else:
+                    keys += data[section['keys'] + 16 * first:section['keys'] + 16 * stop]
+            block = struct.pack('<I', len(keys) // 16) + struct.pack('<' + 'I' * self.actor.bones, *indices) + keys
+            data = data[:section['start']] + block + data[section['end']:]
+        return data
+
+
 def stabilize_head(data, bones, bind, ready):
     clip = p.Clip(data, bones)
     base = p.Clip(ready, bones).pose(bind, 0.5)
@@ -560,3 +752,33 @@ def sniper_frame(actor, clip, phase, reload, preserve_aim=False):
         rotation = p.a._multiply(p.a._inverse(reference[bone][0]), adjusted[bone][0]) if additive else adjusted[bone][0]
         result[bone] = (rotation, local[bone][1])
     return result
+
+
+def jericho_rocket_hold(actor, local):
+    """Use the Trooper's chest-relative launcher placement with Jericho's hands."""
+    if actor.stance != 'STAND':
+        return local
+    if not hasattr(actor, 'rocket_reference'):
+        alias = 'TrooperSolo' if actor.binding['actor'] == 'Chaz' else 'TrooperCoop'
+        source = Actor(actor.pack, 'RocketLauncher', actor.stance, alias)
+        chest_delta = p.mul(p.inverse(source.ready_world[8]), actor.ready_world[8])
+        actor.rocket_reference = p.mul(p.mul(source.grip, source.ready_world[16]), chest_delta)
+    before = p.world(local, actor.parents)
+    old = p.mul(actor.grip, actor.ready_world[16])
+    gun = p.mul(actor.grip, before[16])
+    target = p.mul(p.mul(gun, p.inverse(old)), actor.rocket_reference)
+    right = p.mul(p.mul(before[15], p.inverse(gun)), target)
+    left = p.mul(p.mul(before[20], p.inverse(gun)), target)
+    after = dict(before)
+    shoulder, elbow, wrist = (before[b][1] for b in (13, 14, 15))
+    delta = p.sub(right[1], shoulder)
+    reach = .98 * (p.length(p.sub(elbow, shoulder)) + p.length(p.sub(wrist, elbow)))
+    endpoint = p.add(shoulder, p.scale(delta, min(1., reach / p.length(delta))))
+    middle, endpoint = p.solve(shoulder, elbow, wrist, endpoint)
+    after[13] = p.a._multiply(before[13][0], p.align(p.sub(elbow, shoulder), p.sub(middle, shoulder))), shoulder
+    after[14] = p.a._multiply(before[14][0], p.align(p.sub(wrist, elbow), p.sub(endpoint, middle))), middle
+    after[15] = right[0], endpoint
+    after[16] = p.mul(p.mul(before[16], p.inverse(before[15])), after[15])
+    solver = object.__new__(p.SupportRetarget)
+    solver.parents = actor.parents
+    return solver.fit_contacts(before, after, left, reach_fraction=.98)

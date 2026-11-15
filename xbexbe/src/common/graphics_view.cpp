@@ -11,14 +11,18 @@ constexpr uint64_t kFlagsMask = uint64_t(0xFF) << 56;
 constexpr uint64_t kDefaultView = (uint64_t(100) << 16) | (uint64_t(100) << 8) | 100;
 // One atomic value keeps each view and the shared display flags coherent.
 std::atomic<uint64_t> g_settings{(uint64_t(7) << 60) | (uint64_t(1) << 58) | (uint64_t(3) << 48) | (kDefaultView << 24) | kDefaultView};
+// The second pair uses the same packed layout; display flags remain global.
+std::atomic<uint64_t> g_extra_settings{(uint64_t(3) << 48) | (kDefaultView << 24) | kDefaultView};
 // Colors are independent choices, read only when emitting the reticle quad.
 // Keep the hot FOV/scale/flag snapshot in its existing single atomic word.
-std::array<std::array<std::atomic<uint32_t>, 3>, 2> g_colors{{
+std::array<std::array<std::atomic<uint32_t>, 3>, 4> g_colors{{
+    {kOriginalReticleColor, kOriginalReticleColor, kOriginalReticleColor},
+    {kOriginalReticleColor, kOriginalReticleColor, kOriginalReticleColor},
     {kOriginalReticleColor, kOriginalReticleColor, kOriginalReticleColor},
     {kOriginalReticleColor, kOriginalReticleColor, kOriginalReticleColor}}};
 
-uint32_t ViewShift(uint32_t player) { return player == 1 ? 24u : 0u; }
-uint32_t CameraShift(uint32_t player) { return player == 1 ? 52u : 50u; }
+uint32_t ViewShift(uint32_t player) { return (player & 1) ? 24u : 0u; }
+uint32_t CameraShift(uint32_t player) { return (player & 1) ? 52u : 50u; }
 uint64_t PackView(const Settings& settings) {
     return (uint64_t(settings.viewmodel_fov_percent) << 16) |
            (uint64_t(settings.reticle_percent) << 8) | settings.fov_percent;
@@ -30,19 +34,19 @@ uint64_t PackFlags(const Settings& settings) {
            (uint64_t(settings.original_ui_aspect) << 57) | (uint64_t(settings.vertical_split) << 56);
 }
 Settings Unpack(uint64_t value, uint32_t player) {
-    player = player == 1 ? 1 : 0;
+    player = player < 4 ? player : 0;
     const uint64_t view = value >> ViewShift(player);
     return {uint32_t(view & 0xFFu), uint32_t((view >> 8) & 0xFFu),
             (value >> 63) != 0, ((value >> 62) & 1) != 0,
             uint32_t((view >> 16) & 0xFFu), ((value >> 61) & 1) != 0, ((value >> 60) & 1) != 0,
             ((value >> 59) & 1) != 0, ((value >> 58) & 1) != 0,
-            ((value >> (48 + player)) & 1) != 0,
+            ((value >> (48 + (player & 1))) & 1) != 0,
             g_colors[player][0].load(), g_colors[player][1].load(), g_colors[player][2].load(),
             CameraMode((value >> CameraShift(player)) & 3), ((value >> 57) & 1) != 0,
             ((value >> 56) & 1) != 0};
 }
 void StoreColors(const Settings& settings, uint32_t player) {
-    auto& colors = g_colors[player == 1 ? 1 : 0];
+    auto& colors = g_colors[player < 4 ? player : 0];
     colors[0] = settings.reticle_normal_color;
     colors[1] = settings.reticle_enemy_color;
     colors[2] = settings.reticle_friendly_color;
@@ -87,19 +91,26 @@ Settings Normalize(Settings settings) {
     return settings;
 }
 Settings Snapshot(uint32_t player) {
-    return Unpack(g_settings.load(), player);
+    const auto shared = g_settings.load();
+    return Unpack(player < 2 || player >= 4 ? shared : (g_extra_settings.load() & ~kFlagsMask) | (shared & kFlagsMask), player);
 }
 void Apply(Settings settings, uint32_t player) {
+    player = player < 4 ? player : 0;
     settings = Normalize(settings);
     const uint32_t shift = ViewShift(player);
-    const uint32_t hud_bit = 48 + (player == 1 ? 1 : 0);
+    const uint32_t hud_bit = 48 + (player & 1);
     const uint32_t camera_shift = CameraShift(player);
     const uint64_t mask = kFlagsMask | (kViewMask << shift) | (uint64_t(1) << hud_bit) | (uint64_t(3) << camera_shift);
     const uint64_t replacement = PackFlags(settings) | (PackView(settings) << shift) | (uint64_t(settings.show_hud) << hud_bit) |
         (uint64_t(settings.camera_mode) << camera_shift);
     StoreColors(settings, player);
-    uint64_t previous = g_settings.load();
-    while (!g_settings.compare_exchange_weak(previous, (previous & ~mask) | replacement)) {}
+    auto& storage = player < 2 ? g_settings : g_extra_settings;
+    uint64_t previous = storage.load();
+    while (!storage.compare_exchange_weak(previous, (previous & ~mask) | replacement)) {}
+    if (player >= 2) {
+        previous = g_settings.load();
+        while (!g_settings.compare_exchange_weak(previous, (previous & ~kFlagsMask) | PackFlags(settings))) {}
+    }
 }
 void Load(const void* table) {
     const auto& t = *static_cast<const toml::table*>(table);
@@ -121,6 +132,11 @@ void Load(const void* table) {
     g_settings = PackFlags(settings) | PackView(settings) | (PackView(player2) << 24) |
         (uint64_t(settings.show_hud) << 48) | (uint64_t(player2.show_hud) << 49) |
         (uint64_t(settings.camera_mode) << CameraShift(0)) | (uint64_t(player2.camera_mode) << CameraShift(1));
+    for (unsigned player = 2; player < 4; ++player) {
+        auto extra = settings;
+        if (const auto* view = t[player == 2 ? "player3_view" : "player4_view"].as_table()) LoadView(*view, extra);
+        Apply(extra, player);
+    }
 }
 void Save(void* table) {
     auto& t = *static_cast<toml::table*>(table);
@@ -138,6 +154,11 @@ void Save(void* table) {
     toml::table player2;
     SaveView(player2, Unpack(value, 1));
     t.insert_or_assign("player2_view", std::move(player2));
+    for (unsigned player = 2; player < 4; ++player) {
+        toml::table extra;
+        SaveView(extra, Snapshot(player));
+        t.insert_or_assign(player == 2 ? "player3_view" : "player4_view", std::move(extra));
+    }
 }
 float ReticleScale(uint32_t player) {return float(Snapshot(player).reticle_percent) / 100.0f;}
 } // namespace darkwatch::view

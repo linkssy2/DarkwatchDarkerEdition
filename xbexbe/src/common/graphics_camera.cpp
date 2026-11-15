@@ -22,12 +22,19 @@ struct Configuration {uint32_t address; std::array<uint32_t, 7> words;};
 // FA277 selects these original layouts by active player count and co-op mode.
 // The final word is the viewport/player index; the two split layouts have
 // different authored FOV scales; widescreen preserves their vertical framing.
-constexpr std::array<Configuration, 5> kConfigurations{{
+constexpr std::array<Configuration, 12> kConfigurations{{
     {0x491668, {0x3F800000, 0x3FAAAAAB, 0, 0, 0x3F800000, 0x3F800000, 0}},
     {0x4915F8, {0x3FB33333, 0x402AAAAB, 0, 0, 0x3F800000, 0x3EFEB852, 0}},
     {0x491614, {0x3FB33333, 0x402AAAAB, 0, 0x3F00A3D7, 0x3F800000, 0x3EFEB852, 1}},
     {0x4916D8, {0x40000000, 0x402AAAAB, 0, 0, 0x3F800000, 0x3EFEB852, 0}},
     {0x4916F4, {0x40000000, 0x402AAAAB, 0, 0x3F00A3D7, 0x3F800000, 0x3EFEB852, 1}},
+    {0x491748, {0x40000000, 0x402AAAAB, 0x0, 0x0, 0x3F800000, 0x3EFEB852, 0x0}},
+    {0x491764, {0x3F800000, 0x3FAAAAAB, 0x0, 0x3F00A3D7, 0x3EFEB852, 0x3EFEB852, 0x1}},
+    {0x491780, {0x3F800000, 0x3FAAAAAB, 0x3F00A3D7, 0x3F00A3D7, 0x3EFEB852, 0x3EFEB852, 0x2}},
+    {0x4917B8, {0x3F800000, 0x3FAAAAAB, 0x0, 0x0, 0x3EFEB852, 0x3EFEB852, 0x0}},
+    {0x4917D4, {0x3F800000, 0x3FAAAAAB, 0x3F00A3D7, 0x0, 0x3EFEB852, 0x3EFEB852, 0x1}},
+    {0x4917F0, {0x3F800000, 0x3FAAAAAB, 0x0, 0x3F00A3D7, 0x3EFEB852, 0x3EFEB852, 0x2}},
+    {0x49180C, {0x3F800000, 0x3FAAAAAB, 0x3F00A3D7, 0x3F00A3D7, 0x3EFEB852, 0x3EFEB852, 0x3}},
 }};
 struct PlayerCamera {
     uint8_t* base = nullptr;
@@ -37,15 +44,15 @@ struct PlayerCamera {
     uint64_t epoch = 0;
 };
 std::mutex g_camera_lock;
-std::array<PlayerCamera, 2> g_player_cameras;
-std::array<std::atomic<uint32_t>, 2> g_shoulder_left{};
+std::array<PlayerCamera, 4> g_player_cameras;
+std::array<std::atomic<uint32_t>, 4> g_shoulder_left{};
 uint64_t g_camera_epoch = 0;
 struct ShoulderBlend {
     uint64_t epoch = 0;
     uint32_t personal = 0, actor = 0;
     float side = .7f;
 };
-std::array<ShoulderBlend, 2> g_shoulder_blends;
+std::array<ShoulderBlend, 4> g_shoulder_blends;
 struct WeaponView {uint32_t frame = 0, renderer = 0, camera = 0, raster = 0; float scale = 1;};
 thread_local WeaponView g_weapon_view;
 struct PowerView {uint32_t frame = 0, node = 0, raster = 0; float scale = 1;};
@@ -64,7 +71,7 @@ struct ReticleProjection {
     float x = 0, y = 0;
     bool valid = false;
 };
-thread_local std::array<ReticleProjection, 2> g_third_person_reticles;
+thread_local std::array<ReticleProjection, 4> g_third_person_reticles;
 
 bool Span(const uint8_t* base, uint64_t address, uint32_t size) {
     const uint64_t end = address + size;
@@ -185,7 +192,9 @@ bool ActivePersonal(const uint8_t* base, const PlayerCamera& player, uint32_t pe
 }
 PlayerCamera ShoulderPlayer(const uint8_t* base, uint32_t actor) {
     if (darkwatch::view::Snapshot(0).camera_mode != darkwatch::view::CameraMode::Shoulder &&
-        darkwatch::view::Snapshot(1).camera_mode != darkwatch::view::CameraMode::Shoulder) return {};
+        darkwatch::view::Snapshot(1).camera_mode != darkwatch::view::CameraMode::Shoulder &&
+        darkwatch::view::Snapshot(2).camera_mode != darkwatch::view::CameraMode::Shoulder &&
+        darkwatch::view::Snapshot(3).camera_mode != darkwatch::view::CameraMode::Shoulder) return {};
     const uint32_t component = OwnedComponent(base, actor, 0x416444);
     uint32_t owner = 0, personal = 0, linked_actor = 0, type = 0, flags = 0;
     if (!Field(base, component, 0x80, owner) || !Field(base, component, 0x70, personal) ||
@@ -383,7 +392,7 @@ struct DeathView {
     uint32_t rig = 0, root_motion = 0;
     Vector root_origin{};
 };
-std::array<DeathView, 2> g_death_views;
+std::array<DeathView, 4> g_death_views;
 enum class PoseUse { Living, DeathEntry, CoopBody };
 bool ReadThirdPersonPose(const X86Context& ctx, uint8_t* base, uint32_t personal, ThirdPersonPose& pose,
                          PoseUse use = PoseUse::Living) {
@@ -610,7 +619,8 @@ void DarkwatchConfigurePlayerCamera(X86Context& ctx, uint8_t* base) {
 
     const bool full = ctx.esi == 0x491668;
     const auto viewport = darkwatch::viewport::Identify(Read(base, ctx.ecx + 0x58),
-        Read(base, ctx.ecx + 0x5C), Read(base, ctx.ecx + 0x60), Read(base, ctx.ecx + 0x64));
+        Read(base, ctx.ecx + 0x5C), Read(base, ctx.ecx + 0x60), Read(base, ctx.ecx + 0x64),
+        ctx.esi >= 0x491748 && ctx.esi <= 0x491780 ? 3 : 4);
     if (viewport.player != configuration->words[6] ||
         (full ? viewport.kind != darkwatch::viewport::Kind::Full : !viewport.Split())) return;
     float aspect, aspect_scale;
@@ -647,6 +657,32 @@ void DarkwatchConfigurePlayerCamera(X86Context& ctx, uint8_t* base) {
         std::memcpy(player.viewport.data(), base + ctx.ecx + 0x58, 16);
     }
     LOG_FIRST(4, "Player %u camera %08X: aspect %.4f (authored zoom retained)", index + 1, ctx.ecx, aspect);
+}
+
+void DarkwatchLimitMovementBob(X86Context& ctx, uint8_t* base) {
+    // Native BCD74 retains yesterday's amplitude while stopping, then snaps it to zero.
+    uint32_t caller = 0, actor = 0, owner = 0, linked = 0;
+    if (ctx.esi < 0xD4 || !Field(base, ctx.ebp, 4, caller) || caller != 0xBD3AE) return;
+    const uint32_t personal = ctx.esi - 0xD4;
+    if (!Span(base, personal, 0x1A0) || Read(base, personal) != 0x423990 ||
+        base[personal + 0x188] || !Field(base, personal, 0x18C, actor)) return;
+    const uint32_t component = OwnedComponent(base, actor, 0x416444);
+    if (!Field(base, component, 0x70, linked) || linked != personal ||
+        !Field(base, component, 0x80, owner)) return;
+    const auto player = FindPlayer(owner, true);
+    if (!ActivePersonal(base, player, personal) ||
+        darkwatch::view::Snapshot(player.player).camera_mode != darkwatch::view::CameraMode::FirstPerson) return;
+    float normalization = 0;
+    std::array<float, 2> target{}, amplitude{};
+    if (ctx.ebp < 8 || !Field(base, ctx.esi, 0, normalization) ||
+        !std::isfinite(normalization) || normalization <= 0 ||
+        !Field(base, ctx.ebp - 8, 0, target) || !Field(base, ctx.esi, 0x28, amplitude)) return;
+    for (unsigned i = 0; i < 2; ++i) {
+        const float limit = target[i] / normalization;
+        if (!std::isfinite(limit) || limit < 0 || !std::isfinite(amplitude[i]) || amplitude[i] < 0) return;
+        amplitude[i] = std::min(amplitude[i], limit);
+    }
+    std::memcpy(base + ctx.esi + 0x28, amplitude.data(), sizeof(amplitude));
 }
 
 void DarkwatchUpdateCameraView(X86Context& ctx, uint8_t* base) {
@@ -693,7 +729,9 @@ void DarkwatchUpdateCameraView(X86Context& ctx, uint8_t* base) {
 
 bool DarkwatchBeginThirdPersonRender(X86Context& ctx, uint8_t* base, uint32_t personal) {
     if (darkwatch::view::Snapshot(0).camera_mode == darkwatch::view::CameraMode::FirstPerson &&
-        darkwatch::view::Snapshot(1).camera_mode == darkwatch::view::CameraMode::FirstPerson) return false;
+        darkwatch::view::Snapshot(1).camera_mode == darkwatch::view::CameraMode::FirstPerson &&
+        darkwatch::view::Snapshot(2).camera_mode == darkwatch::view::CameraMode::FirstPerson &&
+        darkwatch::view::Snapshot(3).camera_mode == darkwatch::view::CameraMode::FirstPerson) return false;
     if (g_third_person_view.personal || !Span(base, ctx.esp, 4) || Read(base, ctx.esp) != 0x1E89D2 ||
         !Span(base, ctx.ebp, 4)) return false;
     ThirdPersonPose pose;
@@ -762,7 +800,9 @@ bool DarkwatchThirdPersonAimTarget(const X86Context& ctx, uint8_t* base, uint32_
                                   uint32_t weapon_component, std::array<float, 3>& target, uint32_t* target_actor) {
     if (target_actor) *target_actor = 0;
     if (darkwatch::view::Snapshot(0).camera_mode == darkwatch::view::CameraMode::FirstPerson &&
-        darkwatch::view::Snapshot(1).camera_mode == darkwatch::view::CameraMode::FirstPerson) return false;
+        darkwatch::view::Snapshot(1).camera_mode == darkwatch::view::CameraMode::FirstPerson &&
+        darkwatch::view::Snapshot(2).camera_mode == darkwatch::view::CameraMode::FirstPerson &&
+        darkwatch::view::Snapshot(3).camera_mode == darkwatch::view::CameraMode::FirstPerson) return false;
     uint32_t weapon = 0, owner = 0, type = 0;
     if (!weapon_component) weapon_component = AimedWeapon(base, actor, weapon);
     // Both main and offhand components use the original InventoryItem owner.

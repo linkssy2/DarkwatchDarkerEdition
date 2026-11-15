@@ -1,10 +1,13 @@
 #include "carry_all_weapons.h"
 #include "controls.h"
+#include "graphics_view.h"
 #include "cpu/x86_context.h"
 #include "kernel/kernel.h"
 #include "kernel/memory.h"
 #include <array>
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <mutex>
 
@@ -63,8 +66,8 @@ bool Component(const uint8_t* base, uint32_t actor, uint32_t type, uint32_t& res
 struct Player { uint32_t actor = 0, inventory = 0, profile = 0, primary = 0, slots = 0, input_port = 0; uint16_t count = 0; };
 uint32_t PlayerRecord(const uint8_t* base, unsigned ordinal) {
     uint32_t game = 0, players = 0, records = 0; uint16_t count = 0;
-    if (ordinal >= 2 || !Read(base, 0x4AC9A0, game) || !game ||
-        !Read(base, uint64_t(game) + 0x44, players) || !players || players > 2 || ordinal >= players ||
+    if (ordinal >= 4 || !Read(base, 0x4AC9A0, game) || !game ||
+        !Read(base, uint64_t(game) + 0x44, players) || !players || players > 4 || ordinal >= players ||
         !Read(base, uint64_t(game) + 0x50, count) || count < players || count > 64 ||
         !Read(base, uint64_t(game) + 0x54, records) || !Span(base, records, count * 0x130)) return 0;
     unsigned seen = 0; uint32_t found = 0;
@@ -91,8 +94,8 @@ bool Resolve(const uint8_t* base, unsigned ordinal, Player& out) {
 }
 int ResolveInput(const uint8_t* base, unsigned port, Player& out) {
     uint32_t game = 0, count = 0;
-    if (port >= 2 || !Read(base, 0x4AC9A0, game) || !game ||
-        !Read(base, uint64_t(game) + 0x44, count) || !count || count > 2) return -1;
+    if (port >= 4 || !Read(base, 0x4AC9A0, game) || !game ||
+        !Read(base, uint64_t(game) + 0x44, count) || !count || count > 4) return -1;
     unsigned seen = 0; int ordinal = -1;
     for (unsigned i = 0; i < count; ++i) {
         const auto record = PlayerRecord(base, i);
@@ -101,14 +104,14 @@ int ResolveInput(const uint8_t* base, unsigned port, Player& out) {
         // A remote player has no local device, including while their actor respawns.
         if (!local && input == ~0u && Read(base, game + 0xC, online) && online == 1 &&
             Read(base, game + 0x4C, local_count) && local_count == 1 && count == 2) continue;
-        if (!local || input >= 2 || (seen & (1u << input))) return -1;
+        if (!local || input >= 4 || (seen & (1u << input))) return -1;
         seen |= 1u << input;
         if (input == port) ordinal = int(i);
     }
     return ordinal >= 0 && Resolve(base, unsigned(ordinal), out) ? ordinal : -1;
 }
 int Owner(const uint8_t* base, uint32_t inventory, Player& player) {
-    for (unsigned i = 0; i < 2; ++i) { Player p; if (Resolve(base, i, p) && p.inventory == inventory) { player = p; return int(i); } }
+    for (unsigned i = 0; i < 4; ++i) { Player p; if (Resolve(base, i, p) && p.inventory == inventory) { player = p; return int(i); } }
     return -1;
 }
 bool Weapon(const uint8_t* base, uint32_t actor, const Player& player, uint32_t& item) {
@@ -141,14 +144,14 @@ template<class F> bool Visit(const uint8_t* base, const Player& player, F visit)
     return true;
 }
 using Clock = std::chrono::steady_clock;
-struct Request { const uint8_t* base = nullptr; uint32_t actor = 0; int direction = 0; Clock::time_point expires{}; unsigned input_port = 2; bool accepted = false; };
-std::array<Request, 2> requests;
+struct Request { const uint8_t* base = nullptr; uint32_t actor = 0; int direction = 0; Clock::time_point expires{}; unsigned input_port = 2; bool accepted = false; unsigned target = 0; };
+std::array<Request, 4> requests;
 std::mutex request_mutex;
 struct LimitedPair {
     const uint8_t* base = nullptr; uint32_t actor = 0, inventory = 0;
     std::array<unsigned, 2> identities{};
 };
-std::array<LimitedPair, 2> limited_pairs;
+std::array<LimitedPair, 4> limited_pairs;
 std::mutex pair_mutex;
 thread_local uint32_t cycling_inventory = 0;
 struct CycleScope {
@@ -216,7 +219,7 @@ int RetentionOwner(const X86Context& ctx, const uint8_t* base, uint32_t inventor
     const int ordinal = Owner(base, inventory, player);
     uint8_t local = 0, disabled = 1; uint32_t busy = 1;
     if (ordinal < 0 || !Read(base, PlayerRecord(base, unsigned(ordinal)) + 0x128, local) || local != 1 ||
-        player.input_port >= 2 || !Read(base, uint64_t(player.actor) + 0x5E, disabled) || disabled ||
+        player.input_port >= 4 || !Read(base, uint64_t(player.actor) + 0x5E, disabled) || disabled ||
         !Read(base, uint64_t(inventory) + 0x6C, busy) || busy) return -1;
     bool safe = true;
     if (!Visit(base, player, [&](uint32_t slot, uint32_t actor) {
@@ -295,6 +298,57 @@ void DarkwatchQueueWeaponCycle(unsigned port, int direction) {
     for (auto& request : requests) if (request.input_port == port) request = {};
     if (ordinal >= 0) requests[ordinal] = Request{base, player.actor, direction < 0 ? -1 : 1,
         Clock::now() + std::chrono::milliseconds(150), port};
+}
+
+DarkwatchWeaponChoices DarkwatchGetWeaponChoices(unsigned port) {
+    const auto* base=kernel::g_base; Player player;
+    const int ordinal=ResolveInput(base,port,player);
+    uint32_t active=0,item=0,game=0,players=0,mode=0; uint8_t online=1;
+    if (ordinal<0 || DarkwatchWeaponCycleAction(port)<0 ||
+        !Read(base,uint64_t(player.primary)+12,active) || !Weapon(base,active,player,item)) return {};
+    const auto settings=darkwatch::ControlsSnapshot();
+    const auto pair=LimitedNormalWeapons(base,unsigned(ordinal),player,settings.carry_all_weapons,settings.keep_starting_revolver);
+    DarkwatchWeaponChoices result;result.actor=player.actor;result.current=Identity(base,uint64_t(active)+0x50);
+    bool disarmed=false;
+    if (!Visit(base,player,[&](uint32_t slot,uint32_t actor) {
+        const auto id=Identity(base,uint64_t(actor)+0x50);uint32_t component=0;uint8_t selectable=0;
+        if (actor && (Name(base,uint64_t(actor)+0x50,"HorseRevolver") || (id && Name(base,uint64_t(slot)+4,"stash")))) disarmed=true;
+        if (!id || !Weapon(base,actor,player,component)) return true;
+        if (!Read(base,uint64_t(component)+0x38,selectable)) return false;
+        if (!selectable) return true;
+        if (actor!=active && !settings.carry_all_weapons && !Name(base,uint64_t(slot)+4,"pocket") &&
+            !(Name(base,uint64_t(slot)+4,"bag") && ((settings.keep_starting_revolver && id==1) || (pair&(1u<<id))))) return true;
+        result.mask|=1u<<id;return true;
+    }) || disarmed) return {};
+    if (!settings.keep_starting_revolver && (result.mask&(1u<<2))) result.mask&=~(1u<<1);
+    result.solo=Read(base,0x4AC9A0,game) && game && Read(base,uint64_t(game)+0x44,players) && players==1 &&
+        Read(base,uint64_t(game)+0xEC,mode) && mode==0 && Read(base,uint64_t(game)+0xC,online) && online==0;
+    uint32_t local=0;
+    if (Read(base,uint64_t(game)+0x4C,local) && local>1 && local<=4 &&
+        Read(base,uint64_t(game)+0xEC,mode)) {
+        if (!mode && local==2) {
+            result.viewport=darkwatch::view::Snapshot().vertical_split ?
+                std::array<float,4>{ordinal?.5025f:0.f,0,.4975f,1} :
+                std::array<float,4>{0,ordinal?.5025f:0.f,1,.4975f};
+        } else if(mode==3) {
+            // Native FA277 selects this normalized rectangle before creating the view.
+            Read(base,0x491668+((local-1)*4+unsigned(ordinal))*28+8,result.viewport);
+        }
+    }
+    const auto& v=result.viewport;
+    if (std::any_of(v.begin(),v.end(),[](float n){return !std::isfinite(n);}) ||
+        v[0]<0 || v[1]<0 || v[2]<=0 || v[3]<=0 || v[0]+v[2]>1.001f || v[1]+v[3]>1.001f) return {};
+    return result;
+}
+bool DarkwatchQueueWeaponSelection(unsigned port,unsigned identity) {
+    const auto choices=DarkwatchGetWeaponChoices(port);
+    if (!identity || identity>9 || identity==choices.current || !(choices.mask&(1u<<identity))) return false;
+    DarkwatchQueueWeaponCycle(port,1);
+    std::lock_guard lock(request_mutex);
+    for (auto& request:requests) if(request.direction && request.input_port==port && request.actor==choices.actor) {
+        request.target=identity; return true;
+    }
+    return false;
 }
 
 X86_FUNC(sub_00097941) {
@@ -424,13 +478,15 @@ X86_FUNC(sub_000195C7) {
 X86_FUNC(sub_000957A9) {
     Player player; const int ordinal = Owner(base, ctx.ecx, player);
     uint32_t caller = 0, active = 0, storage_out = 0, actor_out = 0;
-    bool previous = false;
+    bool previous = false; unsigned target = 0;
     if (ordinal >= 0 && Read(base, ctx.esp, caller) && caller == 0x973EE &&
         Read(base, uint64_t(ctx.esp) + 4, active) && active == player.primary) {
         std::lock_guard<std::mutex> lock(request_mutex);
         const auto request = requests[ordinal]; requests[ordinal] = {};
         previous = request.base == base && request.actor == player.actor && request.input_port == player.input_port &&
             request.direction < 0 && Clock::now() < request.expires;
+        if (request.base==base && request.actor==player.actor && request.input_port==player.input_port && Clock::now()<request.expires)
+            target=request.target;
     }
     if (ordinal < 0 || active != player.primary || !Scratch(ctx, base) || !Read(base, uint64_t(ctx.esp) + 8, storage_out) || !Span(base, storage_out, 4) ||
         !Read(base, uint64_t(ctx.esp) + 12, actor_out) || !Span(base, actor_out, 4)) {
@@ -459,6 +515,7 @@ X86_FUNC(sub_000957A9) {
         if (!actor || actor == current || slot == active || !Weapon(base, actor, player, component)) return true;
         const auto identity = Identity(base, uint64_t(actor) + 0x50);
         if (exclude_starter && identity == 1) return true;
+        if (target && identity!=target) return true;
         // Existing saves keep their overflow inventory. With Carry All off it
         // stays parked; the independently retained starter is the only exception.
         if (!settings.carry_all_weapons && !Name(base, uint64_t(slot) + 4, "pocket") &&
@@ -475,7 +532,7 @@ X86_FUNC(sub_000957A9) {
     });
     // The original merge was authored for one pocket: a bag candidate can skip
     // that pocket when more guns exist. Order the extended primary set together.
-    if (!complete || (!limited && !previous && candidates <= 1)) { __imp__sub_000957A9(ctx, base); return; }
+    if (!complete || (!target && !limited && !previous && candidates <= 1)) { __imp__sub_000957A9(ctx, base); return; }
     Write(base, storage_out, best ? best_slot : wrap_slot); Write(base, actor_out, best ? best : wrap);
     ctx.esp += 16;
 }

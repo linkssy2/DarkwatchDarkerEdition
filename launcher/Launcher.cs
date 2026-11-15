@@ -17,9 +17,9 @@ using Microsoft.Win32;
 #if !DIRECT_PLAY
 [assembly: AssemblyTitle("Darkwatch: Darker Edition")]
 [assembly: AssemblyProduct("Darkwatch: Darker Edition")]
-[assembly: AssemblyVersion("0.7.9.0")]
-[assembly: AssemblyFileVersion("0.7.9.0")]
-[assembly: AssemblyInformationalVersion("0.7.9")]
+[assembly: AssemblyVersion("0.8.0.0")]
+[assembly: AssemblyFileVersion("0.8.0.0")]
+[assembly: AssemblyInformationalVersion("0.8.0")]
 #endif
 
 namespace DarkwatchDarkerEdition
@@ -280,6 +280,7 @@ namespace DarkwatchDarkerEdition
 
         async Task DetectAssetsIso()
         {
+            await Task.Yield();
             try {
                 string assets = Path.Combine(package, "assets");
                 if (!Directory.Exists(assets)) return;
@@ -302,7 +303,7 @@ namespace DarkwatchDarkerEdition
                 // required resources, and retains cancellation/rollback behavior.
                 // Keep the chooser visible if it rejects an unsupported image.
                 ShowSource(true);
-                await Run("--use-iso", candidate);
+                Get<TextBlock>("StatusText").Text = Copy("Xbox ISO found. Choose your content below, then select Use ISO Directly.", "ISO de Xbox encontrada. Elige el contenido y selecciona Usar ISO directamente.");
             } catch (IOException ex) { Error(ex.Message); }
             catch (UnauthorizedAccessException ex) { Error(ex.Message); }
         }
@@ -437,6 +438,8 @@ namespace DarkwatchDarkerEdition
             Get<TextBlock>("SupportTitle").Text = Copy("UPDATES & SUPPORT", "ACTUALIZACIONES Y AYUDA");
             Get<Button>("ImportButton").IsEnabled = !busy;
             Get<Button>("HomeExistingButton").IsEnabled = !busy;
+            Get<CheckBox>("EnhancedContent").Visibility = installed ? Visibility.Collapsed : Visibility.Visible;
+            Get<CheckBox>("EnhancedContent").IsEnabled = !busy;
             Get<Button>("UseIsoButton").IsEnabled = !busy;
             Get<Button>("ExtractIsoButton").IsEnabled = !busy;
             Get<Button>("ExistingInstallButton").IsEnabled = !busy;
@@ -616,7 +619,9 @@ namespace DarkwatchDarkerEdition
                 // A private per-job token cannot cancel another open launcher's operation.
                 if (action != "--status") Directory.CreateDirectory(installRoot);
                 cancelFile = action == "--status" ? null : Path.Combine(installRoot, ".cancel-" + Guid.NewGuid().ToString("N"));
-                var info = SetupProcess.Create(package, installRoot, action, argument, cancelFile);
+                var profile = !installed && (action == "--use-iso" || action == "--import-iso")
+                    ? (Get<CheckBox>("EnhancedContent").IsChecked == true ? "enhanced" : "original") : null;
+                var info = SetupProcess.Create(package, installRoot, action, argument, cancelFile, profile);
                 SetButtons();
                 string errorText = "";
                 int code = await Task.Run(() => {

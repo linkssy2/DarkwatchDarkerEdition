@@ -1,4 +1,4 @@
-# Darkwatch: Darker Edition 0.7.9 — Experimental Linux / Proton
+# Darkwatch: Darker Edition 0.8.0 — Experimental Linux / Proton
 
 This package runs the Windows port through Proton. Community gameplay results
 are recorded below; this update still needs live testing across Linux systems.
@@ -446,3 +446,18 @@ Proton/MangoHud diagnostic command above. To stop Darkwatch's own logging, repea
 this setup step with `--set-diagnostics off` before restoring normal play.
 Logs include local paths, settings and devices; review before sharing.
 Logging is size-limited and can affect timing.
+
+## Fresh-install content and space
+
+Original playable characters, models and animations are now the default, including
+first-time drop-in ISO setup. The native launcher asks whether to include the expanded
+roster and enhanced models/animations (about 2.79 GiB extra archive data).
+For explicit setup use `Darkwatch.sh --use-iso "/path/Darkwatch.iso" --content-profile enhanced`
+or the same flag with `--import-iso`. Through the Steam Python shortcut, replace `--play`
+with `--use-iso "Z:\path\Darkwatch.iso" --content-profile enhanced` for the initial setup.
+After setup, restore `--play`. Existing installations keep their choice during updates.
+
+After successful setup/update, older version folders are removed. Unique old saves,
+settings and other user files are preserved in `GameData/preserved-user-data`.
+Failed or cancelled setup keeps the old working installation. A folder containing the
+active ISO is retained; keep original disc images outside `GameData/versions`.

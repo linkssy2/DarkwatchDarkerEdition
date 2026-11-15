@@ -90,6 +90,14 @@ int main(int argc,char** argv){
  CHECK(preview::Color(0xff000000,0xffffffff,.72f)==0xffb8b8b8);
  CHECK(preview::Color(0x80ffce9c,0xffffffff,.72f)==0x80ffceb8);
  CHECK(preview::Load(data,models));CHECK(models[0].poses.size()==12);CHECK(models[2].frame_count==2);
+ {const size_t stride=(data.size()-24)/10;std::vector<uint8_t> sparse(data.begin(),data.begin()+16);
+ uint32_t count=4;std::memcpy(sparse.data()+12,&count,4);
+ for(unsigned id:{0u,4u,5u,6u})sparse.insert(sparse.end(),data.begin()+16+id*stride,data.begin()+16+(id+1)*stride);
+ sparse.resize(sparse.size()+8);Hash(sparse);std::array<preview::Model,settings::kCharacterCount> subset;
+ CHECK(preview::Load(sparse,subset));CHECK(subset[0].frame_count==2&&subset[4].frame_count==2&&subset[1].frame_count==0);
+ uint32_t duplicate=0;std::memcpy(sparse.data()+16+stride,&duplicate,4);Hash(sparse);CHECK(!preview::Load(sparse,subset));
+ uint32_t outside=10;std::memcpy(sparse.data()+16+stride,&outside,4);Hash(sparse);CHECK(!preview::Load(sparse,subset));}
+
  for(const char* magic:{"DWCP0001","DWCP0002"}){auto old_format=data;std::memcpy(old_format.data(),magic,8);Hash(old_format);CHECK(!preview::Load(old_format,models));}
  auto incomplete=data;uint32_t old_count=3;std::memcpy(incomplete.data()+12,&old_count,4);Hash(incomplete);CHECK(!preview::Load(incomplete,models));
  auto invalid=data;invalid.back()^=1;CHECK(!preview::Load(invalid,models));

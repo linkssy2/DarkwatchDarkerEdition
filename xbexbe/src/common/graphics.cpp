@@ -38,6 +38,10 @@ using namespace darkwatch;
 namespace {
 std::atomic<bool> g_visual{false}, g_leave{false}, g_configuring{false};
 bool g_controls = false, g_subtitles_available = false;
+bool g_pause_main = false, g_open_pause_main = false, g_pause_ready = false;
+bool g_local_pause = false;
+std::array<float, 4> g_pause_viewport{0, 0, 1, 1};
+std::atomic<uint64_t> g_pause_action{0};
 std::atomic<uint64_t> g_set_subtitles{0};
 std::atomic<uint32_t> g_pad{0};
 std::atomic<uint32_t> g_navigation_port{0};
@@ -75,6 +79,7 @@ bool g_character_ready = false;
 bool g_page_graphics = false;
 bool g_audio = false, g_open_audio = false;
 int g_sound_output_draft = 0;
+int g_monster_screams_draft = 100;
 AudioSettings g_audio_draft;
 struct AudioRequest { uint32_t options = 0; AudioSettings settings; };
 AudioRequest g_audio_request;
@@ -119,6 +124,11 @@ std::vector<app::Mode> ResolutionModes(app::DisplayMode mode) {
 }
 float MenuScale() {
     const auto display = ImGui::GetIO().DisplaySize;
+    if (g_local_pause) {
+        const bool tall = !g_pause_main && !g_audio;
+        return .94f * std::min(display.x * g_pause_viewport[2] / 960.f,
+                              display.y * g_pause_viewport[3] / (tall ? 800.f : 600.f));
+    }
     float scale = std::min(display.x / 1280.f, display.y / 720.f);
     if (!g_coop && !g_characters && !g_quit) scale *= .8f;
     return std::max(.5f, scale);
@@ -251,8 +261,8 @@ void Close() {
     g_layout_returned = false;
 }
 
-bool PlayerTwoControls() { return g_original_draft.paused && g_original_draft.input_port == 1; }
-int ControlsPort() { return PlayerTwoControls() ? 1 : 0; }
+bool PlayerTwoControls() { return g_original_draft.paused && g_original_draft.input_port != 0; }
+int ControlsPort() { return g_original_draft.paused ? int(g_original_draft.input_port) : 0; }
 int& ExtraPadButton(unsigned action) {
     if (action == unsigned(input::PcAction::CycleCamera)) return g_controls_draft.camera_buttons[ControlsPort()];
     if (action == unsigned(input::PcAction::SwapShoulder)) return g_controls_draft.shoulder_buttons[ControlsPort()];
@@ -265,21 +275,18 @@ void ApplyControls() {
     // Preserve the other player's button choices if they changed since this page opened.
     const auto current = ControlsSnapshot();
     auto pending = player_two ? current : g_controls_draft;
-    pending.weapon_buttons[ControlsPort()] = g_controls_draft.weapon_buttons[ControlsPort()];
-    pending.weapon_buttons[1 - ControlsPort()] = current.weapon_buttons[1 - ControlsPort()];
-    pending.walk_toggle[ControlsPort()] = g_controls_draft.walk_toggle[ControlsPort()];
-    pending.walk_buttons[ControlsPort()] = g_controls_draft.walk_buttons[ControlsPort()];
-    pending.walk_toggle[1 - ControlsPort()] = current.walk_toggle[1 - ControlsPort()];
-    pending.walk_buttons[1 - ControlsPort()] = current.walk_buttons[1 - ControlsPort()];
-    pending.shoulder_buttons[ControlsPort()] = g_controls_draft.shoulder_buttons[ControlsPort()];
-    pending.shoulder_buttons[1 - ControlsPort()] = current.shoulder_buttons[1 - ControlsPort()];
-    pending.camera_buttons[ControlsPort()] = g_controls_draft.camera_buttons[ControlsPort()];
-    pending.camera_buttons[1 - ControlsPort()] = current.camera_buttons[1 - ControlsPort()];
-    pending.sight_toggle[ControlsPort()] = g_controls_draft.sight_toggle[ControlsPort()];
-    pending.sight_toggle[1 - ControlsPort()] = current.sight_toggle[1 - ControlsPort()];
+    for (unsigned port = 0; port < 4; ++port) {
+        const auto& source = port == unsigned(ControlsPort()) ? g_controls_draft : current;
+        pending.weapon_buttons[port] = source.weapon_buttons[port];
+        pending.walk_toggle[port] = source.walk_toggle[port];
+        pending.walk_buttons[port] = source.walk_buttons[port];
+        pending.shoulder_buttons[port] = source.shoulder_buttons[port];
+        pending.camera_buttons[port] = source.camera_buttons[port];
+        pending.sight_toggle[port] = source.sight_toggle[port];
+    }
     pending.carry_all_weapons = g_controls_draft.carry_all_weapons;
     pending.keep_starting_revolver = g_controls_draft.keep_starting_revolver;
-    pending.ground_pound_anytime = g_controls_draft.ground_pound_anytime;
+    pending.weapon_wheel = g_controls_draft.weapon_wheel;
     if (!ControlsApply(pending)) {
         g_notice = "Cannot apply these bindings. Check for duplicate or reserved keys.";
         return;
@@ -295,7 +302,7 @@ void ApplyControls() {
                              g_original_draft.sensitivity, true, g_original_draft.controller_preset};
     }
     if (player_two) {
-        g_notice = app::Save() ? "Player 2 bindings saved. Resume to save profile settings."
+        g_notice = app::Save() ? "Controller bindings saved. Resume to apply profile settings."
                               : "Could not save controls. Changes will last for this session only.";
         return;
     }
@@ -522,7 +529,7 @@ void PadNavigation() {
     if (p && p != previous) {
         // A click outside the panel clears ImGui focus; the next pad action must reclaim it.
         if (g_open && !GImGui->NavWindow) {
-            auto* window = ImGui::FindWindowByName(g_coop ? "Co-op" : g_quit ? "Quit to Desktop" :
+            auto* window = ImGui::FindWindowByName(g_pause_main ? "Pause" : g_coop ? "Co-op" : g_quit ? "Quit to Desktop" :
                 g_characters ? "Characters" : g_audio ? "Audio" : g_controls ? "Controls" : "Graphics");
             if (window && window->WasActive) ImGui::FocusWindow(window, ImGuiFocusRequestFlags_RestoreFocusedChild);
         }
@@ -792,17 +799,22 @@ void ControlsContent(float scale, bool just_opened) {
     }
     if (KnownPreset()) {ImGui::SameLine(); ImGui::TextDisabled(language::Text("Current: %s"), language::Text(kPresetNames[g_original_draft.controller_preset]));}
     layout.Finish();
-    if (player_two) layout.Help("Player 2 settings. Use Controller Layout to change buttons.");
+    if (player_two) layout.Help("Your controller settings. Use Controller Layout to change buttons.");
     layout.Section("GAMEPLAY OPTIONS");
-    { MenuRow row("GROUND POUND ANYTIME", layout.Row(), scale);
-      Toggle("##ground pound anytime", g_controls_draft.ground_pound_anytime); }
-    layout.Help("Both players. Press crouch after jumping. Works without unlocking the jump rune.");
+    if (!player_two) {
+        ImGui::BeginDisabled(!g_controls_draft.carry_all_weapons);
+        { MenuRow row("WEAPON WHEEL", layout.Row(), scale); Toggle("##weapon wheel", g_controls_draft.weapon_wheel); }
+        ImGui::EndDisabled();
+        layout.Help(g_controls_draft.carry_all_weapons ?
+            "Hold the middle mouse button to select a weapon. Slows time in solo play only." :
+            "Enable Carry All Weapons to use the weapon wheel.");
+    }
     { MenuRow row("CARRY ALL WEAPONS", layout.Row(), scale);
       Toggle("##carry all weapons", g_controls_draft.carry_all_weapons); }
     layout.Help("Both players. Extra weapons stay stored until this is on.");
     { MenuRow row("KEEP STARTING REVOLVER", layout.Row(), scale);
       Toggle("##keep starting revolver", g_controls_draft.keep_starting_revolver); }
-    layout.Help("Both players. Keep the starting revolver after receiving the Redeemer. Applies at weapon changes and chapter starts.");
+    layout.Help("Keep the starting revolver after receiving the Redeemer. Applies at weapon changes and chapter starts.");
     if (!player_two) {
     layout.Section("KEYBOARD AND MOUSE BINDINGS");
     layout.Place();
@@ -875,19 +887,16 @@ void ControlsContent(float scale, bool just_opened) {
     if (!player_two) {
         ImGui::SameLine(450 * scale);
         if (MenuButton("RESET DEFAULTS", {250 * scale, 39 * scale})) {
-            const auto other_buttons = g_controls_draft.weapon_buttons[1];
-            const auto other_walk_toggle = g_controls_draft.walk_toggle[1];
-            const auto other_walk_button = g_controls_draft.walk_buttons[1];
-            const auto other_camera_button = g_controls_draft.camera_buttons[1];
-            const auto other_shoulder_button = g_controls_draft.shoulder_buttons[1];
-            const auto other_sight_toggle = g_controls_draft.sight_toggle[1];
+            const auto previous = g_controls_draft;
             g_controls_draft = ControlsDefaults();
-            g_controls_draft.weapon_buttons[1] = other_buttons;
-            g_controls_draft.walk_toggle[1] = other_walk_toggle;
-            g_controls_draft.walk_buttons[1] = other_walk_button;
-            g_controls_draft.shoulder_buttons[1] = other_shoulder_button;
-            g_controls_draft.camera_buttons[1] = other_camera_button;
-            g_controls_draft.sight_toggle[1] = other_sight_toggle;
+            for (unsigned port = 1; port < 4; ++port) {
+                g_controls_draft.weapon_buttons[port] = previous.weapon_buttons[port];
+                g_controls_draft.walk_toggle[port] = previous.walk_toggle[port];
+                g_controls_draft.walk_buttons[port] = previous.walk_buttons[port];
+                g_controls_draft.shoulder_buttons[port] = previous.shoulder_buttons[port];
+                g_controls_draft.camera_buttons[port] = previous.camera_buttons[port];
+                g_controls_draft.sight_toggle[port] = previous.sight_toggle[port];
+            }
             g_notice = "PC defaults restored in this draft. Select Apply to save.";
         }
     }
@@ -902,7 +911,7 @@ void ControlsContent(float scale, bool just_opened) {
 void AudioContent(float scale, bool just_opened) {
     if (g_audio_apply_failed.exchange(false)) g_notice = "Could not apply audio settings. Reopen Audio and try again.";
     ImGui::SetCursorPos({0, 132 * scale});
-    ImGui::BeginChild("Audio scroll", {938 * scale, 308 * scale}, ImGuiChildFlags_NavFlattened);
+    ImGui::BeginChild("Audio scroll", {938 * scale, 348 * scale}, ImGuiChildFlags_NavFlattened);
     ImGui::BeginDisabled(!g_original_draft.audio_available);
     { MenuRow row("MUSIC VOLUME", 8, scale);
       if (just_opened) ImGui::SetKeyboardFocusHere();
@@ -912,9 +921,11 @@ void AudioContent(float scale, bool just_opened) {
     { MenuRow row("SPEECH VOLUME", 120, scale);
       ImGui::SliderInt("##speech", &g_audio_draft.speech, 0, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput); }
     ImGui::EndDisabled();
-    { MenuRow row("SOUND OUTPUT", 176, scale);
+    { MenuRow row("MONSTER SCREAMS", 176, scale);
+      ImGui::SliderInt("##monster screams", &g_monster_screams_draft, 0, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput); }
+    { MenuRow row("SOUND OUTPUT", 232, scale);
       Choice("##sound output", &g_sound_output_draft, "Stereo\0" "5.1 Surround\0" "7.1 Surround\0"); }
-    ImGui::SetCursorPos({88 * scale, 236 * scale});
+    ImGui::SetCursorPos({88 * scale, 292 * scale});
     ImGui::BeginGroup();
     const auto active_output = audio::ActiveSoundOutput();
     Hint(active_output == audio::SoundOutput::Surround71 ? "Active output: 7.1 Surround." :
@@ -932,13 +943,14 @@ void AudioContent(float scale, bool just_opened) {
             std::lock_guard lock(g_original_lock);
             g_audio_request = {g_options, g_audio_draft};
         }
+        SetMonsterScreamsVolume(g_monster_screams_draft);
         audio::SetSoundOutput(static_cast<audio::SoundOutput>(g_sound_output_draft));
         g_notice = app::Save() ? "Audio applied. Profile volumes save when you leave Options."
                               : "Could not save settings. Changes will last for this session only.";
     }
     ImGui::SameLine(450 * scale);
     if (MenuButton("RESET DEFAULTS", {250 * scale, 39 * scale})) {
-        g_audio_draft = {}; g_sound_output_draft = 0;
+        g_audio_draft = {}; g_sound_output_draft = 0; g_monster_screams_draft = 100;
         g_notice = "Audio defaults restored in this draft. Select Apply to save.";
     }
     ImGui::SameLine(720 * scale);
@@ -948,6 +960,11 @@ void AudioContent(float scale, bool just_opened) {
 
 void CoopContent(float scale, bool just_opened, const CoopSetupState& state) {
     const auto& io = ImGui::GetIO();
+    bool split_pending;
+    {std::lock_guard lock(g_original_lock); split_pending = g_coop_requests[0].owner || g_coop_requests[1].owner;}
+    const bool split_editable = g_coop_ui_ready && state.connected[0] &&
+        !state.ready[0] && !state.ready[1] && !split_pending;
+    bool change_split = false;
     if (!just_opened && !io.MouseDown[0] && !ImGui::IsKeyDown(ImGuiKey_Enter) &&
         !ImGui::IsKeyDown(ImGuiKey_KeypadEnter) && !ImGui::IsKeyDown(ImGuiKey_Space) &&
         !ImGui::IsKeyDown(ImGuiKey_GamepadFaceDown)) g_coop_ui_ready = true;
@@ -957,14 +974,23 @@ void CoopContent(float scale, bool just_opened, const CoopSetupState& state) {
     // Cover the retained native settings; their profile/Ready flow still owns this page.
     draw->AddRectFilled({position.x + 68 * scale, position.y + 120 * scale},
                        {position.x + 925 * scale, position.y + 525 * scale}, IM_COL32(12, 13, 15, 255));
-    draw->AddLine({position.x + 495 * scale, position.y + 132 * scale},
-                  {position.x + 495 * scale, position.y + 475 * scale}, IM_COL32(95, 96, 95, 255));
+    const bool side_by_side = view::Snapshot().vertical_split;
+    draw->AddLine(side_by_side ? ImVec2{position.x + 495 * scale, position.y + 132 * scale} :
+                                ImVec2{position.x + 80 * scale, position.y + 310 * scale},
+                  side_by_side ? ImVec2{position.x + 495 * scale, position.y + 500 * scale} :
+                                 ImVec2{position.x + 910 * scale, position.y + 310 * scale}, IM_COL32(95, 96, 95, 255));
     // ImGui has one navigation cursor. The co-op page needs one per player.
     ImGui::PushItemFlag(ImGuiItemFlags_NoNav, true);
     for (unsigned player = 0; player < 2; ++player) {
         bool pending;
         {std::lock_guard lock(g_original_lock); pending = g_coop_requests[player].owner != 0;}
-        const float x = player ? 510.f : 80.f;
+        const float x = side_by_side ? (player ? 510.f : 80.f) : 450.f;
+        const float row = 190.f * player;
+        const float title_y = side_by_side ? 133.f : 130.f + row;
+        const float name_y = side_by_side ? 370.f : 160.f + row;
+        const float choice_y = side_by_side ? 400.f : 195.f + row;
+        const float ready_y = side_by_side ? 442.f : 237.f + row;
+        const float help_y = side_by_side ? (player ? 485.f : 482.f) : 280.f + row;
         ImGui::PushID(int(player));
         auto centered = [&](const char* text, float y, float font_scale) {
             ImGui::SetWindowFontScale(font_scale);
@@ -974,16 +1000,19 @@ void CoopContent(float scale, bool just_opened, const CoopSetupState& state) {
             ImGui::SetCursorPos({(x + 200) * scale - ImGui::CalcTextSize(translated).x / 2, y * scale});
             ImGui::TextUnformatted(translated); ImGui::SetWindowFontScale(1);
         };
-        centered(player ? "PLAYER TWO" : "PLAYER ONE", 133, .8f);
+        centered(player ? "PLAYER TWO" : "PLAYER ONE", title_y, .8f);
         if (just_opened || g_coop_preview_characters[player] != state.characters[player]) {
             g_coop_preview_characters[player] = state.characters[player];
             g_coop_preview_started[player] = ImGui::GetTime();
         }
-        if (!preview::Draw(state.characters[player], {position.x + (x + 25) * scale, position.y + 170 * scale},
-                {position.x + (x + 375) * scale, position.y + 365 * scale},
+        const ImVec2 preview_min = side_by_side ? ImVec2{position.x + (x + 25) * scale, position.y + 170 * scale} :
+                                                  ImVec2{position.x + 100 * scale, position.y + (145 + row) * scale};
+        const ImVec2 preview_max = side_by_side ? ImVec2{position.x + (x + 375) * scale, position.y + 365 * scale} :
+                                                  ImVec2{position.x + 390 * scale, position.y + (300 + row) * scale};
+        if (!preview::Draw(state.characters[player], preview_min, preview_max,
                 ImGui::GetTime() - g_coop_preview_started[player], view::Snapshot().hd_textures))
-            centered("Preview unavailable.", 268, .6f);
-        centered(settings::CharacterName(state.characters[player]), 370, .72f);
+            centered("Preview unavailable.", name_y + 24, .6f);
+        centered(settings::CharacterName(state.characters[player]), name_y, .72f);
         auto pressed = g_coop_pressed[player].exchange(0);
         if (!player && g_coop_ui_ready) {
             for (const auto [key, bit] : {std::pair{ImGuiKey_UpArrow, 1u}, {ImGuiKey_DownArrow, 2u},
@@ -998,15 +1027,16 @@ void CoopContent(float scale, bool just_opened, const CoopSetupState& state) {
         if (just_opened) focus = 0;
         if (!character_editable) focus = 2;
         if (editable) {
-            if ((pressed & 1) && character_editable) focus = 0;
-            if (pressed & 2) focus = 2;
+            if ((pressed & 1) && character_editable) focus = focus == 3 ? 2 : 0;
+            if (pressed & 2) focus = !player && focus >= 2 && split_editable ? 3 : 2;
             if (focus < 2 && character_editable) {
                 if (pressed & 4) focus = 0;
                 if (pressed & 8) focus = 1;
             }
+            if (!player && focus == 3 && split_editable && (pressed & (4 | 8 | 16))) change_split = true;
         }
         ImGui::BeginDisabled(!editable || state.ready[player] || !state.character_available);
-        ImGui::SetCursorPos({x * scale, 400 * scale});
+        ImGui::SetCursorPos({x * scale, choice_y * scale});
         int step = 0;
         if (MenuButton("PREVIOUS", {190 * scale, 36 * scale}, character_editable && focus == 0)) {step = -1; focus = 0;}
         ImGui::SameLine((x + 210) * scale);
@@ -1017,14 +1047,14 @@ void CoopContent(float scale, bool just_opened, const CoopSetupState& state) {
             if (step) request.character = (int(state.characters[player]) + step + int(settings::kCharacterCount)) % int(settings::kCharacterCount);
         }
         ImGui::BeginDisabled(!editable);
-        ImGui::SetCursorPos({(x + 60) * scale, 442 * scale});
+        ImGui::SetCursorPos({(x + 60) * scale, ready_y * scale});
         const bool ready = MenuButton(state.ready[player] ? "CANCEL READY" : "READY", {280 * scale, 36 * scale}, focus == 2);
         ImGui::EndDisabled();
         if (editable && (ready || ((pressed & 16) && focus == 2))) {request.ready = state.ready[player] ? 0 : 1; focus = 2;}
         if (editable && (pressed & 32)) {request = {}; request.back = true;}
-        if (!state.connected[player]) centered("CONNECT CONTROLLER", 485, .5f);
+        if (!state.connected[player]) centered("CONNECT CONTROLLER", help_y, .5f);
         else {
-            const float hint_y = player ? 485.f : 482.f;
+            const float hint_y = help_y;
             ImGui::SetWindowFontScale(.42f);
             ImGui::SetCursorPos({(x + 12) * scale, hint_y * scale}); ImGui::TextUnformatted(language::Text("D-PAD: MOVE"));
             const auto family = input::GetControllerFamily(int(player));
@@ -1035,7 +1065,7 @@ void CoopContent(float scale, bool just_opened, const CoopSetupState& state) {
                              ControllerPromptInfo(family, input::PcAction::B));
             ImGui::SetCursorPos({(x + 315) * scale, hint_y * scale}); ImGui::TextUnformatted(language::Text("BACK"));
             ImGui::SetWindowFontScale(1);
-            if (!player) centered("ARROWS: MOVE   ENTER: SELECT   ESC: BACK", 497, .38f);
+            if (!player) centered("ARROWS: MOVE   ENTER: SELECT   ESC: BACK", help_y + 15, .38f);
         }
         if (request.character >= 0 || request.ready >= 0 || request.back) {
             g_notice = "";
@@ -1043,6 +1073,25 @@ void CoopContent(float scale, bool just_opened, const CoopSetupState& state) {
             std::lock_guard lock(g_original_lock); g_coop_requests[player] = request;
         }
         ImGui::PopID();
+    }
+    ImGui::SetWindowFontScale(.6f);
+    ImGui::SetCursorPos({80 * scale, 510 * scale});
+    ImGui::TextUnformatted(language::Text("CO-OP SPLIT SCREEN"));
+    ImGui::SetCursorPos({440 * scale, 508 * scale});
+    ImGui::BeginDisabled(!split_editable);
+    if (MenuButton(view::Snapshot().vertical_split ? "Side by Side" : "Top and Bottom",
+                   {460 * scale, 26 * scale}, g_coop_focus[0] == 3)) change_split = true;
+    ImGui::EndDisabled();
+    ImGui::SetWindowFontScale(1);
+    if (change_split && split_editable) {
+        auto selected = view::Snapshot();
+        selected.vertical_split = !selected.vertical_split;
+        view::Apply(selected);
+        if (!app::Save()) {
+            selected.vertical_split = !selected.vertical_split;
+            view::Apply(selected);
+            g_notice = "Could not change co-op selection. Try again.";
+        }
     }
     draw->AddRectFilled({position.x + 210 * scale, position.y + 535 * scale},
                         {position.x + 705 * scale, position.y + 580 * scale}, IM_COL32(12, 13, 15, 255));
@@ -1213,10 +1262,17 @@ void DarkwatchGraphicsPad(int port, input::Pad& pad) {
             g_quit_choice = darkwatch::ConfirmDesktopQuit(mem::Base(), quit_owner) ? 2 : 3;
         }
         darkwatch::EnsureNativePauseEntries(mem::Base());
+        const auto pause_action = g_pause_action.exchange(0);
+        if (pause_action) {
+            darkwatch::ActivateMultiplayerPauseEntry(mem::Base(), uint32_t(pause_action >> 32), uint32_t(pause_action) - 1);
+            g_block_release = true;
+        }
+        state = darkwatch::QueryGraphicsMenuRoute(mem::Base());
+        if (state.multiplayer_pause && g_leave) {g_leave = false; g_block_release = true;}
         const auto entry = darkwatch::TakeNativePauseEntry(mem::Base(), state.options);
         bool controls = state.route == darkwatch::GraphicsMenuRoute::Controls;
         bool visual = state.route == darkwatch::GraphicsMenuRoute::Visual || state.route == GraphicsMenuRoute::Audio ||
-                      controls || g_characters_owner.load() || g_quit_owner.load() || coop.owner;
+                      controls || state.multiplayer_pause || g_characters_owner.load() || g_quit_owner.load() || coop.owner;
         const uint32_t owner_port = coop.owner || g_characters_owner.load() || g_quit_owner.load() ? 0 : state.paused ? state.input_port :
             state.route == GraphicsMenuRoute::Hidden ? g_navigation_port.load() : 0;
         if (g_navigation_port.exchange(owner_port) != owner_port) {
@@ -1299,6 +1355,18 @@ void DarkwatchGraphicsPad(int port, input::Pad& pad) {
     }
 }
 
+bool DarkwatchPauseMenuContent(uint8_t* base, uint32_t root) {
+    // Native Pause can open after pad polling; publish before its first draw.
+    const auto state = darkwatch::PrepareMultiplayerPauseMenu(base, root);
+    if (!state.multiplayer_pause || state.options != root) return false;
+    if (g_navigation_port.exchange(state.input_port) != state.input_port) {
+        g_pad = 0; g_released = false;
+    }
+    {std::lock_guard lock(g_original_lock); g_original_controls = state;}
+    g_visual = true; g_leave = false;
+    return true;
+}
+
 bool DarkwatchGraphicsVisible() {return g_visual && !g_leave && !g_configuring;}
 void DarkwatchGraphicsUi(double fps) {
     const auto fonts = skin::Select(view::Snapshot().hd_ui);
@@ -1316,6 +1384,9 @@ void DarkwatchGraphicsUi(double fps) {
         if (state.paused && state.options == g_pause_owner && state.page == g_pause_page)
             pause_entry = g_pause_entry;
     }
+    g_pause_main = state.multiplayer_pause;
+    g_local_pause = state.paused && state.multiplayer;
+    g_pause_viewport = state.pause_viewport;
     g_coop = coop.owner != 0;
     g_controls = state.route == GraphicsMenuRoute::Controls;
     g_audio = state.route == GraphicsMenuRoute::Audio || (g_controls && pause_entry == 3);
@@ -1323,7 +1394,7 @@ void DarkwatchGraphicsUi(double fps) {
     g_quit = g_quit_owner.load() != 0;
     g_options = g_coop ? coop.owner : g_characters ? g_characters_owner.load() : state.options;
     g_subtitles_available = state.subtitles_available;
-    bool visible = (state.route == GraphicsMenuRoute::Visual || g_controls || g_audio || g_characters || g_quit || g_coop) && !g_leave && !g_configuring;
+    bool visible = (state.route == GraphicsMenuRoute::Visual || g_controls || g_audio || g_characters || g_quit || g_coop || g_pause_main) && !g_leave && !g_configuring;
     if (!visible) {
         if (g_confirm) Revert();
         g_open = false;
@@ -1336,8 +1407,8 @@ void DarkwatchGraphicsUi(double fps) {
         ImGui::GetIO().FontGlobalScale = 1 / g_font_scale;
         return;
     }
-    const uint32_t view_player = state.paused && state.input_port == 1 ? 1 : 0;
-    bool just_opened = !g_open || g_view_player != view_player || g_open_coop != g_coop || g_open_quit != g_quit || g_open_controls != g_controls || g_open_audio != g_audio || g_open_characters != g_characters || g_open_options != g_options ||
+    const uint32_t view_player = state.paused ? state.input_port : 0;
+    bool just_opened = !g_open || g_open_pause_main != g_pause_main || g_view_player != view_player || g_open_coop != g_coop || g_open_quit != g_quit || g_open_controls != g_controls || g_open_audio != g_audio || g_open_characters != g_characters || g_open_options != g_options ||
                        g_open_page != state.page || g_open_pause_entry != pause_entry;
     if (just_opened) {
         LOGI("menu: opened page=%u player=%u paused=%u controls=%u audio=%u characters=%u coop=%u", unsigned(state.page), view_player + 1, unsigned(state.paused), unsigned(g_controls), unsigned(g_audio), unsigned(g_characters), unsigned(g_coop));
@@ -1347,12 +1418,14 @@ void DarkwatchGraphicsUi(double fps) {
         g_pad_capture_action = g_pad_binding_focus = -1;
         g_binding_focus = -1;
         if (g_confirm) Revert();
+        g_open_pause_main = g_pause_main; g_pause_ready = false;
         g_open = true; g_draft = app::Snapshot();
         g_open_characters = g_characters;
         g_open_coop = g_coop; g_coop_ui_ready = false;
         g_open_quit = g_quit; g_quit_ready = false;
         g_open_audio = g_audio;
         g_audio_draft = state.audio; g_sound_output_draft = static_cast<int>(audio::GetSoundOutput());
+        g_monster_screams_draft = MonsterScreamsVolume();
         if (g_characters) {
             g_character_draft = settings::configured_character(0);
             g_character_preview_started = ImGui::GetTime();
@@ -1391,11 +1464,14 @@ void DarkwatchGraphicsUi(double fps) {
     ImGui::SetNextFrameWantCaptureMouse(true);
     const float scale = MenuScale();
     io.FontGlobalScale = scale / g_font_scale;
-    const bool tall_settings = !g_coop && !g_characters && !g_quit && !g_audio;
+    const bool tall_settings = !g_coop && !g_characters && !g_quit && !g_audio && !g_pause_main;
     ImVec2 size = g_quit ? ImVec2(720 * scale, 360 * scale) :
         ImVec2(960 * scale, std::min((tall_settings ? 800 : 600) * scale, io.DisplaySize.y - 24 * scale));
-    ImVec2 pos((io.DisplaySize.x - size.x) / 2, (io.DisplaySize.y - size.y) / 2);
-    ImGui::GetBackgroundDrawList()->AddRectFilled({0, 0}, io.DisplaySize, IM_COL32(4, 6, 10, g_coop ? 255 : 210));
+    const ImVec2 viewport_pos = g_local_pause ? ImVec2(io.DisplaySize.x * g_pause_viewport[0], io.DisplaySize.y * g_pause_viewport[1]) : ImVec2(0, 0);
+    const ImVec2 viewport_size = g_local_pause ? ImVec2(io.DisplaySize.x * g_pause_viewport[2], io.DisplaySize.y * g_pause_viewport[3]) : io.DisplaySize;
+    ImVec2 pos(viewport_pos.x + (viewport_size.x - size.x) / 2,
+               viewport_pos.y + (viewport_size.y - size.y) / 2);
+    ImGui::GetBackgroundDrawList()->AddRectFilled(viewport_pos, {viewport_pos.x + viewport_size.x, viewport_pos.y + viewport_size.y}, IM_COL32(4, 6, 10, g_coop ? 255 : 210));
     ImGui::SetNextWindowPos(pos); ImGui::SetNextWindowSize(size);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0, 0});
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, {10 * scale, 4 * scale});
@@ -1428,12 +1504,12 @@ void DarkwatchGraphicsUi(double fps) {
     ImGui::PushStyleColor(ImGuiCol_TextSelectedBg, {.55f,.04f,.05f,.8f});
     ImGui::PushFont(g_body);
     const bool controls_page = g_controls && !g_page_graphics && !g_audio;
-    ImGui::Begin(g_coop ? "Co-op" : g_quit ? "Quit to Desktop" : g_characters ? "Characters" : g_audio ? "Audio" : g_controls ? "Controls" : "Graphics", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::Begin(g_pause_main ? "Pause" : g_coop ? "Co-op" : g_quit ? "Quit to Desktop" : g_characters ? "Characters" : g_audio ? "Audio" : g_controls ? "Controls" : "Graphics", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
     ImGui::SetWindowFontScale(1);
     skin::Frame(ImGui::GetWindowDrawList(), {pos.x, pos.y + 60 * scale}, {size.x, size.y - 60 * scale});
     ImGui::PushFont(g_title);
     if (g_controller_layout) ImGui::SetWindowFontScale(.75f);
-    const char* title = language::Text(g_coop ? "CO-OP" : g_quit ? "QUIT TO DESKTOP" : g_characters ? "CHOOSE CHARACTER" : g_audio ? "AUDIO" : g_controller_layout ? "CONTROLLER LAYOUT" : controls_page ? "CONTROLS" : "GRAPHICS");
+    const char* title = language::Text(g_pause_main ? "PAUSE" : g_coop ? "CO-OP" : g_quit ? "QUIT TO DESKTOP" : g_characters ? "CHOOSE CHARACTER" : g_audio ? "AUDIO" : g_controller_layout ? "CONTROLLER LAYOUT" : controls_page ? "CONTROLS" : "GRAPHICS");
     const float title_width = ImGui::CalcTextSize(title).x;
     const float title_room = size.x - 128 * scale;
     if (title_width > title_room) ImGui::SetWindowFontScale(ImGui::GetCurrentWindow()->FontWindowScale * title_room / title_width);
@@ -1445,6 +1521,26 @@ void DarkwatchGraphicsUi(double fps) {
     ImGui::SetCursorPos({96 * scale, title_inset});
     ImGui::TextUnformatted(title);
     ImGui::SetWindowFontScale(1); ImGui::PopFont();
+    if (g_pause_main) {
+        const bool was_ready = g_pause_ready;
+        if (!just_opened && g_released && !io.MouseDown[0] &&
+            !ImGui::IsKeyDown(ImGuiKey_Enter) && !ImGui::IsKeyDown(ImGuiKey_Space) &&
+            !ImGui::IsKeyDown(ImGuiKey_GamepadFaceDown)) g_pause_ready = true;
+        constexpr const char* labels[]{"RESUME GAME", "GRAPHICS", "CONTROLS", "AUDIO", "QUIT GAME"};
+        ImGui::BeginDisabled(!g_pause_ready || g_pause_action.load());
+        for (unsigned i = 0; i < std::size(labels); ++i) {
+            ImGui::SetCursorPos({180 * scale, (120 + 64 * i) * scale});
+            if (!i && (just_opened || (!was_ready && g_pause_ready))) ImGui::SetKeyboardFocusHere();
+            if (MenuButton(labels[i], {600 * scale, 52 * scale}))
+                g_pause_action = (uint64_t(state.options) << 32) | (i + 1);
+        }
+        ImGui::EndDisabled();
+        if (g_pause_ready && (ImGui::IsKeyPressed(ImGuiKey_Escape, false) || GamepadBack() ||
+            ImGui::IsMouseClicked(ImGuiMouseButton_Right)))
+            g_pause_action = (uint64_t(state.options) << 32) | 1;
+        ImGui::End(); ImGui::PopFont(); ImGui::PopStyleColor(23); ImGui::PopStyleVar(5);
+        return;
+    }
     if (g_quit) {
         // Require the opening click/key/pad press to be released before accepting a choice.
         const bool ready_before = g_quit_ready;
@@ -1561,7 +1657,7 @@ void DarkwatchGraphicsUi(double fps) {
     }
     { MenuRow row("AMBIENT OCCLUSION", layout.Row(), scale);
     Toggle("##ambient_occlusion", g_draft.ambient_occlusion);
-    layout.Help("Contact shadows for both players. May reduce performance.");
+    layout.Help("Contact shadows. May reduce performance.");
     }
     layout.Section("ARTWORK");
     { MenuRow row("HD ARTWORK", layout.Row(), scale);
@@ -1586,11 +1682,6 @@ void DarkwatchGraphicsUi(double fps) {
     layout.Help("Menus, logos and loading artwork. Gameplay and movies are unchanged.");
     }
     layout.Section("CAMERA");
-    { MenuRow row("CAMERA VIEW", layout.Row(), scale);
-    ImGui::TextUnformatted(language::Text(g_view_draft.camera_mode == view::CameraMode::FirstPerson ? "First Person" :
-        g_view_draft.camera_mode == view::CameraMode::Shoulder ? "Third Person - Shoulder" : "Third Person - Centered"));
-    layout.Help("Use Cycle Camera during gameplay. Assign its button in Controls.");
-    }
     { MenuRow row("FIELD OF VIEW", layout.Row(), scale);
     int fov = int(g_view_draft.fov_percent);
     if (ImGui::SliderInt("##fov", &fov, 50, 200, "%d%%", ImGuiSliderFlags_AlwaysClamp)) g_view_draft.fov_percent = uint32_t(fov);
@@ -1669,12 +1760,6 @@ void DarkwatchGraphicsUi(double fps) {
     { MenuRow row("FOREVER RAGDOLLS", layout.Row(), scale);
     Toggle("##forever_ragdolls", g_view_draft.forever_ragdolls);
     layout.Help("Keep bodies interactive until level changes. May reduce performance.");
-    }
-    { MenuRow row("CO-OP SPLIT SCREEN", layout.Row(), scale);
-    int split = g_view_draft.vertical_split ? 1 : 0;
-    if (Choice("##split_layout", &split, "Top and Bottom\0Side by Side\0"))
-        g_view_draft.vertical_split = split != 0;
-    layout.Help("Both players. Applies when the next co-op mission loads.");
     }
     ImGui::Dummy({1, 12 * scale});
     EndSettingsChild();

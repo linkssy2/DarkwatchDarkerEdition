@@ -51,7 +51,7 @@ XBE, and builds the development runtime. The release build uses a separate
 object/output directory and reuses those dependency source checkouts. Running
 `-Release` before the first build currently fails because those checkouts do not
 exist. `dependencies.lock.json` records the revisions retained from version 0.1
-for version 0.7.9; dependency tags in the SDK should resolve to those commits.
+for version 0.8.0; dependency tags in the SDK should resolve to those commits.
 
 `-Stage Recompile` regenerates title code without rebuilding the runtime.
 `-Stage Symbols` records a signature-scan comparison without replacing the
@@ -85,7 +85,7 @@ The public source is therefore not yet a one-command clean-machine packager.
 After provisioning and a successful release runtime build:
 
 ```powershell
-./scripts/build-launcher.ps1 -Output 'C:/build-output/Darkwatch-0.7.9'
+./scripts/build-launcher.ps1 -Output 'C:/build-output/Darkwatch-0.8.0'
 ```
 
 The output directory must not already exist. The script builds both launcher
@@ -94,7 +94,7 @@ enhancement PNGs, authored Cassidy/Tala hand repaints and edited branding, while
 original disc files, character archives and assembled packs are excluded. Import and shader preparation happen locally
 when the player supplies their disc. Keep all package files together.
 
-## Linux 0.7.9 compatibility package
+## Linux 0.8.0 compatibility package
 
 `launcher/linux/` provides the experimental Linux launcher for an already built
 Windows package. It runs the packaged import backend and game through the
@@ -106,7 +106,7 @@ After producing a verified Windows release directory, make the experimental
 archive without adding installed game data:
 
 ```powershell
-.venv/Scripts/python.exe tools/package_linux.py --windows-package 'C:/build-output/Darkwatch-0.7.9' --output 'C:/build-output/Darkwatch-0.7.9-Linux-Proton-Experimental.tar.gz' --audit 'C:/build-output/linux-package-audit.json'
+.venv/Scripts/python.exe tools/package_linux.py --windows-package 'C:/build-output/Darkwatch-0.8.0' --output 'C:/build-output/Darkwatch-0.8.0-Linux-Proton-Experimental.tar.gz' --audit 'C:/build-output/linux-package-audit.json'
 ```
 
 The packager copies the verified Windows allowlist under `windows/`, adds only
@@ -158,7 +158,7 @@ The maintained native address-key headers are included as metadata. Original
 native body/byte regression fixtures and private acceptance recordings remain
 excluded. Synthetic source tests do not establish live gameplay acceptance.
 
-Version 0.7.9 retains the pinned SDK revision with an updated maintained patch.
+Version 0.8.0 retains the pinned SDK revision with an updated maintained patch.
 Source checks cover the exported synthetic suite and native host fixtures; they
 do not replace a clean-machine full rebuild or full-campaign testing. Live acceptance is recorded separately from these source checks.
 
@@ -175,3 +175,11 @@ The existing five-part 0.7 optional HD download remains compatible. It is not
 included here; do not rebuild or redownload it merely for this runtime update.
 The current release build excludes development-only activation paths and defaults
 diagnostics to off. Follow the explicit `-Release` command for player packages.
+
+## Fresh-install content choice
+
+Original playable characters/models/animations are the default. Enable the
+expanded characters, enhanced models and animations checkbox before a fresh
+import to prepare that content. Existing installations preserve their choice;
+switching content profiles requires a separate fresh installation. Optional HD
+gameplay textures are separate from this choice.

@@ -263,10 +263,8 @@ class GameplayHdSetupTests(unittest.TestCase):
         (first / 'install.json').write_text(json.dumps(receipt))
         before = self.snapshot(first)
         second = self.install_disc()
-        self.assertEqual((first / "gameplay-hd/example.dwt").read_bytes(), self.texture)
+        self.assertFalse(first.exists())
         self.assertEqual((second / "gameplay-hd/example.dwt").read_bytes(), self.texture)
-        self.assertFalse(os.path.samefile(first / "gameplay-hd/example.dwt", second / "gameplay-hd/example.dwt"))
-        self.assertEqual(self.snapshot(first), before)
         notify = self.backend.notify
         def cancel_on_verify(event, message, **fields):
             if message == "Verifying optional HD textures":
@@ -276,7 +274,7 @@ class GameplayHdSetupTests(unittest.TestCase):
         with self.assertRaises(setup.Cancelled):
             self.install_disc()
         self.assertEqual(self.backend.active(), second)
-        self.assertEqual(set((self.install / "versions").iterdir()), {first, second})
+        self.assertEqual(set((self.install / "versions").iterdir()), {second})
         self.assertEqual((second / "gameplay-hd/example.dwt").read_bytes(), self.texture)
 
     def test_damaged_optional_pack_does_not_block_iso_repair(self):
@@ -287,7 +285,7 @@ class GameplayHdSetupTests(unittest.TestCase):
         self.assertTrue(self.backend.status()["ready"])
         self.assertFalse(self.backend.status()["hd_textures_installed"])
         self.assertFalse((second / "gameplay-hd").exists())
-        self.assertEqual(file.read_bytes(), b"bad")
+        self.assertFalse(first.exists())
 
     def test_unreadable_or_linked_optional_source_does_not_block_iso_repair(self):
         for error in (OSError("unreadable old artwork"), setup.intake.IntakeError("optional junction")):
@@ -302,7 +300,7 @@ class GameplayHdSetupTests(unittest.TestCase):
                 second = self.install_disc()
             self.assertTrue(self.backend.status()["ready"])
             self.assertFalse((second / "gameplay-hd").exists())
-            self.assertEqual(self.snapshot(first), before)
+            self.assertFalse(first.exists())
 
     def test_cli_install_and_failure_preserve_ready_state(self):
         self.install_disc()

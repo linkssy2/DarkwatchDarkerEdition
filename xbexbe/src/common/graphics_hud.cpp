@@ -35,8 +35,13 @@ void Store(uint8_t* base, uint32_t address, float value) {
     std::memcpy(base + address, &value, 4);
 }
 darkwatch::viewport::View View(const uint8_t* base, uint32_t camera) {
+    unsigned players = 4;
+    if (Span(base, 0x4AC9A0, 4)) {
+        const auto game = Read(base, 0x4AC9A0);
+        if (game && Span(base, uint64_t(game) + 0x4C, 4) && Read(base, game + 0x4C) == 3) players = 3;
+    }
     return darkwatch::viewport::Identify(Read(base, camera + 0x58), Read(base, camera + 0x5C),
-        Read(base, camera + 0x60), Read(base, camera + 0x64));
+        Read(base, camera + 0x60), Read(base, camera + 0x64), players);
 }
 bool Camera(const HudScope& scope) {
     // D835C copies the player's viewport into the HUD's own camera.

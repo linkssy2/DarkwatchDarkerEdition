@@ -350,6 +350,18 @@ int main(){using namespace darkwatch::view;
     def test_independent_player_views_migrate_and_persist(self):
         self.run_fixture(COOP_FIXTURE)
 
+    def test_four_player_settings_are_independent_and_persist(self):
+        self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + r'''
+int main(){using namespace darkwatch::view;
+ Write("field_of_view_scale=120\n[player2_view]\nfield_of_view_scale=140\n");app::Load();
+ CHECK(Snapshot(2).fov_percent==120&&Snapshot(3).fov_percent==120);
+ for(unsigned p=0;p<4;++p){auto s=Snapshot(p);s.fov_percent=80+20*p;s.reticle_percent=60+20*p;s.viewmodel_fov_percent=70+10*p;s.show_hud=p%2;s.camera_mode=CameraMode(p%3);s.reticle_enemy_color=0x100+p;Apply(s,p);}
+ CHECK(app::Save());app::Load();
+ for(unsigned p=0;p<4;++p){auto s=Snapshot(p);CHECK(s.fov_percent==80+20*p&&s.reticle_percent==60+20*p&&s.viewmodel_fov_percent==70+10*p&&s.show_hud==bool(p%2)&&s.camera_mode==CameraMode(p%3)&&s.reticle_enemy_color==0x100+p);}
+ auto s=Snapshot(3);s.hd_ui=false;Apply(s,3);for(unsigned p=0;p<4;++p)CHECK(!Snapshot(p).hd_ui);
+}
+''')
+
     def run_fixture(self, fixture):
         compiler = shutil.which("clang++")
         self.assertIsNotNone(compiler)

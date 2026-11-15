@@ -48,7 +48,7 @@ int main(){
  input::Mouse(8,-4);input::AdvanceFrame(16667);CHECK(!input::Poll(0).rx&&!input::Poll(0).ry);
  auto s=ControlsSnapshot();CHECK(s.mouse_millidegrees==75&&s.bindings[fire].keys[0]==VK_LBUTTON);
  CHECK(s.zoom_sensitivity_percent==100);s.zoom_sensitivity_percent=35;
- CHECK(s.sight_toggle==defaults.sight_toggle);s.sight_toggle={false,true};
+ CHECK(s.sight_toggle==defaults.sight_toggle);s.sight_toggle={false,true,true,true};
  s.aim_assistance=false;s.aim_centering=false;s.mouse_millidegrees=87;
  s.bindings[fire].keys[0]='P';s.bindings[fire].keys[1]=VK_XBUTTON1;
  s.bindings[forward].keys[0]='I';CHECK(ControlsApply(s));
@@ -152,10 +152,12 @@ int main(){
  {
   CHECK(defaults.bindings[size_t(PcAction::Walk)].keys[0]==VK_CAPITAL);
   CHECK(!defaults.walk_toggle[0]&&!defaults.walk_toggle[1]&&defaults.walk_buttons[0]==-1&&defaults.walk_buttons[1]==-1);
-  auto walk=defaults;walk.walk_toggle[1]=true;walk.walk_buttons={6,8};walk.keep_starting_revolver=true;
+  CHECK(defaults.weapon_wheel);
+  auto walk=defaults;walk.walk_toggle[1]=true;walk.walk_buttons={6,8,-1,-1};walk.keep_starting_revolver=true;walk.weapon_wheel=false;
   CHECK(ControlsApply(walk)&&app::Save());CHECK(GetKeepStartingRevolver());
   CHECK(ControlsApply(defaults));app::Load();auto loaded=ControlsSnapshot();
   CHECK(loaded.walk_toggle==walk.walk_toggle&&loaded.walk_buttons==walk.walk_buttons&&loaded.keep_starting_revolver);
+  CHECK(!loaded.weapon_wheel);
   for(int invalid:{-2,4,5,16}){auto bad=walk;bad.walk_buttons[0]=invalid;CHECK(!ControlsApply(bad));}
   auto bad=walk;bad.weapon_buttons[1][0]=8;CHECK(!ControlsApply(bad));
   uint64_t now=5000000;
@@ -204,7 +206,7 @@ int main(){
   constexpr auto action=size_t(PcAction::SwapShoulder);
   CHECK(defaults.bindings[action].keys[0]=='V'&&!defaults.bindings[action].keys[1]);
   CHECK(defaults.shoulder_buttons[0]==-1&&defaults.shoulder_buttons[1]==-1);
-  auto shoulder=defaults;shoulder.shoulder_buttons={6,8};shoulder.walk_buttons={7,9};
+  auto shoulder=defaults;shoulder.shoulder_buttons={6,8,-1,-1};shoulder.walk_buttons={7,9,-1,-1};
   shoulder.weapon_buttons[0]={2,3};shoulder.weapon_buttons[1]={12,13};
   shoulder.bindings[action]={{'H',VK_XBUTTON2}};
   CHECK(ControlsApply(shoulder)&&app::Save());CHECK(Read().find("swap_shoulder")!=std::string::npos);
@@ -237,21 +239,24 @@ int main(){
   CHECK(ControlsSnapshot().shoulder_buttons==defaults.shoulder_buttons&&ControlsSnapshot().weapon_buttons[1][0]==9);
   CHECK(ControlsApply(restored));
  }
- for(bool enabled:{false,true}) {
-  auto test=defaults;test.ground_pound_anytime=enabled;test.camera_buttons={6,8};
+ {
+  auto test=defaults;test.camera_buttons={6,8,-1,-1};
   CHECK(ControlsApply(test)&&app::Save());CHECK(ControlsApply(defaults));app::Load();
-  CHECK(GetGroundPoundAnytime()==enabled&&ControlsSnapshot().camera_buttons==test.camera_buttons);
+  CHECK(ControlsSnapshot().camera_buttons==test.camera_buttons);
  }
- Write("ground_pound_anytime='bad'\n");app::Load();CHECK(!GetGroundPoundAnytime());
+ for(const char* legacy:{"true","false","'bad'"}) {
+  Write((std::string("ground_pound_anytime=")+legacy+"\n").c_str());app::Load();
+  CHECK(app::Save());CHECK(Read().find("ground_pound_anytime")==std::string::npos);
+ }
  Write("[key_bindings]\nright_trigger=[84,0]\n");app::Load();
  CHECK(ControlsSnapshot().bindings[fire].keys[0]=='T'&&!ControlsSnapshot().bindings[size_t(PcAction::CycleCamera)].keys[0]);
  CHECK(ControlsApply(restored));
  // Sight modes persist independently without changing legacy bindings or accepting malformed values.
  for(const auto modes:{std::array<bool,2>{false,false},std::array<bool,2>{false,true},
                        std::array<bool,2>{true,false},std::array<bool,2>{true,true}}){
-  auto sight=restored;sight.sight_toggle=modes;CHECK(ControlsApply(sight)&&app::Save());
+  auto sight=restored;sight.sight_toggle[0]=modes[0];sight.sight_toggle[1]=modes[1];CHECK(ControlsApply(sight)&&app::Save());
   CHECK(ControlsApply(defaults));app::Load();auto loaded=ControlsSnapshot();
-  CHECK(loaded.sight_toggle==modes&&loaded.zoom_sensitivity_percent==restored.zoom_sensitivity_percent);
+  CHECK(loaded.sight_toggle[0]==modes[0]&&loaded.sight_toggle[1]==modes[1]&&loaded.zoom_sensitivity_percent==restored.zoom_sensitivity_percent);
   for(size_t action=0;action<restored.bindings.size();++action)for(size_t slot=0;slot<2;++slot)
    CHECK(loaded.bindings[action].keys[slot]==restored.bindings[action].keys[slot]);
  }
@@ -303,6 +308,13 @@ int main(){
  auto a=defaults,b=restored;CHECK(ControlsApply(a));std::atomic<bool> done=false;
  std::thread writer([&]{for(int i=0;i<4000;++i)CHECK(ControlsApply(i&1?a:b));done=true;});
  do{auto v=ControlsSnapshot();CHECK((v.aim_assistance&&v.mouse_millidegrees==50&&v.bindings[fire].keys[0]==VK_LBUTTON)||(!v.aim_assistance&&v.mouse_millidegrees==87&&v.bindings[fire].keys[0]=='P'));}while(!done);writer.join();
+ // Four independent controller choices survive persistence; legacy two-entry arrays still load.
+ auto four=ControlsDefaults();
+ for(unsigned p=0;p<4;++p){four.walk_buttons[p]=int(p);four.sight_toggle[p]=p%2;four.camera_buttons[p]=8+p;auto map=input::DefaultPadBindings();std::swap(map[8],map[9+p]);CHECK(input::SetPadBindings(p,map));}
+ CHECK(ControlsApply(four)&&app::Save());app::Load();
+ for(unsigned p=0;p<4;++p){auto v=ControlsSnapshot();CHECK(v.walk_buttons[p]==int(p)&&v.sight_toggle[p]==bool(p%2)&&v.camera_buttons[p]==int(8+p));CHECK(input::GetPadBindings(p)[8]==9+p);}
+ auto bad=ControlsSnapshot();bad.camera_buttons[3]=bad.walk_buttons[3];CHECK(!ControlsApply(bad));
+ Write("sight_toggle=[false,true]\nwalk_buttons=[0,1]\n");app::Load();CHECK(!ControlsSnapshot().sight_toggle[0]&&ControlsSnapshot().sight_toggle[2]&&ControlsSnapshot().walk_buttons[3]==-1);
  std::puts("actual Controls: TOML roundtrip, legacy weapon-slot preservation and frame-latched aliases, invalid/conflicting bindings, atomic-save failure, raw capture, live input and coherent snapshots passed");
 }
 '''
