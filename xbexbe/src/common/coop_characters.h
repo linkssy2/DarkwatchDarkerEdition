@@ -10,6 +10,7 @@ struct CoopSetupState {
     std::array<settings::Character, 2> characters{};
     std::array<bool, 2> ready{}, connected{};
     bool character_available = false;
+    bool original_content = false;
 };
 // Guest-thread bridge. The drawing thread uses a copied snapshot and queues
 // actions with its owner; every action rejects stale pages and modal overlays.

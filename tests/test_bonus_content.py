@@ -65,7 +65,7 @@ class BonusImportTests(unittest.TestCase):
         for name in ('content_profile.py', 'character_banshee.py', 'character_content.py', 'character_update.py', 'character-update.json.gz',
                      'character_campaign.py', 'character_campaign_pose.py', 'character_dropped_clips.py',
                      'character-campaign-angles.json', 'character_animation.py', 'character_assets.py',
-                     'character_archive.py', 'character_repaint.py', 'character-catalog.json',
+                     'character_archive.py', 'character_workers.py', 'character_repaint.py', 'character-catalog.json',
                      'character_boss.py', 'character_boss_effects.py', 'character_spectral_hands.py',
                      'character_hand_seams.py', 'character_secondary.py', 'character_preview.py', 'character_roster.py', 'character_tala.py',
                      'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'enemy_blood.py', 'character_cinematic.py', 'installed_source.py',

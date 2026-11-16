@@ -142,7 +142,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         shutil.copyfile(ROOT / "launcher/bonus_content.py", self.payload / "bonus_content.py")
         shutil.copyfile(ROOT / "launcher/gameplay_hd.py", self.payload / "gameplay_hd.py")
         shutil.copyfile(ROOT / "launcher/language_pack.py", self.payload / "language_pack.py")
-        for name in ('character_animation.py', 'character_archive.py', 'character_assets.py',
+        for name in ('character_animation.py', 'character_archive.py', 'character_workers.py', 'character_assets.py',
                      'character_repaint.py', 'content_profile.py', 'character_content.py', 'character_update.py', 'character-update.json.gz',
                      'character_banshee.py', 'character_campaign.py', 'character_campaign_pose.py', 'character_dropped_clips.py',
                      'character-campaign-angles.json', 'character_boss.py',
@@ -299,7 +299,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         self.assertFalse(old.exists())
 
     def test_incremental_update_payload_must_be_complete(self):
-        for name in ('character_update.py', 'character-update.json.gz', 'character_campaign.py',
+        for name in ('character_workers.py', 'character_update.py', 'character-update.json.gz', 'character_campaign.py',
                      'character_campaign_pose.py', 'character_dropped_clips.py', 'character-campaign-angles.json'):
             with self.subTest(file=name):
                 path = self.payload / name
@@ -1919,6 +1919,16 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         backend = setup.Setup(self.package, self.install, notify=lambda *args, **kw: None)
         with self.assertRaisesRegex(setup.SetupError, "artwork package is incomplete"):
             backend.import_iso(self.iso, profile="enhanced")
+
+    def test_worker_crash_reports_recoverable_launcher_error(self):
+        with patch.object(setup, 'Setup', return_value=self.backend), \
+                patch.object(self.backend, 'import_iso', side_effect=setup.BrokenExecutor('worker failed')), \
+                patch.object(setup, 'emit') as emit:
+            code = setup.main(['--package', str(self.package), '--install-root', str(self.install),
+                               '--import-iso', str(self.iso)])
+        self.assertEqual(code, 1)
+        emit.assert_called_once_with('error', 'worker failed', ready=False, cancelled=False)
+        self.assertIsNone(self.backend.active())
 
     def test_cli_json_contract_and_public_metadata(self):
         output = io.StringIO()

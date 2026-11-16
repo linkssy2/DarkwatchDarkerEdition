@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager, ExitStack
+from concurrent.futures import BrokenExecutor
 import ctypes
 import hashlib
 import json
@@ -62,7 +63,7 @@ SETTINGS = "darkwatch_xbe_settings.toml"
 CAMPAIGN_BUILDS = {'b96f88fd964f149c11915794a595f9597ab29a8209166d54d4f05a5cc2bf3c04': {'packfile.pck': (199254290, '7f520632e0f2ceac93b3d0cccdf91af8011907d399ae85dec01e2c3c6fe68a83'), 'LvlSingl.pck': (3012989507, '0afa41525e9983e6df7580b27caba1824f4a0c8a23a5030abc0422fa14e58f94'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, 'd5880fb87e6f12dab0faeb5f5a1b2b9f8fa53df304624ed7a17885df3688ad37': {'packfile.pck': (200704954, '656c752a29c0dfa52bfb557f911a40233ef53c13bdaa67b56c6b38ffbf3b38df'), 'LvlSingl.pck': (3045288515, '6553332771df115b726b9e2b7d3dba2f7a24ae59134f3cfdb41ca0f886eb1692'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, 'dcddfb265d8578e3dedb9651db05dd2681c192ec3cd8cbb40f666a24869749c4': {'packfile.pck': (200704954, 'a414e23dae485790f1aba7e36e63746c0f7cb6eb66a69ca0861db705d8146719'), 'LvlSingl.pck': (3045288515, 'a2724db84e595461b5ed4c2e35613fb925f2cdf6233692c9e1859e6f96cf6f9f'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, 'e918d35dc34a1e6718af978828dff8ea32efe5dcf7f2f556c073f33c8b5e26cf': {'packfile.pck': (200704954, '5204b0dce560336ba80cb65d6dfc4e73a0504f73d5742dc2c6e837c03f215fac'), 'LvlSingl.pck': (3045288515, '797f73cab89874e431ea94996b158b19afa77eb940e03c3266ab9079e2b07bfb'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, '5eefd4a5a7406b2d30b5ff0ddec8d31e8eaf2151d966a5e2b06c0481883cadbe': {'packfile.pck': (200704954, '02774c265a1f838adf99db7ee946b59695ac6d6638e86c4b3b6db3179e848907'), 'LvlSingl.pck': (3045288515, '7d81366ee928f4db9e328a47ce42b9057378656a71059f586e15d85591ea7631'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, '4a2be3fee76f967a76f98c5c3ce8bba48ba133f4130f0a230d4d2e7304180646': {'packfile.pck': (200442226, '3736a8837f9d36e83216aae940118a7944d19e81b9a30794f7799779fe6b9206'), 'LvlSingl.pck': (3031343683, '19bf1ec7de1dd65eaee13c98fef01aebb6c48fe496c7ec1214309fa3c6514ed6'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}, 'ed8ca59ef3abb0c3cb5ecece02d15379d9ce9f594bf0692acb90a34a21d287cc': {'packfile.pck': (200442226, '02bef06ae69fb66e6358d16fef1eeb494060ad1da7f23b2e951c8c2392092067'), 'LvlSingl.pck': (3031343683, '6d93ed66a681d77987736a69cc53ac2df2dc9372104022243a492eb57a04d0e4'), 'audio.pck': (152395109, '33226641a88f2323465ad2fc2b9fd1642d8346a304f7ff38779688820775a285')}}
 
 DISC_SOURCE = "disc-source.toml"
-PACKAGE_VERSION = "0.8.0"
+PACKAGE_VERSION = "0.8.1"
 RELEASE_PROFILE = {"name": "release-candidate", "diagnostics": False, "strict_assets": True}
 # Maximum time without a completed shader, not a limit on the whole preparation.
 SHADER_PREPARE_TIMEOUT = 15 * 60
@@ -302,7 +303,7 @@ class Setup:
                      "payload/character_banshee.py", "payload/character_campaign.py", "payload/character_campaign_pose.py",
                      "payload/character_dropped_clips.py", "payload/character-campaign-angles.json",
                      "payload/character_animation.py", "payload/character_assets.py",
-                     "payload/character_archive.py", "payload/character_repaint.py", "payload/character-catalog.json",
+                     "payload/character_archive.py", "payload/character_workers.py", "payload/character_repaint.py", "payload/character-catalog.json",
                      "payload/character_boss.py", "payload/character_boss_effects.py", "payload/character_spectral_hands.py",
                      "payload/character_hand_seams.py", "payload/character_secondary.py", "payload/character_preview.py",
                      "payload/character_roster.py", "payload/character_tala.py",
@@ -726,8 +727,15 @@ class Setup:
     def prepare_previews(self, current, cached=False):
         """Upgrade the local menu cache without requiring another ISO import."""
         metadata = read_json(safe_path(current, "install.json"))
-        record = metadata.get("character_preview", {})
         path = safe_path(current, character_preview.NAME)
+        if content_profile.selected(metadata) == "original":
+            if path.exists() or "character_preview" in metadata:
+                require_closed()
+                path.unlink(missing_ok=True)
+                metadata.pop("character_preview", None)
+                write_json(safe_path(current, "install.json"), metadata)
+            return
+        record = metadata.get("character_preview", {})
         if (isinstance(record, dict) and record.get("version") == character_preview.VERSION and
                 isinstance(record.get("size"), int) and 16 < record["size"] <= character_preview.MAX_BYTES and
                 isinstance(record.get("sha256"), str) and re.fullmatch("[0-9a-f]{64}", record["sha256"]) and
@@ -1230,9 +1238,11 @@ class Setup:
                     if path.stat().st_size != size or self.digest(path) != digest:
                         raise SetupError("Updated character data failed verification; no installed files were changed.")
                     replacements.append("assets/" + name)
-                metadata["character_preview"] = character_preview.prepare(assets, stage / character_preview.NAME, self.check_cancel)
-                self.remember_verified(stage / character_preview.NAME, metadata["character_preview"]["sha256"])
-                replacements.append(character_preview.NAME)
+                if content_profile.selected(metadata) == "enhanced":
+                    metadata["character_preview"] = character_preview.prepare(assets, stage / character_preview.NAME, self.check_cancel,
+                                                                              profile=content_profile.selected(metadata))
+                    self.remember_verified(stage / character_preview.NAME, metadata["character_preview"]["sha256"])
+                    replacements.append(character_preview.NAME)
             for name, digest in self.files.items():
                 if not name.startswith("payload/runtime/") or name.endswith("/darkwatch_hd_ui_builder.exe"):
                     continue
@@ -1270,6 +1280,7 @@ class Setup:
             metadata.update(content_revision=content_profile.revision(metadata),
                             package_sha256=self.package_sha256, artwork_sha256=self.artwork_sha256)
             write_json(current / "install.json", metadata)
+        self.prepare_previews(current, cached=True)
         self.save_verification(current)
         self.cleanup_versions(current)
         result = self.status()
@@ -1392,9 +1403,11 @@ class Setup:
                         raise SetupError("Runtime file changed during installation.")
             self.notify("progress", "Preparing HD artwork from your disc", percent=87)
             self.build_hd(stage)
-            self.notify("progress", "Preparing character previews from your disc", percent=88)
-            preview = character_preview.prepare(stage / "assets", stage / character_preview.NAME, self.check_cancel, profile=profile)
-            self.remember_verified(stage / character_preview.NAME, preview["sha256"])
+            preview = {}
+            if profile == "enhanced":
+                self.notify("progress", "Preparing character previews from your disc", percent=88)
+                preview = character_preview.prepare(stage / "assets", stage / character_preview.NAME, self.check_cancel, profile=profile)
+                self.remember_verified(stage / character_preview.NAME, preview["sha256"])
             self.check_cancel()
             require_closed()
             self.notify("progress", "Preserving saves, controls, and shader cache", percent=97)
@@ -1445,7 +1458,7 @@ class Setup:
                            **source_record,
                            content_revision=content_profile.revision(profile_record), content_profile=profile, partition_offset=offset,
                            package_sha256=self.package_sha256, artwork_sha256=self.artwork_sha256,
-                           character_preview=preview,
+                           **({"character_preview": preview} if preview else {}),
                            hd_ui=dict(size=hd.stat().st_size, sha256=self.digest(hd))))
                 self.save_verification(stage)
                 self.check_cancel()
@@ -1608,7 +1621,7 @@ def main(argv=None):
                 result.update(setup.source_status(current))
             emit("result", **result, percent=100)
         return 0
-    except (SetupError, intake.IntakeError, OSError, ValueError, KeyError, TypeError) as error:
+    except (SetupError, intake.IntakeError, OSError, ValueError, KeyError, TypeError, BrokenExecutor) as error:
         diagnostic(traceback.format_exc())
         state = dict(ready=False)
         if (args.install_hd_textures or args.install_spanish or args.install_french or args.install_german or args.install_italian or args.install_portuguese or args.set_language or args.download_update) and "setup" in locals():

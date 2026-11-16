@@ -649,6 +649,7 @@ void ControllerLayoutContent(float scale) {
     ImGui::BeginDisabled(capturing);
     constexpr unsigned order[]{8,9,10,11,14,15,13,12,6,7,0,1,2,3,4,5,16,17,20,21,22,23,24};
     for (unsigned index : order) {
+        if (view::FirstPersonOnly() && (index == unsigned(input::PcAction::SwapShoulder) || index == unsigned(input::PcAction::CycleCamera))) continue;
         const bool stick = index == 16 || index == 17;
         const bool extra = index >= 20;
         const bool available = !WeaponCycleAction(index) || g_controls_draft.carry_all_weapons;
@@ -827,6 +828,7 @@ void ControlsContent(float scale, bool just_opened) {
         ImGui::TableHeadersRow();
         constexpr unsigned order[]{16,17,18,19,22,23,24,20,21,15,14,8,9,10,11,12,13,6,7,4,5,0,1,2,3};
         for (unsigned action : order) {
+            if (view::FirstPersonOnly() && (action == unsigned(input::PcAction::SwapShoulder) || action == unsigned(input::PcAction::CycleCamera))) continue;
             const bool available = !WeaponCycleAction(action) || g_controls_draft.carry_all_weapons;
             ImGui::BeginDisabled(!available);
             ImGui::PushID(int(action)); ImGui::TableNextRow(); ImGui::TableNextColumn();
@@ -984,7 +986,7 @@ void CoopContent(float scale, bool just_opened, const CoopSetupState& state) {
     for (unsigned player = 0; player < 2; ++player) {
         bool pending;
         {std::lock_guard lock(g_original_lock); pending = g_coop_requests[player].owner != 0;}
-        const float x = side_by_side ? (player ? 510.f : 80.f) : 450.f;
+        const float x = side_by_side ? (player ? 510.f : 80.f) : state.original_content ? 295.f : 450.f;
         const float row = 190.f * player;
         const float title_y = side_by_side ? 133.f : 130.f + row;
         const float name_y = side_by_side ? 370.f : 160.f + row;
@@ -1009,7 +1011,7 @@ void CoopContent(float scale, bool just_opened, const CoopSetupState& state) {
                                                   ImVec2{position.x + 100 * scale, position.y + (145 + row) * scale};
         const ImVec2 preview_max = side_by_side ? ImVec2{position.x + (x + 375) * scale, position.y + 365 * scale} :
                                                   ImVec2{position.x + 390 * scale, position.y + (300 + row) * scale};
-        if (!preview::Draw(state.characters[player], preview_min, preview_max,
+        if (!state.original_content && !preview::Draw(state.characters[player], preview_min, preview_max,
                 ImGui::GetTime() - g_coop_preview_started[player], view::Snapshot().hd_textures))
             centered("Preview unavailable.", name_y + 24, .6f);
         centered(settings::CharacterName(state.characters[player]), name_y, .72f);
@@ -1025,9 +1027,9 @@ void CoopContent(float scale, bool just_opened, const CoopSetupState& state) {
         const bool character_editable = !state.ready[player] && state.character_available;
         auto& focus = g_coop_focus[player];
         if (just_opened) focus = 0;
-        if (!character_editable) focus = 2;
+        if (!character_editable && focus < 2) focus = 2;
         if (editable) {
-            if ((pressed & 1) && character_editable) focus = focus == 3 ? 2 : 0;
+            if (pressed & 1) focus = focus == 3 || !character_editable ? 2 : 0;
             if (pressed & 2) focus = !player && focus >= 2 && split_editable ? 3 : 2;
             if (focus < 2 && character_editable) {
                 if (pressed & 4) focus = 0;
@@ -1035,13 +1037,15 @@ void CoopContent(float scale, bool just_opened, const CoopSetupState& state) {
             }
             if (!player && focus == 3 && split_editable && (pressed & (4 | 8 | 16))) change_split = true;
         }
-        ImGui::BeginDisabled(!editable || state.ready[player] || !state.character_available);
-        ImGui::SetCursorPos({x * scale, choice_y * scale});
         int step = 0;
-        if (MenuButton("PREVIOUS", {190 * scale, 36 * scale}, character_editable && focus == 0)) {step = -1; focus = 0;}
-        ImGui::SameLine((x + 210) * scale);
-        if (MenuButton("NEXT", {190 * scale, 36 * scale}, character_editable && focus == 1)) {step = 1; focus = 1;}
-        ImGui::EndDisabled();
+        if (!state.original_content) {
+            ImGui::BeginDisabled(!editable || state.ready[player] || !state.character_available);
+            ImGui::SetCursorPos({x * scale, choice_y * scale});
+            if (MenuButton("PREVIOUS", {190 * scale, 36 * scale}, character_editable && focus == 0)) {step = -1; focus = 0;}
+            ImGui::SameLine((x + 210) * scale);
+            if (MenuButton("NEXT", {190 * scale, 36 * scale}, character_editable && focus == 1)) {step = 1; focus = 1;}
+            ImGui::EndDisabled();
+        }
         if (editable && character_editable) {
             if ((pressed & 16) && focus < 2) step = focus == 0 ? -1 : 1;
             if (step) request.character = (int(state.characters[player]) + step + int(settings::kCharacterCount)) % int(settings::kCharacterCount);

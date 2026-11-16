@@ -345,9 +345,9 @@ def prepare(source, groups, extension, spectral, roster):
         for path, raw in stage.get('LvlSingl.pck', {}).items():
             if path.startswith('levels/singleplayer/') and '/streaming/' in path and '_resources' in path and path.endswith('.bxml'):
                 merged[path] = raw
-    for completed, (path, raw) in enumerate(sorted(merged.items()), 1):
-        source.cancel()
-        adapted, added = art.append_resource_bytes(raw, deps)
+    jobs = ((path, raw, 0) for path, raw in sorted(merged.items()))
+    for completed, (path, adapted, added) in enumerate(
+            art.append_resource_jobs(jobs, [(deps, ())], source.cancel), 1):
         if added:
             result['LvlSingl.pck'][path] = adapted
         if completed % 100 == 0 or completed == len(merged):

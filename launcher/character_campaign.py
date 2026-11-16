@@ -5,6 +5,8 @@ import json
 import math
 import struct
 import mmap
+import os
+from concurrent.futures import Future, wait
 from contextlib import ExitStack
 from pathlib import Path
 
@@ -16,6 +18,7 @@ import third_person_animation
 import character_campaign_pose as pose
 import character_weapon_pose as p
 import character_weapon_hold as hold
+import character_workers
 
 SNIPER_GROUPS = {'Alert Poses UB', 'Crouch Alert Poses', 'Rifle Aim', 'Weapon Shoot',
     'Reload Sniper Rifle', 'Movement UB Rifle', 'Crouch Movement Rifle', 'Jump Rifle',
@@ -56,57 +59,77 @@ def bake(actor, data, transform, reload=False, dense=False):
     return encoder._encode_rotations(clip, at, phases, synchronize=dense)
 
 
-def weapon_stage(pack, weapon, groups, prefix, convert, *, aliases=None, animation_key=None):
+def weapon_stage(pack, weapon, groups, prefix, convert, *, aliases=None, animation_key=None,
+                 resolve_future=Future.result):
     """Split shared weapon/stance routes before replacing only the requested motion."""
     pack.animation_key = animation_key
-    changes = {}
+    changes, tables, pending = {}, [], []
+    def install(result, item):
+        resource = 'characters/player_two/' + prefix + '/' + hashlib.sha256(result).hexdigest()[:24]
+        if resource + '.sanm' in changes and changes[resource + '.sanm'] != result:
+            raise ValueError('Campaign resource collision')
+        changes[resource + '.sanm'] = result
+        item['attributes']['Name'] = resource
     actor_weapon = {'SNIPERRIFLE': 'SniperRifle', 'CROSSBOW': 'Crossbow',
         'RAILRCKT': 'RocketLauncher', 'RIFLE': 'Rifle', 'SHOTGUN': 'Shotgun',
         'DOUBLEPISTOL': 'Crossbow'}[weapon]  # Neck-only passes retain their existing reference rig.
-    for alias in sorted(p.GRIP_ACTORS if aliases is None else aliases):
-        actors = {stance: pose.Actor(pack, actor_weapon, stance, alias)
-                  for stance in ('STAND', 'CROUCH')}
-        path = actors['STAND'].binding['table']
-        tree = art.decode(pack.read(path))
-        for group in tree['children']:
-            name = group['attributes'].get('ToolName')
-            if name not in groups:
-                continue
-            nodes = []
-            for node in group['children']:
-                flags = pose.flags(node)
-                if node['name'] != 'KeyframeAnimation' or weapon not in flags:
-                    nodes.append(node)
+    try:
+        for alias in sorted(p.GRIP_ACTORS if aliases is None else aliases):
+            actors = {stance: pose.Actor(pack, actor_weapon, stance, alias)
+                      for stance in ('STAND', 'CROUCH')}
+            path = actors['STAND'].binding['table']
+            tree = art.decode(pack.read(path))
+            for group in tree['children']:
+                name = group['attributes'].get('ToolName')
+                if name not in groups:
                     continue
-                source = art.norm(node['attributes']['Name']) + '.sanm'
-                raw = pack.read(source)
-                if flags & (p.WEAPONS - {weapon}):
-                    other = copy.deepcopy(node)
-                    other['children'] = [c for c in other['children'] if not
-                        (c['name'] == 'Modifier' and c['attributes']['Flag'] == weapon)]
-                    nodes.append(other)
-                stances = ('CROUCH',) if 'CROUCH' in flags else ('STAND',) if 'STAND' in flags else ('STAND', 'CROUCH')
-                for stance in stances:
-                    actors[stance].action = node['attributes']['AnimationID']
-                    result = convert(actors[stance], raw, name)
-                    resource = 'characters/player_two/' + prefix + '/' + hashlib.sha256(result).hexdigest()[:24]
-                    if resource + '.sanm' in changes and changes[resource + '.sanm'] != result:
-                        raise ValueError('Campaign resource collision')
-                    changes[resource + '.sanm'] = result
-                    item = copy.deepcopy(node)
-                    item['attributes']['Name'] = resource
-                    item['children'] = [c for c in item['children'] if not
-                        (c['name'] == 'Modifier' and c['attributes']['Flag'] in p.WEAPONS - {weapon})]
-                    if not flags & {'STAND', 'CROUCH'}:
-                        item['children'].append(dict(name='Modifier', attributes={'Flag': stance}, value=None, children=[]))
-                    nodes.append(item)
-            group['children'] = nodes
-            group['attributes']['KeyedAnimationCount'] = str(sum(n['name'] == 'KeyframeAnimation' for n in nodes))
+                nodes = []
+                for node in group['children']:
+                    flags = pose.flags(node)
+                    if node['name'] != 'KeyframeAnimation' or weapon not in flags:
+                        nodes.append(node)
+                        continue
+                    source = art.norm(node['attributes']['Name']) + '.sanm'
+                    raw = pack.read(source)
+                    if flags & (p.WEAPONS - {weapon}):
+                        other = copy.deepcopy(node)
+                        other['children'] = [c for c in other['children'] if not
+                            (c['name'] == 'Modifier' and c['attributes']['Flag'] == weapon)]
+                        nodes.append(other)
+                    stances = ('CROUCH',) if 'CROUCH' in flags else ('STAND',) if 'STAND' in flags else ('STAND', 'CROUCH')
+                    for stance in stances:
+                        actors[stance].action = node['attributes']['AnimationID']
+                        result = convert(actors[stance], raw, name)
+                        item = copy.deepcopy(node)
+                        if isinstance(result, Future):
+                            pending.append((result, item))
+                        else:
+                            install(result, item)
+                        item['children'] = [c for c in item['children'] if not
+                            (c['name'] == 'Modifier' and c['attributes']['Flag'] in p.WEAPONS - {weapon})]
+                        if not flags & {'STAND', 'CROUCH'}:
+                            item['children'].append(dict(name='Modifier', attributes={'Flag': stance}, value=None, children=[]))
+                        nodes.append(item)
+                group['children'] = nodes
+                group['attributes']['KeyedAnimationCount'] = str(sum(n['name'] == 'KeyframeAnimation' for n in nodes))
+            tables.append((path, tree))
+        for future, item in pending:
+            while not future.done():
+                pack.cancel()
+                wait((future,), timeout=.1)
+            pack.cancel()
+            install(resolve_future(future), item)
+    except BaseException:
+        for future, _ in pending:
+            future.cancel()
+        raise
+    for path, tree in tables:
         raw = art.encode(tree)
         if path in changes and changes[path] != raw:
             raise ValueError('Conflicting shared animation table')
         changes[path] = raw
     return changes
+
 
 
 def head_stage(pack, animation_key=None):
@@ -191,11 +214,21 @@ def sniper_stage(pack, mode, angles, *, animation_key=None):
         return ready_cache[key]
     def convert(actor, data, group):
         reload = group == 'Reload Sniper Rifle'
+        additive = bool(struct.unpack_from('<I', data, 20)[0] & 0x10000000)
+        bind, fixed_reference = None, None
+        if mode == 'frame' and not (('Trooper' in actor.binding['actor'] and actor.stance == 'CROUCH')
+                                    or actor.binding['actor'].startswith('CivilianJericho')):
+            bind = p.world(actor.bind, actor.parents)
+            if additive:
+                fixed_reference = pose.frame_correct(actor.ready, bind, actor.parents, 0.5)
+        elif mode == 'initial' and additive and not reload:
+            angle = angles['initial_arcs'][actor.binding['actor'] + '|' + actor.stance]
+            fixed_reference = p.localize(pose.ring(actor.ready_world, angle), actor.parents)
         def transform(actor, clip, phase):
             if mode == 'initial':
-                return pose.initial_sniper(actor, clip, phase, reload, group == 'Rifle Aim', 'SniperRifle', angles['initial_arcs'])
+                return pose.initial_sniper(actor, clip, phase, reload, group == 'Rifle Aim', 'SniperRifle', angles['initial_arcs'], reference=fixed_reference)
             if mode == 'frame':
-                return pose.sniper_frame(actor, clip, phase, reload)
+                return pose.sniper_frame(actor, clip, phase, reload, bind=bind, reference=fixed_reference)
             local, base = composed(actor, clip, phase)
             if mode == 'aim':
                 key = actor.binding['actor'], actor.stance, hashlib.sha256(clip.data).hexdigest()
@@ -320,6 +353,18 @@ class Overlay:
         return self.changes[path] if path in self.changes else self.original_read(path)
 
 
+def _bake_reload(prepared):
+    return prepared.bake()
+
+
+def _submit_reload(executor, actor):
+    prepared = pose.FirstPersonReload(actor, actor.action)
+    prepared.actor = copy.copy(actor)
+    # Construction captured/validated all resources; bake uses only these values.
+    prepared.actor.pack = None
+    return executor.submit(_bake_reload, prepared)
+
+
 def animations(read, angles, cancel=lambda: None, progress=lambda message: None):
     pack = Overlay(read, cancel)
     progress('Preparing corrected weapon poses...')
@@ -358,21 +403,22 @@ def animations(read, angles, cancel=lambda: None, progress=lambda message: None)
     for key in (None, 'NotMulti'):
         pack.changes.update(rocket_hold_stage(pack, animation_key=key))
     progress('Retargeting weapon reloads from first-person hands...')
-    for key in (None, 'NotMulti'):
-        pack.changes.update(weapon_stage(pack, 'CROSSBOW', {'Reload Crossbow'},
-            'pov_crossbow_reload', lambda actor, data, group: pose.FirstPersonReload(actor).bake(),
-            aliases=p.GRIP_ACTORS if key is None else p.GRIP_ACTORS - {'Chaz'},
-            animation_key=key))
-        pack.changes.update(weapon_stage(pack, 'SNIPERRIFLE', {'Reload Sniper Rifle'},
-            'pov_sniper_reload', lambda actor, data, group: pose.FirstPersonReload(actor).bake(),
-            aliases=p.GRIP_ACTORS if key is None else p.GRIP_ACTORS - {'Chaz'},
-            animation_key=key))
-        for flag, weapon in (('RIFLE', 'Rifle'), ('SHOTGUN', 'Shotgun'), ('RAILRCKT', 'RocketLauncher')):
-            pack.changes.update(weapon_stage(pack, flag, {'Reload ' + weapon},
-                'pov_' + weapon.lower() + '_reload',
-                lambda actor, data, group: pose.FirstPersonReload(actor, actor.action).bake(),
+    with character_workers.pool(min(8, max(1, (os.cpu_count() or 1) // 2))) as executor:
+        for key in (None, 'NotMulti'):
+            pack.changes.update(weapon_stage(pack, 'CROSSBOW', {'Reload Crossbow'},
+                'pov_crossbow_reload', lambda actor, data, group: _submit_reload(executor, actor),
                 aliases=p.GRIP_ACTORS if key is None else p.GRIP_ACTORS - {'Chaz'},
-                animation_key=key))
+                animation_key=key, resolve_future=character_workers.result))
+            pack.changes.update(weapon_stage(pack, 'SNIPERRIFLE', {'Reload Sniper Rifle'},
+                'pov_sniper_reload', lambda actor, data, group: _submit_reload(executor, actor),
+                aliases=p.GRIP_ACTORS if key is None else p.GRIP_ACTORS - {'Chaz'},
+                animation_key=key, resolve_future=character_workers.result))
+            for flag, weapon in (('RIFLE', 'Rifle'), ('SHOTGUN', 'Shotgun'), ('RAILRCKT', 'RocketLauncher')):
+                pack.changes.update(weapon_stage(pack, flag, {'Reload ' + weapon},
+                    'pov_' + weapon.lower() + '_reload',
+                    lambda actor, data, group: _submit_reload(executor, actor),
+                    aliases=p.GRIP_ACTORS if key is None else p.GRIP_ACTORS - {'Chaz'},
+                    animation_key=key, resolve_future=character_workers.result))
     # Solo presentations use separate tables; stabilize them after their pose edits.
     pack.changes.update(head_stage(pack, animation_key='NotMulti'))
     return pack.changes
@@ -421,17 +467,17 @@ def build(staged, originals, payload, cancel=lambda: None, progress=lambda messa
         level_entries, level_read = reader(staged / 'LvlSingl.pck')
         old_entries, old_read = reader(originals / 'LvlSingl.pck')
         level_changes = {}
-        def select(present):
-            result = [(model, kind) for model in models for kind in ('ModelResource', 'HavokObjectResource')]
-            for table, dependencies in references.items():
-                if (table, 'AnimatedCharacterResource') in present:
-                    result.extend(dependencies)
-            return result
+        choices = [((table, 'AnimatedCharacterResource'), deps) for table, deps in references.items()]
+        base_deps = [(model, kind) for model in models for kind in ('ModelResource', 'HavokObjectResource')]
         progress('Preparing campaign animation and clip references...')
-        for path in sorted(level_entries):
-            raw = level_read(path)
-            if path.startswith('levels/singleplayer/') and '/streaming/' in path and '_resources' in path and path.endswith('.bxml'):
-                raw, _ = art.append_resource_bytes(raw, select=select)
+        def jobs():
+            for path in sorted(level_entries):
+                raw = level_read(path)
+                if path.startswith('levels/singleplayer/') and '/streaming/' in path and '_resources' in path and path.endswith('.bxml'):
+                    yield path, raw, 0
+                elif path not in old_entries or raw != old_read(path):
+                    level_changes[path] = raw
+        for path, raw, _ in art.append_resource_jobs(jobs(), [(base_deps, choices)], cancel):
             if path not in old_entries or raw != old_read(path):
                 level_changes[path] = raw
         # Rebase on the disc to stay within the native archive's 32-bit offsets.

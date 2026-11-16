@@ -271,7 +271,7 @@ bool CompileJobs(const std::vector<ShaderJob>& jobs, std::vector<std::string>& k
         // Only host compilation is parallel: the original guest builder stays serial.
         std::vector<std::jthread> workers;
         const unsigned cores = std::thread::hardware_concurrency();
-        const unsigned count = cores > 4 ? 4 : cores ? cores : 1;
+        const unsigned count = cores > 8 ? 8 : cores > 4 ? 4 : cores ? cores : 1;
         for (unsigned worker = 0; worker < count; ++worker) workers.emplace_back([&] {
             try {
                 while (!failed) {

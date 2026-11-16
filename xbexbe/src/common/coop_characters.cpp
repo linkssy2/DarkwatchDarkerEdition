@@ -163,6 +163,7 @@ darkwatch::CoopSetupState ReadState(const uint8_t* base) {
         result.connected[i] = connected != 0;
         result.character_available &= available;
     }
+    result.original_content = !result.character_available && DarkwatchOriginalContentReady();
     result.owner = page;
     return result;
 }

@@ -7,6 +7,7 @@
 #include "graphics.h"
 #include "coop.h"
 #include "campaign_replay.h"
+#include "character_runtime.h"
 #include "app/app.h"
 #include "kernel/kernel.h"
 #include "kernel/memory.h"
@@ -259,6 +260,7 @@ bool DarkwatchDesktopQuit(X86Context& ctx, uint8_t* base) {
             continuing_single_player = 0;
             return false;
         }
+        if (DarkwatchOriginalContentReady()) return false;
         DarkwatchCharactersOpen(root);
         return true;
     }
@@ -274,6 +276,7 @@ bool DarkwatchGunslingerSelect(X86Context& ctx, uint8_t* base) {
         continuing_single_player = 0;
         return false;
     }
+    if (DarkwatchOriginalContentReady()) return false;
     DarkwatchCharactersOpen(root);
     return true;
 }

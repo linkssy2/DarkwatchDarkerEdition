@@ -252,17 +252,12 @@ def prepare(source, *stages):
 
     regular = [(JERICHO_MODEL, kind) for kind in ('ModelResource', 'SkeletonLayoutResource', 'LocatorResource')]
 
-    def selected(present, cinematic):
-        result = regular + [(JERICHO_CLOAK, kind) for kind in ('ModelResource', 'SkeletonLayoutResource')
-                            if (art.norm(CIVILIAN_CLOAK), 'ModelResource') in present]
-        if cinematic:
-            result += [dep for body, deps in dependencies if (body, 'ModelResource') in present for dep in deps]
-        return result
-
-    for path in sorted(paths):
-        source.cancel()
-        adapted, added = art.append_resource_bytes(read(path), regular,
-            select=lambda present: selected(present, path.split('/')[2] in chapters))
+    cloak = ((art.norm(CIVILIAN_CLOAK), 'ModelResource'),
+             [(JERICHO_CLOAK, kind) for kind in ('ModelResource', 'SkeletonLayoutResource')])
+    cinematic = [((body, 'ModelResource'), deps) for body, deps in dependencies]
+    profiles = [(regular, [cloak]), (regular, [cloak, *cinematic])]
+    jobs = ((path, read(path), int(path.split('/')[2] in chapters)) for path in sorted(paths))
+    for path, adapted, added in art.append_resource_jobs(jobs, profiles, source.cancel):
         if added:
             output['LvlSingl.pck'][path] = adapted
     return output

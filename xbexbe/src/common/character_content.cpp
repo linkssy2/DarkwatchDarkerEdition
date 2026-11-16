@@ -1,4 +1,5 @@
 #include "kernel/kernel.h"
+#include "graphics_view.h"
 #include <algorithm>
 #include <array>
 #include <filesystem>
@@ -135,6 +136,14 @@ constexpr auto kOnlineCurrentChapterArchives = [] {
     pins[1].sha256 = "28bbc62f73879b2f5afa63db15fa593a6fbaef1d8456df147411ef83dcc39ff9";
     return pins;
 }();
+constexpr auto kOnline080BattleArchives = [] {
+    auto pins = kCharacterArchives;
+    pins[0].size = 227763173;
+    pins[0].sha256 = "e76424df9819f1db55e6519174b11083996788a766d452b92fa68a4ccfad4bd5";
+    pins[1].size = 3075144259;
+    pins[1].sha256 = "f951a24f5ec9ad305a2ca1adabbea238b2386c604dc9324a715eef9d101ecaf8";
+    return pins;
+}();
 constexpr auto kOnlineBattleArchives = [] {
     auto pins = kCharacterArchives;
     pins[0].size = 144958753;
@@ -152,6 +161,8 @@ const std::array<ArchivePin, 3>& AdmittedArchives() {
 #ifndef XBE_RELEASE
     // The bounded runner admits this exact private fixture; normal builds never accept it.
     const char* fixture = std::getenv("DARKWATCH_ONLINE_NPC_FIXTURE");
+    if (fixture && std::string_view(fixture) == "17b425430ca787b599e04a4d2e8d38d8697ea78be50ad9d0f2dc59c7cb52ebb0")
+        return kOnline080BattleArchives;
     if (fixture && std::string_view(fixture) == "7a0e09bbecf60bf4b0a15160fe955792e2b328a766d5496633304d17e1f50c9c")
         return kOnlineCurrentNpcArchives;
     if (fixture && std::string_view(fixture) == "f817c0785645ea37ac1a1b0887004ec49d1bee953cede07ce6f6960d6e735751")
@@ -287,5 +298,5 @@ bool DarkwatchPrivateClipFixtureReady() {
 
 void DarkwatchCharacterInitialize(X86Context&, uint8_t*) {
     // Admit originals before guest writable opens can block the retained read locks.
-    if (!DarkwatchCharacterContentReady()) (void)DarkwatchOriginalContentReady();
+    darkwatch::view::SetFirstPersonOnly(!DarkwatchCharacterContentReady() && DarkwatchOriginalContentReady());
 }

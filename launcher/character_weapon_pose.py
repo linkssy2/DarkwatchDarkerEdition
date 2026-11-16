@@ -31,7 +31,10 @@ def unit(x):
     if size<1e-10:raise ValueError('Degenerate arm direction')
     return scale(x,1/size)
 def cross(x,y):return (x[1]*y[2]-x[2]*y[1],x[2]*y[0]-x[0]*y[2],x[0]*y[1]-x[1]*y[0])
-def rotate(v,m):return tuple(sum((v[0]*m[0][i],v[1]*m[1][i],v[2]*m[2][i]))for i in range(3))
+def rotate(v,m):
+    x,y,z=v
+    (a,b,c),(d,e,f),(g,h,i)=m
+    return sum((x*a,y*d,z*g)),sum((x*b,y*e,z*h)),sum((x*c,y*f,z*i))
 def mul(x,y):return a._multiply(x[0],y[0]),add(rotate(x[1],y[0]),y[1])
 def inverse(x):
     rotation=a._inverse(x[0]);return rotation,scale(rotate(x[1],rotation),-1)

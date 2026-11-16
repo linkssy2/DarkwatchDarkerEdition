@@ -16,15 +16,15 @@ REFERENCE = REPO.parent / 'Urban Chaos Riot Response Recompiled'
 PYTHON = REFERENCE / '.tools/python'
 VS = Path('C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools')
 CRT = VS / 'VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT'
-VERSION = '0.8.0'
+VERSION = '0.8.1'
 RELEASE_PROFILE = {'name': 'release-candidate', 'diagnostics': False, 'strict_assets': True}
 LAUNCHER = 'Darkwatch Darker Edition.exe'
 DIRECT_PLAY = 'Play Darkwatch.exe'
 CRT_FILES = ('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
-PYTHON_FILES = ('python.exe', 'python312.dll', 'python3.dll', 'python312.zip',
+PYTHON_FILES = ('python.exe', 'pythonw.exe', 'python312.dll', 'python3.dll', 'python312.zip',
                 'vcruntime140.dll', 'vcruntime140_1.dll', '_hashlib.pyd',
                 'libcrypto-3.dll', '_ssl.pyd', 'libssl-3.dll', '_socket.pyd', 'select.pyd', 'unicodedata.pyd',
-                '_ctypes.pyd', 'libffi-8.dll', 'pyexpat.pyd', 'LICENSE.txt')
+                '_ctypes.pyd', '_multiprocessing.pyd', '_queue.pyd', 'libffi-8.dll', 'pyexpat.pyd', 'LICENSE.txt')
 FORBIDDEN = {'.iso', '.xiso', '.xbe', '.pck', '.xmv', '.wmv', '.wav', '.pdb', '.log', '.dmp', '.pyc', '.dwt', '.pack'}
 GENERATED = {
     'payload/python/python312._pth': 'python312.zip\n.\n..\n',
@@ -46,7 +46,7 @@ Successful installs and updates remove superseded version folders. Unique older
 saves, settings, add-ons and unknown files are kept under GameData/preserved-user-data.
 Failed or cancelled installations keep the previous working version.
 
-Darkwatch: Darker Edition - 0.8.0
+Darkwatch: Darker Edition - 0.8.1
 
 Matching Windows and experimental Linux/Proton packages. Co-op remains BETA.
 Keep using the existing separate 0.7 HD texture pack; no new pack or
@@ -312,7 +312,7 @@ def sources():
     for name in ('content_profile.py', 'character_content.py', 'character_update.py', 'character-update.json.gz',
                  'character_banshee.py', 'character_campaign.py', 'character_campaign_pose.py', 'character_dropped_clips.py', 'character_versus.py',
                  'character-campaign-angles.json', 'character_animation.py', 'character_assets.py',
-                 'character_archive.py', 'character_repaint.py', 'character_boss.py',
+                 'character_archive.py', 'character_workers.py', 'character_repaint.py', 'character_boss.py',
                  'character_boss_effects.py', 'character_spectral_hands.py', 'character_hand_seams.py',
                  'character_secondary.py', 'character_preview.py', 'character_roster.py', 'character_tala.py', 'character_tala_shape.py',
                  'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'enemy_blood.py', 'character_cinematic.py',

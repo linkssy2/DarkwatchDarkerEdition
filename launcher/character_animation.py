@@ -176,7 +176,12 @@ def _transpose(m):
 
 
 def _multiply(a, b):
-    return tuple(tuple(sum((a[i][0] * b[0][j], a[i][1] * b[1][j], a[i][2] * b[2][j])) for j in range(3)) for i in range(3))
+    # Keep sum's floating-point behavior while avoiding generators per joint/key.
+    (a00,a01,a02),(a10,a11,a12),(a20,a21,a22)=a
+    (b00,b01,b02),(b10,b11,b12),(b20,b21,b22)=b
+    return ((sum((a00*b00,a01*b10,a02*b20)),sum((a00*b01,a01*b11,a02*b21)),sum((a00*b02,a01*b12,a02*b22))),
+            (sum((a10*b00,a11*b10,a12*b20)),sum((a10*b01,a11*b11,a12*b21)),sum((a10*b02,a11*b12,a12*b22))),
+            (sum((a20*b00,a21*b10,a22*b20)),sum((a20*b01,a21*b11,a22*b21)),sum((a20*b02,a21*b12,a22*b22))))
 
 
 def _determinant(m):

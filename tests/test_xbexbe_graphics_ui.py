@@ -1803,6 +1803,31 @@ int main(){
         ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + driver)
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
 
+    def test_original_coop_hides_character_selection_keeps_ready_and_layout(self):
+        prefix = FIXTURE[:FIXTURE.index("int main(){")]
+        helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")]
+        driver = COOP_UI[:COOP_UI.index(' open();')+len(' open();')]+r"""
+ darkwatch::coop_setup.character_available=false;
+ darkwatch::coop_setup.original_content=true;
+ darkwatch::coop_setup.characters={Character::Jericho,Character::Trooper};
+ DarkwatchCoopSetupRefresh(memory);Frame();Frame();
+ CHECK(darkwatch::preview::frame_characters.empty());
+ CHECK(repeated_buttons["PREVIOUS"].empty()&&repeated_buttons["NEXT"].empty());
+ CHECK(repeated_buttons["READY"].size()==2);
+ CHECK(std::find(rendered_text.begin(),rendered_text.end(),"Preview unavailable.")==rendered_text.end());
+ CHECK(g_coop_focus[0]==2&&g_coop_focus[1]==2);
+ const auto initial=saves;PadTap(0,2);CHECK(g_coop_focus[0]==3);
+ PadTap(0,16);CHECK(saves==initial+1&&g_coop_focus[0]==3);
+ PadTap(0,1);CHECK(g_coop_focus[0]==2);
+ PadTap(1,16);CHECK(darkwatch::coop_setup.ready[1]&&!darkwatch::coop_setup.ready[0]);
+ CHECK(darkwatch::coop_changes==0);
+ PadTap(0,16);CHECK(darkwatch::coop_commits==1&&!g_open);
+ ImGui::DestroyContext();
+}
+"""
+        ran = self.run_fixture(prefix + helpers + driver)
+        self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+
     def test_split_layout_coop_selection_mouse_controller_and_save_failure(self):
         prefix = FIXTURE[:FIXTURE.index("int main(){")]
         helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")]
@@ -1883,6 +1908,24 @@ int main(){
     def test_walk_mode_bindings_and_player_isolation(self):
         helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")]
         ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + WALK_CONTROLS_UI)
+        self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+
+    def test_original_content_hides_camera_bindings(self):
+        driver = SHOULDER_CONTROLS_UI[:SHOULDER_CONTROLS_UI.index(' for(unsigned port:')]+r"""
+ view::SetFirstPersonOnly(true);
+ for(unsigned port:{0u,1u}){
+  darkwatch::controls=darkwatch::ControlsDefaults();
+  OpenControls(port);Frame();
+  CHECK(std::find(rendered_text.begin(),rendered_text.end(),"CYCLE CAMERA")==rendered_text.end());
+  CHECK(std::find(rendered_text.begin(),rendered_text.end(),"SWAP SHOULDER")==rendered_text.end());
+  ClickNamed("CONTROLLER LAYOUT...",true);Frame();CHECK(layout_rows.size()==21);
+  ClickNamed("BACK");Frame();HidePage();
+ }
+ ImGui::DestroyContext();
+}
+"""
+        helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")]
+        ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + driver)
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
 
     def test_camera_cycle_bindings_and_player_isolation(self):

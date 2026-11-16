@@ -25,7 +25,7 @@ struct State {
     std::array<bool, 4> joined{}, ready{}, connected{};
     std::array<std::string, 4> names{"Player 1", "Player 2", "Player 3", "Player 4"};
     std::array<bool, 4> editing{};
-    bool active = false, failed = false;
+    bool active = false, failed = false, original_content = false;
 };
 struct Request {
     uint32_t page = 0; int step = 0; bool accept = false, back = false;
@@ -72,6 +72,7 @@ State Query(const uint8_t* base) {
         if (Page(base, top)) result.page = top;
     }
     if (!result.page) return result;
+    result.original_content = !DarkwatchCharacterContentReady() && DarkwatchOriginalContentReady();
     for (unsigned p = 0; p < 4; ++p) {
         uint8_t joined = 0;
         if (!Read(base, uint64_t(result.page)+0xD0+0x7C*p, joined) || joined > 1) return {};
@@ -302,7 +303,8 @@ void DarkwatchVersusDraw() {
             if(!change&&selected<3)selected=3;
             if(editable&&(keys&1))selected=selected==4?3:selected==3?(change?1:4):selected==0?4:0;
             if(editable&&(keys&2))selected=selected==0?1:selected<3?3:selected==3?4:(change?0:3);
-            if(change&&(keys&12)){
+            if(state.original_content && selected > 0 && selected < 3) selected = (keys & 1) ? 0 : 3;
+            if(change&&!state.original_content&&(keys&12)){
                 if(selected==1||selected==2)selected=(keys&4)?1:2;
                 else request.step=(keys&4)?-1:1;
             }
@@ -373,21 +375,22 @@ void DarkwatchVersusDraw() {
                 if((done||enter||(keys&128)||((keys&16)&&editor.key==40))&&ValidName(name)){request.edit=2;request.name=name;}
                 if(cancel||((keys&16)&&editor.key==41)||(keys&32)||(typing&&ImGui::IsKeyPressed(ImGuiKey_Escape,false)))request.edit=3;
             } else {
-            darkwatch::preview::Draw(state.choices[p],at(15,48),at(200,238),ImGui::GetTime(),darkwatch::view::Snapshot().hd_textures);
+            if (!state.original_content) darkwatch::preview::Draw(state.choices[p],at(15,48),at(200,238),ImGui::GetTime(),darkwatch::view::Snapshot().hd_textures);
+            const float controls_x=state.original_content?115.f:210.f;
             const auto caption=std::string(darkwatch::language::Text("NAME"))+": "+state.names[p];
-            if(button(caption.c_str(),at(210,48),{270*scale,30*scale},change,17*scale,editor.selection==0)){request.edit=1;editor.focus=true;}
-            text(darkwatch::settings::CharacterName(state.choices[p]),pos.x+345*scale,pos.y+83*scale,15*scale,270*scale);
-            if(button("PREVIOUS",at(210,102),{130*scale,34*scale},change,16*scale,editor.selection==1))request.step=-1;
-            if(button("NEXT",at(350,102),{130*scale,34*scale},change,16*scale,editor.selection==2))request.step=1;
-            if(button(!editable?"CONNECT CONTROLLER":!state.joined[p]?"SELECT":state.ready[p]?"CANCEL READY":"READY",at(210,148),{270*scale,36*scale},editable,18*scale,editor.selection==3))request.accept=true;
-            if(editable){if(button("BACK",at(210,198),{270*scale,34*scale},true,16*scale,editor.selection==4))request.back=true;}
+            if(button(caption.c_str(),at(controls_x,48),{270*scale,30*scale},change,17*scale,editor.selection==0)){request.edit=1;editor.focus=true;}
+            text(darkwatch::settings::CharacterName(state.choices[p]),pos.x+(controls_x+135)*scale,pos.y+83*scale,15*scale,270*scale);
+            if(!state.original_content&&button("PREVIOUS",at(210,102),{130*scale,34*scale},change,16*scale,editor.selection==1))request.step=-1;
+            if(!state.original_content&&button("NEXT",at(350,102),{130*scale,34*scale},change,16*scale,editor.selection==2))request.step=1;
+            if(button(!editable?"CONNECT CONTROLLER":!state.joined[p]?"SELECT":state.ready[p]?"CANCEL READY":"READY",at(controls_x,148),{270*scale,36*scale},editable,18*scale,editor.selection==3))request.accept=true;
+            if(editable){if(button("BACK",at(controls_x,198),{270*scale,34*scale},true,16*scale,editor.selection==4))request.back=true;}
             }
         }
         if(request.step||request.accept||request.back||request.edit){std::lock_guard guard(mutex);requests[p]=request;}
         ImGui::PopID();
     }
     const bool editing=std::any_of(state.editing.begin(),state.editing.end(),[](bool v){return v;});
-    text(editing?"A: SELECT    X: DELETE    Y: DONE    B: CANCEL":"Choose your character, then Ready. Y or F2: edit name.",size.x/2,size.y-58*ui,17*ui,size.x-24*ui);
+    text(editing?"A: SELECT    X: DELETE    Y: DONE    B: CANCEL":state.original_content?"READY":"Choose your character, then Ready. Y or F2: edit name.",size.x/2,size.y-58*ui,17*ui,size.x-24*ui);
     text(state.failed?"Could not save settings. Try again.":"UP, DOWN: MOVE    A, ENTER: SELECT    B, ESC: BACK",
          size.x/2,size.y-22*ui,13*ui,size.x-24*ui);
     ImGui::End();ImGui::PopStyleVar();

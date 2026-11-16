@@ -1,8 +1,8 @@
-# Darkwatch: Darker Edition 0.8.0 source
+# Darkwatch: Darker Edition 0.8.1 source
 
 This source snapshot is prepared for the Windows and experimental Linux/Proton
-[0.8.0 release](https://github.com/linkssy2/DarkwatchDarkerEdition/releases/tag/v0.8.0).
-See [changes and installation](docs/RELEASE-0.8.0.md), [building](docs/BUILDING.md),
+[0.8.1 release](https://github.com/linkssy2/DarkwatchDarkerEdition/releases/tag/v0.8.1).
+See [changes and installation](docs/RELEASE-0.8.1.md), [building](docs/BUILDING.md),
 [code map](docs/CODE_MAP.md) and [credits](CREDITS.md).
 
 Supply your own supported original Xbox disc. This is the maintained host
@@ -11,6 +11,7 @@ files, generated game C++, saves, caches and private gameplay captures are absen
 The official runtime is built with `./scripts/build-xbexbe.ps1 -Release` after
 the initial dependency build described in BUILDING.md. Keep the Release profile
 for player packages; development-only code paths are not shipped features.
+Online co-op remains separate development work and is unavailable in this release.
 
 The existing 0.7 HD pack remains compatible and is not included in this source
 archive. Text, dialogue and compatible movie voices for Spanish, French, German

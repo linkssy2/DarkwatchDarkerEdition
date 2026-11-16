@@ -710,7 +710,7 @@ def crossbow_fit(world, reference, parents, grip, offset=0.0):
     return p.world(before_local, parents)
 
 
-def initial_sniper(actor, clip, phase, reload, preserve_aim, weapon, arcs):
+def initial_sniper(actor, clip, phase, reload, preserve_aim, weapon, arcs, reference=None):
     additive = bool(clip.flags & 268435456)
     local = clip.pose({b: (p.a.IDENTITY, (0.0, 0.0, 0.0)) for b in actor.bind} if additive else actor.bind, phase)
     if reload and weapon == 'Crossbow' and (0.175 <= phase <= 0.75):
@@ -727,7 +727,8 @@ def initial_sniper(actor, clip, phase, reload, preserve_aim, weapon, arcs):
         t = max(0.0, min(1.0, 1.0 - phase / start if phase < start else (phase - end) / (1.0 - end)))
         weight = t * t * (3.0 - 2.0 * t)
     changed = p.localize(world if preserve_aim else ring(world, angle * weight), actor.parents)
-    reference = p.localize(ring(actor.ready_world, angle), actor.parents)
+    if additive and reference is None:
+        reference = p.localize(ring(actor.ready_world, angle), actor.parents)
     result = dict(local)
     for bone in BONES if reload and weapon == 'SniperRifle' else (13, 14, 15):
         assert not mask[bone]
@@ -735,16 +736,18 @@ def initial_sniper(actor, clip, phase, reload, preserve_aim, weapon, arcs):
         result[bone] = (value, local[bone][1])
     return result
 
-def sniper_frame(actor, clip, phase, reload, preserve_aim=False):
+def sniper_frame(actor, clip, phase, reload, preserve_aim=False, bind=None, reference=None):
     additive = bool(clip.flags & 268435456)
     local = clip.pose({b: (p.a.IDENTITY, (0.0, 0.0, 0.0)) for b in actor.bind} if additive else actor.bind, phase)
     if 'Trooper' in actor.binding['actor'] and actor.stance == 'CROUCH' or actor.binding['actor'].startswith('CivilianJericho'):
         return local
     mask = actor.mask(clip)
     composed = {b: actor.ready[b] if mask[b] else (p.a._multiply(actor.ready[b][0], local[b][0]), p.add(actor.ready[b][1], local[b][1])) if additive else local[b] for b in actor.bind}
-    bind = p.world(actor.bind, actor.parents)
+    if bind is None:
+        bind = p.world(actor.bind, actor.parents)
     adjusted = frame_correct(composed, bind, actor.parents, 0.5)
-    reference = frame_correct(actor.ready, bind, actor.parents, 0.5)
+    if additive and reference is None:
+        reference = frame_correct(actor.ready, bind, actor.parents, 0.5)
     result = dict(local)
     for bone in (13, 14, 15):
         if mask[bone]:

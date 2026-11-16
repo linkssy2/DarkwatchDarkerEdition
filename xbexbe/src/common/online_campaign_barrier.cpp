@@ -31,6 +31,7 @@ struct Load {
     Clock::time_point started{}, sent{};
 };
 Load load;
+bool restarting = false;
 bool Span(const uint8_t* base, uint64_t at, uint32_t size) {
     if (base != kernel::g_base || !at || !size || at + size > (uint64_t(1) << 32)) return false;
     for (auto p = at & ~uint64_t(mem::kPage - 1); p < at + size; p += mem::kPage)
@@ -135,6 +136,23 @@ void Send(const X86Context& ctx, uint8_t* base, uint32_t kind) {
     const uint32_t packet[]{kMagic, kVersion, load.generation, load.level, load.checkpoint, kind};
     SendPacket(ctx, base, kControl, packet, sizeof(packet));
 }
+}
+
+void DarkwatchOnlineCampaignRestartBegin() {
+    // Both owners agreed before either destroys its world and player records.
+    restarting = true;
+    load.loaded = load.received = load.acknowledged = load.agreed = false;
+    DarkwatchOnlineStoryReset();
+}
+
+void DarkwatchOnlineCampaignRestartFinish(const X86Context& ctx, uint8_t* base) {
+    if (!restarting) Failed(2);
+    restarting = false;
+    if (++load.generation == 0) Failed(2);
+    load.loaded = true;
+    if (!Key(base, load.game, load.level) || !Key(base, load.game + 4, load.checkpoint) || !Context(ctx, base)) Failed(2);
+    DarkwatchOnlineEventRecord("campaign-load-local-ready", load.generation, load.level, load.checkpoint);
+    load.started = Clock::now(); load.sent = load.started - std::chrono::seconds(1);
 }
 
 bool DarkwatchOnlineStoryContext(const X86Context& ctx, const uint8_t* base,

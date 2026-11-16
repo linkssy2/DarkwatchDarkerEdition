@@ -15,7 +15,10 @@ extern bool DarkwatchOnlineCharacterContext(const X86Context&, const uint8_t*, u
 extern bool DarkwatchOnlineCampaignReady(const X86Context&, const uint8_t*);
 extern bool DarkwatchOnlineStoryDrained();
 extern void DarkwatchOnlineEventRecord(const char*, uint32_t, uint32_t, uint32_t);
+extern void DarkwatchOnlineCampaignRestartBegin();
+extern void DarkwatchOnlineCampaignRestartFinish(const X86Context&, uint8_t*);
 X86_EXTERN_FUNC(__imp__sub_000C58BB);
+X86_EXTERN_FUNC(__imp__sub_000C3D10);
 X86_EXTERN_FUNC(__imp__sub_00104BF0);
 
 namespace {
@@ -28,8 +31,11 @@ struct Travel {
 };
 Travel travel;
 bool replay = false;
+bool restart_pending = false;
 constexpr uint32_t kChapter = 0x100, kDropWeapons = 0x200, kIndex = 0xFF;
+constexpr uint32_t kRestart = 0x400;
 bool ValidDestination(uint32_t value) {
+    if (value == kRestart) return true;
     const auto index = value & kIndex;
     if (!index || index > std::size(kOnlineAreas) || value & ~(kIndex | kChapter | kDropWeapons)) return false;
     if (!(value & kChapter)) return !(value & kDropWeapons);
@@ -79,6 +85,17 @@ void Request(uint32_t destination) {
     }
 }
 void Load(const X86Context& ctx, uint8_t* base) {
+    if (travel.destination & kRestart) {
+        const auto loader = Word(base, 0x4ACFBC);
+        if (!Span(base, loader, 0x74) || Word(base, loader + 8) != 5) Failed(4);
+        // Match the native pause confirmation; restore runs later in the owning frame.
+        base[travel.game + 0x34] = 1;
+        const uint32_t mode = 1;
+        std::memcpy(base + travel.game + 0x38, &mode, 4);
+        restart_pending = true; travel.applied = true;
+        DarkwatchOnlineEventRecord("campaign-restart-load", travel.generation, travel.destination, travel.ordinal);
+        return;
+    }
     const auto& destination = kOnlineAreas[(travel.destination & kIndex) - 1];
     const bool chapter = travel.destination & kChapter;
     const auto loader = Word(base, 0x4ACFBC);
@@ -128,7 +145,18 @@ void Load(const X86Context& ctx, uint8_t* base) {
 }
 
 void DarkwatchOnlineAreaBegin(uint32_t session, uint32_t game, unsigned ordinal) {
-    travel = {}; replay = false; travel.session = session; travel.game = game; travel.ordinal = ordinal;
+    travel = {}; replay = false; restart_pending = false; travel.session = session; travel.game = game; travel.ordinal = ordinal;
+}
+bool DarkwatchOnlineTestArea(const X86Context& ctx, const uint8_t* base, uint32_t index) {
+    if (!Context(ctx, base) || travel.ordinal || !index || index > std::size(kOnlineAreas) ||
+        (travel.requested && !travel.applied) || !DarkwatchOnlineCampaignReady(ctx, base) ||
+        !DarkwatchOnlineStoryDrained()) return false;
+    const auto& destination = kOnlineAreas[index - 1];
+    if (!Equals(base, travel.game, destination.level)) {
+        if (!ValidDestination(index | kChapter)) return false;
+        Request(index | kChapter);
+    } else Request(index);
+    return true;
 }
 void DarkwatchOnlineAreaWrite(uint32_t* words) {
     words[0] = travel.generation; words[1] = travel.phase; words[2] = travel.destination;
@@ -154,7 +182,7 @@ bool DarkwatchOnlineAreaTick(const X86Context& ctx, uint8_t* base) {
     if (!travel.requested || !Context(ctx, base)) return false;
     if (!travel.applied && Clock::now() - travel.started > std::chrono::minutes(5)) Failed(3);
     if (!travel.applied && DarkwatchOnlineCampaignReady(ctx, base) && DarkwatchOnlineStoryDrained()) {
-        if (!(travel.destination & kChapter) && !Equals(base, travel.game, kOnlineAreas[travel.destination - 1].level)) Failed(4);
+        if (!(travel.destination & (kChapter | kRestart)) && !Equals(base, travel.game, kOnlineAreas[travel.destination - 1].level)) Failed(4);
         if (travel.ordinal == 0 && travel.phase == 1 && travel.peer_phase == 2) Phase(3);
         if (travel.ordinal == 1 && !travel.phase && travel.peer_phase == 1) Phase(2);
         if (travel.ordinal == 1 && travel.phase == 2 && travel.peer_phase == 3) Phase(4);
@@ -166,6 +194,22 @@ bool DarkwatchOnlineAreaTick(const X86Context& ctx, uint8_t* base) {
         travel.sent = Clock::now(); return true;
     }
     return false;
+}
+
+X86_FUNC(sub_000C3D10) {
+    if (Word(base, ctx.esp) != 0xC3FC7 || !Context(ctx, base) || ctx.ecx != travel.game) {
+        __imp__sub_000C3D10(ctx, base); return;
+    }
+    if (restart_pending) {
+        restart_pending = false;
+        DarkwatchOnlineCampaignRestartBegin();
+        __imp__sub_000C3D10(ctx, base);
+        DarkwatchOnlineCampaignRestartFinish(ctx, base);
+        return;
+    }
+    if (Word(base, travel.game + 0x38) != 1 || !DarkwatchOnlineCampaignReady(ctx, base)) Failed(4);
+    Request(kRestart);
+    ctx.esp += 4;
 }
 
 X86_FUNC(sub_000C58BB) {

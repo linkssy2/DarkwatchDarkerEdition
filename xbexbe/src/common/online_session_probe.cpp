@@ -679,13 +679,23 @@ X86_FUNC(sub_000CD3F8) {
 X86_FUNC(sub_001EB3D6) {
     const auto caller = Word(base, ctx.esp);
     __imp__sub_001EB3D6(ctx, base);
+    if (Enabled() && probe.campaign && probe.title_online && probe.phase == 5 &&
+        probe.thread_bound && ctx.thread_handle == probe.thread && !probe.movie_pumping) {
+        static uint32_t previous_state = ~0u, previous_caller = 0, observations = 0;
+        const auto state = Word(base, uint64_t(Word(base, 0x4ACFBC)) + 8);
+        if (observations < 32 && (state != previous_state || caller != previous_caller)) {
+            previous_state = state; previous_caller = caller; ++observations;
+            Record("campaign-movie-context", caller, state, unsigned(probe.loading));
+        }
+    }
     if (!Enabled() || !probe.campaign || !probe.title_online || !probe.loading || probe.phase != 5 ||
         !probe.thread_bound || ctx.thread_handle != probe.thread || probe.movie_pumping ||
         caller != 0x1EB5B2 || !Span(base, 0x4B7A41, 1) || !base[0x4B7A41] ||
         ctx.esp < 0x10000 || !Span(base, ctx.esp - 0x10000, 0x10000)) return;
     const auto owner = Word(base, 0x4B4FC0), loader = Word(base, 0x4ACFBC);
     const auto state = Word(base, uint64_t(loader) + 8);
-    if (!Span(base, owner, 0x68) || !Span(base, loader, 0x74) || (state != 3 && state != 4)) return;
+    // Returning to a loaded area can play its blocking movie while the loader is still in gameplay state.
+    if (!Span(base, owner, 0x68) || !Span(base, loader, 0x74) || (state != 3 && state != 4 && state != 5)) return;
     probe.movie_pumping = true;
     struct Reset { ~Reset() { probe.movie_pumping = false; } } reset;
     X86Context call = ctx;

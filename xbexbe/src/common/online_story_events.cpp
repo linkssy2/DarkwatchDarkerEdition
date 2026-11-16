@@ -11,13 +11,16 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <sstream>
 
 extern bool DarkwatchOnlineStoryContext(const X86Context&, const uint8_t*, uint32_t (&)[3], uint32_t&);
 extern bool DarkwatchOnlineSendStory(const X86Context&, uint8_t*, const uint32_t*, uint32_t);
 extern void DarkwatchOnlineEventRecord(const char*, uint32_t, uint32_t, uint32_t);
 extern bool DarkwatchOnlineCharacterWireEnabled(const X86Context&, const uint8_t*);
+extern bool DarkwatchOnlineTestArea(const X86Context&, const uint8_t*, uint32_t);
 extern void DarkwatchOnlineCinematicReset();
 extern bool DarkwatchOnlineCinematicResource(uint32_t);
+extern bool DarkwatchOnlineCinematicIdle();
 extern bool DarkwatchOnlineCinematicApply(const X86Context&, uint8_t*, uint32_t, uint32_t, uint32_t);
 X86_EXTERN_FUNC(__imp__sub_00216560);
 X86_EXTERN_FUNC(__imp__sub_00077923);
@@ -159,12 +162,20 @@ uint32_t Component(const uint8_t* base, uint32_t actor, uint32_t type, uint32_t 
     }
     return result;
 }
-bool DetPak(const uint8_t* base, uint32_t actor) {
-    return NamedActor(base, actor, "DetPak", "DetPak_1") && Component(base, actor, 0x41C55C, 0xC8);
+constexpr struct { const char* type; const char* name; } kDestructibles[]{
+    {"DetPak", "DetPak_1"}, {"WrongTrainLock", "WrongTrainLock_1"},
+};
+uint32_t Destructible(const uint8_t* base, uint32_t actor) {
+    if (Component(base, actor, 0x41C55C, 0xC8))
+        for (uint32_t id = 0; id < std::size(kDestructibles); ++id)
+            if (NamedActor(base, actor, kDestructibles[id].type, kDestructibles[id].name)) return id;
+    return ~0u;
 }
-uint32_t FindDetPak(const uint8_t* base) {
+uint32_t FindDestructible(const uint8_t* base, uint32_t id) {
     uint32_t actor = 0, space = 0;
-    return FindActor(base, "DetPak", "DetPak_1", actor, space) && DetPak(base, actor) ? actor : 0;
+    return id < std::size(kDestructibles) &&
+        FindActor(base, kDestructibles[id].type, kDestructibles[id].name, actor, space) &&
+        Destructible(base, actor) == id ? actor : 0;
 }
 uint32_t Horse(const X86Context& ctx, uint8_t* base, unsigned ordinal) {
     const char* name = ordinal ? "Horse_Player2" : "Horse_2";
@@ -282,6 +293,70 @@ void Acknowledge(const X86Context& ctx, uint8_t* base, uint32_t sequence) {
     const auto ack = Message(sequence, 0, 0);
     DarkwatchOnlineSendStory(ctx, base, ack.data(), sizeof(ack));
 }
+struct TestCommand {
+    uint32_t version = 0, sequence = 0, kind = 0, generation = 0, level = 0, area = 0;
+    float positions[6]{};
+};
+bool ParseTestCommand(const char* text, TestCommand& command) {
+    std::istringstream input(text);
+    uint32_t* fields[]{&command.version, &command.sequence, &command.kind, &command.generation, &command.level, &command.area};
+    for (auto field : fields) {
+        uint64_t value;
+        if (!(input >> value) || value > UINT32_MAX) return false;
+        *field = uint32_t(value);
+    }
+    for (auto& value : command.positions) if (!(input >> value)) return false;
+    std::string extra;
+    if (input >> extra || command.version != 1 || !command.sequence || command.sequence > 1000000000 ||
+        !command.generation || !command.level || (command.kind != 1 && command.kind != 2) ||
+        (command.kind == 1 ? command.area != 0 : !command.area || command.area > 50)) return false;
+    for (float value : command.positions)
+        if (!std::isfinite(value) || std::abs(value) > 100000 || (command.kind == 2 && value != 0)) return false;
+    return true;
+}
+void TestCommandTick(const X86Context& ctx, uint8_t* base) {
+    const char* path = std::getenv("DARKWATCH_ONLINE_TEST_COMMAND");
+    // Test shortcuts must not interrupt a cinematic and discard its final queued stop event.
+    if (!path || !*path || !story.pending.empty() || story.incoming[5] || !DarkwatchOnlineCinematicIdle()) return;
+    static Clock::time_point polled{};
+    static uint32_t consumed = 0;
+    if (Clock::now() - polled < std::chrono::milliseconds(250)) return;
+    polled = Clock::now();
+    auto* file = std::fopen(path, "rb");
+    if (!file) return;
+    char text[512]{};
+    const auto size = std::fread(text, 1, sizeof(text) - 1, file);
+    const bool complete = std::feof(file) && !std::ferror(file);
+    std::fclose(file);
+    TestCommand command;
+    if (!complete || !size || std::memchr(text, 0, size) || !ParseTestCommand(text, command) || command.sequence <= consumed) return;
+    consumed = command.sequence;
+    if (command.generation != story.stamp[0] || command.level != story.stamp[1]) {
+        DarkwatchOnlineEventRecord("test-command-stale", command.sequence, command.generation, command.level); return;
+    }
+    if (command.kind == 2) {
+        const bool accepted = DarkwatchOnlineTestArea(ctx, base, command.area);
+        DarkwatchOnlineEventRecord(accepted ? "test-area-requested" : "test-command-refused", command.sequence, command.area, 0);
+        return;
+    }
+    const auto actor = Player(base, 0), peer = Player(base, 1);
+    if (!actor || !peer || !LocalPlayer(base, actor) || LocalPlayer(base, peer) ||
+        ctx.esp < 256 || !Span(base, uint64_t(ctx.esp) - 256, 256)) {
+        DarkwatchOnlineEventRecord("test-command-refused", command.sequence, actor, peer); return;
+    }
+    auto packet = Message(0, 0x1E, 1);
+    std::memcpy(packet.data() + 8, command.positions + 3, 12);
+    Queue(packet); // Remote owner applies its normal teleport and acknowledges through the story channel.
+    const auto at = ctx.esp - 128;
+    uint8_t saved[24]; std::memcpy(saved, base + at, sizeof(saved));
+    uint32_t event[]{0x41E948, 0x1E, 0, 0, 0, 1};
+    std::memcpy(event + 2, command.positions, 12);
+    std::memcpy(base + at, event, sizeof(event));
+    auto call = ctx; call.esp = at - 64; call.ecx = actor;
+    story.replay = true; kernel::CallGuest(call, 0x216560, {at}); story.replay = false;
+    std::memcpy(base + at, saved, sizeof(saved));
+    DarkwatchOnlineEventRecord("test-position-requested", command.sequence, story.sent, command.generation);
+}
 }
 
 void DarkwatchOnlineStoryReset() { story = {}; DarkwatchOnlineCinematicReset(); }
@@ -299,6 +374,7 @@ bool DarkwatchOnlineQueueCinematic(const X86Context& ctx, uint8_t* base, uint32_
 void DarkwatchOnlineStoryTick(const X86Context& ctx, uint8_t* base) {
     uint32_t remote = 0; bool host = false;
     if (!Context(ctx, base, remote, host)) return;
+    if (host) TestCommandTick(ctx, base);
     RidingTick(ctx, base, host);
     const auto now = Clock::now();
     if (host && !story.pending.empty()) {
@@ -329,7 +405,7 @@ void DarkwatchOnlineStoryTick(const X86Context& ctx, uint8_t* base) {
         }
         const bool teleport = packet[6] == 0x1E, player = teleport || packet[6] == 0x1F || packet[6] == 0x23A;
         const bool detpak = packet[6] == 0x21A;
-        const auto actor = player ? Player(base, packet[7]) : detpak ? FindDetPak(base) : FindDoor(base, packet[8]);
+        const auto actor = player ? Player(base, packet[7]) : detpak ? FindDestructible(base, packet[7]) : FindDoor(base, packet[8]);
         const auto value = packet[6] == 0x116 ? (packet[7] == 2 ? 0 : Player(base, packet[7])) : packet[7];
         if (!actor || (packet[6] == 0x116 && packet[7] < 2 && !value)) return;
         if (player && !LocalPlayer(base, actor)) return;
@@ -374,11 +450,18 @@ bool DarkwatchOnlineStoryControl(const X86Context& ctx, uint8_t* base) {
         std::memcmp(packet.data() + 2, story.stamp, sizeof(story.stamp)) || !packet[5] ||
         (host ? (packet[6] || packet[7] || packet[8] || packet[9] || packet[10]) :
           !(cinematic || (packet[6] == 0x10003 && packet[7] <= 1 && !packet[8] && !packet[9] && !packet[10] && RidingChapter(base)) ||
-            (packet[6] == 0x21A && !packet[7] && Position(packet.data() + 8)) ||
+            (packet[6] == 0x21A && packet[7] < std::size(kDestructibles) && Position(packet.data() + 8)) ||
             ((packet[6] == 0x1E || packet[6] == 0x1F || packet[6] == 0x23A) && packet[7] <= 1 && Position(packet.data() + 8)) ||
             (packet[8] < std::size(kDoors) && !packet[9] && !packet[10] &&
              ((packet[6] == 0x116 && packet[7] <= 2) || (packet[6] == 0x117 && packet[7] <= 1)))))) {
         DarkwatchOnlineEventRecord("campaign-story-rejected", ctx.ecx, size, packet[6]);
+        static unsigned rejected_details = 0;
+        if (++rejected_details <= 8) {
+            DarkwatchOnlineEventRecord("campaign-story-packet-peer", remote, ctx.ecx, packet[5]);
+            DarkwatchOnlineEventRecord("campaign-story-packet-stamp", packet[2], packet[3], packet[4]);
+            DarkwatchOnlineEventRecord("campaign-story-expected-stamp", story.stamp[0], story.stamp[1], story.stamp[2]);
+            DarkwatchOnlineEventRecord("campaign-story-packet-tail", packet[8], packet[9], packet[10]);
+        }
         return true;
     }
     if (host) {
@@ -425,13 +508,14 @@ X86_FUNC(sub_00216560) {
         }
     }
     // Original Destructible::Explode broadcasts its 21A position in event 26.
-    // Carry only coordinates; the peer resolves its own authored DetPak actor.
+    // Carry only coordinates and an allowlisted identity; the peer resolves its own authored actor.
+    const auto destructible = event == 0x26 ? Destructible(base, ctx.ecx) : ~0u;
     if (!story.replay && event == 0x26 && Word(base, ctx.esp) == 0x5F292 &&
         Span(base, message, 13) && Word(base, message) == 0x41E948 && base[message + 12] == 1 &&
-        DetPak(base, ctx.ecx) && Context(ctx, base, remote, host) && host) {
+        destructible < std::size(kDestructibles) && Context(ctx, base, remote, host) && host) {
         const auto inner = Word(base, message + 8);
         if (Span(base, inner, 20) && Word(base, inner) == 0x41E948 && Word(base, inner + 4) == 0x21A) {
-            auto packet = Message(0, 0x21A, 0);
+            auto packet = Message(0, 0x21A, destructible);
             std::memcpy(packet.data() + 8, base + inner + 8, 12);
             if (!Position(packet.data() + 8)) Failed(4);
             Queue(packet);

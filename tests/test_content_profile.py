@@ -27,11 +27,24 @@ class ProfileTests(unittest.TestCase):
             pins = dict(fixtures.characters.INSTALLED)
             catalog = {'originals': {name: {'size': len(case.data[name]), 'sha256': fixtures.sha(case.data[name])} for name in pins}}
             with patch.object(profile, 'ORIGINAL', pins), patch.object(fixtures.characters, 'catalog', return_value=catalog), \
-                    patch.object(fixtures.characters, 'prepare', side_effect=AssertionError('Enhanced conversion must not run')):
+                    patch.object(fixtures.characters, 'prepare', side_effect=AssertionError('Enhanced conversion must not run')), \
+                    patch.object(fixtures.setup.character_preview, 'prepare', side_effect=AssertionError('Original previews must not run')):
                 current = Path(case.backend.use_iso(case.iso)['install_dir'])
                 receipt = json.loads((current/'install.json').read_text())
                 self.assertEqual(receipt['content_profile'], 'original')
                 self.assertEqual(receipt['content_revision'], profile.ORIGINAL_REVISION)
+                preview = current / fixtures.setup.character_preview.NAME
+                self.assertFalse(preview.exists())
+                self.assertNotIn('character_preview', receipt)
+                # Older original installs retain an unused cache; a revision rebuild removes it.
+                preview.write_bytes(b'obsolete generated preview')
+                receipt['character_preview'] = {'version': 0}
+                receipt['content_revision'] = 'previous-original-revision'
+                (current/'install.json').write_text(json.dumps(receipt))
+                self.assertTrue(case.backend.update()['ready'])
+                self.assertFalse(preview.exists())
+                self.assertNotIn('character_preview', json.loads((current/'install.json').read_text()))
+                self.assertEqual(case.backend.verify(), current)
                 self.assertEqual((current/'assets/packfile.pck').read_bytes(), case.installed_data['packfile.pck'])
                 self.assertTrue(case.backend.status()['ready'])
                 self.assertTrue(case.backend.update()['ready'])

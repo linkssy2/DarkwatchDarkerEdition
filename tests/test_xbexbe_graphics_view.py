@@ -204,6 +204,10 @@ int main(){using namespace darkwatch::view;
   CHECK(s.show_hud&&s.movie_aspect_fit&&s.hd_ui&&s.hd_textures&&!s.forever_ragdolls);
  }++checked;}while(finished!=2||checked<1000);p1.join();p2.join();
  CHECK(Snapshot().camera_mode==CameraMode::Centered&&Snapshot(1).camera_mode==CameraMode::Shoulder);
+ SetFirstPersonOnly(true);
+ for(unsigned p=0;p<4;++p){auto v=Snapshot(p);v.camera_mode=CameraMode::Shoulder;Apply(v,p);CHECK(Snapshot(p).camera_mode==CameraMode::FirstPerson);}
+ SetFirstPersonOnly(false);
+ for(unsigned p=0;p<4;++p)CHECK(Snapshot(p).camera_mode==CameraMode::Shoulder);
  std::puts("camera modes: default first-person, independent persistence, migration, strict validation, fallback owner and coherent concurrent snapshots passed");
 }
 ''')

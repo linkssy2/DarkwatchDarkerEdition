@@ -229,8 +229,8 @@ def _poses(raw, clip, mesh, cancel):
                 for bone, weight in weights.items():
                     m = matrices[bone]
                     for j in range(3):
-                        point[j] += (sum(position[i]*m[i*4+j] for i in range(3))+m[12+j])*weight
-                        direction[j] += sum(normal[i]*m[i*4+j] for i in range(3))*weight
+                        point[j] += (sum((position[0]*m[j], position[1]*m[4+j], position[2]*m[8+j]))+m[12+j])*weight
+                        direction[j] += sum((normal[0]*m[j], normal[1]*m[4+j], normal[2]*m[8+j]))*weight
                 positions.append(tuple(point)+_normal(direction))
         output.append(positions)
     return duration, output

@@ -51,8 +51,23 @@ public:
 DRIVER = r'''
 static const std::string source=R"(float4 main(float4 p:POSITION):SV_Position{return p;}
 float4 alternate(float4 p:POSITION):SV_Position{return p*2;})";
-static std::vector<uint8_t> Read(const std::filesystem::path& p){std::ifstream f(p,std::ios::binary);return {std::istreambuf_iterator<char>(f),{}};}
-static void Write(const std::filesystem::path& p,const std::vector<uint8_t>& v){std::ofstream f(p,std::ios::binary|std::ios::trunc);f.write(reinterpret_cast<const char*>(v.data()),v.size());CHECK(bool(f));}
+static std::filesystem::path TestPath(const std::filesystem::path& p){
+ if(p.native().starts_with(L"\\\\?\\"))return p;
+ auto path=std::filesystem::absolute(p).lexically_normal().make_preferred().native();
+ return path.starts_with(L"\\\\")?L"\\\\?\\UNC\\"+path.substr(2):L"\\\\?\\"+path;
+}
+// Keep the reference read independent of the runtime's ifstream reader and verify its full extent.
+static std::vector<uint8_t> Read(const std::filesystem::path& p){
+ HANDLE file=CreateFileW(TestPath(p).c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+ CHECK(file!=INVALID_HANDLE_VALUE);LARGE_INTEGER size{};CHECK(GetFileSizeEx(file,&size)&&size.QuadPart>=0&&size.QuadPart<=(64<<20));
+ std::vector<uint8_t> bytes(static_cast<size_t>(size.QuadPart));DWORD got=0;
+ CHECK(ReadFile(file,bytes.data(),static_cast<DWORD>(bytes.size()),&got,nullptr)&&got==bytes.size());CHECK(CloseHandle(file));return bytes;
+}
+static void Write(const std::filesystem::path& p,const std::vector<uint8_t>& v){
+ HANDLE file=CreateFileW(TestPath(p).c_str(),GENERIC_WRITE,0,nullptr,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
+ CHECK(file!=INVALID_HANDLE_VALUE&&v.size()<=UINT32_MAX);DWORD wrote=0;
+ CHECK(WriteFile(file,v.data(),static_cast<DWORD>(v.size()),&wrote,nullptr)&&wrote==v.size());CHECK(CloseHandle(file));
+}
 static std::vector<uint8_t> Bytes(ID3DBlob* b){auto* p=static_cast<uint8_t*>(b->GetBufferPointer());return {p,p+b->GetBufferSize()};}
 static ID3DBlob* Compile(D3D12Backend& b,const std::string& s=source,const char* e="main",const char* p="vs_5_0") {uint64_t hash;return b.Compile(s,e,p,hash);}
 static ShaderDigest Key(const std::string& s=source,const char* e="main",const char* p="vs_5_0",uint32_t f1=D3DCOMPILE_OPTIMIZATION_LEVEL1,uint32_t f2=0){
@@ -63,7 +78,14 @@ int main(int argc,char** argv){
  auto compiler=ShaderCompilerIdentity();CHECK(compiler);
  HMODULE module=GetModuleHandleW(D3DCOMPILER_DLL_W);CHECK(module);auto actual=GetProcAddress(module,"D3DCompile");CHECK(actual);CHECK(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,reinterpret_cast<LPCWSTR>(actual),&module));
  wchar_t module_path[32768];CHECK(GetModuleFileNameW(module,module_path,32768));auto compiler_bytes=Read(module_path);ShaderDigest compiler_digest{};
- CHECK(ShaderDigestOf(compiler_bytes.data(),compiler_bytes.size(),compiler_digest)&&compiler_digest==*compiler);
+ CHECK(ShaderDigestOf(compiler_bytes.data(),compiler_bytes.size(),compiler_digest));
+ if(compiler_digest!=*compiler){
+  std::fwprintf(stderr,L"compiler_path=%ls\n",module_path);
+  std::fprintf(stderr,"reference_bytes=%zu runtime_identity=",compiler_bytes.size());
+  for(auto byte:*compiler)std::fprintf(stderr,"%02x",byte);
+  std::fprintf(stderr," reference_identity=");for(auto byte:compiler_digest)std::fprintf(stderr,"%02x",byte);std::fprintf(stderr,"\n");
+ }
+ CHECK(compiler_digest==*compiler);
  auto module_name=std::filesystem::path(module_path).filename().wstring();for(auto& c:module_name)c=std::towlower(c);CHECK(module_name.find(L"compiler")!=std::wstring::npos);
  D3D12Backend b;auto* code=Compile(b);CHECK(code&&ShaderBytecode(code->GetBufferPointer(),code->GetBufferSize()));
  auto expected=Bytes(code);CHECK(Compile(b)==code);unsigned first_calls=compile_calls;

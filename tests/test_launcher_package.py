@@ -29,7 +29,8 @@ class LauncherPackageTests(unittest.TestCase):
         self.assertIn('payload/release_check.py', plan)
         self.assertIn('payload/release_download.py', plan)
         self.assertIn('payload/release_update.py', plan)
-        for name in ('_ssl.pyd', 'libssl-3.dll', 'libcrypto-3.dll', '_socket.pyd', 'select.pyd', 'unicodedata.pyd'):
+        for name in ('_ssl.pyd', 'libssl-3.dll', 'libcrypto-3.dll', '_socket.pyd', 'select.pyd', 'unicodedata.pyd',
+                     'pythonw.exe', '_multiprocessing.pyd', '_queue.pyd'):
             self.assertIn('payload/python/' + name, plan)
 
     @unittest.skipUnless(sys.platform == 'win32' and (package.PYTHON / 'python.exe').is_file(),
@@ -48,6 +49,36 @@ class LauncherPackageTests(unittest.TestCase):
                 "assert context.check_hostname and context.verify_mode==ssl.CERT_REQUIRED; "
                 "assert 'api.github.com'.encode('idna')==b'api.github.com'"],
                 capture_output=True, text=True, timeout=15)
+            self.assertEqual(smoke.returncode, 0, smoke.stderr)
+            worker_test = payload / 'worker_test.py'
+            worker_test.write_text("import multiprocessing,sys\n"
+                "from pathlib import Path\nfrom concurrent.futures import ProcessPoolExecutor\n"
+                "if __name__ == '__main__':\n"
+                " multiprocessing.set_executable(str(Path(sys._base_executable).with_name('python.exe')))\n"
+                " with ProcessPoolExecutor(2,mp_context=multiprocessing.get_context('spawn')) as pool:\n"
+                "  assert list(pool.map(abs,(-1,-2))) == [1,2]\n")
+            smoke = subprocess.run([str(runtime / 'python.exe'), '-B', str(worker_test)],
+                                   capture_output=True, text=True, timeout=15)
+            self.assertEqual(smoke.returncode, 0, smoke.stderr)
+
+            for name in ('character_assets.py', 'character_workers.py'):
+                shutil.copyfile(ROOT / 'launcher' / name, payload / name)
+            worker_test.write_text(
+                "import character_assets as art\n"
+                "if __name__ == '__main__':\n"
+                " rows=[art.element(dict(name='resource/'+str(i)+'x'*500,type='ModelResource')) for i in range(1000)]\n"
+                " data=dict(name='data',attributes={},value=None,children=rows)\n"
+                " tree=dict(name='ResourceSetCInfo',attributes={},value=None,children=[data])\n"
+                " raw=art.encode(tree)\n"
+                " deps=[('extra/resource','ModelResource')]\n"
+                " expected=art.encode(art.append_resources(tree,deps)[0])\n"
+                " for repeat in range(2):\n"
+                "  jobs=((str(i),memoryview(raw).tobytes(),0) for i in range(1024))\n"
+                "  for path,result,added in art.append_resource_jobs(jobs,[(deps,[])],lambda:None):\n"
+                "   assert added and result==expected, 'Worker transfer changed resource '+path\n")
+            smoke = subprocess.run([str(runtime / 'python.exe'), '-B', str(worker_test)],
+                                   capture_output=True, text=True, timeout=90,
+                                   creationflags=subprocess.CREATE_NO_WINDOW)
             self.assertEqual(smoke.returncode, 0, smoke.stderr)
 
     def test_release_version_agrees_across_both_exes_backend_and_platform_labels(self):
@@ -389,7 +420,7 @@ class LauncherPackageTests(unittest.TestCase):
         import character_content
         import character_update
         plan = package.sources()
-        for name in ('revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'enemy_blood.py', 'character_cinematic.py',
+        for name in ('character_workers.py', 'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'enemy_blood.py', 'character_cinematic.py',
                      'third_person_animation.py', 'character_reload.py', 'character_weapon_pose.py', 'character_weapon_hold.py', 'character_weapon_shoulder.py', 'character_starter_reload.py',
                      'body_weapon_grips.inc', 'body_reload_parts.inc'):
             self.assertEqual(plan['payload/' + name], ROOT / 'launcher' / name)

@@ -6,6 +6,7 @@
 
 namespace darkwatch::view {
 namespace {
+std::atomic<bool> g_first_person_only{false};
 constexpr uint64_t kViewMask = 0xFFFFFFu;
 constexpr uint64_t kFlagsMask = uint64_t(0xFF) << 56;
 constexpr uint64_t kDefaultView = (uint64_t(100) << 16) | (uint64_t(100) << 8) | 100;
@@ -90,9 +91,13 @@ Settings Normalize(Settings settings) {
         if (*color > 0xFFFFFF) *color = kOriginalReticleColor;
     return settings;
 }
+void SetFirstPersonOnly(bool enabled) { g_first_person_only = enabled; }
+bool FirstPersonOnly() { return g_first_person_only.load(); }
 Settings Snapshot(uint32_t player) {
     const auto shared = g_settings.load();
-    return Unpack(player < 2 || player >= 4 ? shared : (g_extra_settings.load() & ~kFlagsMask) | (shared & kFlagsMask), player);
+    auto result = Unpack(player < 2 || player >= 4 ? shared : (g_extra_settings.load() & ~kFlagsMask) | (shared & kFlagsMask), player);
+    if (FirstPersonOnly()) result.camera_mode = CameraMode::FirstPerson;
+    return result;
 }
 void Apply(Settings settings, uint32_t player) {
     player = player < 4 ? player : 0;

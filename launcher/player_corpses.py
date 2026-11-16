@@ -92,17 +92,12 @@ def prepare(source, *stages):
              path.endswith(('_resources.bxml', '_resources_coop.bxml'))}
     paths.update(path for path in composed if path.startswith('levels/singleplayer/') and
                  '/streaming/' in path and '_resources' in path and path.endswith('.bxml'))
-    def selected(present):
-        deps = []
-        for player_deps in dependencies.values():
-            # The existing selection tables already choose which body models
-            # reside in this area. Do not load the entire character roster.
-            if (art.norm(player_deps[0][0]), 'ModelResource') in present:
-                deps.extend(player_deps)
-        return deps
-    for completed, path in enumerate(sorted(paths), 1):
-        source.cancel()
-        adapted, added = art.append_resource_bytes(read(path), select=selected)
+    # Keep selected-body residency; the workers use the same membership rule.
+    choices = [((art.norm(deps[0][0]), 'ModelResource'), deps)
+               for deps in dependencies.values()]
+    jobs = ((path, read(path), 0) for path in sorted(paths))
+    for completed, (path, adapted, added) in enumerate(
+            art.append_resource_jobs(jobs, [((), choices)], source.cancel), 1):
         if added:
             result['LvlSingl.pck'][path] = adapted
         if completed % 100 == 0 or completed == len(paths):

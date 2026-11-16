@@ -356,6 +356,73 @@ def append_resource_bytes(raw, dependencies=(), *, select=None):
     return bytes(result), added
 
 
+_resource_worker_inputs = None
+
+
+def _start_resource_worker(profiles, stopped):
+    global _resource_worker_inputs
+    _resource_worker_inputs = profiles, stopped
+
+
+def _resource_batch(jobs):
+    profiles, stopped = _resource_worker_inputs
+    results = []
+    for path, raw, profile in jobs:
+        if stopped.is_set():
+            raise RuntimeError('Resource preparation cancelled')
+        base, choices = profiles[profile]
+        def selected(present):
+            deps = list(base)
+            for key, additions in choices:
+                if key in present:
+                    deps.extend(additions)
+            return deps
+        converted, added = append_resource_bytes(raw, select=selected)
+        results.append((path, converted, bool(added)))
+    return results
+
+
+def append_resource_jobs(jobs, profiles, cancel):
+    """Bounded, ordered resource transforms; profiles contain base and selected deps."""
+    from collections import deque
+    from concurrent.futures import wait
+    from itertools import islice
+    import multiprocessing
+    import os
+    import character_workers
+
+    context = multiprocessing.get_context('spawn')
+    stopped = context.Event()
+    workers = min(8, max(1, (os.cpu_count() or 1) // 2))
+    jobs, pending = iter(jobs), deque()
+    with character_workers.pool(workers, initializer=_start_resource_worker,
+                                initargs=(profiles,), stopped=stopped) as pool:
+        try:
+            exhausted = False
+            while pending or not exhausted:
+                while not exhausted and len(pending) < workers * 2:
+                    cancel()
+                    batch = list(islice(jobs, 16))
+                    if not batch:
+                        exhausted = True
+                        break
+                    pending.append(pool.submit(_resource_batch, batch))
+                if not pending:
+                    break
+                future = pending[0]
+                while not future.done():
+                    cancel()
+                    wait((future,), timeout=.1)
+                for result in character_workers.result(future):
+                    cancel()
+                    yield result
+                pending.popleft()
+        finally:
+            stopped.set()
+            for future in pending:
+                future.cancel()
+
+
 def append_voice_bank(original):
     # Audio has a separate BankLayoutConfig, not a generic resource-list loader.
     if original['name'] != 'BankLayoutConfig' or named(original,'layoutType')['value'] != 'HubCoop':

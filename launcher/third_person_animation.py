@@ -5,6 +5,9 @@ on-foot groups. Private body reload clones follow native hands timing; gameplay
 templates, first-person clips, scripts and rigs remain unchanged.
 """
 import copy
+import multiprocessing
+import os
+from concurrent.futures import wait
 
 import character_assets as art
 import character_animation
@@ -12,6 +15,7 @@ import character_reload
 import character_starter_reload
 import character_weapon_pose
 import character_weapon_hold
+import character_workers
 
 CHARACTERS = 'xml/actortemplates_characters.bxml'
 PLAYERS = ('Chaz', 'CassidySolo', 'CassidySpectralSolo', 'CivilianJerichoSolo',
@@ -142,6 +146,80 @@ def gate_redeemer_aim(raw):
     return art.encode(tree) if changed else raw
 
 
+def _prepare_character(name, mapping, actors, original, base_read, original_read, grip_offsets):
+    generated = {}
+    def read(path):
+        path = art.norm(path)
+        return generated[path] if path in generated else base_read(path)
+    actor = art.child(actors, name)
+    model = art.norm(art.child(art.child(actor, 'AlternativeModelsRenderComponent'),
+                               'm_modelResourcePath')['attributes']['value']) + '.rx1'
+    locator = art.norm(art.child(art.child(actor, 'LocatorAttachmentComponent'),
+                                 'm_locatorFileName')['attributes']['value']) + '.bllist'
+    basis = (character_animation.STORM if name in COOP_PLAYERS and name != 'JerichoCoop'
+             else character_animation.CHAZ)
+    path = mapping['Multi']
+    table, pose_clips = character_weapon_pose.prepare_table(
+        gate_redeemer_aim(original), read, original_read, read(model), read(locator), basis)
+    generated.update(pose_clips)
+    table, hold_clips = character_weapon_hold.prepare_table(
+        table, read, original_read, read(model), read(locator), basis, name, grip_offsets)
+    generated.update(hold_clips)
+    starter_offset = grip_offsets.get((name, 'BasicPistol'), (0., 0.))[0]
+    table, starter_clips = character_starter_reload.prepare_table(
+        table, read, original_read, read(model), read(locator), basis, starter_offset, actor=name)
+    generated.update(starter_clips)
+    table, grip_clips = character_weapon_pose.prepare_grip_table(
+        table, read, original_read, read(model), read(locator), basis, name, grip_offsets)
+    generated.update(grip_clips)
+    # Retiming expects the original unsplit selectors; completed updates
+    # already contain these durations before the shared fitting stage.
+    table, added_clips = character_reload.prepare_table(table, read)
+    generated.update(added_clips)
+    table, motion_clips = character_weapon_hold.prepare_aimed_motion_table(
+        table, read, original_read, read(model), read(locator), basis, name, grip_offsets)
+    generated.update(motion_clips)
+    table, redeemer_clips = character_reload.prepare_redeemer_table(
+        table, read, original_read, read(model), read(locator), basis, name,
+        grip_offsets.get((name, 'Revolver'), (0., 0.))[0])
+    table, mechanical_clips = character_reload.prepare_mechanical_table(
+        table, read, original_read, read(model), read(locator), basis, name, grip_offsets)
+    added_clips.update(redeemer_clips)
+    added_clips.update(mechanical_clips)
+    added_clips.update(pose_clips)
+    added_clips.update(hold_clips)
+    added_clips.update(grip_clips)
+    added_clips.update(motion_clips)
+    added_clips.update(starter_clips)
+    referenced = {clip + '.sanm' for clip in clips(table)}
+    added_clips = {clip: data for clip, data in added_clips.items() if clip in referenced}
+    return table, added_clips, generated
+
+
+_worker_inputs = None
+
+
+def _start_character_worker(paths, metadata, composed, actors, originals, offsets, stopped):
+    from character_content import Source
+    # Each process owns its file positions; Source retains every resource hash check.
+    streams = {name: open(path, 'rb') for name, path in paths.items()}
+    def cancel():
+        if stopped.is_set():
+            raise RuntimeError('Character preparation cancelled')
+    source = Source(streams, metadata, cancel)
+    global _worker_inputs
+    _worker_inputs = source, composed, actors, originals, offsets
+
+
+def _character_worker(item):
+    name, mapping = item
+    source, composed, actors, originals, offsets = _worker_inputs
+    def read(path):
+        return composed[path] if path in composed else source.read(path)
+    return _prepare_character(name, mapping, actors, originals[mapping['Multi']],
+                              read, source.read, offsets)
+
+
 def prepare(source, *stages):
     source.report('Preparing third-person character animations...')
     composed, archives = {}, {}
@@ -171,71 +249,37 @@ def prepare(source, *stages):
     dependencies = {}
     grip_offsets = character_weapon_pose.read_grip_offsets()
     originals = {mapping['Multi']: read(mapping['Multi']) for mapping in aliases.values()}
-    processed = set()
-    for character_index, (name, mapping) in enumerate(aliases.items(), 1):
-        source.cancel()
-        def report_clips(label, prepared):
-            processed.update(prepared)
-            source.report(f'Preparing animations: character {character_index}/{len(aliases)}, '
-                          f'{len(processed):,} files processed - {label}')
-        report_clips('aiming', ())
-        actor = art.child(actors, name)
-        model = art.norm(art.child(art.child(actor, 'AlternativeModelsRenderComponent'),
-                                   'm_modelResourcePath')['attributes']['value']) + '.rx1'
-        locator = art.norm(art.child(art.child(actor, 'LocatorAttachmentComponent'),
-                                     'm_locatorFileName')['attributes']['value']) + '.bllist'
-        basis = (character_animation.STORM if name in COOP_PLAYERS and name != 'JerichoCoop'
-                 else character_animation.CHAZ)
-        path = mapping['Multi']
-        table, pose_clips = character_weapon_pose.prepare_table(
-            gate_redeemer_aim(originals[path]), read, source.read, read(model), read(locator), basis)
-        output['packfile.pck'].update(pose_clips)
-        report_clips('weapon holds', pose_clips)
-        table, hold_clips = character_weapon_hold.prepare_table(
-            table, read, source.read, read(model), read(locator), basis, name, grip_offsets)
-        output['packfile.pck'].update(hold_clips)
-        report_clips('revolver reloads', hold_clips)
-        starter_offset = grip_offsets.get((name, 'BasicPistol'), (0., 0.))[0]
-        table, starter_clips = character_starter_reload.prepare_table(
-            table, read, source.read, read(model), read(locator), basis, starter_offset, actor=name)
-        output['packfile.pck'].update(starter_clips)
-        report_clips('weapon grips', starter_clips)
-        table, grip_clips = character_weapon_pose.prepare_grip_table(
-            table, read, source.read, read(model), read(locator), basis, name, grip_offsets)
-        output['packfile.pck'].update(grip_clips)
-        report_clips('reload timing', grip_clips)
-        # Retiming expects the original unsplit selectors; completed updates
-        # already contain these durations before the shared fitting stage.
-        table, added_clips = character_reload.prepare_table(table, read)
-        output['packfile.pck'].update(added_clips)
-        report_clips('movement and jump animations', added_clips)
-        table, motion_clips = character_weapon_hold.prepare_aimed_motion_table(
-            table, read, source.read, read(model), read(locator), basis, name, grip_offsets)
-        output['packfile.pck'].update(motion_clips)
-        report_clips('Redeemer reloads', motion_clips)
-        table, redeemer_clips = character_reload.prepare_redeemer_table(
-            table, read, source.read, read(model), read(locator), basis, name,
-            grip_offsets.get((name, 'Revolver'), (0., 0.))[0])
-        report_clips('magazine reloads', redeemer_clips)
-        table, mechanical_clips = character_reload.prepare_mechanical_table(
-            table, read, source.read, read(model), read(locator), basis, name, grip_offsets)
-        report_clips('character complete', mechanical_clips)
-        added_clips.update(redeemer_clips)
-        added_clips.update(mechanical_clips)
-        added_clips.update(pose_clips)
-        added_clips.update(hold_clips)
-        added_clips.update(grip_clips)
-        added_clips.update(motion_clips)
-        added_clips.update(starter_clips)
-        referenced = {clip + '.sanm' for clip in clips(table)}
-        added_clips = {clip: data for clip, data in added_clips.items() if clip in referenced}
-        destination = JERICHO_FULL if path == NATIVE_FULL else path
-        if destination in output['packfile.pck'] and output['packfile.pck'][destination] != table:
-            raise ValueError('Conflicting shared character body poses: ' + name)
-        output['packfile.pck'][destination] = table
-        output['packfile.pck'].update(added_clips)
-        dependencies[destination[:-5]] = [(clip[:-5], kind)
-            for clip in sorted(added_clips) for kind in art.KINDS]
+    # Independent character jobs read the same immutable stage; merge in original order.
+    paths = {name: stream.name for name, stream in source.streams.items()}
+    inputs = {path: data for path, data in composed.items() if not path.startswith('levels/')}
+    workers = min(8, max(1, (os.cpu_count() or 1) // 2))
+    context = multiprocessing.get_context('spawn')
+    stopped = context.Event()
+    with character_workers.pool(workers, initializer=_start_character_worker,
+            initargs=(paths, source.metadata, inputs, actors, originals, grip_offsets), stopped=stopped) as pool:
+        jobs = [pool.submit(_character_worker, item) for item in aliases.items()]
+        try:
+            for character_index, ((name, mapping), job) in enumerate(zip(aliases.items(), jobs), 1):
+                source.report(f'Preparing animations: character {character_index}/{len(aliases)}')
+                while not job.done():
+                    source.cancel()
+                    wait((job,), timeout=.1)
+                table, added_clips, generated = character_workers.result(job)
+                source.cancel()
+                output['packfile.pck'].update(generated)
+                path = mapping['Multi']
+                destination = JERICHO_FULL if path == NATIVE_FULL else path
+                if destination in output['packfile.pck'] and output['packfile.pck'][destination] != table:
+                    raise ValueError('Conflicting shared character body poses: ' + name)
+                output['packfile.pck'][destination] = table
+                output['packfile.pck'].update(added_clips)
+                dependencies[destination[:-5]] = [(clip[:-5], kind)
+                    for clip in sorted(added_clips) for kind in art.KINDS]
+        except BaseException:
+            stopped.set()
+            for job in jobs:
+                job.cancel()
+            raise
     # Temporary pose clones used only as inputs to a retimed clone need not be
     # installed or streamed. Shared tables can still reference the same output.
     referenced = {clip + '.sanm' for path, data in output['packfile.pck'].items()
@@ -282,15 +326,11 @@ def prepare(source, *stages):
              if path.startswith('levels/singleplayer/') and '/streaming/' in path
              and '_resources' in path and path.endswith('.bxml')}
     source.report(f'Linking animations to levels: 0/{len(paths):,} files')
-    for completed, path in enumerate(sorted(paths), 1):
-        source.cancel()
-        def selected(present):
-            requested = list(deps) if path in native_solo else []
-            for table, resources in dependencies.items():
-                if (table, 'AnimatedCharacterResource') in present:
-                    requested.extend(resources)
-            return requested
-        raw, added = art.append_resource_bytes(read(path), select=selected)
+    choices = [((table, 'AnimatedCharacterResource'), resources)
+               for table, resources in dependencies.items()]
+    jobs = ((path, read(path), int(path in native_solo)) for path in sorted(paths))
+    for completed, (path, raw, added) in enumerate(
+            art.append_resource_jobs(jobs, [((), choices), (deps, choices)], source.cancel), 1):
         if added:
             archive = archives.get(path) or source.metadata['sources'][path]['archive']
             output.setdefault(archive, {})[path] = raw

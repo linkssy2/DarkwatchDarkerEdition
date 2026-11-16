@@ -81,8 +81,9 @@ constexpr int ImGuiConfigFlags_NavEnableKeyboard=1,ImGuiConfigFlags_NavEnableGam
 namespace ImGui{static ImGuiIO io;void CreateContext(){Seen("imgui");}ImGuiIO& GetIO(){return io;}}
 static void ImGui_ImplWin32_Init(HWND){Seen("imgui_win32");}
 namespace input{void Init(){Seen("input");}}
-namespace logx{void Init(const std::string&,const std::string&,bool){Seen("log_init");}void Flush(){Seen("flush");}}
+namespace logx{void Init(const std::string&,const std::string&,bool){Seen("log_init");}void Flush(){Seen("flush");}bool SessionEnabled(){return false;}}
 namespace app {
+void LogSystem(){Seen("system_log");}
 static bool g_preparing=false,g_mode_changed=false;
 static HWND g_hwnd=nullptr;
 static fs::path g_preparation_hdd;

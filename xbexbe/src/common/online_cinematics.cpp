@@ -121,6 +121,7 @@ void DarkwatchOnlineCinematicReset() {
     active = active_template = host_resource = 0; replay = invalid_reported = false;
 }
 bool DarkwatchOnlineCinematicResource(uint32_t id) { return id && id <= std::size(kCinematicResources); }
+bool DarkwatchOnlineCinematicIdle() { return !host_resource && !active; }
 
 bool DarkwatchOnlineCinematicApply(const X86Context& ctx, uint8_t* base, uint32_t kind, uint32_t value, uint32_t time) {
     if (!DarkwatchOnlineCampaignReady(ctx, base)) return false;
