@@ -41,7 +41,8 @@ bool OriginalMaterialAlpha(uint32_t offset) {
     // The chapter preview quad intentionally extends behind and beyond its frame.
     // Its original right/bottom padding is transparent, even when restored PNGs
     // contain opaque black there. Preserve that coverage without changing the UVs.
-    constexpr uint32_t materials[]{101214580,102130036,100516340,102557300,102754292,100319220,
+    // The floor blood stain also retains native coverage: restored art must not enlarge or intensify it.
+    constexpr uint32_t materials[]{47573684,101214580,102130036,100516340,102557300,102754292,100319220,
         100647540,100680436,100713332,100746228,100779124,100812020,100844916,100877812,100910708,
         102261236,102294132,102327028,102359924,102392820,102425716,102458612,102491508,102524404};
     return std::find(std::begin(materials),std::end(materials),offset)!=std::end(materials);
@@ -91,7 +92,7 @@ std::vector<std::optional<Override>> Overrides(const std::filesystem::path& dire
             entry.image=image(*item);
             if(item->contains("alpha")){
                 const auto alpha=(*item)["alpha"].value<std::string>();
-                if(alpha!="original"||!OriginalMaterialAlpha(a.offset))throw std::runtime_error("Original alpha is restricted to authored menu panels and chapter previews");
+                if(alpha!="original"||!OriginalMaterialAlpha(a.offset))throw std::runtime_error("Original alpha is restricted to allowlisted authored materials");
                 entry.original_alpha=true;
             }
         }

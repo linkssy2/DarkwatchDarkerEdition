@@ -143,7 +143,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         shutil.copyfile(ROOT / "launcher/gameplay_hd.py", self.payload / "gameplay_hd.py")
         shutil.copyfile(ROOT / "launcher/language_pack.py", self.payload / "language_pack.py")
         for name in ('character_animation.py', 'character_archive.py', 'character_workers.py', 'character_assets.py',
-                     'character_repaint.py', 'content_profile.py', 'character_content.py', 'character_update.py', 'character-update.json.gz',
+                     'character_repaint.py', 'sewers_ramp.py', 'content_profile.py', 'character_content.py', 'character_update.py', 'character-update.json.gz',
                      'character_banshee.py', 'character_campaign.py', 'character_campaign_pose.py', 'character_dropped_clips.py',
                      'character-campaign-angles.json', 'character_boss.py',
                      'character_boss_effects.py', 'character_spectral_hands.py', 'character_hand_seams.py',
@@ -164,7 +164,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         (self.payload / "gameplay-hd-catalog.json").write_text(json.dumps(self.catalog))
         for name in (setup.EXE, "darkwatch_hd_ui_builder.exe"):
             shutil.copyfile(self.worker, self.payload / "runtime" / name)
-        self.data = {"default.xbe": b"XBEH supported fixture", "packfile.pck": b"original texture fixture", "audio.pck": b"sound fixture"}
+        self.data = {"default.xbe": b"XBEH supported fixture", "packfile.pck": b"original texture fixture", "audio.pck": b"sound fixture", "LvlSingl.pck": b"level fixture"}
         self.installed_data = dict(self.data, **{"packfile.pck": b"ORiginal TExture FIxture"})
         selectors = patch.multiple(bonus, ORIGINAL_SHA256=sha(self.data["packfile.pck"]),
                                    INSTALLED_SHA256=sha(self.installed_data["packfile.pck"]),
@@ -178,10 +178,14 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
             target = assets / 'packfile.pck'
             target.write_bytes(bonus.patch_pack(target.read_bytes()))
         fixture = patch.multiple(characters, prepare=fixture_characters,
-                                 INSTALLED={'packfile.pck': (len(self.installed_data['packfile.pck']),
+                                 INSTALLED={'LvlSingl.pck': (len(self.data['LvlSingl.pck']), sha(self.data['LvlSingl.pck'])),
+                                            'packfile.pck': (len(self.installed_data['packfile.pck']),
                                                             sha(self.installed_data['packfile.pck']))})
         fixture.start()
         self.addCleanup(fixture.stop)
+        ramps = patch.object(setup.content_profile.sewers_ramp, 'prepare_archive',
+                             side_effect=lambda source, target, cancel: target.write_bytes(source.read_bytes()))
+        ramps.start(); self.addCleanup(ramps.stop)
         original = patch.object(setup.content_profile, 'ORIGINAL', dict(characters.INSTALLED))
         original.start(); self.addCleanup(original.stop)
         catalog = patch.object(characters, 'catalog', return_value={'originals': {
@@ -317,10 +321,10 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         before = self.iso.read_bytes()
         current = self.install_direct()
         self.assertEqual(self.iso.read_bytes(), before)
-        self.assertEqual(set(self.snapshot(current / 'assets')), {'default.xbe', 'packfile.pck'})
+        self.assertEqual(set(self.snapshot(current / 'assets')), {'default.xbe', 'packfile.pck', 'LvlSingl.pck'})
         self.assertFalse((current / 'source-recovery').exists())
         marker = setup.tomllib.loads((current / setup.DISC_SOURCE).read_text(encoding='utf-8'))
-        self.assertEqual(marker, dict(schema_version=1, path=str(self.iso), overrides=['packfile.pck']))
+        self.assertEqual(marker, dict(schema_version=1, path=str(self.iso), overrides=['LvlSingl.pck', 'packfile.pck']))
         state = self.backend.status()
         self.assertTrue(state['ready'])
         self.assertTrue(state['iso_available'])
@@ -338,7 +342,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
             self.assertTrue(self.backend.use_drop_in_iso(folder))
         current = self.backend.active()
         self.assertEqual(self.backend.status()['iso_path'], str(iso))
-        self.assertEqual(set(self.snapshot(current / 'assets')), {'default.xbe', 'packfile.pck'})
+        self.assertEqual(set(self.snapshot(current / 'assets')), {'default.xbe', 'packfile.pck', 'LvlSingl.pck'})
         self.assertEqual(iso.read_bytes(), before)
         self.assertTrue(any(event.get('automatic_setup') for event in self.events))
         (folder / 'other.iso').write_bytes(b'unsupported extra disc')
@@ -880,7 +884,7 @@ std::ofstream f("worker-ran.txt"); f<<"harmless launcher fixture"; return f?0:4;
         convert = characters.prepare
         def checked_conversion(assets, payload, cancel, progress, *, previous_assets=None):
             self.assertEqual({path.name for path in assets.iterdir()},
-                             {'default.xbe', 'LvlMulti.pck', 'packfile.pck'})
+                             {'default.xbe', 'LvlMulti.pck', 'packfile.pck', 'LvlSingl.pck'})
             self.assertEqual((assets / 'LvlMulti.pck').read_bytes(), self.data['LvlMulti.pck'])
             self.assertEqual(previous_assets, current / 'assets')
             return convert(assets, payload, cancel, progress, previous_assets=previous_assets)

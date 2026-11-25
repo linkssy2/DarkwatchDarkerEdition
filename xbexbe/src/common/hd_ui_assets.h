@@ -160,5 +160,7 @@ inline constexpr Asset kAssets[]{
     {"StartScreenLogo", 105124404u, 65628u, 512u, 128u, 15u, 65536u, 0u, false, 0xfdae117d21024fd2ull, 0x5871ad072e4258daull, 0x0000000000000000ull},
     {"highmoon_title", 105190068u, 65628u, 512u, 256u, 12u, 65536u, 0u, true, 0x68d0836a67174d5bull, 0x92d6a1b2cacc1368ull, 0x0000000000000000ull},
     {"LicenseSplash", 105255732u, 65628u, 512u, 256u, 12u, 65536u, 0u, true, 0x2aeddfa05dc006a2ull, 0xb14b467f6a12798dull, 0x0000000000000000ull},
+    {"Blood64x640", 47919924u, 8284u, 256u, 32u, 15u, 8192u, 0u, false, 0xe0ad3a81c8a65706ull, 0x864ff1a77003f10bull, 0x0000000000000000ull},
+    {"bodystain_alpha_X", 47573684u, 16476u, 128u, 128u, 15u, 16384u, 0u, false, 0xe2bfd0084aa436b5ull, 0xabef49b506b9cbd4ull, 0x0000000000000000ull},
 };
 } // namespace darkwatch::hd

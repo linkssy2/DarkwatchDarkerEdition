@@ -28,7 +28,7 @@ import third_person_animation
 import enemy_blood
 
 BASE_REVISION = 'character-reload-right-wrist-v36'
-CONTENT_REVISION = 'character-jericho-rocket-hold-v44'
+CONTENT_REVISION = 'character-sewers-banks-v45'
 CATALOG_SHA256 = 'dbb39545b03e60c701f8f9464764e2f216572f7f7b2800c7b76ab0646c321c87'
 CHARACTERS = 'xml/actortemplates_characters.bxml'
 BASE_INSTALLED = {
@@ -38,7 +38,7 @@ BASE_INSTALLED = {
 }
 INSTALLED = {
     'packfile.pck': (227357669, 'a7915d4e4943bed000037805bbe218489cb7d35c06b3d175b0c60021295a49d2'),
-    'LvlSingl.pck': (3075125827, '0f3cd694b05c2bc166ec9314868ecb25b0131016b626df2759dbda86dbbfd16c'),
+    'LvlSingl.pck': (3075369539, '67da45ae289957c14485b35932e09756a05500d7cac88759c3bda59aa27c1fb3'),
     'audio.pck': (152450452, 'fb164929befb6a333802863557c4a9d9544ad525c7cd8b7877b3f724fb896081'),
 }
 REPAINT = {

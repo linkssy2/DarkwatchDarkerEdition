@@ -488,3 +488,18 @@ native_offset = 93215060
 file = "BorderEdgeSmooth-restored-v2.png"
 crop = [0, 143, 1774, 744]
 fit = "contain"
+
+# Eight-frame particle strip; crop removes transparent vertical padding.
+[[texture]]
+name = "Blood64x640"
+native_offset = 47919924
+file = "blood-particles-hd.png"
+crop = [6, 197, 2160, 270]
+
+# Floor blood identified in the live Mines capture; independent of optional textures.
+[[texture]]
+name = "bodystain_alpha_X"
+native_offset = 47573684
+file = "blood-ground-hd.png"
+crop = [0, 0, 1254, 1254]
+alpha = "original"

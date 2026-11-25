@@ -1,4 +1,5 @@
 #include "graphics_view.h"
+#include "ragdolls.h"
 #include "cpu/x86_ops.h"
 #include "kernel/memory.h"
 #include <algorithm>
@@ -296,6 +297,44 @@ X86_FUNC(sub_000AB2C0) {
         health = 0;
         std::memcpy(base + uint64_t(message) + 8, &health, sizeof(health));
     }
+}
+
+bool DarkwatchGrabbableBody(const uint8_t* base, uint32_t actor, uint32_t body) {
+    // Use the same ownership checks as corpse contacts, without admitting live actors.
+    if (!actor || !body || OwnedComponent(base, actor, 0x4227A4)) return false;
+    // Retained severed parts use an owned rigid body rather than a ragdoll rig.
+    if (DarkwatchMeleeGibBody(base, actor, body)) return true;
+    uint32_t animation = OwnedComponent(base, actor, 0x41D258), offset = 0x90;
+    if (animation) {
+        if (!RetainedTimeout(base, actor)) return false;
+    } else {
+        animation = OwnedComponent(base, actor, 0x41D378); offset = 0x1C0;
+        if (OwnedComponent(base, actor, 0x41F878) || OwnedComponent(base, actor, 0x422674)) return false;
+    }
+    uint32_t wrapper = 0, rig = 0, collection = 0, bodies = 0, count = 0, world = 0;
+    uint8_t active = 0;
+    if (!animation || !Read(base, uint64_t(animation) + offset, wrapper) || !wrapper ||
+        !Read(base, uint64_t(wrapper) + 4, rig) || !rig ||
+        !Read(base, uint64_t(rig) + 0xC1, active) || !active ||
+        !Read(base, uint64_t(rig) + 4, collection) || !collection ||
+        !Read(base, uint64_t(collection) + 8, bodies) ||
+        !Read(base, uint64_t(collection) + 12, count) || !count || count > 128 ||
+        !Span(base, bodies, count * 4) || !Read(base, uint64_t(body) + 8, world) || !world) return false;
+    for (uint32_t i = 0; i < count; ++i) {
+        uint32_t candidate = 0;
+        if (!Read(base, uint64_t(bodies) + i * 4, candidate)) return false;
+        if (candidate == body) return true;
+    }
+    return false;
+}
+
+bool DarkwatchMeleeGibBody(const uint8_t* base, uint32_t actor, uint32_t body) {
+    if (!darkwatch::view::Snapshot().forever_ragdolls) return false;
+    const auto component = SeveredMotion(base, actor);
+    uint32_t owned = 0, world = 0;
+    return component && Read(base, uint64_t(component)+0x9C, owned) && owned == body &&
+        Read(base, uint64_t(body)+8, world) && world &&
+        KeepSeveredPart(base, OwnedComponent(base, actor, 0x41766C));
 }
 
 // The original collision masks exclude corpses from the character controller.

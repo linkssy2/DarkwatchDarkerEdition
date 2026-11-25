@@ -14,6 +14,8 @@ class MenuAspectTests(unittest.TestCase):
 
 SOURCE = r'''
 #include "graphics_presentation.cpp"
+bool darkwatch::HdStartupActive(){return false;}
+X86_FUNC(__imp__sub_00216C06){std::abort();}
 #include <cstdio>
 #include <cstdlib>
 #include <set>

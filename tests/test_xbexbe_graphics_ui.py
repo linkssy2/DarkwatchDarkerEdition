@@ -101,7 +101,7 @@ bool ObservedCombo(const char* label,int* current,const char* items,int maximum=
  combo_disabled[label]=(GImGui->CurrentItemFlags&ImGuiItemFlags_Disabled)!=0;
  WidgetHighlightProbe highlight(label);
  auto p=GetCursorScreenPos();float width=CalcItemWidth(),height=GetFrameHeight();
- bool observe=record_combo_text&&(std::string(label)=="##carry all weapons"||std::string(label)=="##walk mode"||std::string(label)=="##show_hud"||std::string(label)=="##reticle target"||std::string(label)=="##reticle color mode"||std::string(label)=="##fps"||std::string(label)=="##vsync"||std::string(label)=="##msaa"||std::string(label)=="##aniso"||std::string(label)=="##hd_ui"||std::string(label)=="##subtitles"||std::string(label)=="##cutscene_borders"||std::string(label)=="##movie_scaling"||std::string(label)=="##hd_textures"||std::string(label)=="##forever_ragdolls"||std::string(label)=="##player one character"||std::string(label)=="##player two character"||std::string(label)=="##sound output");
+ bool observe=record_combo_text&&(std::string(label)=="##carry all weapons"||std::string(label)=="##walk mode"||std::string(label)=="##first_person_body"||std::string(label)=="##show_hud"||std::string(label)=="##reticle target"||std::string(label)=="##reticle color mode"||std::string(label)=="##fps"||std::string(label)=="##vsync"||std::string(label)=="##msaa"||std::string(label)=="##aniso"||std::string(label)=="##hd_ui"||std::string(label)=="##subtitles"||std::string(label)=="##cutscene_borders"||std::string(label)=="##movie_scaling"||std::string(label)=="##hd_textures"||std::string(label)=="##forever_ragdolls"||std::string(label)=="##player one character"||std::string(label)=="##player two character"||std::string(label)=="##sound output");
  observe|=record_combo_text&&std::string(label)=="##keep starting revolver";
  observe|=record_combo_text&&std::string(label)=="##ground pound anytime";
  observe|=record_combo_text&&std::string(label)=="##sight mode";
@@ -1944,6 +1944,29 @@ int main(){
         ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + SIGHT_CONTROLS_UI)
         self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
 
+
+    def test_first_person_body_toggle_apply_and_discard(self):
+        helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")] + PLAYER_VIEW_UI[:PLAYER_VIEW_UI.index("int main(){")]
+        driver = r'''
+int main(){
+ ImGui::CreateContext();auto& io=ImGui::GetIO();io.IniFilename=nullptr;
+ io.ConfigFlags|=ImGuiConfigFlags_NavEnableKeyboard|ImGuiConfigFlags_NavEnableGamepad;
+ ImFontConfig font;font.SizePixels=22;g_body=io.Fonts->AddFontDefault(&font);g_title=g_body;
+ unsigned char* pixels;int w,h;io.Fonts->GetTexDataAsRGBA32(&pixels,&w,&h);
+ for(unsigned player=0;player<2;++player){
+  HiddenViewPage();SeedPlayerViews();OpenViewPage(player,true);
+  CHECK(g_view_draft.first_person_body&&view::Snapshot(player).first_person_body);
+  SelectQuality("##first_person_body",0,"Off");
+  CHECK(!g_view_draft.first_person_body&&view::Snapshot(player).first_person_body);
+  ClickNamed("APPLY");CHECK(!view::Snapshot(player).first_person_body&&view::Snapshot(1-player).first_person_body);
+  SelectQuality("##first_person_body",1,"On");ClickNamed("BACK");
+  CHECK(!view::Snapshot(player).first_person_body);
+ }
+ ImGui::DestroyContext();
+}
+'''
+        ran = self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + helpers + driver)
+        self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
 
     def test_hud_visibility_and_reticle_color_editing(self):
         helpers = GAMEPAD_UI[:GAMEPAD_UI.index("int main(){")] + PLAYER_VIEW_UI[:PLAYER_VIEW_UI.index("int main(){")]

@@ -80,7 +80,7 @@ HudScope Scope(X86Context& ctx, uint8_t* base) {
     return {};
 }
 bool Active(uint8_t* base) {return g_hud.base == base && Camera(g_hud);}
-bool ExpiredCheckpoint(uint8_t* base, uint32_t text) {
+bool ExpiredNotification(uint8_t* base, uint32_t text) {
     if (!Span(base, text, 0x80) || Read(base, text) != 0x43C36C ||
         base[text + 0x57] != 0 || Float(base, text + 0x78) != 0) return false;
     const uint32_t checkpoint = Read(base, text + 4);
@@ -88,8 +88,10 @@ bool ExpiredCheckpoint(uint8_t* base, uint32_t text) {
         Read(base, checkpoint + 0xE0) != text || Read(base, checkpoint + 0xDC) != 0 ||
         Float(base, checkpoint + 0xBC) != 0 || base[checkpoint + 0xE7] != 0) return false;
     const uint32_t root = Read(base, checkpoint + 4);
-    return Span(base, root, 0x98) && Read(base, root) == 0x427740 &&
-        Read(base, root + 0x94) == checkpoint;
+    // DC3AF/DC3C0 and DC49F/DC4B0 construct the same timed widget for
+    // ammunition pickups and checkpoints. Both leave an alpha-zero child.
+    return Span(base, root, 0xAC) && Read(base, root) == 0x427740 &&
+        (Read(base, root + 0x94) == checkpoint || Read(base, root + 0xA8) == checkpoint);
 }
 } // namespace
 
@@ -120,10 +122,10 @@ X86_FUNC(sub_001EE8BE) {
 }
 
 X86_FUNC(sub_001ECDB6) {
-    // The native checkpoint fade leaves its text visible with zero alpha.
+    // Native pickup/checkpoint fades leave their text visible with zero alpha.
     // Do not submit that expired text when weapon swaps refresh the HUD's
-    // rendering state. Keep the widget and its timer intact for a new checkpoint.
-    if (ExpiredCheckpoint(base, ctx.ecx)) {
+    // rendering state. Keep the widget and timer intact for a new notification.
+    if (ExpiredNotification(base, ctx.ecx)) {
         ctx.esp += 12; // Original thiscall returns with ret 8.
         return;
     }

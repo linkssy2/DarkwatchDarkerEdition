@@ -19,6 +19,7 @@ FIXTURE = r'''
 #include <string>
 #include "core/input.cpp"
 #include "game_info.cpp"
+void DarkwatchCorpseGrabInput(int,input::Pad&,uint32_t,int){}
 static darkwatch::ControlsSettings controls;
 darkwatch::ControlsSettings darkwatch::ControlsSnapshot(){return controls;}
 void darkwatch::ControlsWalkInput(int,input::Pad&,bool,bool,uint32_t){}
@@ -171,6 +172,11 @@ int main(){
   uint32_t found=0;bool right=true;CHECK(WalkTarget(memory,0,found,right)&&found==actor&&!right);
   CHECK(!WalkTarget(memory,1,found,right));
   std::memcpy(memory+name+2,"Lefty",6);CHECK(WalkTarget(memory,0,found,right)&&right);
+  for(const char* preset:{"Default","Chieftain","Lefty","Hopalong","Hoss"}){
+    std::memset(memory+name+2,0,12);std::memcpy(memory+name+2,preset,std::strlen(preset));
+    int interact=-1;CHECK(WalkTarget(memory,0,found,right,&interact));
+    CHECK(interact==(!std::strcmp(preset,"Chieftain")?12:8));
+  }
   std::memcpy(memory+name+2,"unknown",8);CHECK(!WalkTarget(memory,0,found,right));
   std::memcpy(memory+name+2,"Default",8);
   W(zoom_camera_list,0x180000);CHECK(!WalkTarget(memory,0,found,right));W(zoom_camera_list,zoom_personal);

@@ -141,4 +141,5 @@ bool GameplayTexturesAvailable() { return g_gameplay_available.load(); }
 
 // The original splash sequence and following movie entry delimit its legal text.
 void DarkwatchHdStartupBegin(X86Context&, uint8_t*) { darkwatch::g_startup = true; }
+bool darkwatch::HdStartupActive() { return g_startup.load(); }
 void DarkwatchHdStartupEnd(X86Context&, uint8_t*) { darkwatch::g_startup = false; }

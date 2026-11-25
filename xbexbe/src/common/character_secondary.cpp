@@ -5,6 +5,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <span>
 
 namespace {
 struct Vec { float x = 0, y = 0, z = 0; };
@@ -47,15 +48,17 @@ template<class T> bool Read(const uint8_t* base, uint64_t address, T& value) {
     if (!Span(base,address,sizeof(T))) return false;
     std::memcpy(&value,base+address,sizeof(T)); return true;
 }
-bool Name(const uint8_t* base, uint32_t actor, bool& bossTala, bool& banshee) {
+bool Name(const uint8_t* base, uint32_t actor, bool& bossTala, bool& banshee, bool& cinematic) {
     uint32_t handle;
     if (!Read(base,uint64_t(actor)+0x50,handle) || !handle) return false;
-    constexpr const char* names[]{"CassidySpectralSolo","CassidySpectralPlayerTwo","BossTalaSolo","BossTalaCoop","Banshee","SuperBanshee"};
+    constexpr const char* names[]{"CassidySpectralSolo","CassidySpectralPlayerTwo","BossTalaSolo","BossTalaCoop","Banshee","SuperBanshee",
+        "SelectedCinematicJericho2","SelectedCinematicCivJericho2",
+        "SelectedCinematicJericho9","SelectedCinematicCivJericho9"};
     for (unsigned i=0;i<std::size(names);++i) {
         const char* expected=names[i];
         const size_t bytes=std::strlen(expected)+1;
         if (Span(base,uint64_t(handle)+2,bytes) && !std::memcmp(base+handle+2,expected,bytes)) {
-            bossTala=i==2 || i==3; banshee=i>=4;
+            bossTala=i==2 || i==3 || i>=8; banshee=i==4 || i==5; cinematic=i>=6;
             return true;
         }
     }
@@ -172,7 +175,7 @@ void DarkwatchCharacterSecondaryReset() { instances={}; enemies={}; }
 void DarkwatchCharacterSecondary(X86Context& ctx, uint8_t* base) {
     uint32_t type,actor,serial,animator,pose,parent_pose,hierarchy,count,matrices,parent_map;
     float clock;
-    bool bossTala=false, banshee=false;
+    bool bossTala=false, banshee=false, cinematic=false;
     if (base!=kernel::g_base || ctx.esi!=ctx.edi+0x84 ||
         !Read(base,ctx.edi,type) || type!=0x41D258 ||
         !Read(base,uint64_t(ctx.edi)+0x0C,actor) ||
@@ -186,8 +189,8 @@ void DarkwatchCharacterSecondary(X86Context& ctx, uint8_t* base) {
         !Read(base,uint64_t(pose)+8,parent_map) || !Span(base,parent_map,count*4) ||
         !Read(base,0x4B7AE4,clock) || !std::isfinite(clock)) return;
     CorrectNeck(base,actor,count,matrices,parent_map);
-    if (!Name(base,actor,bossTala,banshee) || count!=(banshee?34u:51u) ||
-        (!banshee && !(DarkwatchCharacterIsCassidyPlayer(base,actor) || DarkwatchCharacterIsTalaPlayer(base,actor)))) return;
+    if (!Name(base,actor,bossTala,banshee,cinematic) || count!=(banshee?34u:51u) ||
+        (!banshee && !cinematic && !(DarkwatchCharacterIsCassidyPlayer(base,actor) || DarkwatchCharacterIsTalaPlayer(base,actor)))) return;
     const unsigned points=banshee?2:6, first=banshee?32:22;
     for (unsigned i=0;i<points;++i) {
         uint32_t parent;
@@ -209,8 +212,9 @@ void DarkwatchCharacterSecondary(X86Context& ctx, uint8_t* base) {
         anchors[side+4]=anchors[side+2];
         rests[side+4]=rests[side+2];
     }
-    auto* begin=banshee?enemies.data():instances.data();
-    auto* end=begin+(banshee?enemies.size():instances.size());
+    // Cinematic stand-ins must not evict any of the four gameplay histories.
+    auto* begin=(banshee||cinematic)?enemies.data():instances.data();
+    auto* end=begin+((banshee||cinematic)?enemies.size():instances.size());
     auto slot=std::find_if(begin,end,[actor](const Instance& s){return s.actor==actor;});
     if (slot==end) slot=std::find_if(begin,end,[](const Instance& s){return !s.actor;});
     if (slot==end) slot=std::min_element(begin,end,
@@ -247,5 +251,31 @@ void DarkwatchCharacterSecondary(X86Context& ctx, uint8_t* base) {
             std::memcpy(&source[i][3],&flags,4);
         }
         std::memcpy(base+matrices+(first+i)*64,source[i].data(),64);
+    }
+}
+
+void DarkwatchRefreshSecondarySkin(uint8_t* base, uint32_t hierarchy) {
+    uint32_t count=0, matrices=0, flags=0;
+    if (base!=kernel::g_base || !Read(base,hierarchy,flags) || (flags&2) ||
+        !Read(base,uint64_t(hierarchy)+4,count) || (count!=34 && count!=51) ||
+        !Read(base,uint64_t(hierarchy)+8,matrices) || !Span(base,matrices,count*64)) return;
+    for (const auto& pool : {std::span<const Instance>(instances),std::span<const Instance>(enemies)})
+    for (const auto& state:pool) {
+        if (!state.actor || state.matrices!=matrices) continue;
+        uint32_t actor=0, serial=0, animator=0, pose=0, current=0;
+        bool boss=false,banshee=false,cinematic=false;
+        if (!Read(base,uint64_t(state.component)+0xC,actor) || actor!=state.actor ||
+            !Read(base,uint64_t(actor)+0x70,serial) || serial!=state.serial ||
+            !Name(base,actor,boss,banshee,cinematic) || count!=(banshee?34u:51u) ||
+            !Read(base,uint64_t(state.component)+0x60,animator) || !animator ||
+            !Read(base,uint64_t(animator)+0x58,pose) || !pose ||
+            !Read(base,uint64_t(pose)+0x10,current) || current!=hierarchy) continue;
+        // Native pose rebuilds outside the normal update seam can replace the
+        // trackless helpers with their bind pose. Reapply the same-clock result
+        // immediately before skinning; never advance a separate render clock.
+        X86Context call{};
+        call.edi=state.component;call.esi=state.component+0x84;
+        DarkwatchCharacterSecondary(call,base);
+        return;
     }
 }

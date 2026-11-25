@@ -480,6 +480,9 @@ def build(staged, originals, payload, cancel=lambda: None, progress=lambda messa
         for path, raw, _ in art.append_resource_jobs(jobs(), [(base_deps, choices)], cancel):
             if path not in old_entries or raw != old_read(path):
                 level_changes[path] = raw
+        import sewers_ramp
+        level_changes[sewers_ramp.RESOURCE] = sewers_ramp.repair(
+            old_read(sewers_ramp.RESOURCE), old_read(sewers_ramp.COLLISION))
         # Rebase on the disc to stay within the native archive's 32-bit offsets.
         archive.compose_file(originals / 'LvlSingl.pck', level_changes, staged / 'LvlSingl.pck.campaign', cancel)
         progress('Preparing banshee chest motion...')

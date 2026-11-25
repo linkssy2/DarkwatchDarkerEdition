@@ -82,7 +82,7 @@ int main(){using namespace darkwatch::view;
  const std::string legacy="field_of_view_scale=125\nreticle_size=80\nweapon_field_of_view_scale=140\nshow_fps=true\nhd_ui=false\ncutscene_borders=false\nhd_textures=false\nfps_cap=144\nbrightness=113\n";
  Write(legacy.c_str());app::Load();PlayerView(0,125,80,140);PlayerView(1,125,80,140);Shared(true,false,false,false);
  CHECK(app::Save());auto saved=toml::parse(Read());
- CHECK(saved["player2_view"].is_table()&&saved["player2_view"].as_table()->size()==8);
+ CHECK(saved["player2_view"].is_table()&&saved["player2_view"].as_table()->size()==9);
  CHECK(saved["field_of_view_scale"].value_or(0)==125&&saved["player2_view"]["field_of_view_scale"].value_or(0)==125);
 
  // A partial or malformed override inherits the loaded legacy view, never stale runtime values.
@@ -109,7 +109,7 @@ int main(){using namespace darkwatch::view;
  CHECK(app::Save());const auto original=Read();saved=toml::parse(original);
  CHECK(saved["field_of_view_scale"].value_or(0)==120&&saved["weapon_field_of_view_scale"].value_or(0)==140&&saved["reticle_size"].value_or(0)==90);
  CHECK(saved["player2_view"]["field_of_view_scale"].value_or(0)==165&&saved["player2_view"]["weapon_field_of_view_scale"].value_or(0)==65&&saved["player2_view"]["reticle_size"].value_or(0)==155);
- CHECK(saved["player2_view"].as_table()->size()==8&&saved["fps_cap"].value_or(0)==144&&saved["brightness"].value_or(0)==113);
+ CHECK(saved["player2_view"].as_table()->size()==9&&saved["fps_cap"].value_or(0)==144&&saved["brightness"].value_or(0)==113);
  Apply({},0);Apply({},1);app::Load();PlayerView(0,120,90,140);PlayerView(1,165,155,65);Shared(true,false,false,false);
  CHECK(app::Snapshot().fps_cap==144&&app::Snapshot().brightness_percent==113);
  toml::table callback_table{{"unrelated",123}};Save(&callback_table);CHECK(callback_table["unrelated"].value_or(0)==123);
@@ -140,6 +140,23 @@ int main(){using namespace darkwatch::view;
 
 
 class GraphicsViewTests(unittest.TestCase):
+    def test_first_person_body_per_player_toggle_and_persistence(self):
+        self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + r'''
+int main(){using namespace darkwatch::view;
+ for(unsigned p=0;p<4;++p)CHECK(Snapshot(p).first_person_body);
+ for(const char* invalid:{"", "first_person_body=1\n", "first_person_body='false'\n"}){
+  Write(invalid);app::Load();for(unsigned p=0;p<4;++p)CHECK(Snapshot(p).first_person_body);
+ }
+ for(unsigned flags=0;flags<16;++flags){
+  for(unsigned p=0;p<4;++p){auto s=Snapshot(p);s.first_person_body=(flags>>p)&1;s.camera_mode=CameraMode(p%3);Apply(s,p);}
+  CHECK(app::Save());app::Load();
+  for(unsigned p=0;p<4;++p){CHECK(Snapshot(p).first_person_body==bool((flags>>p)&1));CHECK(Snapshot(p).camera_mode==CameraMode(p%3));}
+ }
+ SetFirstPersonOnly(true);auto s=Snapshot(2);s.first_person_body=true;Apply(s,2);
+ CHECK(Snapshot(2).first_person_body&&Snapshot(2).camera_mode==CameraMode::FirstPerson);
+}
+''')
+
     def test_split_layout_is_shared_defaults_horizontal_and_preserves_player_views(self):
         self.run_fixture(FIXTURE[:FIXTURE.index("int main(){")] + r'''
 int main(){using namespace darkwatch::view;

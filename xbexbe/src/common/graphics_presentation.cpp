@@ -5,6 +5,8 @@
 #include "prompt_owner.h"
 #include "graphics_presentation.h"
 #include "graphics_view.h"
+#include "shadow_depth.h"
+#include "hd_ui.h"
 
 X86_EXTERN_FUNC(__imp__sub_0021B0D1);
 X86_EXTERN_FUNC(__imp__sub_001EC5F4);
@@ -15,6 +17,7 @@ X86_EXTERN_FUNC(__imp__sub_00132B60);
 X86_EXTERN_FUNC(__imp__sub_00130D70);
 X86_EXTERN_FUNC(__imp__sub_001ED841);
 X86_EXTERN_FUNC(__imp__sub_000E4EBD);
+X86_EXTERN_FUNC(__imp__sub_00216C06);
 
 namespace {
 bool UiSpan(const uint8_t* base, uint64_t address, uint32_t size) {
@@ -79,17 +82,43 @@ X86_FUNC(sub_000E4EBD) {
     Present(ctx, base, __imp__sub_000E4EBD, original, false, true, true);
 }
 
+X86_FUNC(sub_00216C06) {
+    // Only the shadow batch's temporary extension; its later restore and all
+    // ordinary camera clipping requests continue through the original setter.
+    const uint32_t argument = ctx.esp + 4;
+    bool changed = false;
+    uint32_t saved = 0;
+    if (UiSpan(base, ctx.esp, 8) && UiRead(base, ctx.esp) == 0x1DBD39 &&
+        UiSpan(base, ctx.ecx, 0x38)) {
+        const uint32_t raster = UiRead(base, ctx.ecx + 0x34);
+        if (UiSpan(base, raster, 0x88)) {
+            float requested, near_z, far_z;
+            std::memcpy(&requested, base + argument, 4);
+            std::memcpy(&near_z, base + raster + 0x80, 4);
+            std::memcpy(&far_z, base + raster + 0x84, 4);
+            const float corrected = DarkwatchShadowFarPlane(requested, near_z, far_z);
+            if (corrected != requested && std::isfinite(corrected)) {
+                saved = UiRead(base, argument);
+                std::memcpy(base + argument, &corrected, 4);
+                changed = true;
+            }
+        }
+    }
+    __imp__sub_00216C06(ctx, base);
+    if (changed) std::memcpy(base + argument, &saved, 4);
+}
+
 X86_FUNC(sub_00132B60) {
-    const bool ui_alpha = d3d::State().presentation_overlay &&
-        UiSpan(base, ctx.esp, 12) && UiRead(base, ctx.esp + 4) == 12;
+    const bool explicit_alpha = UiSpan(base, ctx.esp, 12) && UiRead(base, ctx.esp + 4) == 12;
     __imp__sub_00132B60(ctx, base);
-    if (!ui_alpha || !UiSpan(base, 0x4AE5A8, 8) || !UiSpan(base, 0x4DE56C, 4) ||
+    if (!explicit_alpha || !UiSpan(base, 0x4AE5A8, 8) || !UiSpan(base, 0x4DE56C, 4) ||
         ctx.esp < 32 || !UiSpan(base, uint64_t(ctx.esp) - 32, 32)) return;
 
     // Material passes can override the low-level blend cache without changing
-    // RenderWare's logical alpha flags. Its repeated UI alpha request then
-    // returns early, leaving the first HUD bitmap opaque. Reconcile only that
-    // explicit UI request through the original coherent render-state setter.
+    // RenderWare's logical alpha flags. Repeated explicit alpha requests then
+    // return early, leaving HUD bitmaps or world shadow polygons opaque.
+    // Reconcile that request through the original coherent render-state setter;
+    // do not override opaque passes that make no such request.
     const uint32_t blend = UiRead(base, 0x4AE5A8) != 0 || UiRead(base, 0x4AE5AC) != 0;
     if (UiRead(base, 0x4DE56C) == blend) return;
     uint8_t previous[32];
@@ -133,6 +162,15 @@ X86_FUNC(sub_001EC5F4) {
 }
 
 X86_FUNC(sub_001ED841) {
+    // Splash backgrounds cover the display while their logo quads keep safe-area proportions.
+    bool splash_background = false;
+    if (darkwatch::HdStartupActive() && UiSpan(base,ctx.esp,8)) {
+        const uint32_t sprite=UiRead(base,ctx.esp+4);
+        constexpr float full[]{0,0,1,1};
+        splash_background=UiSpan(base,sprite,0x60) &&
+            UiRead(base,sprite+0x24)==0 &&
+            std::memcmp(base+sprite,full,sizeof(full))==0;
+    }
     // Native warnings and loading transitions dim the full display. Their
     // untextured black sprites extend beyond the centered frame/profileIcon.
     bool fade = d3d::State().presentation_safe_area && UiSpan(base, ctx.esp, 8) &&
@@ -150,7 +188,7 @@ X86_FUNC(sub_001ED841) {
             fade = std::memcmp(base + sprite, full, sizeof(full)) == 0;
         }
     }
-    Present(ctx, base, __imp__sub_001ED841, fade, d3d::State().presentation_overlay);
+    Present(ctx, base, __imp__sub_001ED841, fade || splash_background, d3d::State().presentation_overlay);
 }
 
 X86_FUNC(sub_000EF592) {

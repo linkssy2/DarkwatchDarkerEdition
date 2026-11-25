@@ -94,7 +94,7 @@ X86_FUNC(sub_000A9082) {
     const bool external = actor && Stack(ctx, base) && Ragdoll(base, actor, rig) &&
         DarkwatchBeginThirdPersonDeath(ctx, base, actor);
     // Preserve the original timer, death effects, respawn controls and game-over
-    // transition. Only an already selected third-person camera adds the body.
+    // transition. A validated external or corpse-eye camera keeps the body visible.
     __imp__sub_000A9082(ctx, base);
     if (external) ActivateDeathBody(entry, base, actor);
 }

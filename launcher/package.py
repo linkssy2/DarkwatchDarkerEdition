@@ -16,7 +16,7 @@ REFERENCE = REPO.parent / 'Urban Chaos Riot Response Recompiled'
 PYTHON = REFERENCE / '.tools/python'
 VS = Path('C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools')
 CRT = VS / 'VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT'
-VERSION = '0.8.1'
+VERSION = '0.8.2'
 RELEASE_PROFILE = {'name': 'release-candidate', 'diagnostics': False, 'strict_assets': True}
 LAUNCHER = 'Darkwatch Darker Edition.exe'
 DIRECT_PLAY = 'Play Darkwatch.exe'
@@ -46,7 +46,7 @@ Successful installs and updates remove superseded version folders. Unique older
 saves, settings, add-ons and unknown files are kept under GameData/preserved-user-data.
 Failed or cancelled installations keep the previous working version.
 
-Darkwatch: Darker Edition - 0.8.1
+Darkwatch: Darker Edition - 0.8.2
 
 Matching Windows and experimental Linux/Proton packages. Co-op remains BETA.
 Keep using the existing separate 0.7 HD texture pack; no new pack or
@@ -315,7 +315,7 @@ def sources():
                  'character_archive.py', 'character_workers.py', 'character_repaint.py', 'character_boss.py',
                  'character_boss_effects.py', 'character_spectral_hands.py', 'character_hand_seams.py',
                  'character_secondary.py', 'character_preview.py', 'character_roster.py', 'character_tala.py', 'character_tala_shape.py',
-                 'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'enemy_blood.py', 'character_cinematic.py',
+                 'revolver_content.py', 'revolver_scripts.py', 'player_corpses.py', 'enemy_blood.py', 'character_cinematic.py', 'sewers_ramp.py',
                  'third_person_animation.py', 'character_reload.py', 'character_weapon_pose.py', 'character_weapon_hold.py', 'character_weapon_shoulder.py', 'character_starter_reload.py',
                  'body_weapon_grips.inc', 'body_reload_parts.inc',
                  'character-catalog.json'):

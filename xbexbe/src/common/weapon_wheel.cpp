@@ -120,10 +120,15 @@ template<class T>bool Read(const uint8_t* base,uint32_t at,T& out){
     for(uint64_t p=at&~uint64_t(mem::kPage-1);p<uint64_t(at)+sizeof(T);p+=mem::kPage)if(!mem::IsCommitted(uint32_t(p)))return false;
     std::memcpy(&out,base+at,sizeof(T));return true;
 }
+bool CutsceneActive(){
+    // Native cinematic manager: entering, playing, leaving (sub_0021B841).
+    uint32_t phase=0;
+    return Read(kernel::g_base,0x4B7A4C,phase)&&phase>=1&&phase<=3;
 }
-bool DarkwatchWeaponWheelOpen(){return open.load();}
+}
+bool DarkwatchWeaponWheelOpen(){return open.load()&&!CutsceneActive();}
 std::array<float,4> DarkwatchWeaponWheelViewport(){std::lock_guard lock(wheel_mutex);return wheel.choices.viewport;}
-bool DarkwatchWeaponWheelBlocksLook(uint64_t generation){return open.load()||(generation && consumed.load()==generation);}
+bool DarkwatchWeaponWheelBlocksLook(uint64_t generation){return !CutsceneActive()&&(open.load()||(generation && consumed.load()==generation));}
 unsigned DarkwatchWeaponWheelInput(int port,input::Pad& pad){
     if(port!=0)return 0;
     const auto frame=input::GetMouseSnapshot();
@@ -131,7 +136,7 @@ unsigned DarkwatchWeaponWheelInput(int port,input::Pad& pad){
     const auto settings=darkwatch::ControlsSnapshot();
     const bool enabled=settings.weapon_wheel&&settings.carry_all_weapons;
     std::lock_guard lock(wheel_mutex);
-    if(!enabled||!frame.active||!frame.published_us||frame.active_epoch!=wheel.epoch){
+    if(!enabled||CutsceneActive()||!frame.active||!frame.published_us||frame.active_epoch!=wheel.epoch){
         Close();wheel={};wheel.epoch=frame.active_epoch;wheel.down=down;return 0;
     }
     unsigned result=0;
@@ -159,6 +164,7 @@ unsigned DarkwatchWeaponWheelInput(int port,input::Pad& pad){
 }
 
 void DarkwatchWeaponWheelDraw(){
+    if(CutsceneActive()){std::lock_guard lock(wheel_mutex);Close();return;}
     Wheel state;{std::lock_guard lock(wheel_mutex);state=wheel;}if(!state.open)return;
     auto* draw=ImGui::GetForegroundDrawList();const auto size=ImGui::GetIO().DisplaySize;
     const auto view=state.choices.viewport;

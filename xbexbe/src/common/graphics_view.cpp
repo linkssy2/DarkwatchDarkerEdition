@@ -11,9 +11,9 @@ constexpr uint64_t kViewMask = 0xFFFFFFu;
 constexpr uint64_t kFlagsMask = uint64_t(0xFF) << 56;
 constexpr uint64_t kDefaultView = (uint64_t(100) << 16) | (uint64_t(100) << 8) | 100;
 // One atomic value keeps each view and the shared display flags coherent.
-std::atomic<uint64_t> g_settings{(uint64_t(7) << 60) | (uint64_t(1) << 58) | (uint64_t(3) << 48) | (kDefaultView << 24) | kDefaultView};
+std::atomic<uint64_t> g_settings{(uint64_t(7) << 60) | (uint64_t(1) << 58) | (uint64_t(3) << 48) | (uint64_t(3) << 54) | (kDefaultView << 24) | kDefaultView};
 // The second pair uses the same packed layout; display flags remain global.
-std::atomic<uint64_t> g_extra_settings{(uint64_t(3) << 48) | (kDefaultView << 24) | kDefaultView};
+std::atomic<uint64_t> g_extra_settings{(uint64_t(3) << 48) | (uint64_t(3) << 54) | (kDefaultView << 24) | kDefaultView};
 // Colors are independent choices, read only when emitting the reticle quad.
 // Keep the hot FOV/scale/flag snapshot in its existing single atomic word.
 std::array<std::array<std::atomic<uint32_t>, 3>, 4> g_colors{{
@@ -44,7 +44,7 @@ Settings Unpack(uint64_t value, uint32_t player) {
             ((value >> (48 + (player & 1))) & 1) != 0,
             g_colors[player][0].load(), g_colors[player][1].load(), g_colors[player][2].load(),
             CameraMode((value >> CameraShift(player)) & 3), ((value >> 57) & 1) != 0,
-            ((value >> 56) & 1) != 0};
+            ((value >> 56) & 1) != 0, ((value >> (54 + (player & 1))) & 1) != 0};
 }
 void StoreColors(const Settings& settings, uint32_t player) {
     auto& colors = g_colors[player < 4 ? player : 0];
@@ -59,6 +59,7 @@ void LoadView(const toml::table& table, Settings& settings) {
         settings.reticle_percent = uint32_t(std::clamp(*value, int64_t(0), int64_t(200)));
     if (auto value = table["weapon_field_of_view_scale"].is_integer() ? table["weapon_field_of_view_scale"].value<int64_t>() : std::nullopt)
         settings.viewmodel_fov_percent = uint32_t(std::clamp(*value, int64_t(50), int64_t(150)));
+    if (table["first_person_body"].is_boolean()) settings.first_person_body = table["first_person_body"].value_or(true);
     if (table["show_hud"].is_boolean()) settings.show_hud = table["show_hud"].value_or(true);
     if (table.contains("camera_mode")) {
         const auto value = table["camera_mode"].is_integer() ? table["camera_mode"].value<int64_t>() : std::nullopt;
@@ -75,6 +76,7 @@ void SaveView(toml::table& table, const Settings& settings) {
     table.insert_or_assign("reticle_size", int64_t(settings.reticle_percent));
     table.insert_or_assign("weapon_field_of_view_scale", int64_t(settings.viewmodel_fov_percent));
     table.insert_or_assign("show_hud", settings.show_hud);
+    table.insert_or_assign("first_person_body", settings.first_person_body);
     table.insert_or_assign("camera_mode", int64_t(settings.camera_mode));
     table.insert_or_assign("reticle_normal_color", int64_t(settings.reticle_normal_color));
     table.insert_or_assign("reticle_enemy_color", int64_t(settings.reticle_enemy_color));
@@ -104,10 +106,11 @@ void Apply(Settings settings, uint32_t player) {
     settings = Normalize(settings);
     const uint32_t shift = ViewShift(player);
     const uint32_t hud_bit = 48 + (player & 1);
+    const uint32_t body_bit = 54 + (player & 1);
     const uint32_t camera_shift = CameraShift(player);
-    const uint64_t mask = kFlagsMask | (kViewMask << shift) | (uint64_t(1) << hud_bit) | (uint64_t(3) << camera_shift);
+    const uint64_t mask = kFlagsMask | (kViewMask << shift) | (uint64_t(1) << hud_bit) | (uint64_t(3) << camera_shift) | (uint64_t(1) << body_bit);
     const uint64_t replacement = PackFlags(settings) | (PackView(settings) << shift) | (uint64_t(settings.show_hud) << hud_bit) |
-        (uint64_t(settings.camera_mode) << camera_shift);
+        (uint64_t(settings.camera_mode) << camera_shift) | (uint64_t(settings.first_person_body) << body_bit);
     StoreColors(settings, player);
     auto& storage = player < 2 ? g_settings : g_extra_settings;
     uint64_t previous = storage.load();
@@ -136,6 +139,7 @@ void Load(const void* table) {
     StoreColors(player2, 1);
     g_settings = PackFlags(settings) | PackView(settings) | (PackView(player2) << 24) |
         (uint64_t(settings.show_hud) << 48) | (uint64_t(player2.show_hud) << 49) |
+        (uint64_t(settings.first_person_body) << 54) | (uint64_t(player2.first_person_body) << 55) |
         (uint64_t(settings.camera_mode) << CameraShift(0)) | (uint64_t(player2.camera_mode) << CameraShift(1));
     for (unsigned player = 2; player < 4; ++player) {
         auto extra = settings;

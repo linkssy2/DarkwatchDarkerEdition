@@ -8,6 +8,15 @@
 X86_EXTERN_FUNC(__imp__sub_000BCBB7);
 X86_EXTERN_FUNC(__imp__sub_000BCBE3);
 X86_EXTERN_FUNC(__imp__sub_000DEDD0);
+X86_EXTERN_FUNC(__imp__sub_001E056D);
+
+X86_FUNC(sub_001E056D) {
+    if (DarkwatchHideScopedSniperSmoke(ctx,base)) {
+        ctx.esp+=12; // native ret 8; simulation and effect lifetime are untouched
+        return;
+    }
+    __imp__sub_001E056D(ctx,base);
+}
 
 namespace {
 bool Span(const uint8_t* base, uint64_t address, uint32_t size) {
@@ -97,10 +106,13 @@ X86_FUNC(sub_000BCBB7) {
         ctx.esp += 4;
         return;
     }
+    const auto entry=ctx;
     __imp__sub_000BCBB7(ctx, base);
+    DarkwatchBeginFirstPersonBody(entry,base,entry.ecx);
 }
 
 X86_FUNC(sub_000BCBE3) {
+    DarkwatchEndFirstPersonBody(ctx,base,ctx.ecx);
     DarkwatchEndThirdPersonRender(ctx, base, ctx.ecx);
     // Keep the original post-render visibility reset for every camera pass.
     __imp__sub_000BCBE3(ctx, base);

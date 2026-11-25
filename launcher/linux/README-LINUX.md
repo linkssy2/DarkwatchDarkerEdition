@@ -1,4 +1,4 @@
-# Darkwatch: Darker Edition 0.8.1 — Experimental Linux / Proton
+# Darkwatch: Darker Edition 0.8.2 — Experimental Linux / Proton
 
 This package runs the Windows port through Proton. Community gameplay results
 are recorded below; this update still needs live testing across Linux systems.

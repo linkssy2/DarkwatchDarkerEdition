@@ -1,4 +1,5 @@
 #include "carry_all_weapons.h"
+#include "corpse_grab.h"
 #include "controls.h"
 #include "graphics_view.h"
 #include "cpu/x86_context.h"
@@ -276,6 +277,7 @@ void RemoveRetainedStarter(X86Context& ctx, uint8_t* base, uint32_t inventory) {
 } // namespace
 
 void DarkwatchResetWeaponChoices() {
+    DarkwatchResetCorpseGrab();
     std::lock_guard lock(pair_mutex);
     limited_pairs = {};
 }

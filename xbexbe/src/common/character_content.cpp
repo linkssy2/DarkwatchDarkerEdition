@@ -20,7 +20,7 @@ constexpr std::string_view kDevTestRoomFixture = "7ddfccd3cc2cf3510dbcedfa947a11
 #endif
 constexpr std::array<ArchivePin, 3> kCharacterArchives{{
     {"D:\\packfile.pck", 227357669, "a7915d4e4943bed000037805bbe218489cb7d35c06b3d175b0c60021295a49d2"},
-    {"D:\\LvlSingl.pck", 3075125827, "0f3cd694b05c2bc166ec9314868ecb25b0131016b626df2759dbda86dbbfd16c"},
+    {"D:\\LvlSingl.pck", 3075369539, "67da45ae289957c14485b35932e09756a05500d7cac88759c3bda59aa27c1fb3"},
     {"D:\\audio.pck", 152450452, "fb164929befb6a333802863557c4a9d9544ad525c7cd8b7877b3f724fb896081"},
 }};
 
@@ -155,6 +155,31 @@ constexpr auto kOnlineBattleArchives = [] {
 #endif
 const std::array<ArchivePin, 3>& AdmittedArchives() {
 #ifndef XBE_RELEASE
+    // Private Cemetery hub start; exact payload only, never a release bypass.
+    static constexpr auto graveyard = [] {
+        auto pins = kCharacterArchives;
+        pins[1].size = 3075373635;
+        pins[1].sha256 = "1822fe83e5b54674c92203ca14600b1256dfcfd74c5fbb8edb39950dc242cfc7";
+        return pins;
+    }();
+    const char* graveyard_fixture = std::getenv("DARKWATCH_DIAGNOSTIC_GRAVEYARD");
+    if (graveyard_fixture && std::string_view(graveyard_fixture) == graveyard[1].sha256) return graveyard;
+    // Private Sewers start-slot edit; retain full archive verification.
+    static constexpr auto sewers = [] {
+        auto pins = kCharacterArchives;
+        pins[1].size = 3075127875;
+        pins[1].sha256 = "1530e329e36ebd71fed8af878918bbdffa665b00fdcd5e6cfb5a35ab66d940af";
+        return pins;
+    }();
+    const char* sewer_fixture = std::getenv("DARKWATCH_DIAGNOSTIC_SEWERS");
+    static constexpr auto sewers_ramp = [] {
+        auto pins = kCharacterArchives;
+        pins[1].size = 3075371587;
+        pins[1].sha256 = "3b17866a239e9e4c9e94dd64ab2576f30947fc4a7f11396997aaf21b122e0b6f";
+        return pins;
+    }();
+    if (sewer_fixture && std::string_view(sewer_fixture) == sewers_ramp[1].sha256) return sewers_ramp;
+    if (sewer_fixture && std::string_view(sewer_fixture) == sewers[1].sha256) return sewers;
     const char* room = std::getenv("DARKWATCH_DEV_TEST_ROOM_FIXTURE");
     if (room && std::string_view(room) == kDevTestRoomFixture) return kDevTestRoomArchives;
 #endif
@@ -272,7 +297,7 @@ bool CampaignFeedbackReady() {
 bool DarkwatchOriginalContentReady() {
     constexpr std::array<ArchivePin, 3> pins{{
         {"D:\\packfile.pck", 110109318, "4eb33149939efc9509620887383de8d551f6bca74935dadd52b6e26ac064a21a"},
-        {"D:\\LvlSingl.pck", 207710373, "ee1af353ad47b929b019e0b75ec605d980e8ef96466fb304277199665b4feaf5"},
+        {"D:\\LvlSingl.pck", 207954159, "97501a9a49d434f657d924b49852e3ec1d5e6e023b8bb28dbcda749b816567de"},
         {"D:\\audio.pck", 137741272, "ffa551a20dbe3abf0eb6359011fe62a693f7f8b67822920f2bb9d31fe77c2d43"},
     }};
     static const CharacterArchiveSet content(pins);

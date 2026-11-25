@@ -322,6 +322,7 @@ constexpr Copy copy[]{
     {"Interact with objects.", "Interactuar con objetos."},
     {"Reload your weapon.", "Recargar el arma."},
     {"Perform a melee attack.", "Dar un golpe cuerpo a cuerpo."},
+    {"Press to interact. Hold to grab a corpse; hold again to release.", "Pulsa para interactuar. Mantén para agarrar un cadáver; mantén otra vez para soltarlo."},
     {"Jump.", "Saltar."},
     {"Select a power.", "Elegir un poder."},
     {"Activate your selected power.", "Activar el poder elegido."},

@@ -1,8 +1,8 @@
-# Darkwatch: Darker Edition 0.8.1 source
+# Darkwatch: Darker Edition 0.8.2 source
 
 This source snapshot is prepared for the Windows and experimental Linux/Proton
-[0.8.1 release](https://github.com/linkssy2/DarkwatchDarkerEdition/releases/tag/v0.8.1).
-See [changes and installation](docs/RELEASE-0.8.1.md), [building](docs/BUILDING.md),
+[0.8.2 release](https://github.com/linkssy2/DarkwatchDarkerEdition/releases/tag/v0.8.2).
+See [changes and installation](docs/RELEASE-0.8.2.md), [building](docs/BUILDING.md),
 [code map](docs/CODE_MAP.md) and [credits](CREDITS.md).
 
 Supply your own supported original Xbox disc. This is the maintained host

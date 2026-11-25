@@ -183,7 +183,7 @@ constexpr ActionText kMeaning[]{
     {"LEAN LEFT", "Lean to the left."}, {"LEAN RIGHT", "Lean to the right."},
     {"PAUSE", "Open the pause menu."}, {"MULTIPLAYER SCORE", "Show multiplayer scores."},
     {"CROUCH", "Crouch."}, {"SIGHT MODE", "Use your weapon's sight mode."},
-    {"INTERACT", "Interact with objects."}, {"RELOAD", "Reload your weapon."},
+    {"INTERACT", "Press to interact. Hold to grab a corpse; hold again to release."}, {"RELOAD", "Reload your weapon."},
     {"MELEE", "Perform a melee attack."}, {"JUMP", "Jump."},
     {"POWER SELECTION", "Select a power."}, {"ACTIVATE POWER", "Activate your selected power."},
     {"THROW", "Throw."}, {"SHOOT", "Fire your weapon."},
@@ -1697,6 +1697,10 @@ void DarkwatchGraphicsUi(double fps) {
     layout.Help("Changes gun and hand framing.");
     }
     layout.Section("HUD AND RETICLE");
+    { MenuRow row("FIRST-PERSON BODY", layout.Row(), scale);
+    Toggle("##first_person_body", g_view_draft.first_person_body);
+    layout.Help("Show your body and legs when looking down in first person.");
+    }
     { MenuRow row("SHOW HUD", layout.Row(), scale);
     Toggle("##show_hud", g_view_draft.show_hud);
     layout.Help("This player's gameplay HUD and reticle. Menus and subtitles stay visible.");
@@ -1756,6 +1760,7 @@ void DarkwatchGraphicsUi(double fps) {
         g_view_draft.camera_mode = view::CameraMode::FirstPerson;
         g_view_draft.cutscene_borders = true;
         g_view_draft.show_hud = true;
+        g_view_draft.first_person_body = true;
         g_view_draft.reticle_normal_color = g_view_draft.reticle_enemy_color = g_view_draft.reticle_friendly_color = 0x1000000;
     }
     layout.Finish();

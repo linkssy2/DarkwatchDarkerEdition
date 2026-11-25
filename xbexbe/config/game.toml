@@ -477,6 +477,11 @@ after = true
 
 # Original splash-page sequence ends at the separately handled movie entry.
 [[hook]]
+at = 0x001EDAF9
+call = "DarkwatchPublisherQuad"
+after = true
+
+[[hook]]
 at = 0x000C7A95
 call = "DarkwatchHdStartupBegin"
 

@@ -9,11 +9,17 @@
 #include "graphics_viewport.h"
 #include "third_person_visibility.h"
 #include "third_person_body.h"
+#include "corpse_grab.h"
 #include "app/app.h"
 #include "core/log.h"
 #include "cpu/x86_context.h"
 #include "cpu/x86_ops.h"
 #include "kernel/memory.h"
+#ifndef XBE_RELEASE
+#include "core/diag.h"
+#include "gpu/backend.h"
+#include <cstdlib>
+#endif
 
 extern "C" void sub_00216B7C(X86Context& ctx, uint8_t* base);
 
@@ -64,8 +70,17 @@ struct ThirdPersonView {
     uint32_t personal = 0, frame = 0, invocation = 0;
     Matrix matrix{};
     float native_fov = 0;
+    float native_near = 0;
 };
 thread_local ThirdPersonView g_third_person_view;
+struct FirstPersonBody {
+    PlayerCamera player{};
+    uint32_t personal=0,actor=0,serial=0,model=0,renderer=0,hierarchy=0,invocation=0;
+    uint32_t render_pass=0;
+    float native_near=0;
+    Vector eye{}, actor_up{}, heading{};
+};
+thread_local FirstPersonBody g_first_person_body;
 struct ReticleProjection {
     PlayerCamera player{};
     float x = 0, y = 0;
@@ -180,6 +195,15 @@ template<size_t Size> struct CameraCall {
         const uint32_t args[]{0x1E89D2, bits, 1};
         std::memcpy(base + call.esp, args, sizeof(args));
         sub_00216B7C(call, base);
+    }
+    void NearPlane(uint32_t camera, float distance) {
+        X86Context call = original;
+        call.ecx = camera;
+        call.esp -= 64;
+        const uint32_t resume = 0x1E89D2;
+        std::memcpy(base + call.esp, &resume, 4);
+        std::memcpy(base + call.esp + 4, &distance, 4);
+        x86_icall(call, base, 0x216BCD);
     }
 };
 
@@ -391,9 +415,12 @@ struct DeathView {
     float fov = 0;
     uint32_t rig = 0, root_motion = 0;
     Vector root_origin{};
+    bool eyes = false;
+    uint32_t head_matrices = 0;
+    std::array<Vector, 4> head_local{};
 };
 std::array<DeathView, 4> g_death_views;
-enum class PoseUse { Living, DeathEntry, CoopBody };
+enum class PoseUse { Living, DeathEntry, CoopBody, Feet };
 bool ReadThirdPersonPose(const X86Context& ctx, uint8_t* base, uint32_t personal, ThirdPersonPose& pose,
                          PoseUse use = PoseUse::Living) {
     const bool death_entry = use == PoseUse::DeathEntry;
@@ -416,10 +443,10 @@ bool ReadThirdPersonPose(const X86Context& ctx, uint8_t* base, uint32_t personal
     }
     const auto mode = darkwatch::view::Snapshot(player.player).camera_mode;
     const auto& viewport = player.viewport;
-    const bool first_person_body = use == PoseUse::CoopBody &&
+    const bool first_person_body = (use == PoseUse::CoopBody || use == PoseUse::Feet) &&
         mode == darkwatch::view::CameraMode::FirstPerson &&
-        darkwatch::viewport::Identify(viewport[0], viewport[1], viewport[2], viewport[3]).Split();
-    if (!first_person_body && mode != darkwatch::view::CameraMode::Centered &&
+        (use == PoseUse::Feet || darkwatch::viewport::Identify(viewport[0], viewport[1], viewport[2], viewport[3]).Split());
+    if (!(death_entry && mode == darkwatch::view::CameraMode::FirstPerson) && !first_person_body && mode != darkwatch::view::CameraMode::Centered &&
         mode != darkwatch::view::CameraMode::Shoulder) return false;
     // Horse, turret and authored cameras replace the top. Native player death
     // instead freezes this personal camera at +188 (A8E2C -> BCC0C). Death entry
@@ -507,6 +534,25 @@ bool DeathRoot(const uint8_t* base, uint32_t actor, uint32_t& rig, uint32_t& mot
         Field(base, motion, 0xB0, position) && Finite(position);
 }
 
+// The original Chaz/Cassidy rigs and their expanded variants retain Head=10,
+// parent Neck=9. Read the animated world palette, never inactive physics bind poses.
+bool DeathHead(const uint8_t* base, uint32_t actor, uint32_t& matrices,
+               std::array<Vector,4>& head) {
+    const auto animation=OwnedComponent(base,actor,0x41D258);
+    uint32_t animator=0,pose=0,parent=0,hierarchy=0,count=0,parents=0,neck=0;
+    if (!Field(base,animation,0x60,animator) || !Field(base,animator,0x58,pose) ||
+        !Field(base,pose,0,parent) || parent || !Field(base,pose,0x10,hierarchy) ||
+        !Field(base,hierarchy,4,count) || (count!=22 && count!=51) ||
+        !Field(base,hierarchy,8,matrices) || !Span(base,matrices,count*64) ||
+        !Field(base,pose,8,parents) || !Field(base,parents,10*4,neck) || neck!=9) return false;
+    for(unsigned i=0;i<4;++i)
+        if(!Field(base,matrices,10*64+i*16,head[i]) || !Finite(head[i])) return false;
+    // Reject sheared/scaled palettes: the inverse below is an orthonormal transpose.
+    for(unsigned i=0;i<3;++i) if(!Unit(head[i])) return false;
+    return std::abs(Dot(head[0],head[1]))<.001f && std::abs(Dot(head[0],head[2]))<.001f &&
+        std::abs(Dot(head[1],head[2]))<.001f && Dot(Cross(head[0],head[1]),head[2])>.999f;
+}
+
 bool ReadDeathView(const uint8_t* base, uint32_t personal, ThirdPersonPose& pose, float& fov) {
     std::lock_guard lock(g_camera_lock);
     for (auto& death : g_death_views) {
@@ -524,7 +570,7 @@ bool ReadDeathView(const uint8_t* base, uint32_t personal, ThirdPersonPose& pose
             !Field(base, follow, 0, follow_type) || follow_type != 0x423D64 ||
             !Field(base, follow, 0xDC, follow_actor) || follow_actor != saved.actor ||
             !Field(base, saved.player.raster, 4, frame) || frame != saved.frame || !Span(base, frame, 0x70) ||
-            darkwatch::view::Snapshot(saved.player.player).camera_mode == darkwatch::view::CameraMode::FirstPerson) {
+            (darkwatch::view::Snapshot(saved.player.player).camera_mode == darkwatch::view::CameraMode::FirstPerson) != death.eyes) {
             death = {};
             return false;
         }
@@ -536,7 +582,19 @@ bool ReadDeathView(const uint8_t* base, uint32_t personal, ThirdPersonPose& pose
             return false;
         }
         pose = saved;
-        if (motion) {
+        if (death.eyes) {
+            uint32_t matrices=0; std::array<Vector,4> head{};
+            if(!DeathHead(base,saved.actor,matrices,head) || matrices!=death.head_matrices) {
+                death={};return false;
+            }
+            std::array<Vector*,4> values{&pose.right,&pose.up,&pose.forward,&pose.position};
+            for(unsigned i=0;i<4;++i) for(unsigned axis=0;axis<3;++axis) {
+                (*values[i])[axis]=i==3?head[3][axis]:0.f;
+                for(unsigned j=0;j<3;++j) (*values[i])[axis]+=death.head_local[i][j]*head[j][axis];
+            }
+            pose.desired=pose.position;
+            if(!Finite(pose.position))return false;
+        } else if (motion) {
             if (!death.root_motion) {
                 death.rig = rig;
                 death.root_motion = motion;
@@ -568,11 +626,21 @@ bool DarkwatchBeginThirdPersonDeath(const X86Context& ctx, uint8_t* base, uint32
     float fov = 0;
     if (!Field(base, component, 0x70, personal) ||
         !ReadThirdPersonPose(ctx, base, personal, pose, PoseUse::DeathEntry) || pose.actor != actor ||
-        !Field(base, personal, 0x16C, fov) || !std::isfinite(fov) || fov <= 0 || fov >= 180 ||
-        !SweepThirdPersonPose(ctx, base, pose, clipped)) return false;
+        !Field(base, personal, 0x16C, fov) || !std::isfinite(fov) || fov <= 0 || fov >= 180) return false;
+    DeathView death{pose,fov};
+    death.eyes=darkwatch::view::Snapshot(pose.player.player).camera_mode==darkwatch::view::CameraMode::FirstPerson;
+    if(death.eyes) {
+        std::array<Vector,4> head{};
+        if(!DeathHead(base,actor,death.head_matrices,head))return false;
+        // The shared player Head joint uses X up, Y face-forward, Z right.
+        // A living aim camera is not an eye anchor: inheriting its offset/yaw
+        // can put a falling character's camera behind the face or inside the torso.
+        death.head_local={Vector{0,0,1},Vector{1,0,0},Vector{0,1,0},Vector{.12f,.09f,0}};
+        death.pose.desired=pose.position;
+    } else if(!SweepThirdPersonPose(ctx,base,pose,clipped))return false;
     std::lock_guard lock(g_camera_lock);
     if (g_player_cameras[pose.player.player].epoch != pose.player.epoch) return false;
-    g_death_views[pose.player.player] = {pose, fov};
+    g_death_views[pose.player.player] = death;
     g_third_person_reticles[pose.player.player] = {};
     return true;
 }
@@ -686,6 +754,7 @@ void DarkwatchLimitMovementBob(X86Context& ctx, uint8_t* base) {
 }
 
 void DarkwatchUpdateCameraView(X86Context& ctx, uint8_t* base) {
+    DarkwatchCorpseGrabTick(ctx, base);
     ConfigureCinematic(ctx, base, ctx.esi, 0x21606D);
     const PlayerCamera player = FindPlayer(ctx.esi, true);
     // At 21606D the original active-camera update has finished; ESI is its owning
@@ -727,16 +796,140 @@ void DarkwatchUpdateCameraView(X86Context& ctx, uint8_t* base) {
             current.aspect_scale = aspect_scale;
 }
 
+uint32_t DarkwatchFirstPersonBodyHierarchy(const uint8_t* base) {
+    const auto& s=g_first_person_body;
+    uint32_t serial=0,animator=0,pose=0,hierarchy=0;
+    const uint32_t animation=OwnedComponent(base,s.actor,0x41D258);
+    return s.personal && PlayerValid(base,s.player) &&
+        FindPlayer(s.player.owner,true).epoch==s.player.epoch &&
+        Field(base,s.actor,0x70,serial) && serial==s.serial &&
+        OwnedComponent(base,s.actor,0x422970)==s.model &&
+        Field(base,animation,0x60,animator) && Field(base,animator,0x58,pose) &&
+        Field(base,pose,0x10,hierarchy) && hierarchy==s.hierarchy ? hierarchy : 0;
+}
+
+static uint64_t FirstPersonDescendants(const uint8_t* base,uint64_t mask) {
+    const auto hierarchy=DarkwatchFirstPersonBodyHierarchy(base);
+    uint32_t animator=0,pose=0,parents=0,bones=0;
+    const auto animation=OwnedComponent(base,g_first_person_body.actor,0x41D258);
+    if(!hierarchy || !Field(base,hierarchy,4,bones) || (bones!=22 && bones!=51) ||
+       !Field(base,animation,0x60,animator) || !Field(base,animator,0x58,pose) ||
+       !Field(base,pose,8,parents) || !Span(base,parents,bones*4))return 0;
+
+    for(unsigned bone=1;bone<bones;++bone){
+        const auto parent=Read(base,parents+bone*4);
+        if(parent>=bone)return 0;
+        if(mask&(uint64_t(1)<<parent))mask|=uint64_t(1)<<bone;
+    }
+    return mask;
+}
+
+uint64_t DarkwatchFirstPersonHiddenBones(const uint8_t* base){
+    // Collar bones 12/17 also weight the chest; hiding them opens the torso.
+    return FirstPersonDescendants(base,(uint64_t(1)<<13)|(uint64_t(1)<<18));
+}
+
+bool DarkwatchFirstPersonBodyFrame(const uint8_t* base,uint32_t hierarchy,DarkwatchFirstPersonFrame& frame){
+    if(!hierarchy || hierarchy!=DarkwatchFirstPersonBodyHierarchy(base))return false;
+    const auto& body=g_first_person_body;
+    frame={body.eye,body.actor_up,body.heading,FirstPersonDescendants(base,uint64_t(1)<<7),FirstPersonDescendants(base,uint64_t(1)<<10)};
+    return frame.torso && frame.head && Finite(frame.eye) && Unit(frame.up) && Unit(frame.forward);
+}
+
+uint64_t DarkwatchDeathHeadMask(const uint8_t* base, uint32_t hierarchy) {
+    const auto& view=g_third_person_view;
+    if (!view.personal || view.player.base!=base ||
+        darkwatch::view::Snapshot(view.player.player).camera_mode!=darkwatch::view::CameraMode::FirstPerson) return 0;
+    ThirdPersonPose death; float fov=0;
+    if (!ReadDeathView(base,view.personal,death,fov) || death.player.epoch!=view.player.epoch) return 0;
+    const auto animation=OwnedComponent(base,death.actor,0x41D258);
+    uint32_t animator=0,pose=0,actual=0,parents=0,count=0;
+    if (!Field(base,animation,0x60,animator) || !Field(base,animator,0x58,pose) ||
+        !Field(base,pose,0x10,actual) || actual!=hierarchy ||
+        !Field(base,hierarchy,4,count) || (count!=22 && count!=51) ||
+        !Field(base,pose,8,parents) || !Span(base,parents,count*4)) return 0;
+    uint64_t mask=uint64_t(1)<<10;
+    for (unsigned bone=1;bone<count;++bone) {
+        uint32_t ancestor=bone;
+        for (unsigned depth=0;ancestor && depth<count;++depth) {
+            if (ancestor==10) {mask|=uint64_t(1)<<bone;break;}
+            const auto parent=Read(base,parents+ancestor*4);
+            if (parent>=count || parent==ancestor || depth+1==count) return 0;
+            ancestor=parent;
+        }
+    }
+    return mask;
+}
+
+void DarkwatchBeginFirstPersonBody(const X86Context& ctx, uint8_t* base, uint32_t personal) {
+    if(g_first_person_body.personal || g_third_person_view.personal ||
+        !Span(base,ctx.esp,4) || Read(base,ctx.esp)!=0x1E89D2 ||
+        ctx.esp<16384 || !Span(base,ctx.esp-16384,16384))return;
+    ThirdPersonPose view;
+    if(!ReadThirdPersonPose(ctx,base,personal,view,PoseUse::Feet))return;
+    const auto settings=darkwatch::view::Snapshot(view.player.player);
+    if(!settings.first_person_body || settings.camera_mode!=darkwatch::view::CameraMode::FirstPerson)return;
+    // Players own AnimatedModel (AFEDF/422970), not the POV Model component.
+    // Only the paired renderer's 15D pass flag hides this body from its owner.
+    const auto model=OwnedComponent(base,view.actor,0x422970);
+    auto renderer=OwnedComponent(base,view.actor,0x41E25C);
+    if(!renderer)renderer=OwnedComponent(base,view.actor,0x41E3E0);
+    const auto animation=OwnedComponent(base,view.actor,0x41D258);
+    uint32_t animator=0,pose=0,parent=0,hierarchy=0,bones=0,flags=0,matrices=0,parents=0,serial=0,render_pass=0;
+    if(!model || !renderer || !Field(base,view.actor,0x70,serial) ||
+        !Field(base,renderer,0x6C,render_pass) || render_pass!=1 ||
+        !Field(base,animation,0x60,animator) || !Field(base,animator,0x58,pose) ||
+        !Field(base,pose,0,parent) || parent || !Field(base,pose,0x10,hierarchy) ||
+        !Field(base,hierarchy,0,flags) || (flags&2) ||
+        !Field(base,hierarchy,4,bones) || (bones!=22 && bones!=51) ||
+        !Field(base,hierarchy,8,matrices) || !Span(base,matrices,bones*64) ||
+        !Field(base,pose,8,parents) || !Span(base,parents,22*4))return;
+    constexpr uint32_t body_parents[]{0,1,2,0,4,5,0,7,8,9,10,8,12,13,14,15,8,17,18,19,20};
+    for(unsigned i=0;i<21;++i)if(Read(base,parents+(i+1)*4)!=body_parents[i])return;
+    float near_z=0,far_z=0;
+    if(!Field(base,view.player.raster,0x80,near_z)||!std::isfinite(near_z)||near_z<=0||
+       !Field(base,view.player.raster,0x84,far_z)||!std::isfinite(far_z)||far_z<=near_z)return;
+    CameraCall<16384> scratch(ctx,base);
+    if(near_z>.02f)scratch.NearPlane(view.player.camera,.02f);
+    X86Context call=ctx;call.ecx=renderer;call.esp-=64;
+    const uint32_t args[]{0x82574,0};std::memcpy(base+call.esp,args,sizeof(args));
+    x86_icall(call,base,0x82405);
+    g_first_person_body={view.player,personal,view.actor,serial,model,renderer,hierarchy,ctx.ebp,render_pass,near_z};
+    // First-person body placement follows the pelvis/yaw, not the animated
+    // head's turn and aim lean. The native eye and projection remain untouched.
+    Vector actor_up{},eye{},heading=view.forward;
+    if(Field(base,view.actor,0x20,actor_up) && Unit(actor_up) &&
+       Field(base,view.frame,0x40,eye) && Finite(eye)){
+        const float vertical=Dot(heading,actor_up);
+        for(unsigned axis=0;axis<3;++axis)heading[axis]-=vertical*actor_up[axis];
+        if(Normalize(heading)){
+            g_first_person_body.eye=eye;
+            g_first_person_body.actor_up=actor_up;
+            g_first_person_body.heading=heading;
+        }
+    }
+}
+
+void DarkwatchEndFirstPersonBody(const X86Context& ctx, uint8_t* base, uint32_t personal) {
+    const auto saved=g_first_person_body;
+    if(!saved.personal || saved.personal!=personal || saved.player.base!=base || saved.invocation!=ctx.ebp ||
+        !Span(base,ctx.esp,4) || Read(base,ctx.esp)!=0x1E8A0D)return;
+    const bool valid=DarkwatchFirstPersonBodyHierarchy(base)!=0;
+    g_first_person_body={};
+    if(!valid || ctx.esp<16384 || !Span(base,ctx.esp-16384,16384))return;
+    CameraCall<16384> scratch(ctx,base);X86Context call=ctx;
+    if(saved.native_near>.02f)scratch.NearPlane(saved.player.camera,saved.native_near);
+    call.ecx=saved.renderer;call.esp-=64;
+    const uint32_t args[]{0x82574,saved.render_pass};std::memcpy(base+call.esp,args,sizeof(args));
+    x86_icall(call,base,0x82405);
+}
+
 bool DarkwatchBeginThirdPersonRender(X86Context& ctx, uint8_t* base, uint32_t personal) {
-    if (darkwatch::view::Snapshot(0).camera_mode == darkwatch::view::CameraMode::FirstPerson &&
-        darkwatch::view::Snapshot(1).camera_mode == darkwatch::view::CameraMode::FirstPerson &&
-        darkwatch::view::Snapshot(2).camera_mode == darkwatch::view::CameraMode::FirstPerson &&
-        darkwatch::view::Snapshot(3).camera_mode == darkwatch::view::CameraMode::FirstPerson) return false;
     if (g_third_person_view.personal || !Span(base, ctx.esp, 4) || Read(base, ctx.esp) != 0x1E89D2 ||
         !Span(base, ctx.ebp, 4)) return false;
     ThirdPersonPose pose;
     Vector clipped{};
-    float death_fov = 0, native_fov = 0;
+    float death_fov = 0, native_fov = 0, native_near = 0;
     const bool death = ReadDeathView(base, personal, pose, death_fov);
     if (!death && !ReadThirdPersonPose(ctx, base, personal, pose)) return false;
     g_third_person_reticles[pose.player.player] = {};
@@ -744,6 +937,12 @@ bool DarkwatchBeginThirdPersonRender(X86Context& ctx, uint8_t* base, uint32_t pe
         DarkwatchPrepareThirdPersonHands(ctx, base, personal);
         if (!ReadThirdPersonPose(ctx, base, personal, pose) ||
             !SweepThirdPersonPose(ctx, base, pose, clipped)) return false;
+    } else if(darkwatch::view::Snapshot(pose.player.player).camera_mode==darkwatch::view::CameraMode::FirstPerson) {
+        if(ctx.esp<8192 || !Span(base,uint64_t(ctx.esp)-8192,8192))return false;
+        float far_z = 0;
+        if (!Field(base,pose.player.raster,0x80,native_near) || !std::isfinite(native_near) || native_near<=0 ||
+            !Field(base,pose.player.raster,0x84,far_z) || !std::isfinite(far_z) || far_z<=native_near) return false;
+        clipped=pose.position;
     } else if (ctx.esp < 8192 || !Span(base, uint64_t(ctx.esp) - 8192, 8192) ||
                !SweepThirdPersonPose(ctx, base, pose, clipped)) return false;
     if (death) {
@@ -764,9 +963,29 @@ bool DarkwatchBeginThirdPersonRender(X86Context& ctx, uint8_t* base, uint32_t pe
     const uint32_t flags = Read(base, pose.frame + 0x1C) & 0xFFFDFFFCu;
     std::memcpy(matrix.data() + 12, &flags, sizeof(flags));
     CameraCall<1024> call(ctx, base);
+    // The normal 30cm world near plane slices the torso open when viewed from
+    // its eyes. Keep the full body; change clipping only for this owner's draw.
+    if (native_near > .02f) call.NearPlane(pose.player.camera, .02f);
     call.Transform(pose.player.camera, matrix);
     if (death) call.FieldOfView(pose.player.camera, death_fov);
-    g_third_person_view = {pose.player, personal, pose.frame, ctx.ebp, saved, native_fov};
+    g_third_person_view = {pose.player, personal, pose.frame, ctx.ebp, saved, native_fov, native_near};
+#ifndef XBE_RELEASE
+    // One bounded, opt-in death witness; no user key timing or gameplay mutation.
+    static const bool capture_death = std::getenv("DARKWATCH_CAPTURE_DEATH") != nullptr;
+    static unsigned death_frames = 0;
+    if (capture_death && diag::CaptureEnabled() && death &&
+        darkwatch::view::Snapshot(pose.player.player).camera_mode==darkwatch::view::CameraMode::FirstPerson &&
+        death_frames < 120) {
+        ++death_frames;
+        LOGI("death-eye frame=%u player=%u actor=%08X personal=%08X eye=%.6f,%.6f,%.6f forward=%.6f,%.6f,%.6f up=%.6f,%.6f,%.6f",
+            death_frames,pose.player.player,pose.actor,personal,
+            clipped[0],clipped[1],clipped[2],pose.forward[0],pose.forward[1],pose.forward[2],
+            pose.up[0],pose.up[1],pose.up[2]);
+        // The existing renderer records its next complete frame; its constants
+        // are authoritative, not the earlier camera sample that armed it.
+        if (death_frames==6) gpu::g_capture.store(true);
+    }
+#endif
     // The shot reply converges on the center-camera target. Depth changes must
     // not slide the reticle across the screen when crossing foreground edges.
     if (!death) g_third_person_reticles[pose.player.player] = {pose.player, 0.f, 0.f, true};
@@ -832,6 +1051,7 @@ void DarkwatchEndThirdPersonRender(X86Context& ctx, uint8_t* base, uint32_t pers
     if (!PlayerValid(base, saved.player) || !Field(base, saved.player.raster, 4, frame) || frame != saved.frame ||
         ctx.esp < 1024 || !Span(base, uint64_t(ctx.esp) - 1024, 1024)) return;
     CameraCall<1024> call(ctx, base);
+    if (saved.native_near > .02f) call.NearPlane(saved.player.camera, saved.native_near);
     call.Transform(saved.player.camera, saved.matrix);
     if (saved.native_fov > 0) call.FieldOfView(saved.player.camera, saved.native_fov);
 }
@@ -859,6 +1079,36 @@ bool DarkwatchThirdPersonReticle(const uint8_t* base, uint32_t player, float& x,
         darkwatch::view::Snapshot(player).camera_mode == darkwatch::view::CameraMode::FirstPerson) return false;
     x = value.x; y = value.y;
     return true;
+}
+
+bool DarkwatchHideScopedSniperSmoke(const X86Context& ctx, const uint8_t* base) {
+    // Native 1E056D draws an effect for one raster. +50 hashes its resolved
+    // resource path; +68 binds this POV muzzle effect to its owner's raster.
+    if (!Span(base,ctx.esp,12) || !Span(base,ctx.ecx,0x70) ||
+        Read(base,ctx.ecx+0x50)!=0x0153B466 || // FX/DWSniperRifle_BarrelSmoke
+        Read(base,ctx.ecx+0x40)!=2 || Read(base,ctx.ecx+0x58)!=1) return false;
+    const uint32_t raster=Read(base,ctx.esp+4);
+    if (!raster || Read(base,ctx.ecx+0x68)!=raster) return false;
+    std::array<PlayerCamera,4> players;
+    {std::lock_guard lock(g_camera_lock);players=g_player_cameras;}
+    for (const auto& player:players) {
+        if (player.raster!=raster || !PlayerValid(base,player)) continue;
+        uint16_t count=0;uint32_t list=0,personal=0,actor=0,type=0,flags=0;
+        if (!Field(base,player.owner,4,count) || !count || count>64 ||
+            !Field(base,player.owner,8,list) || !Field(base,list,(count-1)*4,personal) ||
+            !ActivePersonal(base,player,personal) || !Field(base,personal,0,type) || type!=0x423990 ||
+            !Field(base,personal,0x18C,actor) || !Field(base,actor,0x90,flags) || (flags&2)) return false;
+        const uint32_t camera_component=OwnedComponent(base,actor,0x416444);
+        uint32_t owner=0,linked=0,weapon=0;uint8_t sniper=0;
+        float normal=0,current=0;
+        const uint32_t item=AimedWeapon(base,actor,weapon);
+        return Field(base,camera_component,0x80,owner) && owner==player.owner &&
+            Field(base,camera_component,0x70,linked) && linked==personal &&
+            Field(base,item,0x1B9,sniper) && sniper &&
+            Field(base,personal,0x16C,normal) && std::isfinite(normal) && normal>0 && normal<180 &&
+            Field(base,player.camera,0x44,current) && std::isfinite(current) && current>0 && current<normal-.01f;
+    }
+    return false;
 }
 
 void DarkwatchBeginWeaponView(X86Context& ctx, uint8_t* base) {

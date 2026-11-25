@@ -3,6 +3,18 @@
 #include <array>
 
 struct X86Context;
+void DarkwatchBeginFirstPersonBody(const X86Context& ctx, uint8_t* base, uint32_t personal);
+void DarkwatchEndFirstPersonBody(const X86Context& ctx, uint8_t* base, uint32_t personal);
+uint32_t DarkwatchFirstPersonBodyHierarchy(const uint8_t* base);
+uint64_t DarkwatchFirstPersonHiddenBones(const uint8_t* base);
+struct DarkwatchFirstPersonFrame {
+    std::array<float,3> eye{}, up{}, forward{};
+    uint64_t torso=0, head=0;
+};
+bool DarkwatchFirstPersonBodyFrame(const uint8_t* base, uint32_t hierarchy, DarkwatchFirstPersonFrame& frame);
+// Head descendants hidden only inside the active corpse owner's eye-camera draw.
+uint64_t DarkwatchDeathHeadMask(const uint8_t* base, uint32_t hierarchy);
+bool DarkwatchHideScopedSniperSmoke(const X86Context& ctx, const uint8_t* base);
 // Original single-player/two-player camera creation; other layouts are untouched.
 void DarkwatchPreparePlayerViewport(X86Context& ctx, uint8_t* base);
 void DarkwatchConfigurePlayerCamera(X86Context& ctx, uint8_t* base);

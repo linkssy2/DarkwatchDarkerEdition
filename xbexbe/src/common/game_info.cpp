@@ -7,6 +7,7 @@
 #include "common/weapon_wheel.h"
 #include "common/versus_menu.h"
 #include "common/camera_input.h"
+#include "common/corpse_grab.h"
 #include "common/sight_mode.h"
 #include "common/audio_settings.h"
 #include "common/character_selection.h"
@@ -117,7 +118,7 @@ bool AimComponent(const uint8_t* base, uint32_t actor, uint32_t vtable, uint32_t
     return result != 0;
 }
 
-bool WalkTarget(const uint8_t* base, int port, uint32_t& actor, bool& right_stick) {
+bool WalkTarget(const uint8_t* base, int port, uint32_t& actor, bool& right_stick, int* interact = nullptr) {
     uint32_t game = 0, players = 0, records = 0, found = 0;
     uint16_t count = 0;
     if (port < 0 || port >= 4 || !AimRead(base, 0x4AC9A0, game) ||
@@ -159,6 +160,7 @@ bool WalkTarget(const uint8_t* base, int port, uint32_t& actor, bool& right_stic
     for (const auto* value : {"Default", "Chieftain", "Lefty", "Hopalong", "Hoss"}) {
         if (!std::memcmp(preset.data(), value, std::strlen(value) + 1)) {
             right_stick = !std::strcmp(value, "Lefty");
+            if (interact) *interact = !std::strcmp(value, "Chieftain") ? 12 : 8;
             return true;
         }
     }
@@ -166,8 +168,9 @@ bool WalkTarget(const uint8_t* base, int port, uint32_t& actor, bool& right_stic
 }
 
 void ApplyWalkInput(int port, input::Pad& pad) {
-    uint32_t actor = 0; bool right_stick = false;
-    const bool on_foot = input::GetMouseSnapshot().active && WalkTarget(kernel::g_base, port, actor, right_stick);
+    uint32_t actor = 0; bool right_stick = false; int interact = -1;
+    const bool on_foot = input::GetMouseSnapshot().active && WalkTarget(kernel::g_base, port, actor, right_stick, &interact);
+    DarkwatchCorpseGrabInput(port, pad, on_foot ? actor : 0, interact);
     darkwatch::ControlsWalkInput(port, pad, on_foot, right_stick, actor);
     DarkwatchShoulderInput(port, pad, on_foot, actor);
     DarkwatchCycleCameraInput(port, pad, on_foot, actor);

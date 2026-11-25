@@ -17,9 +17,9 @@ using Microsoft.Win32;
 #if !DIRECT_PLAY
 [assembly: AssemblyTitle("Darkwatch: Darker Edition")]
 [assembly: AssemblyProduct("Darkwatch: Darker Edition")]
-[assembly: AssemblyVersion("0.8.1.0")]
-[assembly: AssemblyFileVersion("0.8.1.0")]
-[assembly: AssemblyInformationalVersion("0.8.1")]
+[assembly: AssemblyVersion("0.8.2.0")]
+[assembly: AssemblyFileVersion("0.8.2.0")]
+[assembly: AssemblyInformationalVersion("0.8.2")]
 #endif
 
 namespace DarkwatchDarkerEdition

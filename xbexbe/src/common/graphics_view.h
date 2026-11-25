@@ -22,6 +22,7 @@ struct Settings {
     CameraMode camera_mode = CameraMode::FirstPerson;
     bool original_ui_aspect = false;
     bool vertical_split = false;
+    bool first_person_body = true;
 };
 // Players are zero-based; out-of-range indices use Player One.
 Settings Snapshot(uint32_t player = 0);

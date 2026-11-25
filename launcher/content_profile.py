@@ -4,11 +4,12 @@ from pathlib import Path
 
 import bonus_content
 import character_content
+import sewers_ramp
 
-ORIGINAL_REVISION = 'original-playable-characters-v1'
+ORIGINAL_REVISION = 'original-playable-characters-sewers-v2'
 ORIGINAL = {
     'packfile.pck': (110109318, bonus_content.INSTALLED_SHA256),
-    'LvlSingl.pck': (207710373, 'ee1af353ad47b929b019e0b75ec605d980e8ef96466fb304277199665b4feaf5'),
+    'LvlSingl.pck': (207954159, '97501a9a49d434f657d924b49852e3ec1d5e6e023b8bb28dbcda749b816567de'),
     'audio.pck': (137741272, 'ffa551a20dbe3abf0eb6359011fe62a693f7f8b67822920f2bb9d31fe77c2d43'),
 }
 
@@ -52,5 +53,14 @@ def prepare(assets, payload, cancel, progress, *, profile, previous_assets=None)
         character_content.checked_file(target, {'size': size, 'sha256': digest}, cancel)
         cancel()
         os.replace(target, assets / 'packfile.pck')
+    finally:
+        target.unlink(missing_ok=True)
+    target = assets / 'LvlSingl.pck.original.tmp'
+    try:
+        sewers_ramp.prepare_archive(assets / 'LvlSingl.pck', target, cancel)
+        size, digest = ORIGINAL['LvlSingl.pck']
+        character_content.checked_file(target, {'size': size, 'sha256': digest}, cancel)
+        cancel()
+        os.replace(target, assets / 'LvlSingl.pck')
     finally:
         target.unlink(missing_ok=True)
